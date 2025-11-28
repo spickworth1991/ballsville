@@ -42,20 +42,20 @@ export default function NotFound() {
             <Link href="/" className="btn btn-primary rounded-full px-6 py-3">
               Go Home
             </Link>
-            <Link href="/contact" className="btn btn-outline rounded-full px-6 py-3">
+            {/* <Link href="/contact" className="btn btn-outline rounded-full px-6 py-3">
               Contact Us
-            </Link>
+            </Link> */}
           </div>
 
           {/* Quick links */}
           <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
             {[
               { name: "About", href: "/about" },
-              { name: "Services", href: "/services" },
-              { name: "FAQ", href: "/faq" },
-              { name: "Insurance", href: "/insurance" },
-              { name: "Resources", href: "/resources" },
-              { name: "Careers", href: "/careers" },
+              { name: "Constitution", href: "/constitution" },
+              // { name: "FAQ", href: "/faq" },
+              // { name: "Insurance", href: "/insurance" },
+              // { name: "Resources", href: "/resources" },
+              // { name: "Careers", href: "/careers" },
             ].map((link) => (
               <Link
                 key={link.href}
