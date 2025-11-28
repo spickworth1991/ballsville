@@ -1,0 +1,6 @@
+@import "../styles/theme.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* You had only Tailwind directives; if you add custom CSS later, put it here. */

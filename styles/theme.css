@@ -1,0 +1,163 @@
+/* styles/theme.css - HEX token only version (no /opacity) */
+:root{
+  --color-primary: #d97f00;
+  --color-accent:  #022071;
+
+  /* Surfaces & text (light) */
+  --color-bg:    #3cb4db;
+  --color-card:  #1b4ac1;
+  --color-fg:    #022071;
+  --color-muted: #586947;
+
+  /* Navbar (themed + translucent via alpha var) */
+  --color-nav-bg: #022071;
+  --color-nav-fg: #0f172a;
+  --nav-blur: 6px;          /* how strong the blur looks */
+  --nav-opacity: 0.70;          /* translucency of navbar bg (0–100%) */
+  --overlay-alpha: 0.60;     /* mobile scrim darkness */
+
+  /* Call Now Bar (independent theme controls) */
+  --color-callbar-bg: #3cadba; /* bar background */
+  --color-callbar-fg: #ffffff; /* text/icon color */
+  --callbar-blur: 8px;         /* set to e.g. 8px if you want a frosted look */
+  --callbar-height: 60px;      /* bar height on mobile */
+  --callbar-shadow: 0 -2px 10px rgba(0,0,0,0.20);
+  --callbar-opacity: 0.7;   /* 0..1 control for the call bar */
+  --callbar-blur: 6px;
+  --callbar-height: 50px;
+  --callbar-shadow: 0 -2px 10px rgba(0,0,0,0.20);
+
+  /* Semantic */
+  --color-success:#16a34a;
+  --color-danger: #dc2626;
+  --color-warning:#f59e0b;
+
+  --radius-sm:.5rem; --radius-md:.75rem; --radius-lg:1rem; --radius-xl:1.5rem;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.06);
+  --shadow-md:0 8px 24px rgba(0,0,0,.10);
+  --shadow-lg:0 16px 40px rgba(0,0,0,.14);
+  --container-max:1200px;
+  --section-y:4rem;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+  --line-height:1.6;
+}
+
+.dark:root{
+  --color-bg:   #002f70;
+  --color-card: #011127;
+  --color-fg:   #e2e8f0;
+  --color-muted:#94a3b8;
+  --color-accent:#3cb4db;
+
+  --color-nav-bg: #000307;
+  --color-nav-fg: #e2e8f0;
+  --nav-opacity: 0.75;
+  --overlay-alpha: 0.65;
+
+  /* Dark theme for Call Now bar (tweak if desired) */
+  --color-callbar-bg: #3cadba;
+  --color-callbar-fg: #f9ecdb; /* try #0b1220 or #0f172a for a darker ink on teal */
+  --callbar-opacity: .5;
+}
+
+.container-site{max-width:var(--container-max);margin-inline:auto;padding-inline:1rem;}
+.section{padding-top:var(--section-y);padding-bottom:var(--section-y);}
+
+.card{
+  background: var(--color-card);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid rgba(15,23,42,.08);
+}
+.card-lg{
+  background: var(--color-card);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  border: 1px solid rgba(15,23,42,.10);
+}
+
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:.5rem;
+  font-weight:600;line-height:1;border-radius:var(--radius-md);
+  padding:.75rem 1rem;
+  transition:transform .08s ease,box-shadow .2s ease,background-color .2s ease,color .2s ease,border-color .2s ease;
+  box-shadow:var(--shadow-sm);
+}
+.btn-primary{ background: var(--color-primary); color: #fff; }
+.btn-primary:hover{ transform: translateY(-1px); }
+.btn-outline{ background:transparent; color:var(--color-fg); border:1px solid rgba(148,163,184,.4); }
+.btn-outline:hover{ border-color: var(--color-primary); color: var(--color-primary); }
+
+.badge{
+  display:inline-flex;align-items:center;gap:.35rem;padding:.35rem .6rem;border-radius:999px;
+  background: color-mix(in oklab, var(--color-primary) 12%, transparent);
+  color: var(--color-primary); font-weight:600; font-size:.825rem;
+}
+
+.lead{ font-size:clamp(1.1rem,2vw,1.25rem); color: var(--color-muted); }
+.h1{ font-size:clamp(1.8rem,4vw,2.5rem); font-weight:800; letter-spacing:-.02em; }
+.h2{ font-size:clamp(1.4rem,3vw,2rem);   font-weight:800; letter-spacing:-.02em; }
+.h3{ font-size:clamp(1.0rem,2.2vw,1.5rem); font-weight:700; }
+
+.border-subtle { border-color: color-mix(in oklab, var(--color-fg) 12%, transparent); }
+.divider-subtle { border-top: 1px solid color-mix(in oklab, var(--color-fg) 12%, transparent); }
+.ring-primary { box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-primary) 42%, transparent); }
+.ring-subtle  { box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-fg) 18%, transparent); }
+
+
+/* NAVBAR (translucent via ::before overlay + blur) */
+.navbar {
+  position: sticky; /* or switch to fixed: top:0; left:0; right:0; */
+  top: 0;
+  z-index: 50;
+  color: var(--color-nav-fg);
+  -webkit-backdrop-filter: blur(var(--nav-blur));
+  backdrop-filter: blur(var(--nav-blur));
+  border-bottom: 1px solid color-mix(in oklab, var(--color-fg) 10%, transparent);
+  isolation: isolate;              /* ensures ::before sits behind content */
+}
+.navbar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--color-nav-bg); /* your exact HEX token color */
+  opacity: var(--nav-opacity);     /* 0..1 from theme variable */
+  pointer-events: none;
+  z-index: 0;
+}
+/* keep navbar content above the overlay */
+.navbar > * { position: relative; z-index: 1; }
+
+/* Mobile overlay scrim (decimal-friendly) */
+.scrim {
+  background: color-mix(in oklab, var(--color-fg) calc(var(--overlay-alpha) * 100%), transparent);
+}
+
+/* CALL NOW BAR (independent theme control) */
+.callnowbar {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  height: var(--callbar-height);
+  z-index: 50;
+  color: var(--color-callbar-fg);
+  box-shadow: var(--callbar-shadow);
+  -webkit-backdrop-filter: blur(var(--callbar-blur));
+  backdrop-filter: blur(var(--callbar-blur));
+  isolation: isolate;
+}
+.callnowbar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--color-callbar-bg);
+  opacity: var(--callbar-opacity); /* 0..1 from theme variable */
+  pointer-events: none;
+  z-index: 0;
+}
+/* keep content clickable above overlay */
+.callnowbar > * { position: relative; z-index: 1; }
+
+/* Spacer to keep content from being hidden under the fixed bar on mobile */
+.callnowbar-spacer { height: var(--callbar-height); }
+
