@@ -9,46 +9,40 @@ import {
   FiHome,
   FiUsers,
   FiBriefcase,
-  FiHelpCircle,
-  FiCreditCard,
-  FiBookOpen,
-  FiPhone,
   FiSun,
   FiMoon,
-  FiMapPin
+  FiBarChart2,
+  FiTrendingUp,
 } from "react-icons/fi";
-import { FaFacebookF, FaInstagram, FaLinkedinIn } from "react-icons/fa";
 
 const NAV_ITEMS = [
   { name: "Home", to: "/", icon: FiHome },
+  { name: "Leaderboards", to: "/leaderboards", icon: FiBarChart2 },
   { name: "About", to: "/about", icon: FiUsers },
   { name: "Constitution", to: "/constitution", icon: FiBriefcase },
-  // { name: "FAQ", to: "/faq", icon: FiHelpCircle },
-  // { name: "Insurance", to: "/insurance", icon: FiCreditCard },
-  // { name: "Resources", to: "/resources", icon: FiBookOpen },
-  // { name: "Location", to: "/location", icon: FiMapPin },
-  // { name: "Careers", to: "/careers", icon: FiBriefcase },
-  // { name: "Contact", to: "/contact", icon: FiPhone }
+  { name: "News", to: "/news", icon: FiTrendingUp  },
+  
 ];
 
 export default function Navbar() {
   const pathname = usePathname();
 
-  // state mirrors your original component
   const [dark, setDark] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const [visibleLinks, setVisibleLinks] = useState(NAV_ITEMS.length);
 
-  const containerRef = useRef(null);
-  const linksRef = useRef([]);
+  const containerRef = useRef(null);   // whole <nav>
+  const linksRef = useRef([]);         // each <li>
+  const logoRef = useRef(null);        // logo block
+  const rightRef = useRef(null);       // theme + menu buttons
 
-  const visible = NAV_ITEMS.slice(0, visibleLinks);
   const overflow = NAV_ITEMS.slice(visibleLinks);
 
-  // theme: read from localStorage or prefers-color-scheme
+  // ---------------- THEME ----------------
   useEffect(() => {
-    const saved = typeof window !== "undefined" ? localStorage.getItem("theme") : null;
+    const saved =
+      typeof window !== "undefined" ? localStorage.getItem("theme") : null;
     const prefersDark =
       typeof window !== "undefined" &&
       window.matchMedia &&
@@ -64,30 +58,65 @@ export default function Navbar() {
     } catch {}
   }, [dark]);
 
-  // shrink on scroll
+  // ---------------- SCROLL SHRINK ----------------
   useLayoutEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 50);
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // measure visible links with ResizeObserver
-  useLayoutEffect(() => {
-    const ro = new ResizeObserver(() => updateVisibleLinks());
-    if (containerRef.current) {
-      updateVisibleLinks(); // immediate on mount
-      ro.observe(containerRef.current);
-    }
-    return () => ro.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // ---------------- LINK MEASUREMENT ----------------
+  const updateVisibleLinks = () => {
+    if (!containerRef.current) return;
 
-  // also listen to window resize (belt & suspenders)
+    const navWidth = containerRef.current.offsetWidth || 0;
+    const logoWidth = logoRef.current?.offsetWidth || 0;
+    const rightWidth = rightRef.current?.offsetWidth || 0;
+
+    // How much room the UL realistically has
+    const horizontalPadding = 32; // accounts for px-4 on the inner div
+    const buffer = 60;            // tweak this to hide links earlier/later
+
+    const availableWidth =
+      navWidth - logoWidth - rightWidth - horizontalPadding - buffer;
+
+    if (availableWidth <= 0) {
+      // Nothing fits; we still want *at least* 1 link
+      setVisibleLinks(1);
+      return;
+    }
+
+    let used = 0;
+    let count = 0;
+
+    for (let i = 0; i < NAV_ITEMS.length; i++) {
+      const el = linksRef.current[i];
+      if (!el) break;
+      const w = el.offsetWidth || 0;
+
+      if (used + w > availableWidth) break;
+
+      used += w + 16; // 16px "gap" between links
+      count++;
+    }
+
+    const MIN_VISIBLE = 1;
+    setVisibleLinks(Math.max(count, MIN_VISIBLE));
+  };
+
+  // run once + on resize
   useLayoutEffect(() => {
+    updateVisibleLinks();
     const onResize = () => updateVisibleLinks();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // re-measure when dark mode might change font metrics slightly
+  useEffect(() => {
+    updateVisibleLinks();
+  }, [dark]);
 
   // lock body scroll when sidebar open; auto-close if no overflow
   useEffect(() => {
@@ -95,47 +124,31 @@ export default function Navbar() {
     if (open && overflow.length === 0) setOpen(false);
   }, [open, overflow.length]);
 
-  const updateVisibleLinks = () => {
-    if (!containerRef.current) return;
-    const containerWidth = containerRef.current.offsetWidth;
-    const buffer = 320; // space for theme + menu buttons
-    let used = buffer;
-    let count = 0;
-
-    for (let i = 0; i < NAV_ITEMS.length; i++) {
-      const el = linksRef.current[i];
-      if (!el) break;
-      used += el.offsetWidth + 20;
-      if (used > containerWidth) break;
-      count++;
-    }
-    setVisibleLinks(count);
-  };
-
   return (
     <>
       <nav
         ref={containerRef}
-        className={`navbar shadow-md transition-all duration-300 ${scrolled ? "h-12" : "h-16"}`}
+        className={`navbar shadow-md transition-all duration-300 ${
+          scrolled ? "h-12" : "h-16"
+        }`}
       >
         <div className="max-w-7xl mx-auto flex items-center justify-between h-full px-4 md:px-8 overflow-hidden">
           {/* Left: logo + links */}
           <div className="flex items-center flex-1 min-w-0">
-            <Link href="/" className="flex items-center flex-shrink-0">
+            <Link
+              href="/"
+              className="flex items-center flex-shrink-0"
+              ref={logoRef}
+            >
               <img
                 src="/logo_navbar@2x.png"
-                alt="Stay in Motion Physical Therapy"
+                alt={siteConfig.name}
                 width={scrolled ? 24 : 32}
                 height={scrolled ? 24 : 32}
                 className={`${scrolled ? "h-8 w-8" : "h-14 w-14"} transition-all`}
               />
-              <span
-                className={`ml-2 font-bold transition-all ${
-                  scrolled ? "text-lg" : "text-xl"
-                } text-primary dark:text-fg`}
-              >
-                {siteConfig.shortName}
-              </span>
+              {/* If you re-add text here later, it's included in logoWidth */}
+              {/* <span className="ml-2 font-bold">{siteConfig.shortName}</span> */}
             </Link>
 
             <ul className="flex items-center space-x-4 ml-6 overflow-hidden flex-nowrap relative">
@@ -166,7 +179,10 @@ export default function Navbar() {
           </div>
 
           {/* Right: controls */}
-          <div className="flex items-center flex-shrink-0 space-x-2 pl-4">
+          <div
+            className="flex items-center flex-shrink-0 space-x-2 pl-4"
+            ref={rightRef}
+          >
             <button
               onClick={() => setDark((prev) => !prev)}
               className="p-2 text-xl text-fg dark:text-muted hover:text-accent dark:hover:text-primary transition"
@@ -200,6 +216,7 @@ export default function Navbar() {
           aria-hidden="true"
         />
       )}
+
       {/* Left Slide-in Sidebar (overflow links) */}
       <aside
         id="mobile-menu"
@@ -247,30 +264,6 @@ export default function Navbar() {
               <span>{dark ? "Light Mode" : "Dark Mode"}</span>
             </button>
           </nav>
-        </div>
-
-        <div className="px-6 pb-8 flex space-x-4">
-          {/* <a
-            href="#"
-            aria-label="Facebook"
-            className="text-accent hover:text-primary transition text-2xl"
-          >
-            <FaFacebookF />
-          </a>
-          <a
-            href="#"
-            aria-label="Instagram"
-            className="text-accent hover:text-primary transition text-2xl"
-          >
-            <FaInstagram />
-          </a> */}
-          <a
-            href="https://www.linkedin.com/in/amanda-pickworth-chrusciel/"
-            aria-label="LinkedIn"
-            className="text-accent hover:text-primary transition text-2xl"
-          >
-            <FaLinkedinIn />
-          </a>
         </div>
       </aside>
     </>

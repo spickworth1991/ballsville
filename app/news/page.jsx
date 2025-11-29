@@ -1,3 +1,4 @@
+// app/news/page.jsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -5,54 +6,77 @@ import { getSupabase } from "@/lib/supabaseClient";
 
 // token-driven UI bits
 const cardCls =
-  "card p-6 transition shadow-sm hover:shadow-md hover:-translate-y-[2px]";
+  "card relative p-6 transition shadow-sm hover:shadow-md hover:-translate-y-[2px]";
 const chipBase =
   "text-sm px-3 py-1 rounded-full border transition";
 const chipActive =
   "bg-primary text-card border-primary";
 const chipIdle =
-  "bg-transparent text-primary border-primary hover:bg-primary";
+  "bg-transparent text-primary border-primary hover:bg-primary hover:text-card";
 const tagPill =
   "text-xs px-2 py-0.5 rounded-full border border-subtle";
 
-// helpers
+// --- helpers mapping coupon -> mini game ---
+
+function isMiniGame(row) {
+  return !!row.is_coupon;
+}
+
+function isClosed(row) {
+  return isMiniGame(row) && row.expires_at && new Date(row.expires_at) < new Date();
+}
+
 function splitAndSort(rows) {
   const now = new Date();
-  const activeCoupons = [];
-  const nonCoupons = [];
-  const expiredCoupons = [];
+  const activeMini = [];
+  const regularPosts = [];
+  const closedMini = [];
 
   for (const r of rows) {
-    if (r.is_coupon) {
-      const expired = r.expires_at ? new Date(r.expires_at) < now : false;
-      if (expired) expiredCoupons.push(r);
-      else activeCoupons.push(r);
+    if (isMiniGame(r)) {
+      const closed = r.expires_at ? new Date(r.expires_at) < now : false;
+      if (closed) closedMini.push(r);
+      else activeMini.push(r);
     } else {
-      nonCoupons.push(r);
+      regularPosts.push(r);
     }
   }
 
-  activeCoupons.sort((a, b) => {
+  // Active mini games: nearest closing first
+  activeMini.sort((a, b) => {
     const aTime = a.expires_at ? new Date(a.expires_at).getTime() : Number.MAX_SAFE_INTEGER;
     const bTime = b.expires_at ? new Date(b.expires_at).getTime() : Number.MAX_SAFE_INTEGER;
     return aTime - bTime || new Date(b.created_at) - new Date(a.created_at);
   });
 
-  nonCoupons.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-  expiredCoupons.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  // Regular posts: newest first
+  regularPosts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-  return { activeCoupons, nonCoupons, expiredCoupons };
-}
+  // Closed mini games: newest first
+  closedMini.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-function isExpired(row) {
-  return row.is_coupon && row.expires_at && new Date(row.expires_at) < new Date();
+  return { activeMini, regularPosts, closedMini };
 }
 
 function getDisplayTags(row) {
   const base = (row.tags || []).slice();
-  if (row.is_coupon && !isExpired(row) && !base.some(t => t.toLowerCase() === "coupon")) base.push("Coupon");
-  if (isExpired(row) && !base.some(t => t.toLowerCase() === "coupon (expired)")) base.push("Coupon (Expired)");
+  const lower = base.map((t) => t.toLowerCase());
+
+  if (isMiniGame(row) && !isClosed(row) && !lower.includes("mini game")) {
+    base.push("Mini Game");
+  }
+  if (isClosed(row) && !lower.includes("mini game (closed)")) {
+    base.push("Mini Game (Closed)");
+  }
   return base;
+}
+
+// ---- media helpers: image vs video ----
+function isVideoUrl(url) {
+  if (!url) return false;
+  // strip query params if any
+  const clean = url.split("?")[0].toLowerCase();
+  return /\.(mp4|mov|webm|ogg|mpe?g)$/.test(clean);
 }
 
 export default function NewsPage() {
@@ -62,7 +86,10 @@ export default function NewsPage() {
 
   useEffect(() => {
     const supabase = getSupabase();
-    if (!supabase) { setLoading(false); return; }
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
 
     let mounted = true;
     (async () => {
@@ -71,25 +98,33 @@ export default function NewsPage() {
         .select("*")
         .order("created_at", { ascending: false })
         .limit(200);
+
       if (!mounted) return;
       if (!error) setRows(data || []);
       setLoading(false);
     })();
-    return () => { mounted = false; };
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const allTags = useMemo(() => {
     const set = new Set();
-    let sawActive = false, sawExpired = false;
+    let sawActiveMini = false;
+    let sawClosedMini = false;
 
     for (const r of rows) {
-      (r.tags || []).forEach(t => set.add(t));
-      if (r.is_coupon) {
-        if (isExpired(r)) sawExpired = true; else sawActive = true;
+      (r.tags || []).forEach((t) => set.add(t));
+
+      if (isMiniGame(r)) {
+        if (isClosed(r)) sawClosedMini = true;
+        else sawActiveMini = true;
       }
     }
-    if (sawActive) set.add("Coupon");
-    if (sawExpired) set.add("Coupon (Expired)");
+
+    if (sawActiveMini) set.add("Mini Game");
+    if (sawClosedMini) set.add("Mini Game (Closed)");
 
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [rows]);
@@ -97,25 +132,35 @@ export default function NewsPage() {
   const filtered = useMemo(() => {
     if (!activeTag) return rows;
     const tagLower = activeTag.toLowerCase();
-    if (tagLower === "coupon") return rows.filter(r => r.is_coupon && !isExpired(r));
-    if (tagLower === "coupon (expired)") return rows.filter(r => r.is_coupon && isExpired(r));
-    return rows.filter(r => (r.tags || []).some(t => t.toLowerCase() === tagLower));
+
+    if (tagLower === "mini game") {
+      return rows.filter((r) => isMiniGame(r) && !isClosed(r));
+    }
+    if (tagLower === "mini game (closed)") {
+      return rows.filter((r) => isMiniGame(r) && isClosed(r));
+    }
+
+    return rows.filter((r) =>
+      (r.tags || []).some((t) => t.toLowerCase() === tagLower)
+    );
   }, [rows, activeTag]);
 
-  const { activeCoupons, nonCoupons, expiredCoupons } = useMemo(
+  const { activeMini, regularPosts, closedMini } = useMemo(
     () => splitAndSort(filtered),
     [filtered]
   );
-  const display = [...activeCoupons, ...nonCoupons, ...expiredCoupons];
+  const display = [...activeMini, ...regularPosts, ...closedMini];
 
   return (
     <section className="section">
       <div className="container-site max-w-3xl mx-auto">
         {/* Header */}
         <header className="text-center mb-8">
-          <span className="badge">Clinic news</span>
-          <h1 className="h1 mt-3">News &amp; Updates</h1>
-          <p className="lead mt-3">Announcements, events, and occasional promotions.</p>
+          <span className="badge">League news</span>
+          <h1 className="h1 mt-3">News, Mini Games &amp; Updates</h1>
+          <p className="lead mt-3">
+            Announcements for Ballsville leagues, plus rotating mini games and side contests.
+          </p>
         </header>
 
         {/* Tag filters */}
@@ -142,26 +187,26 @@ export default function NewsPage() {
         ) : (
           <ul className="space-y-6">
             {display.map((p) => {
-              const expired = isExpired(p);
+              const closed = isClosed(p);
               const tags = getDisplayTags(p);
 
               return (
                 <li
                   key={p.id}
-                  className={`${cardCls} ${expired ? "grayscale" : ""}`}
-                  style={expired ? { opacity: 0.85 } : undefined}
+                  className={`${cardCls} ${closed ? "grayscale" : ""}`}
+                  style={closed ? { opacity: 0.9 } : undefined}
                 >
-                  {/* Expired ribbon */}
-                  {expired && (
+                  {/* Closed ribbon for mini games */}
+                  {isMiniGame(p) && closed && (
                     <div className="absolute -top-2 -right-2">
                       <div
-                        className="rotate-12 rounded px-2 py-1 text-[10px] font-semibold shadow"
+                        className="rotate-6 rounded px-2 py-1 text-[10px] font-semibold shadow"
                         style={{
                           background: "var(--color-card)",
                           color: "var(--color-fg)",
                         }}
                       >
-                        EXPIRED
+                        MINI GAME CLOSED
                       </div>
                     </div>
                   )}
@@ -185,11 +230,11 @@ export default function NewsPage() {
                       )}
                     </div>
 
-                    {p.is_coupon && (
+                    {isMiniGame(p) && (
                       <span
                         className="badge"
                         style={
-                          expired
+                          closed
                             ? undefined
                             : {
                                 background:
@@ -198,19 +243,31 @@ export default function NewsPage() {
                               }
                         }
                       >
-                        {expired ? "Coupon (Expired)" : "Coupon"}
+                        {closed ? "Mini Game (Closed)" : "Mini Game"}
                       </span>
                     )}
                   </div>
 
+                  {/* Media block: image OR video */}
                   {p.image_url && (
                     <div className="mt-4">
-                      <img
-                        src={p.image_url}
-                        alt={p.title}
-                        className="rounded-lg w-full h-auto"
-                        loading="lazy"
-                      />
+                      {isVideoUrl(p.image_url) ? (
+                        <video
+                          className="w-full rounded-lg"
+                          controls
+                          preload="metadata"
+                        >
+                          <source src={p.image_url} />
+                          Your browser does not support the video tag.
+                        </video>
+                      ) : (
+                        <img
+                          src={p.image_url}
+                          alt={p.title}
+                          className="rounded-lg w-full h-auto"
+                          loading="lazy"
+                        />
+                      )}
                     </div>
                   )}
 
@@ -222,8 +279,12 @@ export default function NewsPage() {
 
                   <div className="mt-4 text-xs text-muted">
                     Posted {new Date(p.created_at).toLocaleString()}
-                    {p.is_coupon && p.expires_at && (
-                      <> • Expires {new Date(p.expires_at).toLocaleString()}</>
+                    {isMiniGame(p) && p.expires_at && (
+                      <>
+                        {" "}
+                        • Sign-up closes{" "}
+                        {new Date(p.expires_at).toLocaleString()}
+                      </>
                     )}
                   </div>
                 </li>
@@ -231,7 +292,7 @@ export default function NewsPage() {
             })}
             {!display.length && (
               <li className="card p-6 text-center">
-                <p className="text-muted">No posts found.</p>
+                <p className="text-muted">No news or mini games yet.</p>
               </li>
             )}
           </ul>

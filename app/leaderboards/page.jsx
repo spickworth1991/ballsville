@@ -1,0 +1,51 @@
+// app/leaderboards/page.jsx
+import { siteConfig } from "@/app/config/siteConfig";
+
+const pageTitle = `Leaderboards | ${siteConfig.shortName}`;
+const pageUrl = `${siteConfig.domain}/leaderboards`;
+
+export const metadata = {
+  title: pageTitle,
+  description:
+    "Live BALLSVILLE standings and leaderboards for all divisions and games.",
+  alternates: { canonical: pageUrl },
+  openGraph: {
+    url: pageUrl,
+    title: pageTitle,
+    description:
+      "Live BALLSVILLE standings and leaderboards for all divisions and games.",
+    images: [{ url: siteConfig.ogImage, width: 1200, height: 630 }],
+  },
+};
+
+export default function Page() {
+  return (
+    <section className="bg-bg dark:bg-bg px-4 md:px-8 py-10">
+      <div className="max-w-6xl mx-auto space-y-8">
+        {/* Header */}
+        <header className="text-center space-y-3">
+          <p className="text-xs uppercase tracking-[0.2em] text-accent">
+            the BALLSVILLE game
+          </p>
+          <h1 className="text-3xl md:text-4xl font-extrabold text-primary">
+            Live Leaderboards
+          </h1>
+          <p className="text-sm md:text-base text-muted max-w-2xl mx-auto">
+            View real-time standings for the BIG game, mini-Leagues, Gauntlet,
+            and more — powered by our automated BALLSVILLE leaderboard engine.
+          </p>
+        </header>
+
+        {/* Embedded leaderboard app */}
+        <div className="card-lg p-0 overflow-hidden">
+          <iframe
+            src="https://ballsville-leaderboard.pages.dev/"
+            title="BALLSVILLE Leaderboards"
+            loading="lazy"
+            className="w-full h-[150vh] min-h-[600px] border-0"
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
