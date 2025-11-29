@@ -79,6 +79,33 @@ function isVideoUrl(url) {
   return /\.(mp4|mov|webm|ogg|mpe?g)$/.test(clean);
 }
 
+// ---- body helper: turn URLs into clickable links ----
+function linkifyBody(text) {
+  if (!text) return null;
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+
+  const parts = text.split(urlRegex);
+
+  return parts.map((part, idx) => {
+    // treat exact URL fragments as links
+    const isUrl = /^https?:\/\/\S+$/i.test(part);
+    if (isUrl) {
+      return (
+        <a
+          key={idx}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-accent underline break-all"
+        >
+          {part}
+        </a>
+      );
+    }
+    return <span key={idx}>{part}</span>;
+  });
+}
+
 export default function NewsPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -272,8 +299,8 @@ export default function NewsPage() {
                   )}
 
                   {p.body && (
-                    <p className="mt-4 whitespace-pre-line">
-                      {p.body}
+                    <p className="mt-4 whitespace-pre-line break-words">
+                      {linkifyBody(p.body)}
                     </p>
                   )}
 

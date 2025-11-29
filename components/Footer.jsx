@@ -36,13 +36,13 @@ export default function Footer() {
                 </a>
               </li>
               <li>
-                <a href="/faq" className="hover:text-primary">
-                  FAQ
+                <a href="/leaderboards" className="hover:text-primary">
+                  Leaderboards
                 </a>
               </li>
               <li>
-                <a href="/contact" className="hover:text-primary">
-                  Contact
+                <a href="/news" className="hover:text-primary">
+                  News
                 </a>
               </li>
             </ul>
