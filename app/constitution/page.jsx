@@ -64,7 +64,7 @@ export default function Page() {
       </section>
 
       {/* Main layout */}
-      <section className="bg-bg px-4 md:px-8 py-10">
+      <section className="bg-bg dark:bg-bg2 px-4 md:px-8 py-10">
         <div className="max-w-5xl mx-auto grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)]">
           {/* TOC Card */}
           <aside className="space-y-4">

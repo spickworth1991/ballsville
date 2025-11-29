@@ -5,6 +5,7 @@
 
   /* Surfaces & text (light) */
   --color-bg:    #3cb4db;
+  --color-bg2:   #0f0a6ac8;
   --color-card:  #1b4ac1;
   --color-fg:    #022071;
   --color-muted: #586947;
@@ -44,11 +45,12 @@
 }
 
 .dark:root{
-  --color-bg:   #002f70;
-  --color-card: #011127;
-  --color-fg:   #e2e8f0;
-  --color-muted:#94a3b8;
+  --color-bg:    #002f70;
+  --color-card:  #011127;
+  --color-fg:    #e2e8f0;
+  --color-muted: #94a3b8;
   --color-accent:#3cb4db;
+  --color-bg2:   #090b3cae;
 
   --color-nav-bg: #000307;
   --color-nav-fg: #e2e8f0;

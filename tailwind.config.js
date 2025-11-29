@@ -19,7 +19,8 @@ module.exports = {
         navfg:   "var(--color-nav-fg)",
         success: "var(--color-success)",
         danger:  "var(--color-danger)",
-        warning: "var(--color-warning)"
+        warning: "var(--color-warning)",
+        bg2: "var(--color-bg2)"
       },
       borderRadius: {
         sm: "var(--radius-sm)",

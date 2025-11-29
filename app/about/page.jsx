@@ -26,8 +26,8 @@ export default function Page() {
     siteConfig.aboutVideoMp4 || siteConfig.heroVideoMp4 || "";
 
   return (
-    <section className="section">
-      <div className="container-site space-y-8">
+    <section className="section bg-bg dark:bg-bg2">
+      <div className="container-site  space-y-8">
         {/* Hero */}
         <header className="text-center mb-4">
           <span className="badge">About the BALLSVILLE game</span>
