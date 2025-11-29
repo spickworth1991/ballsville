@@ -13,7 +13,7 @@ export const siteConfig = {
   // Core SEO
   description:
     "The BALLSVILLE formula was developed to facilitate the combination of Big payouts and great odds.",
-  domain: "https://ballsville.com", // change per project
+  domain: "https://ballsville.pages.dev", // change per project
   ogImage: "/og/home.jpg",
 
   // Business details
