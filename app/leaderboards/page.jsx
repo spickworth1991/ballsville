@@ -42,7 +42,7 @@ export default function Page() {
             src="https://ballsville-leaderboard.pages.dev/"
             title="BALLSVILLE Leaderboards"
             loading="lazy"
-            allowfullscreen
+            allowFullScreen
             className="w-full h-[150vh] min-h-[600px] border-0"
           />
         </div>
