@@ -1,3 +1,4 @@
+// app/admin/login/page.jsx
 "use client";
 
 import { useState } from "react";
@@ -13,7 +14,8 @@ function getSiteOrigin() {
   );
 }
 
-const cardCls = "card p-8 w-full max-w-md";
+const cardCls =
+  "card bg-card-surface border border-subtle p-8 w-full max-w-md";
 const inputCls =
   "mt-1 w-full rounded-lg border border-subtle bg-transparent px-3 py-2 " +
   "focus:outline-none focus:ring-primary focus:ring-2 transition";
@@ -43,11 +45,13 @@ export default function AdminLogin() {
 
   return (
     <section className="section">
-      <div className="container-site flex flex-col items-center">
+      <div className="container-site flex flex-col items-center justify-center min-h-[60vh]">
         <div className="text-center mb-8">
           <span className="badge">Admins</span>
-          <h1 className="h1 mt-3">Admin Login</h1>
-          <p className="lead mt-3">Sign in with a one-time magic link sent to your email.</p>
+          <h1 className="h1 mt-3 text-primary">Admin Login</h1>
+          <p className="lead mt-3 text-muted">
+            Sign in with a one-time magic link sent to your email.
+          </p>
         </div>
 
         <section className={cardCls}>

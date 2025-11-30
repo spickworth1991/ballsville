@@ -4,7 +4,7 @@ export default function NotFound() {
   return (
     <main className="section">
       <div className="container-site max-w-3xl mx-auto">
-        <section className="relative overflow-hidden card p-8 md:p-10">
+        <section className="relative overflow-hidden card bg-card-surface border border-subtle p-8 md:p-10">
           {/* Decorative background (token-based) */}
           <div
             aria-hidden="true"
@@ -19,7 +19,7 @@ export default function NotFound() {
           <div className="flex items-center justify-center">
             <img
               src="/logo_noBG.png"
-              alt="Stay in Motion Physical Therapy"
+              alt="BALLSVILLE"
               className="h-40 w-auto md:h-48"
               loading="lazy"
               decoding="async"
@@ -32,13 +32,13 @@ export default function NotFound() {
           </h1>
 
           {/* Copy */}
-          <p className="mt-3 text-center">
+          <p className="mt-3 text-center text-fg">
             The page you’re looking for doesn’t exist or may have been moved.
             Let’s get you back on track.
           </p>
 
           {/* Actions */}
-          <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+          <div className="mt-8 flex flex-col bg-card-subtle sm:flex-row items-center justify-center gap-3">
             <Link href="/" className="btn btn-primary rounded-full px-6 py-3">
               Go Home
             </Link>
@@ -60,18 +60,20 @@ export default function NotFound() {
               <Link
                 key={link.href}
                 href={link.href}
-                className="group bg-bg rounded-xl card p-4 flex items-center justify-between hover:shadow-md transition"
+                className="group bg-subtle-surface border border-subtle rounded-xl p-4 flex items-center justify-between hover:shadow-md hover:-translate-y-[1px] transition"
               >
-                <span className="font-medium">{link.name}</span>
-                <span className="text-accent group-hover:text-primary transition">→</span>
+                <span className="font-medium text-fg">{link.name}</span>
+                <span className="text-accent group-hover:text-primary transition">
+                  →
+                </span>
               </Link>
             ))}
           </div>
         </section>
 
         <p className="mt-6 text-center text-xs text-muted">
-          If you typed the address, double-check the spelling. If you followed a link,
-          it may be outdated.
+          If you typed the address, double-check the spelling. If you followed a
+          link, it may be outdated.
         </p>
       </div>
     </main>

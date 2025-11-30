@@ -44,7 +44,7 @@ export default function RootLayout({ children }) {
   // Sitewide structured data
   const orgJsonLd = {
     "@context": "https://schema.org",
-    "@type": siteConfig.businessType, // e.g. "Physiotherapy"
+    "@type": siteConfig.businessType,
     name: siteConfig.name,
     url: siteConfig.domain,
     logo: fullLogoUrl,
@@ -117,7 +117,8 @@ export default function RootLayout({ children }) {
         <meta name="supabase-anon" content={SUPABASE_ANON} />
       </head>
 
-      <body className="bg-cream bg-bg text-fg dark:text-gray-100">
+      {/* Body uses theme tokens only; cosmic bg handled by .page-bg on content */}
+      <body className="bg-bg text-fg">
         <Navbar />
         <div className="page-bg">{children}</div>
         <Footer />

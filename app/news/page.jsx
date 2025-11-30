@@ -6,15 +6,15 @@ import { getSupabase } from "@/lib/supabaseClient";
 
 // token-driven UI bits
 const cardCls =
-  "card relative p-6 transition shadow-sm hover:shadow-md hover:-translate-y-[2px]";
+  "card bg-card-surface border border-subtle relative p-6 transition shadow-sm hover:shadow-md hover:-translate-y-[2px]";
 const chipBase =
   "text-sm px-3 py-1 rounded-full border transition";
 const chipActive =
-  "bg-primary text-card border-primary";
+  "bg-primary text-white border-primary";
 const chipIdle =
-  "bg-transparent text-primary border-primary hover:bg-primary hover:text-card";
+  "bg-transparent text-primary border-primary hover:bg-primary hover:text-white";
 const tagPill =
-  "text-xs px-2 py-0.5 rounded-full border border-subtle";
+  "text-xs px-2 py-0.5 rounded-full border border-subtle text-muted";
 
 // --- helpers mapping coupon -> mini game ---
 
@@ -74,7 +74,6 @@ function getDisplayTags(row) {
 // ---- media helpers: image vs video ----
 function isVideoUrl(url) {
   if (!url) return false;
-  // strip query params if any
   const clean = url.split("?")[0].toLowerCase();
   return /\.(mp4|mov|webm|ogg|mpe?g)$/.test(clean);
 }
@@ -87,7 +86,6 @@ function linkifyBody(text) {
   const parts = text.split(urlRegex);
 
   return parts.map((part, idx) => {
-    // treat exact URL fragments as links
     const isUrl = /^https?:\/\/\S+$/i.test(part);
     if (isUrl) {
       return (
@@ -182,10 +180,10 @@ export default function NewsPage() {
     <section className="section">
       <div className="container-site max-w-3xl mx-auto">
         {/* Header */}
-        <header className="text-center mb-8">
+        <header className="text-center mb-8 space-y-3">
           <span className="badge">League news</span>
-          <h1 className="h1 mt-3">News, Mini Games &amp; Updates</h1>
-          <p className="lead mt-3">
+          <h1 className="h1 mt-1 text-primary">News, Mini Games &amp; Updates</h1>
+          <p className="lead mt-1 text-muted">
             Announcements for Ballsville leagues, plus rotating mini games and side contests.
           </p>
         </header>
@@ -210,7 +208,9 @@ export default function NewsPage() {
         </div>
 
         {loading ? (
-          <div className="card p-6 text-center">Loading…</div>
+          <div className="card bg-card-surface border border-subtle p-6 text-center">
+            <p className="text-muted">Loading…</p>
+          </div>
         ) : (
           <ul className="space-y-6">
             {display.map((p) => {
@@ -240,7 +240,7 @@ export default function NewsPage() {
 
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <h2 className="text-xl font-semibold">{p.title}</h2>
+                      <h2 className="text-xl font-semibold text-primary">{p.title}</h2>
                       {!!tags.length && (
                         <div className="mt-2 flex flex-wrap gap-2">
                           {tags.map((t) => (
@@ -277,10 +277,10 @@ export default function NewsPage() {
 
                   {/* Media block: image OR video */}
                   {p.image_url && (
-                    <div className="mt-4">
+                    <div className="mt-4 rounded-xl overflow-hidden border border-subtle bg-subtle-surface">
                       {isVideoUrl(p.image_url) ? (
                         <video
-                          className="w-full rounded-lg"
+                          className="w-full rounded-none"
                           controls
                           preload="metadata"
                         >
@@ -291,7 +291,7 @@ export default function NewsPage() {
                         <img
                           src={p.image_url}
                           alt={p.title}
-                          className="rounded-lg w-full h-auto"
+                          className="w-full h-auto object-contain"
                           loading="lazy"
                         />
                       )}
@@ -299,7 +299,7 @@ export default function NewsPage() {
                   )}
 
                   {p.body && (
-                    <p className="mt-4 whitespace-pre-line break-words">
+                    <p className="mt-4 whitespace-pre-line break-words text-fg">
                       {linkifyBody(p.body)}
                     </p>
                   )}
@@ -318,7 +318,7 @@ export default function NewsPage() {
               );
             })}
             {!display.length && (
-              <li className="card p-6 text-center">
+              <li className="card bg-card-surface border border-subtle p-6 text-center">
                 <p className="text-muted">No news or mini games yet.</p>
               </li>
             )}

@@ -13,6 +13,7 @@ import {
   FiMoon,
   FiBarChart2,
   FiTrendingUp,
+  FiHelpCircle,
 } from "react-icons/fi";
 
 const NAV_ITEMS = [
@@ -20,8 +21,8 @@ const NAV_ITEMS = [
   { name: "Leaderboards", to: "/leaderboards", icon: FiBarChart2 },
   { name: "About", to: "/about", icon: FiUsers },
   { name: "Constitution", to: "/constitution", icon: FiBriefcase },
-  { name: "News", to: "/news", icon: FiTrendingUp  },
-  
+  { name: "News", to: "/news", icon: FiTrendingUp },
+  { name: "Faqs", to: "/faq", icon: FiHelpCircle },
 ];
 
 export default function Navbar() {
@@ -32,10 +33,10 @@ export default function Navbar() {
   const [open, setOpen] = useState(false);
   const [visibleLinks, setVisibleLinks] = useState(NAV_ITEMS.length);
 
-  const containerRef = useRef(null);   // whole <nav>
-  const linksRef = useRef([]);         // each <li>
-  const logoRef = useRef(null);        // logo block
-  const rightRef = useRef(null);       // theme + menu buttons
+  const containerRef = useRef(null);
+  const linksRef = useRef([]);
+  const logoRef = useRef(null);
+  const rightRef = useRef(null);
 
   const overflow = NAV_ITEMS.slice(visibleLinks);
 
@@ -73,15 +74,13 @@ export default function Navbar() {
     const logoWidth = logoRef.current?.offsetWidth || 0;
     const rightWidth = rightRef.current?.offsetWidth || 0;
 
-    // How much room the UL realistically has
-    const horizontalPadding = 32; // accounts for px-4 on the inner div
-    const buffer = 60;            // tweak this to hide links earlier/later
+    const horizontalPadding = 32;
+    const buffer = 60;
 
     const availableWidth =
       navWidth - logoWidth - rightWidth - horizontalPadding - buffer;
 
     if (availableWidth <= 0) {
-      // Nothing fits; we still want *at least* 1 link
       setVisibleLinks(1);
       return;
     }
@@ -96,7 +95,7 @@ export default function Navbar() {
 
       if (used + w > availableWidth) break;
 
-      used += w + 16; // 16px "gap" between links
+      used += w + 16; // gap
       count++;
     }
 
@@ -104,7 +103,6 @@ export default function Navbar() {
     setVisibleLinks(Math.max(count, MIN_VISIBLE));
   };
 
-  // run once + on resize
   useLayoutEffect(() => {
     updateVisibleLinks();
     const onResize = () => updateVisibleLinks();
@@ -113,7 +111,6 @@ export default function Navbar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // re-measure when dark mode might change font metrics slightly
   useEffect(() => {
     updateVisibleLinks();
   }, [dark]);
@@ -147,8 +144,6 @@ export default function Navbar() {
                 height={scrolled ? 24 : 32}
                 className={`${scrolled ? "h-8 w-8" : "h-14 w-14"} transition-all`}
               />
-              {/* If you re-add text here later, it's included in logoWidth */}
-              {/* <span className="ml-2 font-bold">{siteConfig.shortName}</span> */}
             </Link>
 
             <ul className="flex items-center space-x-4 ml-6 overflow-hidden flex-nowrap relative">
@@ -167,7 +162,7 @@ export default function Navbar() {
                     className={`flex items-center space-x-1 transition-colors duration-200 ${
                       pathname === item.to
                         ? "text-primary font-semibold"
-                        : "text-fg dark:text-muted hover:text-accent dark:hover:text-primary"
+                        : "text-fg hover:text-accent"
                     }`}
                   >
                     <item.icon className="w-5 h-5" />
@@ -185,7 +180,7 @@ export default function Navbar() {
           >
             <button
               onClick={() => setDark((prev) => !prev)}
-              className="p-2 text-xl text-fg dark:text-muted hover:text-accent dark:hover:text-primary transition"
+              className="p-2 text-xl text-fg hover:text-accent transition"
               aria-label="Toggle dark mode"
               type="button"
             >
@@ -220,7 +215,7 @@ export default function Navbar() {
       {/* Left Slide-in Sidebar (overflow links) */}
       <aside
         id="mobile-menu"
-        className={`fixed top-0 left-0 h-full w-3/4 max-w-xs z-50 transform transition-transform duration-300 ease-in-out card ${
+        className={`fixed top-0 left-0 h-full w-3/4 max-w-xs z-50 transform transition-transform duration-300 ease-in-out bg-card-surface border border-subtle rounded-r-2xl shadow-md ${
           open ? "translate-x-0" : "-translate-x-full"
         } flex flex-col justify-between touch-none`}
         role="dialog"
@@ -230,7 +225,7 @@ export default function Navbar() {
           <div className="flex justify-end p-4">
             <button
               onClick={() => setOpen(false)}
-              className="text-2xl text-muted dark:text-muted hover:text-primary transition"
+              className="text-2xl text-muted hover:text-primary transition"
               aria-label="Close menu"
               type="button"
             >
@@ -238,7 +233,7 @@ export default function Navbar() {
             </button>
           </div>
 
-          <nav className="px-6 space-y-6">
+          <nav className="px-6 pb-8 space-y-6">
             {overflow.map((item) => (
               <Link
                 key={item.to}
@@ -246,7 +241,7 @@ export default function Navbar() {
                 className={`flex items-center space-x-2 text-xl font-medium transition-colors duration-200 ${
                   pathname === item.to
                     ? "text-accent"
-                    : "text-fg dark:text-muted hover:text-primary dark:hover:text-accent"
+                    : "text-fg hover:text-primary"
                 }`}
                 onClick={() => setOpen(false)}
               >
@@ -257,7 +252,7 @@ export default function Navbar() {
 
             <button
               onClick={() => setDark((prev) => !prev)}
-              className="flex items-center space-x-2 text-xl p-2 mt-6 text-fg dark:text-muted hover:text-accent dark:hover:text-primary transition"
+              className="flex items-center space-x-2 text-xl p-2 mt-6 text-fg hover:text-accent transition"
               type="button"
             >
               {dark ? <FiSun className="w-6 h-6" /> : <FiMoon className="w-6 h-6" />}

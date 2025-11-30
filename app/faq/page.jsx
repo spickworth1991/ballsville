@@ -1,68 +1,75 @@
+// app/faq/page.jsx
 import FAQItem from "@/components/FAQItem";
+import { siteConfig } from "@/app/config/siteConfig";
+
+const pageTitle = `FAQ | ${siteConfig.shortName}`;
+const pageUrl = `${siteConfig.domain}/faq`;
 
 export const metadata = {
-  title: "FAQ | Stay in Motion PT",
-  description: "FAQ - Stay in Motion Physical Therapy.",
-  alternates: { canonical: "https://stayinmotionpt.com/faq" },
+  title: pageTitle,
+  description:
+    "Frequently asked questions about The Ballsville Game: formats, payouts, Sleeper, mini games, and how to join.",
+  alternates: { canonical: pageUrl },
   openGraph: {
-    url: "https://stayinmotionpt.com/faq",
-    title: "FAQ | Stay in Motion PT",
-    description: "FAQ - Stay in Motion Physical Therapy.",
-    images: [{ url: "/og/home.jpg", width: 1200, height: 630 }],
+    url: pageUrl,
+    title: pageTitle,
+    description:
+      "Frequently asked questions about The Ballsville Game, formats, payouts, Sleeper setup, and mini games.",
+    images: [{ url: siteConfig.ogImage, width: 1200, height: 630 }],
   },
 };
 
-// FAQs
+// Ballsville / Sleeper FAQs
 const faqs = [
   {
-    question: "What should I bring to my first session?",
+    question: "What is The Ballsville Game?",
     answer:
-      "Wear comfortable clothing, bring any referral paperwork, and arrive 10 minutes early with ID.",
+      "The Ballsville Game is a fantasy football ecosystem built around bestball tournaments, mini leagues, dynasty empires, and redraft tiers — all tied together by a formula that combines big payouts with great odds.",
   },
   {
-    question: "Do you accept insurance?",
+    question: "What platform do you use for leagues?",
     answer:
-      "We are temporarily cash-based while credentialing is finalized. A superbill is available upon request.",
+      "All core Ballsville leagues are hosted on Sleeper. You’ll draft, set lineups (where applicable), and view scores directly in the Sleeper app. This site handles the bigger game structure, leaderboards, and mini games.",
   },
   {
-    question: "Do I need a referral from my doctor?",
+    question: "Who can join Ballsville leagues?",
     answer:
-      "In most cases, you can start physical therapy without a referral thanks to direct access laws in Michigan. However, some insurance plans may require one, so check with your provider.",
+      "Anyone who is old enough to play fantasy for money in their region and has access to Sleeper can join, as long as they follow our League Constitution & Code of Conduct. Some leagues or buy-in levels may have limited spots or returning-player priority.",
   },
   {
-    question: "How long are sessions?",
+    question: "What formats do you offer?",
     answer:
-      "Most sessions last 45–60 minutes, depending on your treatment plan and goals.",
+      "We currently run large bestball games (the BIG game), mini bestball leagues, redraft tiers, dynasty/empire leagues, and specialty formats like Gauntlet. Each format has its own rules page and uses the Constitution as a baseline.",
   },
   {
-    question: "What should I wear to my appointment?",
+    question: "How do buy-ins and payouts work?",
     answer:
-      "Comfortable, loose-fitting clothes that allow you to move freely and expose the area being treated are best. Athletic shoes are recommended.",
+      "Buy-in amounts and payout structures are posted for each league before drafts start. Payouts are tied to league results and, for certain formats, Ballsville-wide tournaments. Full details live on the league info pages and in the League Constitution.",
   },
   {
-    question: "How many sessions will I need?",
+    question: "Where can I see standings and results?",
     answer:
-      "This varies by individual, condition, and goals. We will discuss your personalized treatment plan after your initial evaluation.",
+      "Live standings and tournament results are powered by our automated leaderboard engine. You can view them anytime on the Leaderboards page, which pulls data from Sleeper and applies Ballsville’s scoring and tie-break rules. *live is a timed update, roughly every 10 minutes during gametimes.",
   },
   {
-    question: "Do you offer dry needling?",
+    question: "What are Mini Games on the News page?",
     answer:
-      "Yes, dry needling is available as part of a customized treatment plan when appropriate.",
+      "Mini Games are limited-time side contests, promos, or giveaways announced on the News page. Some use promo codes or quick entry forms and may offer free entries, credit, or small prizes. Each post will include rules and a closing time.",
   },
   {
-    question: "Can I continue working out while in physical therapy?",
+    question: "How does the Code of Conduct work?",
     answer:
-      "In many cases, yes. We can help modify your workouts so you can stay active safely while recovering.",
+      "All leagues use the same Code of Conduct and League Constitution. It covers fair play, trading standards, collusion, tanking, and behavior in league chat. If you join any Ballsville league, you’re agreeing to those rules.",
   },
   {
-    question: "What conditions do you treat?",
+    question: "How do I ask a rules question or report an issue?",
     answer:
-      "We work with a variety of conditions including sports injuries, post-surgical recovery, chronic pain, joint problems, and mobility limitations.",
+      "If you have a question about a league rule, trade, or mini game, you can reach us by email at theballsvillegame@gmail.com or in the Ballsville Discord. We try to resolve disputes quickly and in line with the Constitution.",
   },
   {
-    question: "What is a superbill?",
+    question: "Are Ballsville rules the same for every league?",
     answer:
-      "A superbill is an itemized receipt for services provided that you can submit to your insurance company for possible reimbursement.",
+      "The Constitution is the baseline, but each league can have its own bylaws, buy-ins, and scoring tweaks. When there’s a conflict, the specific league’s posted settings and bylaws take priority, as long as they don’t violate the spirit of the Constitution.",
   },
 ];
 
@@ -76,6 +83,10 @@ export default function Page() {
       acceptedAnswer: { "@type": "Answer", text: f.answer },
     })),
   };
+
+  const discordUrl =
+    siteConfig.discordUrl || "https://discord.gg/mtqCRRW3";
+  const emailHref = "mailto:theballsvillegame@gmail.com";
 
   return (
     <>
@@ -91,41 +102,51 @@ export default function Page() {
             <span className="badge">Answers you can trust</span>
             <h1 className="h1 mt-3">Frequently Asked Questions</h1>
             <p className="lead mt-3">
-              Quick answers about visits, insurance, scheduling, and care.
+              Quick answers about formats, payouts, Sleeper setup, and how
+              the BALLSVILLE game works.
             </p>
           </div>
 
           {/* Layout: left info card, right accordion */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Left: contact/help card */}
-            <aside className="card p-6 lg:sticky lg:top-20 self-start">
+            <aside className="bg-card-surface border border-subtle rounded-2xl p-6 lg:sticky lg:top-20 self-start shadow-sm">
               <h2 className="h3 mb-2">Still have a question?</h2>
               <p className="text-muted">
-                We’re happy to help you figure out what’s best for your goals.
+                Reach out if you need help with a league rule, mini game,
+                or Sleeper setup.
               </p>
+
               <div className="mt-5 grid gap-3">
-                <a href="tel:7342513046" className="btn btn-primary">
-                  Call (734) 251-3046
+                <a href={emailHref} className="btn btn-primary">
+                  Email the commissioner
                 </a>
-                <a href="/contact" className="btn btn-outline">
-                  Send a message
+                <a href={discordUrl} className="btn btn-outline" target="_blank" rel="noopener noreferrer">
+                  Join the Discord
                 </a>
-                <a href="/services" className="btn btn-outline">
-                  Explore services
+                <a href="/leaderboards" className="btn btn-outline">
+                  View leaderboards
                 </a>
               </div>
 
               <div className="divider-subtle mt-6 pt-6">
                 <p className="text-sm text-muted">
-                  New patients: please arrive 10 minutes early to complete
-                  intake forms, or fill them out online before your visit.
+                  For detailed rules and governance (trades, conduct,
+                  tiebreakers, and more), see the{" "}
+                  <a
+                    href="/constitution"
+                    className="underline underline-offset-4 decoration-accent hover:text-accent"
+                  >
+                    League Constitution &amp; Code of Conduct
+                  </a>
+                  .
                 </p>
               </div>
             </aside>
 
             {/* Right: FAQ list */}
             <div className="lg:col-span-2">
-              <div className="card p-2">
+              <div className="bg-card-surface border border-subtle rounded-2xl p-2 shadow-sm">
                 {faqs.map((f, idx) => (
                   <FAQItem key={f.question} {...f} defaultOpen={idx === 0} />
                 ))}

@@ -1,154 +1,402 @@
-/* styles/theme.css - HEX token only version (no /opacity) */
-:root{
-  --color-primary: #d97f00;
-  --color-accent:  #022071;
+/* styles/theme.css
+ * Central theme tokens + utilities for BALLSVILLE
+ * - Brand + semantic colors
+ * - Surfaces + shell
+ * - Navbar / footer / call bar
+ * - Reusable components (cards, buttons, badges)
+ * - Page background helpers
+ */
 
-  /* Surfaces & text (light) */
-  --color-bg:    #3cb4db;
-  --color-bg2:   #0f0a6ac8;
-  --color-card:  #1b4ac1;
-  --color-fg:    #022071;
-  --color-muted: #586947;
+/* ========== BASE (LIGHT) TOKENS ========== */
+:root {
+  /* Brand */
+  --color-primary: #d97f00;  /* warm CTA / highlight */
+  --color-accent:  #022071;  /* deep navy accent in light */
 
-  /* Navbar (themed + translucent via alpha var) */
-  --color-nav-bg: #022071;
+  /* Surfaces & text (light shell) */
+  --color-bg:    #e2e8f0;    /* page background under everything */
+  --color-bg2:   #f1f5f9;    /* secondary background */
+  --color-card-main:   #ffffff; /* primary card surface in light */
+  --color-card-subtle: #e2e8f0; /* softer inner panels in light */
+  --color-fg:    #0f172a;
+  --color-muted: #64748b;
+
+  /* Navbar (light) */
+  --color-nav-bg: #ffffff;
   --color-nav-fg: #0f172a;
-  --nav-blur: 6px;          /* how strong the blur looks */
-  --nav-opacity: 0.70;          /* translucency of navbar bg (0–100%) */
-  --overlay-alpha: 0.60;     /* mobile scrim darkness */
-  --nav-height: 100px;    /* Adjust if your navbar is taller */
-  --footer-height: 180px; /* Adjust based on footer size */
-  --footer-color-bg: #011127;
+  --nav-blur: 6px;
+  --nav-opacity: 0.92;       /* 0..1 */
+  --overlay-alpha: 0.6;      /* mobile scrim darkness (0..1) */
+  --nav-height: 100px;
 
-  /* Call Now Bar (independent theme controls) */
-  --color-callbar-bg: #3cadba; /* bar background */
-  --color-callbar-fg: #ffffff; /* text/icon color */
-  --callbar-blur: 8px;         /* set to e.g. 8px if you want a frosted look */
-  --callbar-height: 60px;      /* bar height on mobile */
-  --callbar-shadow: 0 -2px 10px rgba(0,0,0,0.20);
-  --callbar-opacity: 0.7;   /* 0..1 control for the call bar */
+  /* Footer (light) */
+  --footer-height: 180px;
+  --footer-color-bg: #0b1120;
+
+  /* Call Now Bar (light) */
+  --color-callbar-bg: #3cadba;
+  --color-callbar-fg: #ffffff;
   --callbar-blur: 6px;
   --callbar-height: 50px;
   --callbar-shadow: 0 -2px 10px rgba(0,0,0,0.20);
+  --callbar-opacity: 0.7;   /* 0..1 */
 
   /* Semantic */
-  --color-success:#16a34a;
-  --color-danger: #dc2626;
-  --color-warning:#f59e0b;
+  --color-success: #16a34a;
+  --color-danger:  #dc2626;
+  --color-warning: #f59e0b;
 
-  --radius-sm:.5rem; --radius-md:.75rem; --radius-lg:1rem; --radius-xl:1.5rem;
-  --shadow-sm:0 1px 2px rgba(0,0,0,.06);
-  --shadow-md:0 8px 24px rgba(0,0,0,.10);
-  --shadow-lg:0 16px 40px rgba(0,0,0,.14);
-  --container-max:1200px;
-  --section-y:4rem;
+  /* Status badges (light defaults) */
+  --color-status-full:    #22c55e;
+  --color-status-private: #fbbf24;
+  --color-status-default: #64748b;
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
-  --line-height:1.6;
+  /* Card translucency (used by .bg-card-surface / .bg-subtle-surface) */
+  --card-strength:        96%;  /* main card opacity (light) */
+  --card-subtle-strength: 82%;  /* inner card opacity (light) */
+
+  /* Rounding / spacing / typography */
+  --radius-sm:  .5rem;
+  --radius-md:  .75rem;
+  --radius-lg:  1rem;
+  --radius-xl:  1.5rem;
+
+  --shadow-sm:  0 1px 2px rgba(0,0,0,.06);
+  --shadow-md:  0 8px 24px rgba(0,0,0,.10);
+  --shadow-lg:  0 16px 40px rgba(0,0,0,.14);
+
+  --container-max: 1200px;
+  --section-y:     4rem;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter,
+    "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji",
+    "Segoe UI Symbol", sans-serif;
+  --line-height: 1.6;
 }
 
-.dark:root{
-  --color-bg:    #002f70;
-  --color-card:  #011127;
+/* ========== DARK THEME OVERRIDES ========== */
+.dark:root {
+  /* Cosmic shell (dark) */
+  --color-bg:    #020617;       /* page shell (under space bg) */
+  --color-bg2:   #020617;
+
+  /* Card surfaces in dark:
+   * - main = deeper navy glass
+   * - subtle = more transparent layer for inner cards
+   */
+  --color-card-main:   #020617;
+  --color-card-subtle: #073164;
+
   --color-fg:    #e2e8f0;
   --color-muted: #94a3b8;
-  --color-accent:#3cb4db;
-  --color-bg2:   #090b3cae;
 
+  /* Brand in dark: neon cyan accent + warm CTA */
+  --color-accent:  #3cb4db;      /* neon cyan */
+  --color-primary: #d97f00;      /* warm orange CTA */
+
+  /* Navbar (dark) */
   --color-nav-bg: #000307;
   --color-nav-fg: #e2e8f0;
-  --nav-opacity: 0.75;
+  --nav-opacity:  0.82;          /* translucency of nav bg */
   --overlay-alpha: 0.65;
 
-  /* Dark theme for Call Now bar (tweak if desired) */
+  /* Footer (dark) */
+  --footer-color-bg: #020617;
+
+  /* Call Now Bar (dark) */
   --color-callbar-bg: #3cadba;
-  --color-callbar-fg: #f9ecdb; /* try #0b1220 or #0f172a for a darker ink on teal */
+  --color-callbar-fg: #f9ecdb;   /* readable ink on teal */
   --callbar-opacity: .5;
+
+  /* Card translucency (dark: glassy over space bg)
+   * - main cards are strong glass
+   * - subtle cards are much more transparent (inner panels)
+   */
+  --card-strength:        70%;   /* outer shell */
+  --card-subtle-strength: 40%;   /* inner "glass" panels */
+
+  /* Semantic in dark (slightly brighter) */
+  --color-success: #22c55e;
+  --color-danger:  #ef4444;
+  --color-warning: #fbbf24;
+
+  /* Status badges */
+  --color-status-full:    #22c55e;
+  --color-status-private: #fbbf24;
+  --color-status-default: #64748b;
 }
 
-.container-site{max-width:var(--container-max);margin-inline:auto;padding-inline:1rem;}
-.section{padding-top:var(--section-y);padding-bottom:var(--section-y);}
+/* ========== LAYOUT HELPERS ========== */
 
-.card{
-  background: var(--color-card);
+.container-site {
+  max-width: var(--container-max);
+  margin-inline: auto;
+  padding-inline: 1rem;
+}
+
+.section {
+  padding-top: var(--section-y);
+  padding-bottom: var(--section-y);
+}
+
+/* ========== CARD COMPONENTS ========== */
+
+/* Generic cards (older components) – still theme-aware */
+.card {
+  background: var(--color-card-main);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-sm);
   border: 1px solid rgba(15,23,42,.08);
 }
-.card-lg{
-  background: var(--color-card);
+
+.card-lg {
+  background: var(--color-card-main);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-md);
   border: 1px solid rgba(15,23,42,.10);
 }
 
-.btn{
-  display:inline-flex;align-items:center;justify-content:center;gap:.5rem;
-  font-weight:600;line-height:1;border-radius:var(--radius-md);
-  padding:.75rem 1rem;
-  transition:transform .08s ease,box-shadow .2s ease,background-color .2s ease,color .2s ease,border-color .2s ease;
-  box-shadow:var(--shadow-sm);
+/* React-page card helpers (used in Big Game / Constitution) */
+.bg-card-surface {
+  background: color-mix(
+    in oklab,
+    var(--color-card-main) var(--card-strength),
+    transparent
+  );
 }
-.btn-primary{ background: var(--color-primary); color: #fff; }
-.btn-primary:hover{ transform: translateY(-1px); }
-.btn-outline{ background:transparent; color:var(--color-fg); border:1px solid rgba(148,163,184,.4); }
-.btn-outline:hover{ border-color: var(--color-primary); color: var(--color-primary); }
 
-.badge{
-  display:inline-flex;align-items:center;gap:.35rem;padding:.35rem .6rem;border-radius:999px;
+.bg-subtle-surface {
+  background: color-mix(
+    in oklab,
+    var(--color-card-subtle) var(--card-subtle-strength),
+    transparent
+  );
+}
+
+/* ========== BUTTONS ========== */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  font-weight: 600;
+  line-height: 1;
+  border-radius: var(--radius-md);
+  padding: .75rem 1rem;
+  transition:
+    transform .08s ease,
+    box-shadow .2s ease,
+    background-color .2s ease,
+    color .2s ease,
+    border-color .2s ease;
+  box-shadow: var(--shadow-sm);
+  font-family: var(--font-sans);
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--color-fg);
+  border: 1px solid color-mix(in oklab, var(--color-fg) 35%, transparent);
+}
+
+.btn-outline:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+/* ========== BADGES & CHIPS ========== */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .35rem .6rem;
+  border-radius: 999px;
   background: color-mix(in oklab, var(--color-primary) 12%, transparent);
-  color: var(--color-primary); font-weight:600; font-size:.825rem;
+  color: var(--color-primary);
+  font-weight: 600;
+  font-size: .825rem;
 }
 
-.lead{ font-size:clamp(1.1rem,2vw,1.25rem); color: var(--color-muted); }
-.h1{ font-size:clamp(1.8rem,4vw,2.5rem); font-weight:800; letter-spacing:-.02em; }
-.h2{ font-size:clamp(1.4rem,3vw,2rem);   font-weight:800; letter-spacing:-.02em; }
-.h3{ font-size:clamp(1.0rem,2.2vw,1.5rem); font-weight:700; }
+/* Soft warning pill (used on Big Game hero) */
+.chip-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: 0.25rem 0.85rem;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--color-warning) 18%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-warning) 45%, transparent);
+  color: var(--color-warning);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
 
-.border-subtle { border-color: color-mix(in oklab, var(--color-fg) 12%, transparent); }
-.divider-subtle { border-top: 1px solid color-mix(in oklab, var(--color-fg) 12%, transparent); }
-.ring-primary { box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-primary) 42%, transparent); }
-.ring-subtle  { box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-fg) 18%, transparent); }
+/* Division status badges (FULL / PRIVATE / etc.) */
+.badge-status {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.65rem;
+  border: 1px solid transparent;
+  backdrop-filter: blur(4px);
+}
 
+/* These all pull from theme variables so they’re globally tunable */
+.badge-status-full {
+  background: color-mix(
+    in oklab,
+    var(--color-status-full) 18%,
+    transparent
+  );
+  border-color: color-mix(
+    in oklab,
+    var(--color-status-full) 55%,
+    transparent
+  );
+  color: var(--color-status-full);
+}
 
-/* NAVBAR (translucent via ::before overlay + blur) */
+.badge-status-private {
+  background: color-mix(
+    in oklab,
+    var(--color-status-private) 18%,
+    transparent
+  );
+  border-color: color-mix(
+    in oklab,
+    var(--color-status-private) 55%,
+    transparent
+  );
+  color: var(--color-status-private);
+}
+
+.badge-status-default {
+  background: color-mix(
+    in oklab,
+    var(--color-status-default) 18%,
+    transparent
+  );
+  border-color: color-mix(
+    in oklab,
+    var(--color-status-default) 55%,
+    transparent
+  );
+  color: var(--color-status-default);
+}
+
+/* ========== TYPOGRAPHY UTILITIES ========== */
+
+.lead {
+  font-size: clamp(1.1rem, 2vw, 1.25rem);
+  color: var(--color-muted);
+}
+
+.h1 {
+  font-size: clamp(1.8rem, 4vw, 2.5rem);
+  font-weight: 800;
+  letter-spacing: -.02em;
+}
+
+.h2 {
+  font-size: clamp(1.4rem, 3vw, 2rem);
+  font-weight: 800;
+  letter-spacing: -.02em;
+}
+
+.h3 {
+  font-size: clamp(1.0rem, 2.2vw, 1.5rem);
+  font-weight: 700;
+}
+
+/* ========== BORDER / RING UTILITIES ========== */
+
+.border-subtle {
+  border-color: color-mix(in oklab, var(--color-fg) 12%, transparent);
+}
+
+.divider-subtle {
+  border-top: 1px solid color-mix(in oklab, var(--color-fg) 12%, transparent);
+}
+
+.ring-primary {
+  box-shadow: 0 0 0 2px
+    color-mix(in oklab, var(--color-primary) 42%, transparent);
+}
+
+.ring-subtle {
+  box-shadow: 0 0 0 2px
+    color-mix(in oklab, var(--color-fg) 18%, transparent);
+}
+
+/* ========== NAVBAR ========== */
+
 .navbar {
-  position: sticky; /* or switch to fixed: top:0; left:0; right:0; */
+  position: sticky;
   top: 0;
   z-index: 50;
   color: var(--color-nav-fg);
   -webkit-backdrop-filter: blur(var(--nav-blur));
   backdrop-filter: blur(var(--nav-blur));
-  border-bottom: 1px solid color-mix(in oklab, var(--color-fg) 10%, transparent);
-  isolation: isolate;              /* ensures ::before sits behind content */
+  border-bottom: 1px solid
+    color-mix(in oklab, var(--color-fg) 10%, transparent);
+  isolation: isolate;
 }
+
 .navbar::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: var(--color-nav-bg); /* your exact HEX token color */
-  opacity: var(--nav-opacity);     /* 0..1 from theme variable */
+  background: var(--color-nav-bg);
+  opacity: var(--nav-opacity);
   pointer-events: none;
   z-index: 0;
 }
-/* keep navbar content above the overlay */
-.navbar > * { position: relative; z-index: 1; }
 
-/* Mobile overlay scrim (decimal-friendly) */
-.scrim {
-  background: color-mix(in oklab, var(--color-fg) calc(var(--overlay-alpha) * 100%), transparent);
+/* keep navbar content above overlay */
+.navbar > * {
+  position: relative;
+  z-index: 1;
 }
+
+/* Mobile overlay scrim */
+.scrim {
+  background: color-mix(
+    in oklab,
+    var(--color-fg) calc(var(--overlay-alpha) * 100%),
+    transparent
+  );
+}
+
+/* ========== FOOTER ========== */
 
 .footer {
-  border:none;
+  border: none;
   background: var(--footer-color-bg);
+  color: var(--color-fg);
 }
 
 
-/* CALL NOW BAR (independent theme control) */
+/* ========== CALL NOW BAR ========== */
+
 .callnowbar {
   position: fixed;
-  left: 0; right: 0; bottom: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   height: var(--callbar-height);
   z-index: 50;
   color: var(--color-callbar-fg);
@@ -157,22 +405,31 @@
   backdrop-filter: blur(var(--callbar-blur));
   isolation: isolate;
 }
+
 .callnowbar::before {
   content: "";
   position: absolute;
   inset: 0;
   background: var(--color-callbar-bg);
-  opacity: var(--callbar-opacity); /* 0..1 from theme variable */
+  opacity: var(--callbar-opacity);
   pointer-events: none;
   z-index: 0;
 }
+
 /* keep content clickable above overlay */
-.callnowbar > * { position: relative; z-index: 1; }
+.callnowbar > * {
+  position: relative;
+  z-index: 1;
+}
 
-/* Spacer to keep content from being hidden under the fixed bar on mobile */
-.callnowbar-spacer { height: var(--callbar-height); }
+/* Spacer so content isn't hidden under fixed bar */
+.callnowbar-spacer {
+  height: var(--callbar-height);
+}
 
-/* IMAGE-BASED COSMIC BACKGROUND SECTION */
+/* ========== COSMIC BACKGROUND HELPERS ========== */
+
+/* Section with image background */
 .section-space {
   position: relative;
   padding-top: var(--section-y);
@@ -183,22 +440,20 @@
   background-repeat: no-repeat;
 }
 
-/* Dark overlay so text stays readable */
 .section-space::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);  /* tweak darkness if needed */
+  background: rgba(0, 0, 0, 0.55);
   z-index: 0;
 }
 
-/* Make sure content sits above the overlay */
 .section-space > * {
   position: relative;
   z-index: 1;
 }
 
-/* FULL-PAGE COSMIC BACKGROUND (EXCLUDING NAV + FOOTER) */
+/* Full-page cosmic background (used by layout) */
 .page-bg {
   min-height: calc(100vh - var(--footer-height) - var(--nav-height));
   background-image: url("/photos/space-bg-vert.png");
@@ -213,11 +468,29 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55); /* optional darkening */
+  background: rgba(0, 0, 0, 0.55);
   z-index: 0;
 }
 
 .page-bg > * {
   position: relative;
   z-index: 1;
+}
+
+/* ========== THEME UTILITIES FOR REACT PAGES ========== */
+
+.text-fg {
+  color: var(--color-fg);
+}
+
+.text-muted {
+  color: var(--color-muted);
+}
+
+.text-primary {
+  color: var(--color-primary);
+}
+
+.text-accent {
+  color: var(--color-accent);
 }

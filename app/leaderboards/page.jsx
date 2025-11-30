@@ -20,24 +20,22 @@ export const metadata = {
 
 export default function Page() {
   return (
-    <section className="px-4 md:px-8 py-10">
-      <div className="max-w-6xl mx-auto space-y-8">
+    <section className="section">
+      <div className="container-site max-w-6xl mx-auto space-y-8">
         {/* Header */}
         <header className="text-center space-y-3">
           <p className="text-xs uppercase tracking-[0.2em] text-accent">
             the BALLSVILLE game
           </p>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-primary">
-            Live Leaderboards
-          </h1>
-          <p className="text-sm md:text-base text-muted max-w-2xl mx-auto">
-            View real-time standings for the BIG game, mini-Leagues, Gauntlet,
+          <h1 className="h1 mt-1 text-primary">Live Leaderboards</h1>
+          <p className="lead mt-1 text-muted max-w-2xl mx-auto">
+            View real-time standings for the BIG Game, mini-Leagues, Gauntlet,
             and more — powered by our automated BALLSVILLE leaderboard engine.
           </p>
         </header>
 
         {/* Embedded leaderboard app */}
-        <div className="card-lg p-0 overflow-hidden">
+        <div className="card-lg bg-card-surface border border-subtle p-0 overflow-hidden">
           <iframe
             src="https://ballsville-leaderboard.pages.dev/"
             title="BALLSVILLE Leaderboards"

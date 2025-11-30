@@ -2,24 +2,22 @@
 
 import { siteConfig } from "@/app/config/siteConfig";
 import { FaDiscord } from "react-icons/fa";
-import CallNowBar from "@/components/CallNowBar";
 
 export default function Footer() {
-  // If you later add this into siteConfig, you can swap here:
   const youtubeUrl =
     siteConfig.youtubeUrl ||
     "https://youtube.com/@theballsvillegame?si=AaqiZ31C1a1pjVMh";
 
   const discordUrl =
-    siteConfig.discordUrl || "https://discord.gg/ballsville"; // <-- replace with your real invite
+    siteConfig.discordUrl || "https://discord.gg/ballsville";
 
   return (
     <>
-      <div className="footer text-fg border-t py-12 px-4 md:px-8 mt-16 md:mt-0">
+      <footer className="footer text-fg border-t border-subtle py-12 px-4 md:px-8 mt-16 md:mt-0">
         <div className="container-site grid grid-cols-1 md:grid-cols-3 gap-10">
           {/* Quick Links */}
-          <div>
-            <h2 className="h3 mb-4">Quick Links</h2>
+          <div className="space-y-3">
+            <h2 className="h3 mb-2">Quick Links</h2>
             <ul className="space-y-2 text-sm">
               <li>
                 <a href="/" className="hover:text-primary">
@@ -50,8 +48,8 @@ export default function Footer() {
           </div>
 
           {/* YouTube Feature */}
-          <div>
-            <h2 className="h3 mb-4">
+          <div className="space-y-3">
+            <h2 className="h3 mb-2">
               <a
                 href={youtubeUrl}
                 target="_blank"
@@ -66,11 +64,10 @@ export default function Footer() {
               href={youtubeUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="block w-full h-40 rounded-lg overflow-hidden card hover:shadow-lg transition"
+              className="block w-full h-40 rounded-lg overflow-hidden bg-subtle-surface border border-subtle hover:border-accent hover:shadow-lg transition"
               aria-label="Open the BALLSVILLE YouTube channel in a new tab"
             >
               <picture>
-                {/* Update these paths to whatever thumbnail you drop in /public */}
                 <source
                   type="image/webp"
                   srcSet="/photos/ballsville-youtube-640.webp 1x, /photos/ballsville-youtube-1280.webp 2x"
@@ -87,28 +84,28 @@ export default function Footer() {
               </picture>
             </a>
 
-            <p className="mt-2 text-sm text-muted">
+            <p className="text-sm text-muted">
               Game breakdowns, history, and highlight reels from{" "}
               <span className="font-semibold">the BALLSVILLE game</span>.
             </p>
           </div>
 
           {/* Social & Contact-ish */}
-          <div>
-            <h2 className="h3 mb-4">Connect With Us</h2>
+          <div className="space-y-4">
+            <h2 className="h3 mb-2">Connect With Us</h2>
 
-            <div className="flex items-center gap-3 mb-4 text-xl">
+            <div className="flex items-center gap-3 text-sm">
               <a
                 href={discordUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Join our Discord — opens in a new tab"
-                className="inline-flex items-center justify-center w-10 h-10 rounded-full border border-subtle hover:border-accent hover:text-accent transition"
+                className="inline-flex items-center justify-center w-10 h-10 rounded-full border border-subtle bg-subtle-surface hover:border-accent hover:text-accent transition"
               >
                 <FaDiscord />
                 <span className="sr-only">Discord</span>
               </a>
-              <span className="text-sm text-muted">
+              <span className="text-muted">
                 Join the BALLSVILLE Discord for updates, rule clarifications,
                 and league chat.
               </span>
@@ -131,7 +128,8 @@ export default function Footer() {
 
         <div className="container-site">
           <p className="mt-10 text-center text-sm text-muted">
-            © {new Date().getFullYear()} {siteConfig.name}. All rights reserved.
+            © {new Date().getFullYear()} {siteConfig.name}. All rights
+            reserved.
             <br />
             <span>
               Developed by{" "}
@@ -144,9 +142,8 @@ export default function Footer() {
             </span>
           </p>
         </div>
-      </div>
+      </footer>
 
-      {/* <CallNowBar />  — PT-only, so we leave this disabled */}
     </>
   );
 }

@@ -60,10 +60,10 @@ export default function AdminPostsPage() {
     title: "",
     body: "",
     tags: "",
-    is_mini_game: false, // <- local alias; maps to is_coupon
+    is_mini_game: false, // local alias; maps to is_coupon
     expires_at: "",
     imageFile: null,
-    image_url: ""
+    image_url: "",
   });
 
   const ADMIN_EMAILS = useMemo(parseAdmins, []);
@@ -112,7 +112,7 @@ export default function AdminPostsPage() {
       is_mini_game: false,
       expires_at: "",
       imageFile: null,
-      image_url: ""
+      image_url: "",
     });
   }
 
@@ -184,7 +184,7 @@ export default function AdminPostsPage() {
         title: form.title.trim(),
         body: form.body.trim(),
         image_url,
-        is_coupon: !!form.is_mini_game, // <- map to DB field
+        is_coupon: !!form.is_mini_game,
         expires_at: form.expires_at
           ? new Date(form.expires_at).toISOString()
           : null,
@@ -228,7 +228,7 @@ export default function AdminPostsPage() {
           title: form.title.trim(),
           body: form.body.trim(),
           image_url,
-          is_coupon: !!form.is_mini_game, // <- map
+          is_coupon: !!form.is_mini_game,
           expires_at: form.expires_at
             ? new Date(form.expires_at).toISOString()
             : null,
@@ -289,7 +289,9 @@ export default function AdminPostsPage() {
     return (
       <section className="section">
         <div className="container-site max-w-xl">
-          <div className="card p-6">Checking access…</div>
+          <div className="card bg-card-surface border border-subtle p-6 text-center">
+            <p className="text-muted">Checking access…</p>
+          </div>
         </div>
       </section>
     );
@@ -298,12 +300,13 @@ export default function AdminPostsPage() {
   if (!user) {
     return (
       <section className="section">
-        <div className="container-site max-w-xl text-center">
-          <h1 className="h2 mb-2">Access required</h1>
+        <div className="container-site max-w-xl text-center space-y-3">
+          <h1 className="h2 mb-2 text-primary">Access required</h1>
           <p className="text-muted">
-            Only Ballsville admins have access here. If this is a mistake, please contact the site developer.
+            Only Ballsville admins have access here. If this is a mistake, please contact the site
+            developer.
           </p>
-          <a href="/admin/login" className="btn btn-primary mt-6">
+          <a href="/admin/login" className="btn btn-primary mt-4">
             Go to Login
           </a>
         </div>
@@ -314,13 +317,13 @@ export default function AdminPostsPage() {
   if (!isAdmin) {
     return (
       <section className="section">
-        <div className="container-site max-w-xl text-center">
-          <h1 className="h2 mb-2">No access</h1>
+        <div className="container-site max-w-xl text-center space-y-3">
+          <h1 className="h2 mb-2 text-primary">No access</h1>
           <p className="text-muted">
             Sorry, you do not have access to this page.
           </p>
           <button
-            className="btn btn-outline mt-6"
+            className="btn btn-outline mt-4"
             onClick={async () => {
               const supabase = getSupabase();
               if (supabase) await supabase.auth.signOut();
@@ -337,9 +340,9 @@ export default function AdminPostsPage() {
   // ---------- admin UI ----------
   return (
     <section className="section">
-      <div className="container-site max-w-5xl">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="h2">Posts / Mini Games</h1>
+      <div className="container-site max-w-5xl space-y-8">
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="h2 text-primary">Posts / Mini Games</h1>
           <button
             className="btn btn-outline"
             onClick={async () => {
@@ -353,8 +356,8 @@ export default function AdminPostsPage() {
         </div>
 
         {/* Create / Edit form */}
-        <section className="card p-6 space-y-4 mb-8">
-          <h2 className="text-xl font-semibold">
+        <section className="card bg-card-surface border border-subtle p-6 space-y-4">
+          <h2 className="text-xl font-semibold text-primary">
             {editing ? "Edit Post / Mini Game" : "Create New Post or Mini Game"}
           </h2>
 
@@ -377,7 +380,7 @@ export default function AdminPostsPage() {
             <label className="block md:col-span-2">
               <span className="text-sm text-muted">Body</span>
               <textarea
-                className="mt-1 w-full rounded-lg border border-subtle bg-transparent px-3 py-2"
+                className="mt-1 w-full rounded-lg border border-subtle bg-transparent px-3 py-2 min-h-[120px]"
                 value={form.body}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, body: e.target.value }))
@@ -412,7 +415,7 @@ export default function AdminPostsPage() {
                   }))
                 }
               />
-              <label htmlFor="is_mini_game">
+              <label htmlFor="is_mini_game" className="text-fg">
                 This is a <strong>mini game</strong>
               </label>
             </div>
@@ -468,14 +471,14 @@ export default function AdminPostsPage() {
         </section>
 
         {/* List */}
-        <section className="card p-6 space-y-4">
-          <h2 className="text-xl font-semibold">Recent Posts</h2>
+        <section className="card bg-card-surface border border-subtle p-6 space-y-4">
+          <h2 className="text-xl font-semibold text-primary">Recent Posts</h2>
           {loading ? (
-            <div>Loading…</div>
+            <div className="text-muted">Loading…</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-separate border-spacing-y-2">
-                <thead className="text-sm text-muted">
+              <table className="w-full text-left border-separate border-spacing-y-2 text-sm">
+                <thead className="text-xs text-muted">
                   <tr>
                     <th className="px-3">Title</th>
                     <th className="px-3">Type</th>
@@ -503,7 +506,7 @@ export default function AdminPostsPage() {
 
                     return (
                       <tr key={p.id} className="align-top">
-                        <td className="px-3 font-medium">{p.title}</td>
+                        <td className="px-3 font-medium text-fg">{p.title}</td>
                         <td className="px-3">
                           <span
                             className="badge"
@@ -520,15 +523,15 @@ export default function AdminPostsPage() {
                             {typeLabel}
                           </span>
                         </td>
-                        <td className="px-3 text-sm">
+                        <td className="px-3 text-sm text-muted">
                           {tags.length ? tags.join(", ") : "—"}
                         </td>
-                        <td className="px-3 text-sm">
+                        <td className="px-3 text-sm text-muted">
                           {isMiniGame(p) && p.expires_at
                             ? new Date(p.expires_at).toLocaleString()
                             : "—"}
                         </td>
-                        <td className="px-3 text-sm">
+                        <td className="px-3 text-sm text-muted">
                           {new Date(p.created_at).toLocaleString()}
                         </td>
                         <td className="px-3">
