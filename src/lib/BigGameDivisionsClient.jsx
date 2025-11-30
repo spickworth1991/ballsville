@@ -290,7 +290,7 @@ export default function BigGameDivisionsClient() {
                     href={`/big-game/division?year=${
                       division.year
                     }&division=${encodeURIComponent(division.division_name)}`}
-                    className="btn btn-ghost text-xs sm:text-sm"
+                    className="rounded-3xl border border-subtle bg-subtle-surface p-3 shadow-[0_0_25px_rgba(34,211,238,0.25)] text-xs sm:text-sm"
                   >
                     View Division
                   </Link>
