@@ -1,105 +1,13 @@
 // app/big-game/page.jsx
 import Image from "next/image";
 import Link from "next/link";
+import BigGameDivisionsClient from "@/lib/BigGameDivisionsClient";
 
 export const metadata = {
   title: "The BIG Game | Ballsville",
   description:
     "The BALLSVILLE Game – our trademark Big Game format where big payouts meet great odds.",
 };
-
-const DIVISIONS = [
-  {
-    id: "D1",
-    name: "Game of Thrones",
-    status: "FULL",
-    image: "/photos/biggame/game-of-thrones.jpg",
-    href: "/hub/game-of-thrones",
-  },
-  {
-    id: "D2",
-    name: "Star Wars",
-    status: "FULL",
-    image: "/photos/biggame/star-wars.jpg",
-    href: "/hub/star-wars",
-  },
-  {
-    id: "D3",
-    name: "Avengers",
-    status: "FULL",
-    image: "/photos/biggame/avengers.jpg",
-    href: "/hub/avengers",
-  },
-  {
-    id: "D4",
-    name: "Gamer Realms",
-    status: "FULL",
-    image: "/photos/biggame/gamer-realms.jpg",
-    href: "/hub/gamer-realms",
-  },
-  {
-    id: "D5",
-    name: "Villains",
-    status: "FULL",
-    image: "/photos/biggame/villains.jpg",
-    href: "/hub/villains",
-  },
-  {
-    id: "D6",
-    name: "Heroes",
-    status: "FULL",
-    image: "/photos/biggame/heroes.jpg",
-    href: "/hub/heroes",
-  },
-  {
-    id: "D7",
-    name: "Wizards & Warriors",
-    status: "FULL",
-    image: "/photos/biggame/wizards-warriors.jpg",
-    href: "/hub/wizards-warriors",
-  },
-  {
-    id: "D8",
-    name: "All-Stars",
-    status: "PRIVATE",
-    image: "/photos/biggame/all-stars.jpg",
-    href: "/hub/all-stars",
-  },
-  {
-    id: "D9",
-    name: "Pokémon",
-    status: "FULL",
-    image: "/photos/biggame/pokemon.jpg",
-    href: "/hub/pokemon",
-  },
-  {
-    id: "D10",
-    name: "Transformers",
-    status: "FULL",
-    image: "/photos/biggame/transformers.jpg",
-    href: "/hub/transformers",
-  },
-  {
-    id: "D11",
-    name: "Character Unlock",
-    status: "FULL",
-    image: "/photos/biggame/character-unlock.jpg",
-    href: "/hub/character-unlock",
-  },
-  {
-    id: "D12",
-    name: "The Boys",
-    status: "FULL",
-    image: "/photos/biggame/the-boys.jpg",
-    href: "/hub/the-boys",
-  },
-];
-
-function statusClass(status) {
-  if (status === "FULL") return "badge-status badge-status-full";
-  if (status === "PRIVATE") return "badge-status badge-status-private";
-  return "badge-status badge-status-default";
-}
 
 export default function BigGamePage() {
   return (
@@ -364,72 +272,8 @@ export default function BigGamePage() {
           </p>
         </section>
 
-        {/* DIVISIONS GRID */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div>
-              <h2 className="text-2xl font-semibold">12 Divisions</h2>
-              <p className="text-sm text-muted">
-                Each division has its own theme, artwork, and hub.
-              </p>
-            </div>
-          </div>
-
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {DIVISIONS.map((division) => (
-              <div
-                key={division.id}
-                className="group rounded-2xl border border-subtle bg-card-surface overflow-hidden flex flex-col shadow-[0_0_25px_rgba(15,23,42,0.8)] hover:shadow-[0_0_40px_rgba(34,211,238,0.4)] transition-all"
-              >
-                <div className="relative aspect-[16/9] overflow-hidden">
-                  <Image
-                    src={division.image}
-                    alt={division.name}
-                    fill
-                    className="object-cover transition-transform duration-500 group-hover:scale-105"
-                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
-                  <div className="absolute top-3 left-3 flex items-center gap-2">
-                    <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-black/70 border border-white/10 text-white">
-                      {division.id}
-                    </span>
-                  </div>
-                  <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-white drop-shadow">
-                      {division.name}
-                    </h3>
-                    <span className={statusClass(division.status)}>
-                      {division.status}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="p-4 flex-1 flex flex-col gap-3 text-sm">
-                  <p className="text-muted text-xs">
-                    Division {division.id} theme:{" "}
-                    <span className="font-semibold text-fg">
-                      {division.name}
-                    </span>
-                    .
-                  </p>
-                  <div className="mt-auto flex justify-between items-center gap-3">
-                    <Link
-                      href={division.href}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-full bg-primary text-white text-xs font-semibold px-3 py-1.5 hover:opacity-90 transition-colors"
-                    >
-                      View Hub
-                      <span aria-hidden>↗</span>
-                    </Link>
-                    <span className="text-[11px] text-muted">
-                      Bestball · BIG Game
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+        {/* DIVISIONS GRID (now dynamic from Supabase) */}
+        <BigGameDivisionsClient />
       </div>
     </main>
   );

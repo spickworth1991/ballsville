@@ -504,6 +504,73 @@ body {
   color: var(--color-accent);
 }
 
+/* ========== FORM CONTROLS (GLOBAL) ========== */
+
+.label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-muted);
+}
+
+.input {
+  width: 100%;
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8125rem;
+  font-family: var(--font-sans);
+  background: color-mix(
+    in oklab,
+    var(--color-card-subtle) 80%,
+    var(--color-bg2) 20%
+  );
+  border: 1px solid
+    color-mix(in oklab, var(--color-fg) 20%, transparent);
+  color: var(--color-fg);
+  box-shadow: none;
+}
+
+.input::placeholder {
+  color: color-mix(in oklab, var(--color-muted) 80%, transparent);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px
+    color-mix(in oklab, var(--color-accent) 60%, transparent);
+  background: color-mix(
+    in oklab,
+    var(--color-card-subtle) 90%,
+    var(--color-bg2) 10%
+  );
+}
+
+/* Dark mode tweaks for inputs – higher contrast over glass cards */
+.dark .input {
+  background: color-mix(
+    in oklab,
+    var(--color-card-subtle) 75%,
+    #020617 25%
+  );
+  border-color: color-mix(
+    in oklab,
+    var(--color-accent) 35%,
+    transparent
+  );
+  color: var(--color-fg);
+}
+
+.dark .input::placeholder {
+  color: color-mix(in oklab, var(--color-muted) 85%, transparent);
+}
+
+/* Smaller “inline” variant helpers already used in admin via utility overrides */
+.input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ========== RESPONSIVE TWEAKS ========== */
 
 @media (max-width: 768px) {
   .page-bg {

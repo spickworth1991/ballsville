@@ -131,6 +131,17 @@ export default function AdminHomePage() {
               orphan status.
             </p>
           </Link>
+          <Link
+            href="/admin/big-game"
+            className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
+          >
+            <h2 className="text-lg font-semibold text-primary">
+              Big Game Divisions/Leagues
+            </h2>
+            <p className="mt-1 text-sm text-muted">
+              Manage the big game.
+            </p>
+          </Link>
 
           {/* future tools can go here */}
         </div>
