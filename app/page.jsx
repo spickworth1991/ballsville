@@ -108,7 +108,7 @@ export default function Page() {
 
             {/* Redraft */}
             <Link
-              href="/games/redraft"
+              href="/redraft/"
               className="group rounded-2xl overflow-hidden border border-subtle bg-card-surface hover:bg-subtle-surface backdrop-blur-sm shadow-sm hover:shadow-lg transition flex flex-col text-left"
             >
               <div className="relative w-full aspect-square bg-black/80 overflow-hidden">
@@ -206,7 +206,7 @@ export default function Page() {
             >
               <div className="relative w-full aspect-square bg-black/80 overflow-hidden">
                 <img
-                  src="/photos/minileagues.webp"
+                  src="/photos/minigames.webp"
                   alt="Mini Extras & Challenges"
                   className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-300"
                   loading="lazy"
