@@ -26,7 +26,8 @@ const NAV_ITEMS = [
     icon: FiGrid,
     children: [
       { name: "The BIG Game", to: "/big-game" },
-      { name: "Redraft", to: "/redraft" }, // adjust if your route is different
+      { name: "Redraft", to: "/redraft" },
+      { name: "Dynasty", to: "/dynasty" }, // adjust if your route is different
     ],
   },
   { id: "leaderboards", name: "Leaderboards", to: "/leaderboards", icon: FiBarChart2 },

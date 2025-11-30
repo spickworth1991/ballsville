@@ -37,7 +37,7 @@ export default function AdminLogin() {
     const site = getSiteOrigin();
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${site}/admin/posts` },
+      options: { emailRedirectTo: `${site}/admin` }, // ⬅️ main admin hub
     });
 
     setMsg(error ? error.message : "Check your email for the magic link.");
@@ -74,9 +74,7 @@ export default function AdminLogin() {
             </button>
 
             {msg && (
-              <p className="text-sm mt-2 text-center text-muted">
-                {msg}
-              </p>
+              <p className="text-sm mt-2 text-center text-muted">{msg}</p>
             )}
           </form>
 

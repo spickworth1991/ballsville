@@ -131,7 +131,7 @@ export default function Page() {
 
             {/* Dynasty */}
             <Link
-              href="/games/dynasty"
+              href="/dynasty"
               className="group rounded-2xl overflow-hidden border border-subtle bg-card-surface hover:bg-subtle-surface backdrop-blur-sm shadow-sm hover:shadow-lg transition flex flex-col text-left"
             >
               <div className="relative w-full aspect-square bg-black/80 overflow-hidden">
