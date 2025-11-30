@@ -2,6 +2,7 @@
 
 import { siteConfig } from "@/app/config/siteConfig";
 import { FaDiscord } from "react-icons/fa";
+import CallNowBar from "@/components/CallNowBar";
 
 export default function Footer() {
   // If you later add this into siteConfig, you can swap here:
@@ -14,7 +15,7 @@ export default function Footer() {
 
   return (
     <>
-      <footer className="bg-bg text-fg border-t border-subtle py-12 px-4 md:px-8 mt-16 md:mt-0">
+      <div className="footer text-fg border-t py-12 px-4 md:px-8 mt-16 md:mt-0">
         <div className="container-site grid grid-cols-1 md:grid-cols-3 gap-10">
           {/* Quick Links */}
           <div>
@@ -118,10 +119,10 @@ export default function Footer() {
               <p>
                 Questions or issues?{" "}
                 <a
-                  href="mailto:contact.ballsville@gmail.com"
+                  href="mailto:theballsvillegame@gmail.com"
                   className="underline decoration-accent underline-offset-2 hover:text-primary"
                 >
-                  contact.ballsville@gmail.com
+                  theballsvillegame@gmail.com
                 </a>
               </p>
             </div>
@@ -143,7 +144,7 @@ export default function Footer() {
             </span>
           </p>
         </div>
-      </footer>
+      </div>
 
       {/* <CallNowBar />  — PT-only, so we leave this disabled */}
     </>

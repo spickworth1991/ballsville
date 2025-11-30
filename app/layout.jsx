@@ -119,7 +119,7 @@ export default function RootLayout({ children }) {
 
       <body className="bg-cream bg-bg text-fg dark:text-gray-100">
         <Navbar />
-        <main className="pt-0">{children}</main>
+        <div className="page-bg">{children}</div>
         <Footer />
       </body>
     </html>

@@ -16,6 +16,9 @@
   --nav-blur: 6px;          /* how strong the blur looks */
   --nav-opacity: 0.70;          /* translucency of navbar bg (0–100%) */
   --overlay-alpha: 0.60;     /* mobile scrim darkness */
+  --nav-height: 100px;    /* Adjust if your navbar is taller */
+  --footer-height: 180px; /* Adjust based on footer size */
+  --footer-color-bg: #011127;
 
   /* Call Now Bar (independent theme controls) */
   --color-callbar-bg: #3cadba; /* bar background */
@@ -136,6 +139,12 @@
   background: color-mix(in oklab, var(--color-fg) calc(var(--overlay-alpha) * 100%), transparent);
 }
 
+.footer {
+  border:none;
+  background: var(--footer-color-bg);
+}
+
+
 /* CALL NOW BAR (independent theme control) */
 .callnowbar {
   position: fixed;
@@ -163,3 +172,52 @@
 /* Spacer to keep content from being hidden under the fixed bar on mobile */
 .callnowbar-spacer { height: var(--callbar-height); }
 
+/* IMAGE-BASED COSMIC BACKGROUND SECTION */
+.section-space {
+  position: relative;
+  padding-top: var(--section-y);
+  padding-bottom: var(--section-y);
+  background-image: url("/photos/space-bg-horiz-1920x1080.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* Dark overlay so text stays readable */
+.section-space::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);  /* tweak darkness if needed */
+  z-index: 0;
+}
+
+/* Make sure content sits above the overlay */
+.section-space > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* FULL-PAGE COSMIC BACKGROUND (EXCLUDING NAV + FOOTER) */
+.page-bg {
+  min-height: calc(100vh - var(--footer-height) - var(--nav-height));
+  background-image: url("/photos/space-bg-vert.png");
+  background-size: cover;
+  background-position: top;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  position: relative;
+}
+
+.page-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55); /* optional darkening */
+  z-index: 0;
+}
+
+.page-bg > * {
+  position: relative;
+  z-index: 1;
+}

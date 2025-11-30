@@ -29,7 +29,7 @@ export default function Page() {
     <>
       {/* Hero Section */}
 
-      <section className="bg-bg">
+      <section className="">
         <div className="max-w-7xl mx-auto px-4 md:px-8 py-6 grid md:grid-cols-2 gap-10 items-center">
           <div>
             {/* SEO H1 */}
@@ -69,7 +69,7 @@ export default function Page() {
       </section>
         
         {/* Games Offered */}
-          <section className="bg-card px-4 py-16 border-t border-subtle">
+          <section className="px-4 py-16 border-t border-subtle">
             <div className="max-w-5xl mx-auto text-center space-y-6">
               <h2 className="text-3xl font-bold text-primary">Games Offered</h2>
 
@@ -202,7 +202,7 @@ export default function Page() {
           </section>
 
           {/* League Shows / Podcasts */}
-          <section className="py-16 bg-bg px-4">
+          <section className="py-16 px-4">
             <div className="max-w-5xl mx-auto space-y-10">
               {/* Intro copy */}
               <div className="space-y-4 text-center">
@@ -307,7 +307,7 @@ export default function Page() {
 
 
       {/* Hall of Fame / 2024 Winners */}
-        <section className="bg-card px-4 py-16 border-t border-subtle">
+        <section className="px-4 py-16 border-t border-subtle">
           <div className="max-w-4xl mx-auto text-center space-y-6">
             <Link
               href="/winners/2024"

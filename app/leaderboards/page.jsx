@@ -20,7 +20,7 @@ export const metadata = {
 
 export default function Page() {
   return (
-    <section className="bg-bg dark:bg-bg px-4 md:px-8 py-10">
+    <section className="px-4 md:px-8 py-10">
       <div className="max-w-6xl mx-auto space-y-8">
         {/* Header */}
         <header className="text-center space-y-3">

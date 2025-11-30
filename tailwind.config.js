@@ -20,7 +20,7 @@ module.exports = {
         success: "var(--color-success)",
         danger:  "var(--color-danger)",
         warning: "var(--color-warning)",
-        bg2: "var(--color-bg2)"
+        bg2:     "var(--color-bg2)"
       },
       borderRadius: {
         sm: "var(--radius-sm)",

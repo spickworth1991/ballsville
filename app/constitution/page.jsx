@@ -1,5 +1,7 @@
 // app/constitution/page.jsx
+import Image from "next/image";
 import { siteConfig } from "@/app/config/siteConfig";
+
 
 const pageTitle = `League Constitution | ${siteConfig.shortName}`;
 const pageUrl = `${siteConfig.domain}/constitution`;
@@ -34,20 +36,36 @@ const sections = [
 export default function Page() {
   return (
     <>
-      {/* Hero */}
-      <section className="bg-bg border-b border-subtle">
-        <div className="max-w-5xl mx-auto px-4 md:px-8 py-10 space-y-4 text-center">
-          <p className="text-xs uppercase tracking-[0.25em] text-accent">
-            the BALLSVILLE game · Westlex Leagues
-          </p>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-primary">
-            League Constitution
-          </h1>
-          <p className="text-sm md:text-base text-muted max-w-2xl mx-auto">
-            This Constitution defines the core rules, protections, and expectations
-            that apply across all BALLSVILLE / Westlex fantasy league formats —
-            including dynasty, redraft, best ball, tournaments, and custom leagues.
-          </p>
+            {/* Hero */}
+              <section className="border-b border-subtle">
+                <div className="max-w-5xl mx-auto px-4 md:px-8 py-10 space-y-4 text-center">
+                  <p className="text-xs uppercase tracking-[0.25em] text-accent">
+                    the BALLSVILLE game 
+                  </p>
+
+                  <h1 className="text-3xl md:text-4xl font-extrabold text-primary">
+                    League Constitution
+                    <Image
+                      src="/photos/bylaws.webp"
+                      alt="BALLSVILLE game & code of conduct rulebook"
+                      width={120}
+                      height={80}
+                      className="inline-block ml-2 mb-1"
+                      priority
+                    />
+                  </h1>
+
+                  {/* Constitution book image */}
+                  <div className="flex justify-center mt-4 mb-2">
+                    
+                  </div>
+
+                  <p className="text-sm md:text-base text-muted max-w-2xl mx-auto">
+                    This Constitution defines the core rules, protections, and expectations
+                    that apply across all BALLSVILLE / Westlex fantasy league formats — 
+                    including dynasty, redraft, best ball, tournaments, and custom leagues.
+                  </p>
+
           <p className="text-[11px] text-muted max-w-3xl mx-auto leading-snug">
             <strong>Scope & Applicability.</strong> Not every section will apply
             to every league. Some formats may disable trading, waivers, FAAB,
@@ -64,7 +82,7 @@ export default function Page() {
       </section>
 
       {/* Main layout */}
-      <section className="bg-bg dark:bg-bg2 px-4 md:px-8 py-10">
+      <section className="px-4 md:px-8 py-10">
         <div className="max-w-5xl mx-auto grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)]">
           {/* TOC Card */}
           <aside className="space-y-4">
