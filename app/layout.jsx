@@ -92,7 +92,12 @@ export default function RootLayout({ children }) {
     "";
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className="overflow-x-hidden"
+    >
+
       <head>
         {/* Sitewide structured data */}
         <script
@@ -118,7 +123,7 @@ export default function RootLayout({ children }) {
       </head>
 
       {/* Body uses theme tokens only; cosmic bg handled by .page-bg on content */}
-      <body className="bg-bg text-fg">
+      <body className="bg-bg text-fg overflow-x-hidden">
         <Navbar />
         <div className="page-bg">{children}</div>
         <Footer />

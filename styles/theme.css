@@ -8,6 +8,12 @@
  */
 
 /* ========== BASE (LIGHT) TOKENS ========== */
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 :root {
   /* Brand */
   --color-primary: #d97f00;  /* warm CTA / highlight */
@@ -462,7 +468,10 @@
   background-repeat: no-repeat;
   background-attachment: fixed;
   position: relative;
+  width: 100%;
+  overflow-x: hidden;
 }
+
 
 .page-bg::before {
   content: "";
@@ -493,4 +502,11 @@
 
 .text-accent {
   color: var(--color-accent);
+}
+
+
+@media (max-width: 768px) {
+  .page-bg {
+    background-attachment: scroll;
+  }
 }
