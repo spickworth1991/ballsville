@@ -89,7 +89,7 @@ export default function Navbar() {
     const rightWidth = rightRef.current?.offsetWidth || 0;
 
     const horizontalPadding = 32;
-    const buffer = 60;
+    const buffer = 20;
 
     const availableWidth =
       navWidth - logoWidth - rightWidth - horizontalPadding - buffer;
