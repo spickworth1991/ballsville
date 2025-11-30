@@ -1,8 +1,7 @@
-// app/dynasty/DynastyLeaguesClient.jsx (or wherever this lives)
+// src/lib/DynastyLeaguesClient.jsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 
@@ -16,17 +15,16 @@ function transformLeagues(rows) {
   // Only show leagues marked active (or with null is_active treated as active)
   const active = rows.filter((r) => r.is_active !== false);
 
-  // Orphans list (for the top section)
   const orphans = active.filter(
     (r) => r.is_orphan || r.status === "ORPHAN OPEN"
   );
 
-  // IMPORTANT CHANGE:
-  // For the directory, we now include *all* active leagues (including orphans),
-  // so orphans show up both in the Orphan section *and* under their year/theme.
+  // IMPORTANT: keep orphans in the main list too, so they still show in their theme
+  const nonOrphans = active;
+
   const byYear = new Map();
 
-  for (const lg of active) {
+  for (const lg of nonOrphans) {
     const year = lg.year || new Date().getFullYear();
     const themeName =
       (lg.theme_name && lg.theme_name.trim()) ||
@@ -152,15 +150,11 @@ export default function DynastyLeaguesClient() {
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-3">
                     {o.image_url && (
-                      <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full border border-subtle bg-panel">
-                        <Image
-                          src={o.image_url}
-                          alt={o.name || "Orphan team"}
-                          fill
-                          sizes="48px"
-                          className="object-cover"
-                        />
-                      </div>
+                      <img
+                        src={o.image_url}
+                        alt={o.name || "Orphan team"}
+                        className="h-12 w-12 shrink-0 rounded-full border border-subtle bg-panel object-cover"
+                      />
                     )}
                     <div>
                       <p className="text-sm font-semibold">
@@ -262,14 +256,7 @@ export default function DynastyLeaguesClient() {
                   const leaguesInTheme = themeMap.get(themeName) || [];
                   if (leaguesInTheme.length === 0) return null;
 
-                  // IMPORTANT CHANGE:
-                  // Treat blurb as theme-level by looking for any non-empty blurb
-                  const themeBlurb =
-                    leaguesInTheme.find(
-                      (lg) =>
-                        typeof lg.theme_blurb === "string" &&
-                        lg.theme_blurb.trim().length > 0
-                    )?.theme_blurb || "";
+                  const themeBlurb = leaguesInTheme[0]?.theme_blurb || "";
 
                   return (
                     <div key={themeName} className="space-y-2">
@@ -295,15 +282,11 @@ export default function DynastyLeaguesClient() {
                             >
                               <div className="flex items-center gap-3">
                                 {lg.image_url && (
-                                  <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full border border-subtle bg-panel">
-                                    <Image
-                                      src={lg.image_url}
-                                      alt={lg.name}
-                                      fill
-                                      sizes="48px"
-                                      className="object-cover"
-                                    />
-                                  </div>
+                                  <img
+                                    src={lg.image_url}
+                                    alt={lg.name}
+                                    className="h-12 w-12 shrink-0 rounded-full border border-subtle bg-panel object-cover"
+                                  />
                                 )}
                                 <div className="flex-1 flex items-center justify-between gap-2">
                                   <div>
