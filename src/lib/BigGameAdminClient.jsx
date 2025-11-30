@@ -65,7 +65,7 @@ export default function BigGameAdminClient() {
   const [creatingDivision, setCreatingDivision] = useState(false);
   const [newDivision, setNewDivision] = useState({
     division_name: "",
-    division_status: "FILLING",
+    division_status: "TBD",
     division_image_path: "",
     division_blurb: "",
     division_order: "",
