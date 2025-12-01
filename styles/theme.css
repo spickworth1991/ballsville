@@ -15,51 +15,59 @@ body {
 }
 
 :root {
-  /* Brand */
-  --color-primary: #d97f00;  /* warm CTA / highlight */
-  --color-accent:  #022071;  /* deep navy accent in light */
+  /* Brand (same vibe, just more visible on lighter cards) */
+  --color-primary: #e59f3c;  /* warm CTA / highlight */
+  --color-accent:  #7ad4f2;  /* cyan accent that pops on navy */
 
-  /* Surfaces & text (light shell) */
-  --color-bg:    #e2e8f0;    /* page background under everything */
-  --color-bg2:   #f1f5f9;    /* secondary background */
-  --color-card-main:   #ffffff; /* primary card surface in light */
-  --color-card-subtle: #e2e8f0; /* softer inner panels in light */
-  --color-fg:    #0f172a;
-  --color-muted: #64748b;
+  /* Shell & surfaces (LIGHT = softer navy slate, not pure white) */
+  --color-bg:    #131d35;    /* page shell under space bg */
+  --color-bg2:   #192543;    /* slightly lighter inner shell */
 
-  /* Navbar (light) */
-  --color-nav-bg: #ffffff;
-  --color-nav-fg: #0f172a;
-  --nav-blur: 6px;
-  --nav-opacity: 0.92;       /* 0..1 */
-  --overlay-alpha: 0.6;      /* mobile scrim darkness (0..1) */
+  /* Cards:
+   * Light mode = lighter than dark mode, but still on-theme.
+   * - main: slate-900
+   * - subtle: slate-800
+   */
+  --color-card-main:   #1d2942;
+  --color-card-subtle: #2e3c50;
+
+  /* Text */
+  --color-fg:    #e5e7eb;    /* main ink */
+  --color-muted: #9ca3af;    /* softer slate text */
+
+  /* Navbar (over cosmic bg but lighter than dark mode) */
+  --color-nav-bg: #050d33;   /* deep strip for nav */
+  --color-nav-fg: #e5e7eb;
+  --nav-blur: 12px;
+  --nav-opacity: 0.9;        /* a bit more solid in light mode */
+  --overlay-alpha: 0.55;     /* slightly lighter mobile scrim */
   --nav-height: 100px;
 
-  /* Footer (light) */
+  /* Footer (light shell) */
   --footer-height: 180px;
-  --footer-color-bg: #0b1120;
+  --footer-color-bg: #050d33;
 
-  /* Call Now Bar (light) */
+  /* Call Now Bar */
   --color-callbar-bg: #3cadba;
-  --color-callbar-fg: #ffffff;
-  --callbar-blur: 6px;
+  --color-callbar-fg: #fefce8;   /* warm light ink */
+  --callbar-blur: 10px;
   --callbar-height: 50px;
-  --callbar-shadow: 0 -2px 10px rgba(0,0,0,0.20);
-  --callbar-opacity: 0.7;   /* 0..1 */
+  --callbar-shadow: 0 -10px 30px rgba(0,0,0,0.45);
+  --callbar-opacity: 0.6;
 
   /* Semantic */
-  --color-success: #16a34a;
-  --color-danger:  #dc2626;
-  --color-warning: #f59e0b;
+  --color-success: #22c55e;
+  --color-danger:  #ef4444;
+  --color-warning: #fbbf24;
 
-  /* Status badges (light defaults) */
+  /* Status badges */
   --color-status-full:    #22c55e;
   --color-status-private: #fbbf24;
   --color-status-default: #64748b;
 
-  /* Card translucency (used by .bg-card-surface / .bg-subtle-surface) */
-  --card-strength:        96%;  /* main card opacity (light) */
-  --card-subtle-strength: 82%;  /* inner card opacity (light) */
+  /* Card translucency (LIGHT = more solid than dark mode) */
+  --card-strength:        94%;  /* main cards: almost opaque */
+  --card-subtle-strength: 80%;  /* inner panels: still clearly lighter */
 
   /* Rounding / spacing / typography */
   --radius-sm:  .5rem;
@@ -67,9 +75,9 @@ body {
   --radius-lg:  1rem;
   --radius-xl:  1.5rem;
 
-  --shadow-sm:  0 1px 2px rgba(0,0,0,.06);
-  --shadow-md:  0 8px 24px rgba(0,0,0,.10);
-  --shadow-lg:  0 16px 40px rgba(0,0,0,.14);
+  --shadow-sm:  0 1px 3px rgba(15,23,42,.45);
+  --shadow-md:  0 10px 30px rgba(15,23,42,.60);
+  --shadow-lg:  0 22px 65px rgba(15,23,42,.75);
 
   --container-max: 1200px;
   --section-y:     4rem;
@@ -79,6 +87,7 @@ body {
     "Segoe UI Symbol", sans-serif;
   --line-height: 1.6;
 }
+
 
 /* ========== DARK THEME OVERRIDES ========== */
 .dark:root {
