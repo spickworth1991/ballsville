@@ -111,6 +111,9 @@ export default function BigGameAdminPage() {
             <Link href="/big-game" className="btn btn-outline text-sm">
               ← View Public Big Game Page
             </Link>
+            <a href="/admin" className="btn btn-outline">
+            ← Admin Home
+          </a>
             <button
               className="btn btn-outline text-xs"
               onClick={async () => {

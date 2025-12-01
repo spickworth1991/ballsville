@@ -61,7 +61,10 @@ export default function BigGameAdminClient() {
   const [leagueDrafts, setLeagueDrafts] = useState({});
   const [dirtyDivisions, setDirtyDivisions] = useState(() => new Set());
 
-  // Division create form
+  // Quick-create modal for divisions
+  const [quickOpen, setQuickOpen] = useState(false);
+
+  // Division create form (used inside modal)
   const [creatingDivision, setCreatingDivision] = useState(false);
   const [newDivision, setNewDivision] = useState({
     division_name: "",
@@ -225,6 +228,9 @@ export default function BigGameAdminClient() {
         next.add(division_name);
         return next;
       });
+
+      // Close the modal after successful creation
+      setQuickOpen(false);
     } catch (err) {
       console.error("Failed to create division:", err);
       setErrorMsg("Failed to create division. Check console for details.");
@@ -508,113 +514,28 @@ export default function BigGameAdminClient() {
         </div>
       )}
 
-      {/* CREATE DIVISION */}
+      {/* QUICK CREATE CARD (modal trigger) */}
       <div className="rounded-2xl border border-subtle bg-card-surface p-6 space-y-4">
-        <h2 className="text-lg font-semibold">Add a new division</h2>
-        <p className="text-xs text-muted">
-          This will create a division header and{" "}
-          <span className="font-semibold">exactly 8 blank league slots</span> for
-          the current season.
-        </p>
-
-        <form onSubmit={handleCreateDivision} className="space-y-4 text-sm">
-          <div className="grid gap-3 md:grid-cols-[2fr_1fr_0.9fr]">
-            <label className="flex flex-col gap-1 md:col-span-1">
-              <span className="label">Division name</span>
-              <input
-                className="input"
-                placeholder="Game of Thrones"
-                value={newDivision.division_name}
-                onChange={(e) =>
-                  handleNewDivisionField("division_name", e.target.value)
-                }
-              />
-              <span className="text-[11px] text-muted">
-                This is what shows on the public Big Game page.
-              </span>
-            </label>
-
-            <label className="flex flex-col gap-1">
-              <span className="label">Status</span>
-              <select
-                className="input"
-                value={newDivision.division_status}
-                onChange={(e) =>
-                  handleNewDivisionField("division_status", e.target.value)
-                }
-              >
-                {DIVISION_STATUS_OPTIONS.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-              <span className="text-[11px] text-muted">
-                Shown as a badge over the artwork.
-              </span>
-            </label>
-
-            <label className="flex flex-col gap-1">
-              <span className="label">Division # (order)</span>
-              <input
-                className="input"
-                type="number"
-                min={1}
-                placeholder="1"
-                value={newDivision.division_order}
-                onChange={(e) =>
-                  handleNewDivisionField("division_order", e.target.value)
-                }
-              />
-              <span className="text-[11px] text-muted">
-                Controls the D1 / D2 label and card ordering.
-              </span>
-            </label>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-lg font-semibold text-primary">
+              Quick create Big Game division
+            </h2>
+            <p className="text-xs text-muted max-w-prose">
+              Create a new Big Game division for {currentYear}. This will create
+              the division header and{" "}
+              <span className="font-semibold">8 blank league slots</span>. You
+              can edit league names and details in the accordion below.
+            </p>
           </div>
-
-          <div className="grid gap-3 md:grid-cols-[2fr_3fr]">
-            <label className="flex flex-col gap-1">
-              <span className="label">Division artwork path</span>
-              <input
-                className="input"
-                placeholder="/photos/biggame/game-of-thrones.jpg"
-                value={newDivision.division_image_path}
-                onChange={(e) =>
-                  handleNewDivisionField(
-                    "division_image_path",
-                    e.target.value
-                  )
-                }
-              />
-              <span className="text-[11px] text-muted">
-                Path under <code>public/</code>. Leagues inherit this unless
-                overridden.
-              </span>
-            </label>
-
-            <label className="flex flex-col gap-1">
-              <span className="label">Division blurb (optional)</span>
-              <textarea
-                className="input min-h-[60px]"
-                placeholder="Short description for this division’s vibe."
-                value={newDivision.division_blurb}
-                onChange={(e) =>
-                  handleNewDivisionField("division_blurb", e.target.value)
-                }
-              />
-            </label>
-          </div>
-
-          <div className="pt-2">
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={creatingDivision}
-            >
-              {creatingDivision ? "Creating…" : "Add division + 8 leagues"}
-            </button>
-          </div>
-        </form>
+          <button
+            type="button"
+            className="btn btn-primary text-sm"
+            onClick={() => setQuickOpen(true)}
+          >
+            New Division
+          </button>
+        </div>
       </div>
 
       {/* EXISTING DIVISIONS */}
@@ -1162,6 +1083,129 @@ export default function BigGameAdminClient() {
           })
         )}
       </div>
+
+      {/* QUICK CREATE MODAL */}
+      {quickOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60">
+          <div className="card bg-bg border border-subtle max-w-lg w-full mx-4 p-6 space-y-4 relative">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-semibold text-primary">
+                New Big Game division ({currentYear})
+              </h2>
+              <button
+                type="button"
+                className="text-muted hover:text-fg"
+                onClick={() => setQuickOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form className="space-y-3 text-sm" onSubmit={handleCreateDivision}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-xs text-muted">Division name *</span>
+                  <input
+                    className="mt-1 w-full rounded-lg border border-subtle bg-transparent px-3 py-2"
+                    placeholder="Game of Thrones"
+                    value={newDivision.division_name}
+                    onChange={(e) =>
+                      handleNewDivisionField("division_name", e.target.value)
+                    }
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-xs text-muted">Status *</span>
+                  <select
+                    className="mt-1 w-full rounded-lg border border-subtle bg-transparent px-3 py-2"
+                    value={newDivision.division_status}
+                    onChange={(e) =>
+                      handleNewDivisionField("division_status", e.target.value)
+                    }
+                  >
+                    {DIVISION_STATUS_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <label className="block">
+                <span className="text-xs text-muted">Division # (order)</span>
+                <input
+                  className="mt-1 w-full rounded-lg border border-subtle bg-transparent px-3 py-2"
+                  type="number"
+                  min={1}
+                  placeholder="1"
+                  value={newDivision.division_order}
+                  onChange={(e) =>
+                    handleNewDivisionField("division_order", e.target.value)
+                  }
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-xs text-muted">
+                  Division artwork path
+                </span>
+                <input
+                  className="mt-1 w-full rounded-lg border border-subtle bg-transparent px-3 py-2 font-mono"
+                  placeholder="/photos/biggame/game-of-thrones.jpg"
+                  value={newDivision.division_image_path}
+                  onChange={(e) =>
+                    handleNewDivisionField(
+                      "division_image_path",
+                      e.target.value
+                    )
+                  }
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-xs text-muted">
+                  Division blurb (optional)
+                </span>
+                <textarea
+                  className="mt-1 w-full rounded-lg border border-subtle bg-transparent px-3 py-2 min-h-[80px]"
+                  placeholder="Short description for this division’s vibe."
+                  value={newDivision.division_blurb}
+                  onChange={(e) =>
+                    handleNewDivisionField("division_blurb", e.target.value)
+                  }
+                />
+              </label>
+
+              <p className="text-[11px] text-muted">
+                When you create this division,{" "}
+                <span className="font-semibold">8 blank league slots</span> will
+                be created automatically. You can fill in league names, links,
+                and statuses in the division accordion below.
+              </p>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => setQuickOpen(false)}
+                  disabled={creatingDivision}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={creatingDivision}
+                >
+                  {creatingDivision ? "Creating…" : "Create division"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
