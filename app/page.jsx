@@ -154,7 +154,7 @@ export default function Page() {
 
             {/* Gauntlet Leagues */}
             <Link
-              href="/games/custom"
+              href="/gauntlet"
               className="group rounded-2xl overflow-hidden border border-subtle bg-card-surface hover:bg-subtle-surface backdrop-blur-sm shadow-sm hover:shadow-lg transition flex flex-col text-left"
             >
               <div className="relative w-full aspect-square bg-black/80 overflow-hidden">

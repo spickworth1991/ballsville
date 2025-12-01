@@ -27,7 +27,8 @@ const NAV_ITEMS = [
     children: [
       { name: "The BIG Game", to: "/big-game" },
       { name: "Redraft", to: "/redraft" },
-      { name: "Dynasty", to: "/dynasty" }, // adjust if your route is different
+      { name: "Dynasty", to: "/dynasty" },
+      { name: "Gauntlet", to: "/gauntlet" }, // adjust if your route is different
     ],
   },
   { id: "leaderboards", name: "Leaderboards", to: "/leaderboards", icon: FiBarChart2 },
