@@ -114,7 +114,10 @@ export default function GauntletLeg3Page() {
             >
               {refreshing || loading ? "Refreshing…" : "Refresh"}
             </button>
-            <GauntletUpdateButton />
+            <GauntletUpdateButton 
+            lastUpdatedAt={updatedAt}
+            onRefresh={handleRefresh}
+            />
           </div>
         </header>
 
