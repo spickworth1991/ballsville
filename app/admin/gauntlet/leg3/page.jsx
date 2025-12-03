@@ -182,7 +182,7 @@ export default function GauntletLeg3Page() {
               </div>
             </section>
 
-            {/* Legions – stacked vertically (one full-width per Legion) */}
+            {/* Legions – stacked vertically */}
             <section className="space-y-6">
               {Object.entries(divisions).map(([divisionName, division]) => {
                 const gods = Array.isArray(division?.gods)
@@ -333,6 +333,13 @@ function GodCard({ god, viewMode }) {
     : [];
   const champion = god?.champion || null;
 
+  // ✅ Only show champion once WEEK 16 actually has a non-zero score
+  const hasWeek16Score =
+    champion &&
+    champion.leg3Weekly &&
+    typeof champion.leg3Weekly[16] === "number" &&
+    champion.leg3Weekly[16] !== 0;
+
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -349,8 +356,8 @@ function GodCard({ god, viewMode }) {
           </div>
         </div>
 
-        {/* Champion pill */}
-        {champion && (
+        {/* Champion pill – gated by real Week 16 data */}
+        {hasWeek16Score && (
           <div className="inline-flex items-center gap-1 rounded-full bg-emerald-900/40 px-3 py-1 text-[0.7rem] text-emerald-200 border border-emerald-500/40">
             <span>🏆 Champion</span>
             <span className="font-semibold truncate max-w-[160px]">
@@ -467,7 +474,7 @@ function GodBracket({ rounds }) {
 
               {results.length === 0 ? (
                 <div className="text-center text-xs text-slate-500">
-                  No scores yet.
+                  TBD – waiting on scores.
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -496,19 +503,16 @@ function BracketMatchCard({ match }) {
 
   return (
     <div className="relative rounded-md border border-slate-800 bg-slate-950/90 px-2 py-1.5">
-      {/* match label + score total */}
+      {/* match label */}
       <div className="mb-1 flex items-center justify-between text-[0.65rem] text-slate-400">
         <span>Match {match.matchIndex}</span>
-        <span>
-          {scoreA.toFixed(2)} – {scoreB.toFixed(2)}
-        </span>
       </div>
 
-      {/* Simple “connector” trunk on the left edge of the card */}
+      {/* connector trunk */}
       <div className="absolute left-0 top-3 bottom-3 border-l border-slate-700/60" />
 
       <div className="space-y-0.5 pl-3">
-        {/* Team A row */}
+        {/* Team A row: Name (Seed) – Score */}
         <div
           className={`flex items-center justify-between gap-2 rounded-sm px-1 py-0.5 ${
             teamAIsWinner
@@ -519,12 +523,17 @@ function BracketMatchCard({ match }) {
           <span className="truncate max-w-[110px]">
             {teamA.ownerName ?? "?"}
           </span>
-          <span className="text-[0.65rem] text-slate-400">
-            Seed {teamA.seed ?? "?"}
+          <span className="flex items-center gap-1 text-[0.65rem]">
+            <span className="text-slate-400">
+              Seed {teamA.seed ?? "?"}
+            </span>
+            <span className="font-mono">
+              {scoreA.toFixed(2)}
+            </span>
           </span>
         </div>
 
-        {/* Team B row */}
+        {/* Team B row: Name (Seed) – Score */}
         <div
           className={`flex items-center justify-between gap-2 rounded-sm px-1 py-0.5 ${
             teamBIsWinner
@@ -535,8 +544,13 @@ function BracketMatchCard({ match }) {
           <span className="truncate max-w-[110px]">
             {teamB.ownerName ?? "?"}
           </span>
-          <span className="text-[0.65rem] text-slate-400">
-            Seed {teamB.seed ?? "?"}
+          <span className="flex items-center gap-1 text-[0.65rem]">
+            <span className="text-slate-400">
+              Seed {teamB.seed ?? "?"}
+            </span>
+            <span className="font-mono">
+              {scoreB.toFixed(2)}
+            </span>
           </span>
         </div>
       </div>
