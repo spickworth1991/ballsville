@@ -3,7 +3,6 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { siteConfig } from "@/app/config/siteConfig";
-import {headers} from "next/headers"
 
 
 export const metadata = {
@@ -38,8 +37,6 @@ export const viewport = {
 };
 
 export default function RootLayout({ children }) {
-  const path = headers().get("x-invoke-path") || "";
-  const hideChrome = path.startsWith("/gauntlet/scores");
   const fullLogoUrl = `${siteConfig.domain}${siteConfig.logo}`;
   const fullOgImageUrl = siteConfig.ogImage.startsWith("http")
     ? siteConfig.ogImage
@@ -128,9 +125,9 @@ export default function RootLayout({ children }) {
 
       {/* Body uses theme tokens only; cosmic bg handled by .page-bg on content */}
       <body className="bg-bg text-fg overflow-x-hidden">
-        {!hideChrome && <Navbar />}
+        <Navbar />
         <div className="page-bg">{children}</div>
-        {!hideChrome && <Footer />}
+        <Footer />
       </body>
     </html>
   );
