@@ -153,6 +153,17 @@ export default function AdminHomePage() {
               Manage the Gauntlet.
             </p>
           </Link>
+          <Link
+            href="/admin/gauntlet/leg3"
+            className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
+          >
+            <h2 className="text-lg font-semibold text-primary">
+              Gauntlet Score Compare
+            </h2>
+            <p className="mt-1 text-sm text-muted">
+              Compare Scores
+            </p>
+          </Link>
 
           {/* future tools can go here */}
         </div>
