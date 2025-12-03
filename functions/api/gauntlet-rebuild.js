@@ -1,10 +1,7 @@
 // functions/api/gauntlet-rebuild.js
-// Cloudflare Pages Function – trigger GitHub workflow_dispatch
-
 export async function onRequest(context) {
   const { request, env } = context;
 
-  // Only allow POST
   if (request.method !== "POST") {
     return new Response("Method Not Allowed", { status: 405 });
   }
@@ -16,7 +13,7 @@ export async function onRequest(context) {
 
   const owner = "spickworth1991";
   const repo = "ballsville";
-  const workflowFile = "build-gauntlet.yml"; // your workflow filename
+  const workflowFile = "build-gauntlet.yml"; // must match the filename in .github/workflows
 
   const url = `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${workflowFile}/dispatches`;
 
@@ -28,24 +25,15 @@ export async function onRequest(context) {
         Accept: "application/vnd.github+json",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        ref: "main",
-      }),
+      body: JSON.stringify({ ref: "main" }),
     });
 
     if (!res.ok) {
       const text = await res.text();
       console.error("GitHub workflow_dispatch failed:", res.status, text);
       return new Response(
-        JSON.stringify({
-          ok: false,
-          status: res.status,
-          error: text,
-        }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        }
+        JSON.stringify({ ok: false, status: res.status, error: text }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
 
