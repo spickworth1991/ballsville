@@ -4,7 +4,7 @@
 import { useState } from "react";
 
 export default function GauntletUpdateButton() {
-  const [status, setStatus] = useState(null);
+  const [status, setStatus] = useState(null); // "success" | "error" | null
   const [loading, setLoading] = useState(false);
 
   async function handleClick() {
@@ -14,15 +14,11 @@ export default function GauntletUpdateButton() {
     try {
       const res = await fetch("/api/gauntlet-rebuild", {
         method: "POST",
-        headers: {
-          // if you configured GAUNTLET_ADMIN_KEY in the function:
-          "x-gauntlet-admin-key": process.env.NEXT_PUBLIC_GAUNTLET_ADMIN_KEY || "",
-        },
       });
 
       const data = await res.json().catch(() => ({}));
 
-      if (!res.ok || !data.ok) {
+      if (!res.ok || data.ok === false) {
         setStatus("error");
         console.error("Gauntlet rebuild error:", data);
       } else {
@@ -37,7 +33,7 @@ export default function GauntletUpdateButton() {
   }
 
   return (
-    <div className="gauntlet-update-panel">
+    <div className="flex flex-col items-end gap-1">
       <button
         type="button"
         onClick={handleClick}
@@ -50,13 +46,13 @@ export default function GauntletUpdateButton() {
       </button>
 
       {status === "success" && (
-        <p className="mt-2 text-sm text-green-500">
+        <p className="text-xs text-green-500">
           Gauntlet Leg 3 rebuild triggered. GitHub Action is running.
         </p>
       )}
       {status === "error" && (
-        <p className="mt-2 text-sm text-red-500">
-          Something went wrong triggering the rebuild. Check the console / GitHub Actions logs.
+        <p className="text-xs text-red-500">
+          Something went wrong triggering the rebuild. Check GitHub Actions logs.
         </p>
       )}
     </div>
