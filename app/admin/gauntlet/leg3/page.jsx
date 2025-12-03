@@ -208,59 +208,65 @@ export default function GauntletLeg3Page() {
                             {rounds.length === 0 ? (
                               // Fallback: old single-round table using pairings
                               <div>
+                                <div className="mt-3 overflow-hidden rounded-lg border border-slate-800 bg-slate-950/70">
                                 <div className="grid grid-cols-5 bg-slate-900/80 px-2 py-1 text-[0.65rem] font-medium text-slate-300">
-                                  <span className="text-center">Match</span>
-                                  <span className="text-center">
-                                    Light (Seed)
-                                  </span>
-                                  <span className="text-center">Score</span>
-                                  <span className="text-center">
-                                    Dark (Seed)
-                                  </span>
-                                  <span className="text-center">Score</span>
+                                    <span className="text-center">Match</span>
+                                    <span className="text-center">Light (Seed)</span>
+                                    <span className="text-center">Light Score</span>
+                                    <span className="text-center">Dark Score</span>
+                                    <span className="text-center">Dark (Seed)</span>
                                 </div>
                                 <div className="divide-y divide-slate-800 text-[0.7rem]">
-                                  {(god.pairings || []).map((m) => (
+                                    {(god.pairings || []).map((m) => (
                                     <div
-                                      key={m.match}
-                                      className="grid grid-cols-5 px-2 py-1.5 items-center"
+                                        key={m.match}
+                                        className="grid grid-cols-5 px-2 py-1.5 items-center"
                                     >
-                                      <div className="text-center font-mono text-slate-300">
+                                        {/* Match # */}
+                                        <div className="text-center font-mono text-slate-300">
                                         {m.match}
-                                      </div>
-                                      <div className="text-center">
+                                        </div>
+
+                                        {/* Light side: name + seed */}
+                                        <div className="text-center">
                                         <div className="truncate text-slate-100">
-                                          {m.lightOwnerName}
+                                            {m.lightOwnerName}
                                         </div>
                                         <div className="text-[0.6rem] text-amber-300">
-                                          Seed {m.lightSeed}
+                                            Seed {m.lightSeed}
                                         </div>
-                                      </div>
-                                      <div className="text-center font-mono text-xs text-slate-100">
+                                        </div>
+
+                                        {/* Light score */}
+                                        <div className="text-center font-mono text-xs text-slate-100">
                                         {m.lightLeg3Total.toFixed(2)}
-                                      </div>
-                                      <div className="text-center">
+                                        </div>
+
+                                        {/* Dark score */}
+                                        <div className="text-center font-mono text-xs text-slate-100">
+                                        {m.darkLeg3Total.toFixed(2)}
+                                        </div>
+
+                                        {/* Dark side: name + seed */}
+                                        <div className="text-center">
                                         <div className="truncate text-slate-100">
-                                          {m.darkOwnerName}
+                                            {m.darkOwnerName}
                                         </div>
                                         <div className="text-[0.6rem] text-sky-300">
-                                          Seed {m.darkSeed}
+                                            Seed {m.darkSeed}
                                         </div>
-                                      </div>
-                                      <div className="text-center font-mono text-xs text-slate-100">
-                                        {m.darkLeg3Total.toFixed(2)}
-                                      </div>
+                                        </div>
                                     </div>
-                                  ))}
+                                    ))}
 
-                                  {(!god.pairings ||
-                                    god.pairings.length === 0) && (
+                                    {(!god.pairings || god.pairings.length === 0) && (
                                     <div className="px-2 py-2 text-center text-xs text-slate-500">
-                                      No pairings available yet.
+                                        No pairings available yet.
                                     </div>
-                                  )}
+                                    )}
                                 </div>
-                              </div>
+                                </div>
+                                </div>
                             ) : (
                               <div className="flex gap-4 min-w-full">
                                 {rounds
