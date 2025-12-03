@@ -189,7 +189,10 @@ export default function GauntletLeg3Page() {
               {refreshing || loading ? "Refreshing…" : "Refresh"}
             </button>
             {/* Update button stays in header, admin-only */}
-            <GauntletUpdateButton />
+            <GauntletUpdateButton 
+            lastUpdatedAt={updatedAt}
+            onRefresh={handleRefresh}
+            />
           </div>
         </header>
 
