@@ -18,6 +18,7 @@ export default function GauntletLeg3Page() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [viewMode, setViewMode] = useState("matchups"); // "matchups" | "bracket"
 
   async function loadData() {
     setError("");
@@ -62,8 +63,12 @@ export default function GauntletLeg3Page() {
   const divisions = payload?.divisions || {};
   const grand = payload?.grandChampionship || null;
 
-  const grandParticipants = grand?.participants || [];
-  const grandStandings = grand?.standings || [];
+  const grandParticipants = Array.isArray(grand?.participants)
+    ? grand.participants
+    : [];
+  const grandStandings = Array.isArray(grand?.standings)
+    ? grand.standings
+    : [];
 
   const hasWeek17Scores =
     grandParticipants.length > 0 &&
@@ -81,8 +86,8 @@ export default function GauntletLeg3Page() {
               Gauntlet Leg 3 – Bracket View
             </h1>
             <p className="mt-1 text-sm text-slate-400">
-              Romans, Greeks, and Egyptians &mdash; seeded from Weeks 13–17
-              Best Ball.
+              Romans, Greeks, and Egyptians &mdash; Leg 3 playoff bracket +
+              Week 17 Grand Championship.
             </p>
             <p className="mt-1 text-xs text-slate-500">
               Last updated:{" "}
@@ -129,252 +134,91 @@ export default function GauntletLeg3Page() {
           </div>
         ) : (
           <main className="space-y-8">
-            {/* Overall summary */}
+            {/* Overall summary + view toggle */}
             <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-              <h2 className="text-lg font-semibold tracking-tight">
-                {payload.name}
-              </h2>
-              <p className="mt-1 text-sm text-slate-400">
-                Year:{" "}
-                <span className="font-mono text-amber-300">
-                  {payload.year}
-                </span>
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                Data is precomputed from Sleeper and stored in Supabase.
-                This view is read-only; use the script / GitHub Action to
-                regenerate scores.
-              </p>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold tracking-tight">
+                    {payload.name}
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Year:{" "}
+                    <span className="font-mono text-amber-300">
+                      {payload.year}
+                    </span>
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Data is precomputed from Sleeper and stored in Supabase.
+                    This view is read-only; use the script / GitHub Action to
+                    regenerate scores.
+                  </p>
+                </div>
+
+                {/* View toggle */}
+                <div className="inline-flex items-center rounded-full border border-slate-700 bg-slate-900 p-1 text-xs shadow-inner">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("matchups")}
+                    className={`px-3 py-1.5 rounded-full transition ${
+                      viewMode === "matchups"
+                        ? "bg-amber-400 text-slate-950 font-semibold shadow"
+                        : "text-slate-300 hover:text-slate-100"
+                    }`}
+                  >
+                    Matchups
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("bracket")}
+                    className={`px-3 py-1.5 rounded-full transition ${
+                      viewMode === "bracket"
+                        ? "bg-amber-400 text-slate-950 font-semibold shadow"
+                        : "text-slate-300 hover:text-slate-100"
+                    }`}
+                  >
+                    Bracket
+                  </button>
+                </div>
+              </div>
             </section>
 
             {/* Legions grid */}
             <section className="grid gap-6 md:grid-cols-3">
-              {Object.entries(divisions).map(([divisionName, division]) => (
-                <div
-                  key={divisionName}
-                  className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 shadow-md flex flex-col"
-                >
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="text-lg font-semibold">{divisionName}</h3>
-                    <span className="rounded-full bg-slate-800 px-3 py-1 text-xs text-slate-300">
-                      {division.gods?.length || 0} Gods
-                    </span>
-                  </div>
+              {Object.entries(divisions).map(([divisionName, division]) => {
+                const gods = Array.isArray(division?.gods)
+                  ? division.gods
+                  : [];
 
-                  <div className="space-y-4 overflow-y-auto max-h-[520px] pr-1">
-                    {(division.gods || []).map((god) => {
-                      const rounds = god.bracketRounds || [];
+                return (
+                  <div
+                    key={divisionName}
+                    className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 shadow-md flex flex-col"
+                  >
+                    <div className="mb-3 flex items-center justify-between">
+                      <h3 className="text-lg font-semibold">{divisionName}</h3>
+                      <span className="rounded-full bg-slate-800 px-3 py-1 text-xs text-slate-300">
+                        {gods.length} Gods
+                      </span>
+                    </div>
 
-                      return (
-                        <div
+                    <div className="space-y-4 overflow-y-auto max-h-[520px] pr-1">
+                      {gods.map((god) => (
+                        <GodCard
                           key={god.index}
-                          className="rounded-xl border border-slate-800 bg-slate-950/60 p-3"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="text-sm font-semibold text-slate-100">
-                              God {god.index}
-                            </div>
-                            <div className="flex flex-col text-[0.7rem] text-slate-400 text-right">
-                              <span className="truncate max-w-[180px]">
-                                Light:{" "}
-                                <span className="text-slate-200">
-                                  {god.lightLeagueName}
-                                </span>
-                              </span>
-                              <span className="truncate max-w-[180px]">
-                                Dark:{" "}
-                                <span className="text-slate-200">
-                                  {god.darkLeagueName}
-                                </span>
-                              </span>
-                            </div>
-                          </div>
+                          god={god}
+                          viewMode={viewMode}
+                        />
+                      ))}
 
-                          {/* Champion tag if resolved */}
-                          {god.champion && (
-                            <div className="mt-2 text-[0.7rem] text-emerald-300">
-                              🏆 Champion:&nbsp;
-                              <span className="font-semibold">
-                                {god.champion.ownerName}
-                              </span>{" "}
-                              <span className="text-slate-400">
-                                ({god.champion.leagueName})
-                              </span>
-                            </div>
-                          )}
-
-                          {/* Bracket view */}
-                          <div className="mt-3 overflow-x-auto rounded-lg border border-slate-800 bg-slate-950/70 px-2 py-2">
-                            {rounds.length === 0 ? (
-                              // Fallback: old single-round table using pairings
-                              <div>
-                                <div className="mt-3 overflow-hidden rounded-lg border border-slate-800 bg-slate-950/70">
-                                <div className="grid grid-cols-5 bg-slate-900/80 px-2 py-1 text-[0.65rem] font-medium text-slate-300">
-                                    <span className="text-center">Match</span>
-                                    <span className="text-center">Light (Seed)</span>
-                                    <span className="text-center">Light Score</span>
-                                    <span className="text-center">Dark Score</span>
-                                    <span className="text-center">Dark (Seed)</span>
-                                </div>
-                                <div className="divide-y divide-slate-800 text-[0.7rem]">
-                                    {(god.pairings || []).map((m) => (
-                                    <div
-                                        key={m.match}
-                                        className="grid grid-cols-5 px-2 py-1.5 items-center"
-                                    >
-                                        {/* Match # */}
-                                        <div className="text-center font-mono text-slate-300">
-                                        {m.match}
-                                        </div>
-
-                                        {/* Light side: name + seed */}
-                                        <div className="text-center">
-                                        <div className="truncate text-slate-100">
-                                            {m.lightOwnerName}
-                                        </div>
-                                        <div className="text-[0.6rem] text-amber-300">
-                                            Seed {m.lightSeed}
-                                        </div>
-                                        </div>
-
-                                        {/* Light score */}
-                                        <div className="text-center font-mono text-xs text-slate-100">
-                                        {m.lightLeg3Total.toFixed(2)}
-                                        </div>
-
-                                        {/* Dark score */}
-                                        <div className="text-center font-mono text-xs text-slate-100">
-                                        {m.darkLeg3Total.toFixed(2)}
-                                        </div>
-
-                                        {/* Dark side: name + seed */}
-                                        <div className="text-center">
-                                        <div className="truncate text-slate-100">
-                                            {m.darkOwnerName}
-                                        </div>
-                                        <div className="text-[0.6rem] text-sky-300">
-                                            Seed {m.darkSeed}
-                                        </div>
-                                        </div>
-                                    </div>
-                                    ))}
-
-                                    {(!god.pairings || god.pairings.length === 0) && (
-                                    <div className="px-2 py-2 text-center text-xs text-slate-500">
-                                        No pairings available yet.
-                                    </div>
-                                    )}
-                                </div>
-                                </div>
-                                </div>
-                            ) : (
-                              <div className="flex gap-4 min-w-full">
-                                {rounds
-                                  .slice()
-                                  .sort(
-                                    (a, b) => a.roundNumber - b.roundNumber
-                                  )
-                                  .map((round) => (
-                                    <div
-                                      key={round.roundNumber}
-                                      className="flex-1 min-w-[170px]"
-                                    >
-                                      <div className="mb-2 text-center text-[0.7rem] font-semibold text-slate-300">
-                                        Week {round.week} – Round{" "}
-                                        {round.roundNumber}
-                                      </div>
-                                      <div className="space-y-2">
-                                        {round.matches.map((match) => {
-                                          const a = match.teamA;
-                                          const b = match.teamB;
-                                          const winnerId =
-                                            match.winnerRosterId;
-                                          const aWin =
-                                            winnerId &&
-                                            winnerId === a.rosterId;
-                                          const bWin =
-                                            winnerId &&
-                                            winnerId === b.rosterId;
-
-                                          return (
-                                            <div
-                                              key={match.match}
-                                              className="rounded-md border border-slate-800 bg-slate-950/80 px-2 py-1.5 text-[0.7rem]"
-                                            >
-                                              <div className="mb-1 text-[0.65rem] text-slate-500 flex justify-between">
-                                                <span>
-                                                  Match {match.match}
-                                                </span>
-                                              </div>
-
-                                              {/* Team A */}
-                                              <div
-                                                className={`flex items-center justify-between rounded px-1 py-0.5 ${
-                                                  aWin
-                                                    ? "bg-emerald-900/50 text-emerald-100"
-                                                    : "text-slate-100"
-                                                }`}
-                                              >
-                                                <div className="flex-1 min-w-0">
-                                                  <div className="truncate">
-                                                    {a.ownerName}
-                                                  </div>
-                                                  <div className="text-[0.6rem] text-slate-400">
-                                                    Seed {a.seed}
-                                                  </div>
-                                                </div>
-                                                <div className="ml-2 font-mono text-[0.7rem]">
-                                                  {a.score.toFixed(2)}
-                                                </div>
-                                              </div>
-
-                                              {/* Team B */}
-                                              <div
-                                                className={`mt-1 flex items-center justify-between rounded px-1 py-0.5 ${
-                                                  bWin
-                                                    ? "bg-emerald-900/50 text-emerald-100"
-                                                    : "text-slate-100"
-                                                }`}
-                                              >
-                                                <div className="flex-1 min-w-0">
-                                                  <div className="truncate">
-                                                    {b.ownerName}
-                                                  </div>
-                                                  <div className="text-[0.6rem] text-slate-400">
-                                                    Seed {b.seed}
-                                                  </div>
-                                                </div>
-                                                <div className="ml-2 font-mono text-[0.7rem]">
-                                                  {b.score.toFixed(2)}
-                                                </div>
-                                              </div>
-                                            </div>
-                                          );
-                                        })}
-
-                                        {round.matches.length === 0 && (
-                                          <div className="rounded-md border border-dashed border-slate-700 bg-slate-950/40 px-2 py-2 text-center text-[0.7rem] text-slate-500">
-                                            No games for this round yet.
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  ))}
-                              </div>
-                            )}
-                          </div>
+                      {gods.length === 0 && (
+                        <div className="rounded-lg border border-dashed border-slate-700 bg-slate-900/60 p-3 text-center text-xs text-slate-400">
+                          No Gods built for this Legion yet.
                         </div>
-                      );
-                    })}
-
-                    {(!division.gods || division.gods.length === 0) && (
-                      <div className="rounded-lg border border-dashed border-slate-700 bg-slate-900/60 p-3 text-center text-xs text-slate-400">
-                        No Gods built for this Legion yet.
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </section>
 
             {/* Grand Championship – Week 17 */}
@@ -469,6 +313,201 @@ export default function GauntletLeg3Page() {
             </section>
           </main>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ================== Child Components ================== */
+
+function GodCard({ god, viewMode }) {
+  const pairings = Array.isArray(god?.pairings) ? god.pairings : [];
+  const bracketRounds = Array.isArray(god?.bracketRounds)
+    ? god.bracketRounds
+    : [];
+  const champion = god?.champion || null;
+
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm font-semibold text-slate-100">
+          God {god.index}
+        </div>
+        <div className="flex flex-col text-[0.7rem] text-slate-400 text-right">
+          <span className="truncate max-w-[180px]">
+            Light:{" "}
+            <span className="text-slate-200">{god.lightLeagueName}</span>
+          </span>
+          <span className="truncate max-w-[180px]">
+            Dark:{" "}
+            <span className="text-slate-200">{god.darkLeagueName}</span>
+          </span>
+        </div>
+      </div>
+
+      {/* Champion (only once fully resolved) */}
+      {champion && (
+        <div className="mt-2 text-[0.7rem] text-emerald-300">
+          🏆 Champion:&nbsp;
+          <span className="font-semibold">{champion.ownerName}</span>{" "}
+          <span className="text-slate-400">({champion.leagueName})</span>
+        </div>
+      )}
+
+      {viewMode === "matchups" ? (
+        <GodMatchupsTable pairings={pairings} />
+      ) : (
+        <GodBracket rounds={bracketRounds} />
+      )}
+    </div>
+  );
+}
+
+function GodMatchupsTable({ pairings }) {
+  const rows = Array.isArray(pairings) ? pairings : [];
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-lg border border-slate-800 bg-slate-950/70">
+      <div className="grid grid-cols-5 bg-slate-900/80 px-2 py-1 text-[0.65rem] font-medium text-slate-300">
+        <span className="text-center">Match</span>
+        <span className="text-center">Light (Seed)</span>
+        <span className="text-center">Light Score</span>
+        <span className="text-center">Dark Score</span>
+        <span className="text-center">Dark (Seed)</span>
+      </div>
+      <div className="divide-y divide-slate-800 text-[0.7rem]">
+        {rows.map((m) => (
+          <div
+            key={m.match}
+            className="grid grid-cols-5 px-2 py-1.5 items-center"
+          >
+            {/* Match # */}
+            <div className="text-center font-mono text-slate-300">
+              {m.match}
+            </div>
+
+            {/* Light side: name + seed */}
+            <div className="text-center">
+              <div className="truncate text-slate-100">{m.lightOwnerName}</div>
+              <div className="text-[0.6rem] text-amber-300">
+                Seed {m.lightSeed}
+              </div>
+            </div>
+
+            {/* Light score */}
+            <div className="text-center font-mono text-xs text-slate-100">
+              {m.lightLeg3Total.toFixed(2)}
+            </div>
+
+            {/* Dark score */}
+            <div className="text-center font-mono text-xs text-slate-100">
+              {m.darkLeg3Total.toFixed(2)}
+            </div>
+
+            {/* Dark side: name + seed */}
+            <div className="text-center">
+              <div className="truncate text-slate-100">{m.darkOwnerName}</div>
+              <div className="text-[0.6rem] text-sky-300">
+                Seed {m.darkSeed}
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {rows.length === 0 && (
+          <div className="px-2 py-2 text-center text-xs text-slate-500">
+            No pairings available yet.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GodBracket({ rounds }) {
+  const safeRounds = Array.isArray(rounds) ? rounds : [];
+
+  if (!safeRounds.length) {
+    return (
+      <div className="mt-3 rounded-lg border border-dashed border-slate-700 bg-slate-950/50 px-3 py-2 text-[0.7rem] text-slate-400">
+        Bracket rounds will appear here as Leg 3 weeks complete.
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 overflow-x-auto">
+      <div className="flex gap-3 min-h-[140px]">
+        {safeRounds.map((round) => {
+          const results = Array.isArray(round.results) ? round.results : [];
+          return (
+            <div
+              key={round.roundNumber}
+              className="min-w-[180px] rounded-lg border border-slate-800 bg-slate-950/70 p-2 text-[0.7rem]"
+            >
+              <div className="mb-2 text-center text-[0.7rem] font-semibold text-slate-100">
+                Round {round.roundNumber}{" "}
+                <span className="text-slate-400">(Week {round.week})</span>
+              </div>
+
+              {results.length === 0 ? (
+                <div className="text-center text-xs text-slate-500">
+                  No scores yet.
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {results.map((match) => (
+                    <div
+                      key={match.matchIndex}
+                      className="rounded-md border border-slate-800 bg-slate-950/90 px-2 py-1"
+                    >
+                      <div className="mb-1 flex items-center justify-between text-[0.65rem] text-slate-400">
+                        <span>Match {match.matchIndex}</span>
+                        <span>
+                          {match.scoreA.toFixed(2)} –{" "}
+                          {match.scoreB.toFixed(2)}
+                        </span>
+                      </div>
+
+                      <div className="space-y-0.5 text-[0.7rem]">
+                        <div
+                          className={`flex items-center justify-between gap-2 ${
+                            match.winner?.rosterId ===
+                            match.teamA?.rosterId
+                              ? "text-emerald-300"
+                              : "text-slate-200"
+                          }`}
+                        >
+                          <span className="truncate max-w-[100px]">
+                            {match.teamA?.ownerName ?? "?"}
+                          </span>
+                          <span className="text-[0.65rem] text-slate-400">
+                            Seed {match.teamA?.seed ?? "?"}
+                          </span>
+                        </div>
+                        <div
+                          className={`flex items-center justify-between gap-2 ${
+                            match.winner?.rosterId ===
+                            match.teamB?.rosterId
+                              ? "text-emerald-300"
+                              : "text-slate-200"
+                          }`}
+                        >
+                          <span className="truncate max-w-[100px]">
+                            {match.teamB?.ownerName ?? "?"}
+                          </span>
+                          <span className="text-[0.65rem] text-slate-400">
+                            Seed {match.teamB?.seed ?? "?"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
