@@ -121,9 +121,7 @@ export default function PublicGauntletLeg3Page() {
                         {payload.year}
                       </span>
                     </p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Data is precomputed from Sleeper and stored in Supabase.
-                    </p>
+                    
                   </div>
 
                   {/* View toggle */}
