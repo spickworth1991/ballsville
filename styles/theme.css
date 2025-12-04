@@ -592,9 +592,16 @@ body {
 
 @media (max-width: 768px) {
   .page-bg {
-    background-attachment: scroll;
+  min-height: calc(100vh - var(--footer-height) - var(--nav-height));
+  background-image: url("/photos/space-bg-vert.png");
+  background-size: auto auto;
+  background-position: top center;
+  background-repeat: repeat;
+  background-attachment:scroll;
+  width: 100%;
   }
 }
+
 
 
 
