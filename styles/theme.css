@@ -7,6 +7,12 @@
  * - Page background helpers
  */
 
+/* Extra-transparent card surface (for image frames, etc.) */
+.bg-card-trans {
+  background: var(--color-card-trans);
+}
+
+
 /* ========== BASE (LIGHT) TOKENS ========== */
 html,
 body {
@@ -30,6 +36,7 @@ body {
    */
   --color-card-main:   #1d2942;
   --color-card-subtle: #2e3c50;
+  --color-card-trans: #2425399b;
 
   /* Text */
   --color-fg:    #e5e7eb;    /* main ink */
@@ -187,6 +194,8 @@ body {
     transparent
   );
 }
+
+
 
 /* ========== BUTTONS ========== */
 
@@ -473,10 +482,10 @@ body {
   min-height: calc(100vh - var(--footer-height) - var(--nav-height));
   background-image: url("/photos/space-bg-vert.png");
   background-size: cover;
-  background-position: top;
+  background-position: top center;
   background-repeat: no-repeat;
-  background-attachment: fixed;
-  position: relative;
+  background-attachment:local;
+  position:sticky;
   width: 100%;
   overflow-x: hidden;
 }
@@ -486,7 +495,7 @@ body {
   content: "";
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  /* background: rgba(0, 0, 0, 0.55); */
   z-index: 0;
 }
 

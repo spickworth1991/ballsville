@@ -25,7 +25,7 @@ export default function Page() {
   return (
     <>
       {/* HERO */}
-      <section className="border-b border-subtle">
+      <section className="">
         <div className="max-w-7xl mx-auto px-4 md:px-8 py-8 grid md:grid-cols-2 gap-10 items-center">
           <div>
             {/* SEO H1 */}
@@ -70,7 +70,7 @@ export default function Page() {
       </section>
 
       {/* GAMES OFFERED */}
-      <section className="px-4 py-16 border-b border-subtle">
+      <section className="px-4 py-16 ">
         <div className="max-w-5xl mx-auto text-center space-y-6">
           <h2 className="text-3xl font-bold text-primary">Games Offered</h2>
 
@@ -85,9 +85,10 @@ export default function Page() {
             {/* Bestball */}
             <Link
               href="/big-game/"
-              className="group rounded-2xl overflow-hidden border border-subtle bg-card-surface hover:bg-subtle-surface backdrop-blur-sm shadow-sm hover:shadow-lg transition flex flex-col text-left"
+              className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
             >
-              <div className="relative w-full aspect-square bg-black/80 overflow-hidden">
+              {/* IMAGE AREA – shows page background through the PNG */}
+              <div className="relative w-full aspect-square overflow-hidden bg-card-trans">
                 <img
                   src="/photos/biggame.webp"
                   alt="Bestball tournaments"
@@ -95,23 +96,25 @@ export default function Page() {
                   loading="lazy"
                 />
               </div>
-              <div className="p-4 flex-1 flex flex-col justify-between">
+
+              {/* TEXT AREA – uses card surface so it still feels like a card */}
+              <div className="bg-card-surface p-4 flex-1 flex flex-col justify-between group-hover:bg-subtle-surface transition-colors">
                 <h3 className="text-lg font-semibold text-primary group-hover:text-accent">
                   Bestball Tournaments
                 </h3>
                 <p className="mt-2 text-sm text-muted">
-                  High-volume, high-upside contests with season-long sweat and no weekly lineup
-                  stress.
+                  High-volume, high-upside contests with season-long sweat and no weekly lineup stress.
                 </p>
               </div>
             </Link>
 
+
             {/* Redraft */}
             <Link
               href="/redraft/"
-              className="group rounded-2xl overflow-hidden border border-subtle bg-card-surface hover:bg-subtle-surface backdrop-blur-sm shadow-sm hover:shadow-lg transition flex flex-col text-left"
+              className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
             >
-              <div className="relative w-full aspect-square bg-black/80 overflow-hidden">
+              <div className="relative w-full aspect-square overflow-hidden bg-card-trans">
                 <img
                   src="/photos/redraft.webp"
                   alt="Redraft leagues"
@@ -119,7 +122,7 @@ export default function Page() {
                   loading="lazy"
                 />
               </div>
-              <div className="p-4 flex-1 flex flex-col justify-between">
+              <div className="bg-card-surface p-4 flex-1 flex flex-col justify-between group-hover:bg-subtle-surface transition-colors">
                 <h3 className="text-lg font-semibold text-primary group-hover:text-accent">
                   Redraft
                 </h3>
@@ -132,9 +135,9 @@ export default function Page() {
             {/* Dynasty */}
             <Link
               href="/dynasty"
-              className="group rounded-2xl overflow-hidden border border-subtle bg-card-surface hover:bg-subtle-surface backdrop-blur-sm shadow-sm hover:shadow-lg transition flex flex-col text-left"
+              className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
             >
-              <div className="relative w-full aspect-square bg-black/80 overflow-hidden">
+              <div className="relative w-full aspect-square overflow-hidden bg-card-trans">
                 <img
                   src="/photos/dynasty.webp"
                   alt="Dynasty / Empire leagues"
@@ -142,7 +145,7 @@ export default function Page() {
                   loading="lazy"
                 />
               </div>
-              <div className="p-4 flex-1 flex flex-col justify-between">
+              <div className="bg-card-surface p-4 flex-1 flex flex-col justify-between group-hover:bg-subtle-surface transition-colors">
                 <h3 className="text-lg font-semibold text-primary group-hover:text-accent">
                   Dynasty / Empire
                 </h3>
@@ -155,9 +158,9 @@ export default function Page() {
             {/* Gauntlet Leagues */}
             <Link
               href="/gauntlet"
-              className="group rounded-2xl overflow-hidden border border-subtle bg-card-surface hover:bg-subtle-surface backdrop-blur-sm shadow-sm hover:shadow-lg transition flex flex-col text-left"
+              className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
             >
-              <div className="relative w-full aspect-square bg-black/80 overflow-hidden">
+              <div className="relative w-full aspect-square overflow-hidden bg-card-trans">
                 <img
                   src="/photos/thegauntlet.webp"
                   alt="Gauntlet leagues"
@@ -165,7 +168,7 @@ export default function Page() {
                   loading="lazy"
                 />
               </div>
-              <div className="p-4 flex-1 flex flex-col justify-between">
+              <div className="bg-card-surface p-4 flex-1 flex flex-col justify-between group-hover:bg-subtle-surface transition-colors">
                 <h3 className="text-lg font-semibold text-primary group-hover:text-accent">
                   Gauntlet Leagues
                 </h3>
@@ -179,9 +182,9 @@ export default function Page() {
             {/* Mini Leagues */}
             <Link
               href="/games/mini"
-              className="group rounded-2xl overflow-hidden border border-subtle bg-card-surface hover:bg-subtle-surface backdrop-blur-sm shadow-sm hover:shadow-lg transition flex flex-col text-left"
+              className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
             >
-              <div className="relative w-full aspect-square bg-black/80 overflow-hidden">
+              <div className="relative w-full aspect-square overflow-hidden bg-card-trans">
                 <img
                   src="/photos/minileagues.webp"
                   alt="Mini bestball leagues"
@@ -189,7 +192,7 @@ export default function Page() {
                   loading="lazy"
                 />
               </div>
-              <div className="p-4 flex-1 flex flex-col justify-between">
+              <div className="bg-card-surface p-4 flex-1 flex flex-col justify-between group-hover:bg-subtle-surface transition-colors">
                 <h3 className="text-lg font-semibold text-primary group-hover:text-accent">
                   Mini Leagues
                 </h3>
@@ -202,9 +205,9 @@ export default function Page() {
             {/* Mini Games */}
             <Link
               href="/news"
-              className="group rounded-2xl overflow-hidden border border-subtle bg-card-surface hover:bg-subtle-surface backdrop-blur-sm shadow-sm hover:shadow-lg transition flex flex-col text-left"
+              className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
             >
-              <div className="relative w-full aspect-square bg-black/80 overflow-hidden">
+              <div className="relative w-full aspect-square overflow-hidden bg-card-trans">
                 <img
                   src="/photos/minigames.webp"
                   alt="Mini Extras & Challenges"
@@ -212,7 +215,7 @@ export default function Page() {
                   loading="lazy"
                 />
               </div>
-              <div className="p-4 flex-1 flex flex-col justify-between">
+              <div className="bg-card-surface p-4 flex-1 flex flex-col justify-between group-hover:bg-subtle-surface transition-colors">
                 <h3 className="text-lg font-semibold text-primary group-hover:text-accent">
                   Mini Games
                 </h3>
@@ -227,7 +230,7 @@ export default function Page() {
       </section>
 
       {/* LEAGUE SHOWS / PODCASTS */}
-      <section className="py-16 px-4 border-b border-subtle">
+      <section className="py-16 px-4">
         <div className="max-w-5xl mx-auto space-y-10">
           {/* Intro copy */}
           <div className="space-y-4 text-center">
