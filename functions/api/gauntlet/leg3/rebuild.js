@@ -205,7 +205,7 @@ function computeBestBallLineup(players_points = {}, playersDB) {
 /* ================== SUPABASE HELPERS ================== */
 
 /** Fill league_name in gauntlet_seeds_2025 when missing, using Sleeper. */
-async function ensureLeagueNames(leaguesMap, supabase) {
+async function ensureLeagueNames(supabase, leaguesMap) {
   const toUpdate = [];
 
   for (const [leagueId, info] of leaguesMap.entries()) {
@@ -248,7 +248,7 @@ async function ensureLeagueNames(leaguesMap, supabase) {
 }
 
 /** Load seeds + league configs from Supabase. */
-async function loadLeaguesAndSeeds(year, supabase) {
+async function loadLeaguesAndSeeds(supabase, year) {
   console.log("⬇️  Loading gauntlet seeds from Supabase…");
 
   const { data, error } = await supabase
@@ -303,7 +303,7 @@ async function loadLeaguesAndSeeds(year, supabase) {
     }
   }
 
-  await ensureLeagueNames(leaguesMap, supabase);
+  await ensureLeagueNames(supabase, leaguesMap);
 
   const missingSeedLeagues = [];
 
@@ -851,8 +851,6 @@ function buildGodsForDivisionAndChampions(
         const results = [];
         const winners = [];
 
-
-
         let allMatchesHaveWinner = true;
         let anyMatchHasScore = false;
 
@@ -1068,7 +1066,7 @@ async function buildGauntletLeg3Payload(supabase) {
   const playersDB = await getSleeperPlayers();
 
   const { divisionGodConfig, leaguesConfig, missingSeedLeagues } =
-    await loadLeaguesAndSeeds(YEAR, supabase);
+    await loadLeaguesAndSeeds(supabase, YEAR);
 
   const seededLeagueIds = new Set(
     Object.values(leaguesConfig)
