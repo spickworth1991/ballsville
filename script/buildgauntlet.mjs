@@ -1453,7 +1453,7 @@ async function main() {
     const payload = await buildGauntletLeg3Payload();
 
     // 🔁 Will try at least once, and retry on failure
-    await upsertGauntletLeg3WithRetry(payload, 1);
+    await upsertGauntletLeg3WithRetry(payload, 2);
 
     console.log("✅ Done. Gauntlet Leg 3 for 2025 saved to Supabase.");
   } catch (err) {
@@ -1464,3 +1464,5 @@ async function main() {
 }
 
 main();
+
+
