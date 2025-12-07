@@ -73,6 +73,46 @@ const limit = pLimit(CONCURRENCY);
 const axiosInstance = axios.create();
 
 /* ================== BASIC HELPERS ================== */
+// ================== GAME WINDOW CHECK ==================
+
+// Rough "NFL game time" window in Eastern Time (America/Detroit):
+// - Thursday: 8pm–1am
+// - Sunday:   1pm–1am
+// - Monday:   8pm–1am
+// This doesn't have to be perfect; it's just to avoid hammering during totally dead times.
+function isGameWindow(now = new Date()) {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Detroit",
+    weekday: "short",
+    hour: "2-digit",
+    hour12: false,
+  });
+
+  const parts = fmt.formatToParts(now);
+  const weekday = parts.find((p) => p.type === "weekday")?.value; // "Sun", "Mon", ...
+  const hourStr = parts.find((p) => p.type === "hour")?.value || "00";
+  const hour = parseInt(hourStr, 10); // 0–23
+
+  // Sunday window: 13:00–23:59
+  if (weekday === "Sun" && hour >= 13) return true;
+
+  // Monday window: 20:00–23:59
+  if (weekday === "Mon" && hour >= 20) return true;
+
+  // Thursday window: 20:00–23:59
+  if (weekday === "Thu" && hour >= 20) return true;
+
+  // Early-morning spillover (0–1) after late games:
+  if ((weekday === "Mon" || weekday === "Tue" || weekday === "Fri") && hour <= 1) {
+    return true;
+  }
+
+  return false;
+}
+
+
+
+
 
 const normId = (x) => (x == null ? null : String(x).trim());
 
@@ -1351,14 +1391,17 @@ async function buildGauntletLeg3Payload() {
 
 /* ================== MAIN ================== */
 
-async function main() {
-  try {
-    console.log(
-      "🚀 Building Gauntlet Leg 3 payload (manual seeds, W9–12 Guillotine, W13–16 bracket, W17 Grand Championship)…"
-    );
-    const payload = await buildGauntletLeg3Payload();
+/**
+ * Upsert into Supabase with at least one retry if it fails.
+ */
+async function upsertGauntletLeg3WithRetry(payload, retries = 2) {
+  let lastError = null;
 
-    console.log("💾 Upserting into Supabase gauntlet_leg3…");
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    console.log(
+      `💾 Upserting into Supabase gauntlet_leg3… (attempt ${attempt}/${retries})`
+    );
+
     const { error } = await supabase
       .from("gauntlet_leg3")
       .upsert(
@@ -1370,10 +1413,47 @@ async function main() {
         { onConflict: "year" }
       );
 
-    if (error) {
-      console.error("❌ Supabase upsert error:", error);
-      process.exit(1);
+    if (!error) {
+      console.log("✅ Supabase upsert successful.");
+      return; // success
     }
+
+    lastError = error;
+    console.error(`❌ Supabase upsert error (attempt ${attempt}):`, error);
+
+    if (attempt < retries) {
+      const delay = 1000 * attempt; // simple backoff: 1s, 2s, ...
+      console.log(`⏳ Waiting ${delay}ms before retry…`);
+      await new Promise((res) => setTimeout(res, delay));
+    }
+  }
+
+  // If we get here, all attempts failed
+  throw lastError || new Error("Unknown Supabase upsert error");
+}
+
+async function main() {
+  try {
+    const force = process.env.GAUNTLET_FORCE === "1";
+
+    // 🔒 Skip heavy work outside game times *unless* this is a manual trigger
+    if (!force && !isGameWindow()) {
+      console.log(
+        "⏭️  Outside configured game window and GAUNTLET_FORCE is not set. " +
+          "Skipping Gauntlet Leg 3 rebuild."
+      );
+      // Exit gracefully so the workflow is 'success' but does nothing.
+      return;
+    }
+
+    console.log(
+      "🚀 Building Gauntlet Leg 3 payload (manual seeds, W9–12 Guillotine, W13–16 bracket, W17 Grand Championship)…"
+    );
+
+    const payload = await buildGauntletLeg3Payload();
+
+    // 🔁 Will try at least once, and retry on failure
+    await upsertGauntletLeg3WithRetry(payload, 2);
 
     console.log("✅ Done. Gauntlet Leg 3 for 2025 saved to Supabase.");
   } catch (err) {

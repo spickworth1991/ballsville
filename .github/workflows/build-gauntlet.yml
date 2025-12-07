@@ -1,7 +1,12 @@
 name: Build Gauntlet Leg 3
 
 on:
-  workflow_dispatch: {}  # manual / API-triggered only
+  # ✅ Manual / API-triggered (your button)
+  workflow_dispatch: {}
+
+  # ✅ Scheduled runs – script itself will skip outside game windows
+  schedule:
+    - cron: "* * * * *"  # every 15 minutes
 
 jobs:
   build-gauntlet:
@@ -23,5 +28,7 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # 👇 Manual runs (workflow_dispatch) set GAUNTLET_FORCE=1, scheduled runs keep it empty
+          GAUNTLET_FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
         run: |
-          node script/buildgauntlet.mjs
+          node scripts/buildgauntlet.mjs

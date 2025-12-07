@@ -1,7 +1,7 @@
 // src/app/admin/gauntlet/leg3/page.jsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { getSupabase } from "@/src/lib/supabaseClient";
 import GauntletUpdateButton from "@/components/GauntletUpdateButton";
 
@@ -56,10 +56,54 @@ export default function GauntletLeg3Page() {
     setRefreshing(false);
   }
 
+  // Initial load on mount
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 🔄 30-second polling: check updated_at, reload only when it changes
+  useEffect(() => {
+    if (!payload) return; // don't bother polling until we have something
+
+    const supabase = getSupabase();
+    let cancelled = false;
+
+    async function checkForUpdate() {
+      try {
+        // Skip if tab isn't visible to avoid useless calls when user is away
+        if (typeof document !== "undefined" && document.hidden) return;
+
+        const { data, error } = await supabase
+          .from("gauntlet_leg3")
+          .select("updated_at")
+          .eq("year", "2025")
+          .maybeSingle();
+
+        if (error) {
+          console.error("Poll error (gauntlet_leg3.updated_at):", error);
+          return;
+        }
+
+        if (!data?.updated_at) return;
+
+        // If Supabase has a newer timestamp, pull fresh payload
+        if (!cancelled && data.updated_at !== updatedAt) {
+          await loadData();
+        }
+      } catch (err) {
+        console.error("Poll exception (gauntlet_leg3):", err);
+      }
+    }
+
+    const intervalId = setInterval(checkForUpdate, 30_000); // every 30 seconds
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payload, updatedAt]);
 
   const divisions = payload?.divisions || {};
   const grand = payload?.grandChampionship || null;
@@ -365,12 +409,28 @@ export default function GauntletLeg3Page() {
 
 function GodCard({ god, viewMode, roundFilter }) {
   const [isOpen, setIsOpen] = useState(false);
+  const cardRef = useRef(null);
 
   const pairings = Array.isArray(god?.pairings) ? god.pairings : [];
   const bracketRounds = Array.isArray(god?.bracketRounds)
     ? god.bracketRounds
     : [];
   const champion = god?.champion || null;
+
+  // Close when clicking outside this GodCard
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleClickOutside(e) {
+      if (!cardRef.current) return;
+      if (!cardRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isOpen]);
 
   // Champion only once WEEK 16 has real (non-zero) score
   const hasWeek16Score =
@@ -400,89 +460,88 @@ function GodCard({ god, viewMode, roundFilter }) {
   ) {
     // Use actual results for the selected round
     matchupRows = selectedRound.results.map((m) => {
-  const teamA = m.teamA || {};
-  const teamB = m.teamB || {};
+      const teamA = m.teamA || {};
+      const teamB = m.teamB || {};
 
-  const scoreA =
-    typeof m.scoreA === "number" ? m.scoreA : Number(m.scoreA || 0);
-  const scoreB =
-    typeof m.scoreB === "number" ? m.scoreB : Number(m.scoreB || 0);
+      const scoreA =
+        typeof m.scoreA === "number" ? m.scoreA : Number(m.scoreA || 0);
+      const scoreB =
+        typeof m.scoreB === "number" ? m.scoreB : Number(m.scoreB || 0);
 
-  const winnerId = m?.winner?.rosterId || null;
+      const winnerId = m?.winner?.rosterId || null;
 
-  // Decide orientation (Light always on left when it's Light vs Dark)
-  const aLight = teamA.side === "light";
-  const bLight = teamB.side === "light";
-  const aDark = teamA.side === "dark";
-  const bDark = teamB.side === "dark";
+      // Decide orientation (Light always on left when it's Light vs Dark)
+      const aLight = teamA.side === "light";
+      const bLight = teamB.side === "light";
+      const aDark = teamA.side === "dark";
+      const bDark = teamB.side === "dark";
 
-  const isLightVsDark = (aLight && bDark) || (aDark && bLight);
+      const isLightVsDark = (aLight && bDark) || (aDark && bLight);
 
-  let lightTeam;
-  let darkTeam;
+      let lightTeam;
+      let darkTeam;
 
-  if (isLightVsDark) {
-    if (aLight && bDark) {
-      lightTeam = teamA;
-      darkTeam = teamB;
-    } else {
-      lightTeam = teamB;
-      darkTeam = teamA;
-    }
-  } else {
-    lightTeam = teamA;
-    darkTeam = teamB;
-  }
+      if (isLightVsDark) {
+        if (aLight && bDark) {
+          lightTeam = teamA;
+          darkTeam = teamB;
+        } else {
+          lightTeam = teamB;
+          darkTeam = teamA;
+        }
+      } else {
+        lightTeam = teamA;
+        darkTeam = teamB;
+      }
 
-  let lightScore;
-  let darkScore;
-  let lightLineup = null;
-  let darkLineup = null;
+      let lightScore;
+      let darkScore;
+      let lightLineup = null;
+      let darkLineup = null;
 
-  if (lightTeam === teamA && darkTeam === teamB) {
-    lightScore = scoreA;
-    darkScore = scoreB;
-    lightLineup = m.lineupA || null;
-    darkLineup = m.lineupB || null;
-  } else if (lightTeam === teamB && darkTeam === teamA) {
-    lightScore = scoreB;
-    darkScore = scoreA;
-    lightLineup = m.lineupB || null;
-    darkLineup = m.lineupA || null;
-  } else {
-    lightScore = scoreA;
-    darkScore = scoreB;
-    lightLineup = m.lineupA || null;
-    darkLineup = m.lineupB || null;
-  }
+      if (lightTeam === teamA && darkTeam === teamB) {
+        lightScore = scoreA;
+        darkScore = scoreB;
+        lightLineup = m.lineupA || null;
+        darkLineup = m.lineupB || null;
+      } else if (lightTeam === teamB && darkTeam === teamA) {
+        lightScore = scoreB;
+        darkScore = scoreA;
+        lightLineup = m.lineupB || null;
+        darkLineup = m.lineupA || null;
+      } else {
+        lightScore = scoreA;
+        darkScore = scoreB;
+        lightLineup = m.lineupA || null;
+        darkLineup = m.lineupB || null;
+      }
 
-  const lightIsWinner = winnerId && winnerId === lightTeam.rosterId;
-  const darkIsWinner = winnerId && winnerId === darkTeam.rosterId;
+      const lightIsWinner = winnerId && winnerId === lightTeam.rosterId;
+      const darkIsWinner = winnerId && winnerId === darkTeam.rosterId;
 
-  const isPlayed =
-    typeof lightScore === "number" &&
-    typeof darkScore === "number" &&
-    (lightScore !== 0 || darkScore !== 0);
+      const isPlayed =
+        typeof lightScore === "number" &&
+        typeof darkScore === "number" &&
+        (lightScore !== 0 || darkScore !== 0);
 
-  return {
-    match: m.matchIndex,
-    round: selectedRound.roundNumber,
-    week: selectedRound.week,
-    lightOwnerName: lightTeam.ownerName,
-    darkOwnerName: darkTeam.ownerName,
-    lightSeed: lightTeam.seed,
-    darkSeed: darkTeam.seed,
-    lightScore: Number((lightScore || 0).toFixed(2)),
-    darkScore: Number((darkScore || 0).toFixed(2)),
-    lightIsWinner,
-    darkIsWinner,
-    isPlayed,
-    // 👇 full best-ball lineups for the breakdown view
-    lightLineup,
-    darkLineup,
-  };
-});
-
+      return {
+        match: m.matchIndex,
+        round: selectedRound.roundNumber,
+        week: selectedRound.week,
+        lightOwnerName: lightTeam.ownerName,
+        darkOwnerName: darkTeam.ownerName,
+        lightSeed: lightTeam.seed,
+        darkSeed: darkTeam.seed,
+        lightScore: Number((lightScore || 0).toFixed(2)),
+        darkScore: Number((darkScore || 0).toFixed(2)),
+        lightIsWinner,
+        darkIsWinner,
+        isPlayed,
+        // full best-ball lineups for the breakdown view
+        lightLineup,
+        darkLineup,
+      };
+    });
   } else if (
     viewMode === "matchups" &&
     (!selectedRound || !selectedRound.results?.length) &&
@@ -507,10 +566,15 @@ function GodCard({ god, viewMode, roundFilter }) {
   }
 
   const hasBracketContent =
-    viewMode === "matchups" ? matchupRows.length > 0 : bracketRounds.length > 0;
+    viewMode === "matchups"
+      ? matchupRows.length > 0
+      : bracketRounds.length > 0;
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-950/60">
+    <div
+      ref={cardRef}
+      className="rounded-xl border border-slate-800 bg-slate-950/60"
+    >
       {/* Header row acts like a tab/accordion trigger */}
       <button
         type="button"
@@ -542,9 +606,7 @@ function GodCard({ god, viewMode, roundFilter }) {
           )}
           <span className="flex items-center text-[0.7rem] text-slate-300">
             {isOpen ? "Hide bracket" : "Show bracket"}{" "}
-            <span className="ml-1 text-xs">
-              {isOpen ? "▴" : "▾"}
-            </span>
+            <span className="ml-1 text-xs">{isOpen ? "▴" : "▾"}</span>
           </span>
         </div>
       </button>
@@ -578,13 +640,33 @@ function GodMatchupsTable({ rows, roundFilter }) {
   const meta = safeRows[0] || null;
 
   const [expandedMatch, setExpandedMatch] = useState(null);
+  const containerRef = useRef(null);
+
   const expandedRow =
     expandedMatch != null
       ? safeRows.find((r) => r.match === expandedMatch)
       : null;
 
+  // Close expanded matchup when clicking outside the table
+  useEffect(() => {
+    if (expandedMatch == null) return;
+
+    function handleClickOutside(e) {
+      if (!containerRef.current) return;
+      if (!containerRef.current.contains(e.target)) {
+        setExpandedMatch(null);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [expandedMatch]);
+
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-800 bg-slate-950/70 text-[0.7rem]">
+    <div
+      ref={containerRef}
+      className="overflow-hidden rounded-lg border border-slate-800 bg-slate-950/70 text-[0.7rem]"
+    >
       {/* Round meta bar */}
       <div className="flex items-center justify-between px-2 pt-2 pb-1 text-[0.65rem] text-slate-400">
         <span>
@@ -612,7 +694,7 @@ function GodMatchupsTable({ rows, roundFilter }) {
         <span className="text-center">Dark (Seed)</span>
       </div>
 
-      {/* Match rows */}
+      {/* Match rows + inline breakdowns */}
       <div className="divide-y divide-slate-800">
         {safeRows.map((m) => {
           const lightLost = m.isPlayed && !m.lightIsWinner;
@@ -620,77 +702,83 @@ function GodMatchupsTable({ rows, roundFilter }) {
           const isExpanded = expandedMatch === m.match;
 
           return (
-            <button
+            <div
               key={m.match}
-              type="button"
-              onClick={() =>
-                setExpandedMatch((prev) => (prev === m.match ? null : m.match))
-              }
-              className={`grid grid-cols-5 px-2 py-1.5 items-center w-full text-left transition ${
-                isExpanded ? "bg-slate-900/80" : "hover:bg-slate-900/40"
-              }`}
+              className="border-b border-slate-800 last:border-b-0"
             >
-              {/* Match # */}
-              <div className="text-center font-mono text-slate-300">
-                {m.match}
-              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setExpandedMatch((prev) => (prev === m.match ? null : m.match))
+                }
+                className={`grid grid-cols-5 px-2 py-1.5 items-center w-full text-left transition ${
+                  isExpanded ? "bg-slate-900/80" : "hover:bg-slate-900/40"
+                }`}
+              >
+                {/* Match # */}
+                <div className="text-center font-mono text-slate-300">
+                  {m.match}
+                </div>
 
-              {/* Light side */}
-              <div className="text-center">
-                <div
-                  className={`truncate ${
-                    m.lightIsWinner
-                      ? "text-emerald-300 font-semibold"
-                      : lightLost
-                      ? "text-red-300 line-through"
-                      : "text-slate-100"
-                  }`}
-                >
-                  {m.lightOwnerName}
-                </div>
-                <div className="text-[0.6rem] text-amber-300">
-                  Seed {m.lightSeed}
-                </div>
-                {lightLost && (
-                  <div className="text-[0.6rem] text-red-400">
-                    ✕ Eliminated
+                {/* Light side */}
+                <div className="text-center">
+                  <div
+                    className={`truncate ${
+                      m.lightIsWinner
+                        ? "text-emerald-300 font-semibold"
+                        : lightLost
+                        ? "text-red-300 line-through"
+                        : "text-slate-100"
+                    }`}
+                  >
+                    {m.lightOwnerName}
                   </div>
-                )}
-              </div>
-
-              {/* Light score */}
-              <div className="text-center font-mono text-xs text-slate-100">
-                {m.lightScore.toFixed(2)}
-              </div>
-
-              {/* Dark score */}
-              <div className="text-center font-mono text-xs text-slate-100">
-                {m.darkScore.toFixed(2)}
-              </div>
-
-              {/* Dark side */}
-              <div className="text-center">
-                <div
-                  className={`truncate ${
-                    m.darkIsWinner
-                      ? "text-emerald-300 font-semibold"
-                      : darkLost
-                      ? "text-red-300 line-through"
-                      : "text-slate-100"
-                  }`}
-                >
-                  {m.darkOwnerName}
-                </div>
-                <div className="text-[0.6rem] text-sky-300">
-                  Seed {m.darkSeed}
-                </div>
-                {darkLost && (
-                  <div className="text-[0.6rem] text-red-400">
-                    ✕ Eliminated
+                  <div className="text-[0.6rem] text-amber-300">
+                    Seed {m.lightSeed}
                   </div>
-                )}
-              </div>
-            </button>
+                  {lightLost && (
+                    <div className="text-[0.6rem] text-red-400">
+                      ✕ Eliminated
+                    </div>
+                  )}
+                </div>
+
+                {/* Light score */}
+                <div className="text-center font-mono text-xs text-slate-100">
+                  {m.lightScore.toFixed(2)}
+                </div>
+
+                {/* Dark score */}
+                <div className="text-center font-mono text-xs text-slate-100">
+                  {m.darkScore.toFixed(2)}
+                </div>
+
+                {/* Dark side */}
+                <div className="text-center">
+                  <div
+                    className={`truncate ${
+                      m.darkIsWinner
+                        ? "text-emerald-300 font-semibold"
+                        : darkLost
+                        ? "text-red-300 line-through"
+                        : "text-slate-100"
+                    }`}
+                  >
+                    {m.darkOwnerName}
+                  </div>
+                  <div className="text-[0.6rem] text-sky-300">
+                    Seed {m.darkSeed}
+                  </div>
+                  {darkLost && (
+                    <div className="text-[0.6rem] text-red-400">
+                      ✕ Eliminated
+                    </div>
+                  )}
+                </div>
+              </button>
+
+              {isExpanded && <MatchupBreakdown row={m} />}
+            </div>
           );
         })}
 
@@ -700,11 +788,6 @@ function GodMatchupsTable({ rows, roundFilter }) {
           </div>
         )}
       </div>
-
-      {/* Breakdown panel */}
-      {expandedRow && (
-        <MatchupBreakdown row={expandedRow} />
-      )}
     </div>
   );
 }
@@ -763,10 +846,9 @@ function LineupSide({ title, seed, lineup }) {
     .slice()
     .sort((a, b) => b.points - a.points);
 
-  const total = lineup.total ?? lineup.starters?.reduce(
-    (sum, p) => sum + Number(p.points || 0),
-    0
-  );
+  const total =
+    lineup.total ??
+    lineup.starters?.reduce((sum, p) => sum + Number(p.points || 0), 0);
 
   return (
     <div className="flex flex-col gap-2">
@@ -900,7 +982,6 @@ function MatchupBreakdown({ row }) {
   );
 }
 
-
 function GodBracket({ rounds }) {
   const safeRounds = Array.isArray(rounds) ? rounds : [];
 
@@ -943,8 +1024,8 @@ function GodBracket({ rounds }) {
       >
         {safeRounds.map((round, roundIdx) => {
           const results = Array.isArray(round.results) ? round.results : [];
-          const col = roundIdx + 1;          // 1-based column index
-          const r = roundIdx + 1;            // 1-based round index
+          const col = roundIdx + 1; // 1-based column index
+          const r = roundIdx + 1; // 1-based round index
           const blockSize = Math.pow(2, r - 1); // how many R1 matches feed into one match
 
           return (
@@ -968,8 +1049,6 @@ function GodBracket({ rounds }) {
                 const centerIndex = (startIndex + endIndex) / 2; // can be .5
 
                 // Center of that block in sub-rows:
-                //   - first match center is at:
-                //       row 2  +  (0 * UNITS_PER_MATCH)  +  UNITS_PER_MATCH/2
                 const centerSubRow =
                   2 + (centerIndex - 1) * UNITS_PER_MATCH + UNITS_PER_MATCH / 2;
 
@@ -998,7 +1077,6 @@ function GodBracket({ rounds }) {
     </div>
   );
 }
-
 
 function BracketMatchCard({ match }) {
   const winnerId = match?.winner?.rosterId;

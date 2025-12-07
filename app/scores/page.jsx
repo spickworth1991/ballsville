@@ -1,7 +1,7 @@
 // src/app/admin/gauntlet/leg3/page.jsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { getSupabase } from "@/src/lib/supabaseClient";
 
 function formatDateTime(dt) {
@@ -11,7 +11,7 @@ function formatDateTime(dt) {
   return d.toLocaleString();
 }
 
-export default function GauntletLeg3Page() {
+export default function GauntletLeg3ScoresPage() {
   const [payload, setPayload] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -48,10 +48,52 @@ export default function GauntletLeg3Page() {
     }
   }
 
+  // Initial load
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 🔄 30s polling – same as admin page, but no buttons
+  useEffect(() => {
+    if (!payload) return;
+
+    const supabase = getSupabase();
+    let cancelled = false;
+
+    async function checkForUpdate() {
+      try {
+        if (typeof document !== "undefined" && document.hidden) return;
+
+        const { data, error } = await supabase
+          .from("gauntlet_leg3")
+          .select("updated_at")
+          .eq("year", "2025")
+          .maybeSingle();
+
+        if (error) {
+          console.error("Poll error (gauntlet_leg3.updated_at):", error);
+          return;
+        }
+
+        if (!data?.updated_at) return;
+
+        if (!cancelled && data.updated_at !== updatedAt) {
+          await loadData();
+        }
+      } catch (err) {
+        console.error("Poll exception (gauntlet_leg3):", err);
+      }
+    }
+
+    const intervalId = setInterval(checkForUpdate, 30_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payload, updatedAt]);
 
   const divisions = payload?.divisions || {};
   const grand = payload?.grandChampionship || null;
@@ -76,15 +118,19 @@ export default function GauntletLeg3Page() {
         <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-              Gauntlet Leg 3 – Bracket View
+              Gauntlet Leg 3 – Scores & Bracket
             </h1>
             <p className="mt-1 text-sm text-slate-400">
-              Romans, Greeks, and Egyptians &mdash; Leg 3 playoff bracket +
-              Week 17 Grand Championship.
+              Live Leg 3 playoff matchups and bracket + Week 17 Grand
+              Championship standings.
             </p>
             <p className="mt-1 text-xs text-slate-500">
               Last updated:{" "}
               <span className="font-mono">{formatDateTime(updatedAt)}</span>
+            </p>
+            <p className="mt-1 text-[0.65rem] text-slate-500">
+              This page auto-refreshes every 30 seconds when new scores are
+              posted.
             </p>
           </div>
 
@@ -102,9 +148,7 @@ export default function GauntletLeg3Page() {
           </div>
         ) : !payload ? (
           <div className="mt-10 rounded-xl border border-slate-800 bg-slate-900/50 p-6 text-center text-sm text-slate-300">
-            Gauntlet Leg 3 data is not available yet.
-            <br />
-            Check back once Leg 3 scores have been generated.
+            No Gauntlet Leg 3 data found yet.
           </div>
         ) : (
           <main className="space-y-8">
@@ -122,7 +166,7 @@ export default function GauntletLeg3Page() {
                     </span>
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
-                    Data is precomputed from Sleeper and stored in Supabase.
+                    Scores pulled from Sleeper and precomputed server-side.
                   </p>
                 </div>
 
@@ -186,7 +230,7 @@ export default function GauntletLeg3Page() {
               </div>
             </section>
 
-            {/* Legions – stacked vertically */}
+            {/* Legions – stacked; Gods are collapsible “tabs” */}
             <section className="space-y-6">
               {Object.entries(divisions).map(([divisionName, division]) => {
                 const gods = Array.isArray(division?.gods)
@@ -200,12 +244,10 @@ export default function GauntletLeg3Page() {
                   >
                     <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <h3 className="text-xl font-semibold">
-                          {divisionName}
-                        </h3>
+                        <h3 className="text-xl font-semibold">{divisionName}</h3>
                         <p className="text-xs text-slate-400">
-                          4 Gods per Legion &mdash; brackets seeded from Leg 2
-                          survivors, Leg 3 Best Ball decides winners.
+                          4 Gods per Legion &mdash; bracket winners feed the
+                          Week 17 Grand Championship.
                         </p>
                       </div>
                       <span className="inline-flex items-center justify-center rounded-full bg-slate-800 px-4 py-1 text-xs text-slate-300">
@@ -269,8 +311,8 @@ export default function GauntletLeg3Page() {
               ) : !hasWeek17Scores ? (
                 <div className="mt-3 rounded-lg border border-dashed border-slate-700 bg-slate-900/60 px-4 py-3 text-sm text-slate-400">
                   Week 17 has not posted any scores yet. Once Sleeper shows
-                  Week 17 matchups for the God champions, standings will update
-                  after the next data refresh.
+                  Week 17 matchups for the God champions and you re-run the
+                  Gauntlet build script, standings will update automatically.
                 </div>
               ) : (
                 <div className="mt-3 overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/60">
@@ -331,16 +373,33 @@ export default function GauntletLeg3Page() {
   );
 }
 
+
 /* ================== Child Components ================== */
 
 function GodCard({ god, viewMode, roundFilter }) {
   const [isOpen, setIsOpen] = useState(false);
+  const cardRef = useRef(null);
 
   const pairings = Array.isArray(god?.pairings) ? god.pairings : [];
   const bracketRounds = Array.isArray(god?.bracketRounds)
     ? god.bracketRounds
     : [];
   const champion = god?.champion || null;
+
+  // Close when clicking outside this GodCard
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleClickOutside(e) {
+      if (!cardRef.current) return;
+      if (!cardRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isOpen]);
 
   // Champion only once WEEK 16 has real (non-zero) score
   const hasWeek16Score =
@@ -380,12 +439,7 @@ function GodCard({ god, viewMode, roundFilter }) {
 
       const winnerId = m?.winner?.rosterId || null;
 
-      // Decide orientation:
-      // - If exactly Light vs Dark, keep Light on the left, Dark on the right
-      // - Otherwise (light vs light, dark vs dark, missing sides), keep A vs B
-      let lightTeam;
-      let darkTeam;
-
+      // Decide orientation (Light always on left when it's Light vs Dark)
       const aLight = teamA.side === "light";
       const bLight = teamB.side === "light";
       const aDark = teamA.side === "dark";
@@ -393,35 +447,42 @@ function GodCard({ god, viewMode, roundFilter }) {
 
       const isLightVsDark = (aLight && bDark) || (aDark && bLight);
 
+      let lightTeam;
+      let darkTeam;
+
       if (isLightVsDark) {
         if (aLight && bDark) {
           lightTeam = teamA;
           darkTeam = teamB;
         } else {
-          // aDark && bLight
           lightTeam = teamB;
           darkTeam = teamA;
         }
       } else {
-        // Same side or missing sides → no “light vs dark” concept; just A vs B
         lightTeam = teamA;
         darkTeam = teamB;
       }
 
-      // Map scores to Light/Dark based on who ended up where
       let lightScore;
       let darkScore;
+      let lightLineup = null;
+      let darkLineup = null;
 
       if (lightTeam === teamA && darkTeam === teamB) {
         lightScore = scoreA;
         darkScore = scoreB;
+        lightLineup = m.lineupA || null;
+        darkLineup = m.lineupB || null;
       } else if (lightTeam === teamB && darkTeam === teamA) {
         lightScore = scoreB;
         darkScore = scoreA;
+        lightLineup = m.lineupB || null;
+        darkLineup = m.lineupA || null;
       } else {
-        // Fallback (shouldn't really hit, but keeps things sane)
         lightScore = scoreA;
         darkScore = scoreB;
+        lightLineup = m.lineupA || null;
+        darkLineup = m.lineupB || null;
       }
 
       const lightIsWinner = winnerId && winnerId === lightTeam.rosterId;
@@ -445,6 +506,9 @@ function GodCard({ god, viewMode, roundFilter }) {
         lightIsWinner,
         darkIsWinner,
         isPlayed,
+        // full best-ball lineups for the breakdown view
+        lightLineup,
+        darkLineup,
       };
     });
   } else if (
@@ -471,10 +535,15 @@ function GodCard({ god, viewMode, roundFilter }) {
   }
 
   const hasBracketContent =
-    viewMode === "matchups" ? matchupRows.length > 0 : bracketRounds.length > 0;
+    viewMode === "matchups"
+      ? matchupRows.length > 0
+      : bracketRounds.length > 0;
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-950/60">
+    <div
+      ref={cardRef}
+      className="rounded-xl border border-slate-800 bg-slate-950/60"
+    >
       {/* Header row acts like a tab/accordion trigger */}
       <button
         type="button"
@@ -506,9 +575,7 @@ function GodCard({ god, viewMode, roundFilter }) {
           )}
           <span className="flex items-center text-[0.7rem] text-slate-300">
             {isOpen ? "Hide bracket" : "Show bracket"}{" "}
-            <span className="ml-1 text-xs">
-              {isOpen ? "▴" : "▾"}
-            </span>
+            <span className="ml-1 text-xs">{isOpen ? "▴" : "▾"}</span>
           </span>
         </div>
       </button>
@@ -516,7 +583,7 @@ function GodCard({ god, viewMode, roundFilter }) {
       {/* Collapsible content */}
       <div
         className={`overflow-hidden border-t border-slate-800 transition-all duration-300 ${
-          isOpen ? "max-h-[900px] opacity-100" : "max-h-0 opacity-0"
+          isOpen ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
         }`}
       >
         <div className="p-3">
@@ -541,8 +608,34 @@ function GodMatchupsTable({ rows, roundFilter }) {
   const safeRows = Array.isArray(rows) ? rows : [];
   const meta = safeRows[0] || null;
 
+  const [expandedMatch, setExpandedMatch] = useState(null);
+  const containerRef = useRef(null);
+
+  const expandedRow =
+    expandedMatch != null
+      ? safeRows.find((r) => r.match === expandedMatch)
+      : null;
+
+  // Close expanded matchup when clicking outside the table
+  useEffect(() => {
+    if (expandedMatch == null) return;
+
+    function handleClickOutside(e) {
+      if (!containerRef.current) return;
+      if (!containerRef.current.contains(e.target)) {
+        setExpandedMatch(null);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [expandedMatch]);
+
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-800 bg-slate-950/70 text-[0.7rem]">
+    <div
+      ref={containerRef}
+      className="overflow-hidden rounded-lg border border-slate-800 bg-slate-950/70 text-[0.7rem]"
+    >
       {/* Round meta bar */}
       <div className="flex items-center justify-between px-2 pt-2 pb-1 text-[0.65rem] text-slate-400">
         <span>
@@ -550,8 +643,18 @@ function GodMatchupsTable({ rows, roundFilter }) {
             ? `Round ${meta.round} • Week ${meta.week}`
             : `Round ${roundFilter || "?"}`}
         </span>
+        {expandedRow && (
+          <button
+            type="button"
+            onClick={() => setExpandedMatch(null)}
+            className="text-xs text-amber-300 hover:text-amber-200"
+          >
+            Close matchup breakdown
+          </button>
+        )}
       </div>
 
+      {/* Header row */}
       <div className="grid grid-cols-5 bg-slate-900/80 px-2 py-1 text-[0.65rem] font-medium text-slate-300">
         <span className="text-center">Match</span>
         <span className="text-center">Light (Seed)</span>
@@ -559,76 +662,91 @@ function GodMatchupsTable({ rows, roundFilter }) {
         <span className="text-center">Dark Score</span>
         <span className="text-center">Dark (Seed)</span>
       </div>
+
+      {/* Match rows + inline breakdowns */}
       <div className="divide-y divide-slate-800">
         {safeRows.map((m) => {
           const lightLost = m.isPlayed && !m.lightIsWinner;
           const darkLost = m.isPlayed && !m.darkIsWinner;
+          const isExpanded = expandedMatch === m.match;
 
           return (
             <div
               key={m.match}
-              className="grid grid-cols-5 px-2 py-1.5 items-center"
+              className="border-b border-slate-800 last:border-b-0"
             >
-              {/* Match # */}
-              <div className="text-center font-mono text-slate-300">
-                {m.match}
-              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setExpandedMatch((prev) => (prev === m.match ? null : m.match))
+                }
+                className={`grid grid-cols-5 px-2 py-1.5 items-center w-full text-left transition ${
+                  isExpanded ? "bg-slate-900/80" : "hover:bg-slate-900/40"
+                }`}
+              >
+                {/* Match # */}
+                <div className="text-center font-mono text-slate-300">
+                  {m.match}
+                </div>
 
-              {/* Light side: name + seed + eliminated marker */}
-              <div className="text-center">
-                <div
-                  className={`truncate ${
-                    m.lightIsWinner
-                      ? "text-emerald-300 font-semibold"
-                      : lightLost
-                      ? "text-red-300 line-through"
-                      : "text-slate-100"
-                  }`}
-                >
-                  {m.lightOwnerName}
-                </div>
-                <div className="text-[0.6rem] text-amber-300">
-                  Seed {m.lightSeed}
-                </div>
-                {lightLost && (
-                  <div className="text-[0.6rem] text-red-400">
-                    ✕ Eliminated
+                {/* Light side */}
+                <div className="text-center">
+                  <div
+                    className={`truncate ${
+                      m.lightIsWinner
+                        ? "text-emerald-300 font-semibold"
+                        : lightLost
+                        ? "text-red-300 line-through"
+                        : "text-slate-100"
+                    }`}
+                  >
+                    {m.lightOwnerName}
                   </div>
-                )}
-              </div>
-
-              {/* Light score */}
-              <div className="text-center font-mono text-xs text-slate-100">
-                {m.lightScore.toFixed(2)}
-              </div>
-
-              {/* Dark score */}
-              <div className="text-center font-mono text-xs text-slate-100">
-                {m.darkScore.toFixed(2)}
-              </div>
-
-              {/* Dark side: name + seed + eliminated marker */}
-              <div className="text-center">
-                <div
-                  className={`truncate ${
-                    m.darkIsWinner
-                      ? "text-emerald-300 font-semibold"
-                      : darkLost
-                      ? "text-red-300 line-through"
-                      : "text-slate-100"
-                  }`}
-                >
-                  {m.darkOwnerName}
-                </div>
-                <div className="text-[0.6rem] text-sky-300">
-                  Seed {m.darkSeed}
-                </div>
-                {darkLost && (
-                  <div className="text-[0.6rem] text-red-400">
-                    ✕ Eliminated
+                  <div className="text-[0.6rem] text-amber-300">
+                    Seed {m.lightSeed}
                   </div>
-                )}
-              </div>
+                  {lightLost && (
+                    <div className="text-[0.6rem] text-red-400">
+                      ✕ Eliminated
+                    </div>
+                  )}
+                </div>
+
+                {/* Light score */}
+                <div className="text-center font-mono text-xs text-slate-100">
+                  {m.lightScore.toFixed(2)}
+                </div>
+
+                {/* Dark score */}
+                <div className="text-center font-mono text-xs text-slate-100">
+                  {m.darkScore.toFixed(2)}
+                </div>
+
+                {/* Dark side */}
+                <div className="text-center">
+                  <div
+                    className={`truncate ${
+                      m.darkIsWinner
+                        ? "text-emerald-300 font-semibold"
+                        : darkLost
+                        ? "text-red-300 line-through"
+                        : "text-slate-100"
+                    }`}
+                  >
+                    {m.darkOwnerName}
+                  </div>
+                  <div className="text-[0.6rem] text-sky-300">
+                    Seed {m.darkSeed}
+                  </div>
+                  {darkLost && (
+                    <div className="text-[0.6rem] text-red-400">
+                      ✕ Eliminated
+                    </div>
+                  )}
+                </div>
+              </button>
+
+              {isExpanded && <MatchupBreakdown row={m} />}
             </div>
           );
         })}
@@ -643,11 +761,196 @@ function GodMatchupsTable({ rows, roundFilter }) {
   );
 }
 
-/**
- * Bracket view with "half-card" centering:
- * - Round 1 matches are tightly stacked.
- * - Later rounds are centered vertically between the blocks of earlier matches they advance from.
- */
+function InjuryTag({ status, injury_status }) {
+  const raw = (injury_status || status || "").toString().toLowerCase();
+  if (!raw) return null;
+
+  if (raw.includes("question")) {
+    return (
+      <span className="ml-1 inline-flex items-center rounded-full border border-yellow-400/60 bg-yellow-400/10 px-1.5 py-0.5 text-[0.6rem] text-yellow-300">
+        Ques.
+      </span>
+    );
+  }
+
+  if (raw === "ir" || raw.includes("injured reserve")) {
+    return (
+      <span className="ml-1 inline-flex items-center rounded-full border border-red-500/70 bg-red-500/10 px-1.5 py-0.5 text-[0.6rem] text-red-300">
+        IR
+      </span>
+    );
+  }
+
+  if (raw.includes("out")) {
+    return (
+      <span className="ml-1 inline-flex items-center rounded-full border border-red-500/70 bg-red-500/10 px-1.5 py-0.5 text-[0.6rem] text-red-300">
+        OUT
+      </span>
+    );
+  }
+
+  // Other statuses (PUP, SUS, etc.) could get a neutral tag if you want
+  return null;
+}
+
+function LineupSide({ title, seed, lineup }) {
+  if (!lineup) {
+    return (
+      <div className="text-xs text-slate-500">
+        No lineup data yet for this matchup.
+      </div>
+    );
+  }
+
+  const slotsOrder = ["QB", "RB", "WR", "TE", "FLEX", "SF"];
+
+  const startersBySlot = slotsOrder.map((slot) => ({
+    slot,
+    players: (lineup.starters || [])
+      .filter((p) => p.slot === slot)
+      .sort((a, b) => b.points - a.points),
+  }));
+
+  const benchSorted = (lineup.bench || [])
+    .slice()
+    .sort((a, b) => b.points - a.points);
+
+  const total =
+    lineup.total ??
+    lineup.starters?.reduce((sum, p) => sum + Number(p.points || 0), 0);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-baseline justify-between">
+        <div className="text-sm font-semibold text-slate-100">
+          {title}
+          {typeof seed === "number" && (
+            <span className="ml-2 text-[0.7rem] text-slate-400">
+              Seed {seed}
+            </span>
+          )}
+        </div>
+        <div className="text-xs font-mono text-emerald-300">
+          {Number(total || 0).toFixed(2)} pts
+        </div>
+      </div>
+
+      {/* Starters */}
+      <div className="rounded-lg border border-slate-800 bg-slate-950/80 p-2">
+        <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-slate-400">
+          Starters
+        </div>
+        <div className="space-y-1">
+          {startersBySlot.map(({ slot, players }) =>
+            players.length ? (
+              <div key={slot}>
+                <div className="text-[0.65rem] font-semibold text-slate-300">
+                  {slot}
+                </div>
+                {players.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between rounded-md bg-slate-900/80 px-2 py-1"
+                  >
+                    <div className="flex flex-col">
+                      <span className="text-xs text-slate-100">
+                        {p.name}
+                        <InjuryTag
+                          status={p.status}
+                          injury_status={p.injury_status}
+                        />
+                      </span>
+                      <span className="text-[0.65rem] text-slate-400">
+                        {p.team || "FA"} • {p.pos}
+                      </span>
+                    </div>
+                    <span className="text-xs font-mono text-slate-100">
+                      {Number(p.points || 0).toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null
+          )}
+        </div>
+      </div>
+
+      {/* Bench */}
+      <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-2">
+        <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-slate-400">
+          Bench
+        </div>
+        <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+          {benchSorted.length === 0 && (
+            <div className="text-[0.65rem] text-slate-500">
+              No bench players recorded.
+            </div>
+          )}
+          {benchSorted.map((p) => (
+            <div
+              key={p.id}
+              className="flex items-center justify-between rounded-md bg-slate-900/60 px-2 py-1"
+            >
+              <div className="flex flex-col">
+                <span className="text-xs text-slate-200">
+                  {p.name}
+                  <InjuryTag
+                    status={p.status}
+                    injury_status={p.injury_status}
+                  />
+                </span>
+                <span className="text-[0.65rem] text-slate-400">
+                  {p.team || "FA"} • {p.pos}
+                </span>
+              </div>
+              <span className="text-xs font-mono text-slate-400">
+                {Number(p.points || 0).toFixed(2)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MatchupBreakdown({ row }) {
+  const { lightLineup, darkLineup, week } = row || {};
+
+  // If we have absolutely no lineups (early season / seed preview mode)
+  if (!lightLineup && !darkLineup) {
+    return (
+      <div className="border-t border-slate-800 bg-slate-950/80 px-3 py-3 text-xs text-slate-500">
+        Lineup breakdown will appear here once Week {week} Best Ball scores are
+        available for this matchup.
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-t border-slate-800 bg-slate-950/80 px-3 py-3">
+      <div className="mb-2 text-[0.7rem] text-slate-400">
+        Matchup breakdown for{" "}
+        <span className="font-mono text-amber-300">
+          Week {week} • Match {row.match}
+        </span>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <LineupSide
+          title={row.lightOwnerName || "Light"}
+          seed={row.lightSeed}
+          lineup={lightLineup}
+        />
+        <LineupSide
+          title={row.darkOwnerName || "Dark"}
+          seed={row.darkSeed}
+          lineup={darkLineup}
+        />
+      </div>
+    </div>
+  );
+}
+
 function GodBracket({ rounds }) {
   const safeRounds = Array.isArray(rounds) ? rounds : [];
 
@@ -682,7 +985,7 @@ function GodBracket({ rounds }) {
   return (
     <div className="overflow-x-auto text-[0.65rem]">
       <div
-        className="inline-grid gap-x-4 pb-1"
+        className="inline-grid gap-x-4"
         style={{
           gridTemplateColumns: `repeat(${safeRounds.length}, minmax(160px, 1fr))`,
           gridTemplateRows: `repeat(${totalRows}, minmax(0, auto))`,
@@ -706,49 +1009,36 @@ function GodBracket({ rounds }) {
               </div>
 
               {/* Matches for this round */}
-              {results.length === 0 ? (
-                <div
-                  style={{ gridColumn: col, gridRow: 2 }}
-                  className="rounded-md border border-dashed border-slate-700 bg-slate-950/70 px-2 py-1 text-[0.6rem] text-slate-500"
-                >
-                  TBD – waiting on scores.
-                </div>
-              ) : (
-                results.map((match, matchIdx) => {
-                  const m = matchIdx + 1; // 1-based match index in this round
+              {results.map((match, matchIdx) => {
+                const m = matchIdx + 1; // 1-based match index in this round
 
-                  // Which block of Round-1 matches does this match "own"?
-                  const startIndex = 1 + (m - 1) * blockSize;
-                  const endIndex = startIndex + blockSize - 1;
-                  const centerIndex = (startIndex + endIndex) / 2; // can be .5
+                // Which block of Round-1 matches does this match "own"?
+                const startIndex = 1 + (m - 1) * blockSize;
+                const endIndex = startIndex + blockSize - 1;
+                const centerIndex = (startIndex + endIndex) / 2; // can be .5
 
-                  // Center of that block in sub-rows:
-                  // first match center is:
-                  //   row 2  +  (0 * UNITS_PER_MATCH)  +  UNITS_PER_MATCH/2
-                  const centerSubRow =
-                    2 +
-                    (centerIndex - 1) * UNITS_PER_MATCH +
-                    UNITS_PER_MATCH / 2;
+                // Center of that block in sub-rows:
+                const centerSubRow =
+                  2 + (centerIndex - 1) * UNITS_PER_MATCH + UNITS_PER_MATCH / 2;
 
-                  // Give each bracket card one "match height"
-                  const rowSpan = UNITS_PER_MATCH;
+                // Give each bracket card one "match height"
+                const rowSpan = UNITS_PER_MATCH;
 
-                  // Start row so that the card is centered around centerSubRow
-                  const rowStart = Math.round(centerSubRow - rowSpan / 2);
+                // Start row so that the card is centered around centerSubRow
+                const rowStart = Math.round(centerSubRow - rowSpan / 2);
 
-                  return (
-                    <div
-                      key={match.matchIndex}
-                      style={{
-                        gridColumn: col,
-                        gridRow: `${rowStart} / span ${rowSpan}`,
-                      }}
-                    >
-                      <BracketMatchCard match={match} />
-                    </div>
-                  );
-                })
-              )}
+                return (
+                  <div
+                    key={match.matchIndex}
+                    style={{
+                      gridColumn: col,
+                      gridRow: `${rowStart} / span ${rowSpan}`,
+                    }}
+                  >
+                    <BracketMatchCard match={match} />
+                  </div>
+                );
+              })}
             </div>
           );
         })}
@@ -775,7 +1065,7 @@ function BracketMatchCard({ match }) {
 
   return (
     <div className="relative rounded-md border border-slate-800 bg-slate-950/90 px-1.5 py-1">
-      {/* small connector stub to the round separator line (visual only) */}
+      {/* small connector stub to the next-round column */}
       <div className="pointer-events-none absolute -right-3 top-1/2 hidden h-px w-3 translate-y-[-50%] bg-slate-700 md:block" />
 
       {/* match label */}
@@ -783,7 +1073,7 @@ function BracketMatchCard({ match }) {
         <span>Match {match.matchIndex}</span>
       </div>
 
-      {/* connector trunk inside the card */}
+      {/* internal connector trunk */}
       <div className="absolute left-0 top-3 bottom-3 border-l border-slate-700/60" />
 
       <div className="space-y-0.5 pl-2.5">
