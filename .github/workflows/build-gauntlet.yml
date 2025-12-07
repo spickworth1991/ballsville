@@ -4,9 +4,9 @@ on:
   # ✅ Manual / API-triggered (your button)
   workflow_dispatch: {}
 
-  # ✅ Scheduled runs – script itself will skip outside game windows
-  schedule:
-    - cron: "* * * * *"  # every 15 minutes
+  # # ✅ Scheduled runs – script itself will skip outside game windows
+  # schedule:
+  #   - cron: "* * * * *"  # every 15 minutes
 
 jobs:
   build-gauntlet:
