@@ -1394,7 +1394,7 @@ async function buildGauntletLeg3Payload() {
 /**
  * Upsert into Supabase with at least one retry if it fails.
  */
-async function upsertGauntletLeg3WithRetry(payload, retries = 2) {
+async function upsertGauntletLeg3WithRetry(payload, retries = 1) {
   let lastError = null;
 
   for (let attempt = 1; attempt <= retries; attempt++) {
