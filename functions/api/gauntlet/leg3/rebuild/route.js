@@ -1,33 +1,34 @@
+// functions/api/gauntlet/leg3/rebuild.js
 
 import { createClient } from "@supabase/supabase-js";
 import pLimit from "p-limit";
 
 /**
- * This is a Cloudflare/Next API version of your scripts/buildgauntlet.mjs logic.
- * - Uses fetch() instead of axios.
- * - No dotenv / process.exit.
- * - Upserts into gauntlet_leg3 just like the script.
+ * Cloudflare Pages Function that rebuilds the Gauntlet Leg 3 payload
+ * and writes it into the `gauntlet_leg3` table in Supabase.
+ *
+ * Trigger via:
+ *   POST https://ballsville.pages.dev/api/gauntlet/leg3/rebuild
+ *
+ * Reads env vars from `context.env`:
+ *   - NEXT_PUBLIC_SUPABASE_URL
+ *   - SUPABASE_SERVICE_ROLE_KEY
  */
 
 const YEAR = 2025;
 
 // Guillotine phase:
 const LEG2_START = 9;
-const LEG2_END = 12; // Weeks 9–12 → 4 eliminations
+const LEG2_END = 12;
 
 // Leg 3 (Best Ball bracket):
 const LEG3_START = 13;
-const LEG3_END = 17; // Weeks 13–17 → BB; 13–16 used for bracket, 17 = Grand Champ
+const LEG3_END = 17;
 
 // Round mapping for the **God bracket** (16 teams → 4 rounds):
-// Round 1 → Week 13
-// Round 2 → Week 14
-// Round 3 → Week 15
-// Round 4 → Week 16
 const LEG3_ROUND_WEEKS = [13, 14, 15, 16];
 
-const GRAND_CHAMP_WEEK = 17; // Week 17 = all God winners vs each other
-
+const GRAND_CHAMP_WEEK = 17;
 const CONCURRENCY = 5;
 const RETRIES = 3;
 
@@ -37,18 +38,6 @@ const GOD_ORDER = {
   Greeks: ["Zeus", "Ares", "Apollo", "Poseidon"],
   Romans: ["Jupiter", "Mars", "Minerva", "Saturn"],
 };
-
-// Supabase env
-const NEXT_PUBLIC_SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-// Create a Supabase client once per worker instance
-const supabase =
-  NEXT_PUBLIC_SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
-    ? createClient(NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-        auth: { persistSession: false },
-      })
-    : null;
 
 const limit = pLimit(CONCURRENCY);
 
@@ -79,14 +68,7 @@ async function getSleeperPlayers() {
   return fetchWithRetry(url);
 }
 
-function playerPos(playersDB, id) {
-  const p = playersDB[id] || {};
-  return String(
-    p.position || (p.fantasy_positions && p.fantasy_positions[0]) || ""
-  ).toUpperCase();
-}
-
-// Determine the "current" Leg 3 playoff week across ALL teams.
+/* Determine the "current" Leg 3 playoff week across ALL teams. */
 function detectGlobalCurrentWeek(allTeams) {
   if (!Array.isArray(allTeams) || allTeams.length === 0) return null;
 
@@ -111,59 +93,9 @@ function detectGlobalCurrentWeek(allTeams) {
 }
 
 /**
- * Fill league_name in gauntlet_seeds_2025 when missing, using Sleeper.
- */
-async function ensureLeagueNames(leaguesMap) {
-  const toUpdate = [];
-
-  for (const [leagueId, info] of leaguesMap.entries()) {
-    if (info.leagueName) continue;
-
-    try {
-      const leagueInfo = await fetchWithRetry(
-        `https://api.sleeper.app/v1/league/${leagueId}`
-      );
-      const name = leagueInfo?.name || leagueId;
-
-      info.leagueName = name;
-      toUpdate.push({ leagueId, name });
-    } catch (err) {
-      console.warn(
-        `⚠️  Could not fetch league name from Sleeper for league ${leagueId}:`,
-        err.message || err
-      );
-    }
-  }
-
-  for (const u of toUpdate) {
-    const { error } = await supabase
-      .from("gauntlet_seeds_2025")
-      .update({ league_name: u.name })
-      .eq("year", YEAR)
-      .eq("league_id", u.leagueId);
-
-    if (error) {
-      console.warn(
-        `⚠️  Failed to update league_name for league ${u.leagueId}:`,
-        error
-      );
-    } else {
-      console.log(
-        `  ✅ Updated league_name for ${u.leagueId} → ${u.name} in gauntlet_seeds_2025`
-      );
-    }
-  }
-}
-
-/* ================== BEST BALL ================== */
-
-/**
  * Best Ball lineup:
  * 1 QB, 2 RB, 3 WR, 1 TE, 2 FLEX, 1 SF
- * Now also attaches basic metadata from playersDB:
- *   - team
- *   - status
- *   - injury_status
+ * Includes basic metadata from playersDB.
  */
 function computeBestBallLineup(players_points = {}, playersDB) {
   const entries = Object.entries(players_points).map(([rawId, pts]) => {
@@ -270,9 +202,53 @@ function computeBestBallLineup(players_points = {}, playersDB) {
   };
 }
 
-/* ================== LOAD LEAGUES + SEEDS FROM SUPABASE ================== */
+/* ================== SUPABASE HELPERS ================== */
 
-async function loadLeaguesAndSeeds(year) {
+/** Fill league_name in gauntlet_seeds_2025 when missing, using Sleeper. */
+async function ensureLeagueNames(leaguesMap, supabase) {
+  const toUpdate = [];
+
+  for (const [leagueId, info] of leaguesMap.entries()) {
+    if (info.leagueName) continue;
+
+    try {
+      const leagueInfo = await fetchWithRetry(
+        `https://api.sleeper.app/v1/league/${leagueId}`
+      );
+      const name = leagueInfo?.name || leagueId;
+
+      info.leagueName = name;
+      toUpdate.push({ leagueId, name });
+    } catch (err) {
+      console.warn(
+        `⚠️  Could not fetch league name from Sleeper for league ${leagueId}:`,
+        err.message || err
+      );
+    }
+  }
+
+  for (const u of toUpdate) {
+    const { error } = await supabase
+      .from("gauntlet_seeds_2025")
+      .update({ league_name: u.name })
+      .eq("year", YEAR)
+      .eq("league_id", u.leagueId);
+
+    if (error) {
+      console.warn(
+        `⚠️  Failed to update league_name for league ${u.leagueId}:`,
+        error
+      );
+    } else {
+      console.log(
+        `  ✅ Updated league_name for ${u.leagueId} → ${u.name} in gauntlet_seeds_2025`
+      );
+    }
+  }
+}
+
+/** Load seeds + league configs from Supabase. */
+async function loadLeaguesAndSeeds(year, supabase) {
   console.log("⬇️  Loading gauntlet seeds from Supabase…");
 
   const { data, error } = await supabase
@@ -327,7 +303,7 @@ async function loadLeaguesAndSeeds(year) {
     }
   }
 
-  await ensureLeagueNames(leaguesMap);
+  await ensureLeagueNames(leaguesMap, supabase);
 
   const missingSeedLeagues = [];
 
@@ -875,6 +851,8 @@ function buildGodsForDivisionAndChampions(
         const results = [];
         const winners = [];
 
+
+
         let allMatchesHaveWinner = true;
         let anyMatchHasScore = false;
 
@@ -1086,11 +1064,11 @@ function buildGrandChampionship(champions) {
 
 /* ================== BUILD FULL PAYLOAD ================== */
 
-async function buildGauntletLeg3Payload() {
+async function buildGauntletLeg3Payload(supabase) {
   const playersDB = await getSleeperPlayers();
 
   const { divisionGodConfig, leaguesConfig, missingSeedLeagues } =
-    await loadLeaguesAndSeeds(YEAR);
+    await loadLeaguesAndSeeds(YEAR, supabase);
 
   const seededLeagueIds = new Set(
     Object.values(leaguesConfig)
@@ -1237,11 +1215,16 @@ async function buildGauntletLeg3Payload() {
   };
 }
 
+/* ================== CLOUDFLARE ENTRYPOINTS ================== */
 
-// POST /api/gauntlet/leg3/rebuild → rebuild Leg 3 and save to Supabase
-export async function POST(request) {
+export async function onRequestPost(context) {
+  const { env } = context;
+
   try {
-    if (!NEXT_PUBLIC_SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    const url = env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!url || !key) {
       return new Response(
         JSON.stringify({
           ok: false,
@@ -1255,19 +1238,12 @@ export async function POST(request) {
       );
     }
 
-    // Create a Supabase client for this request (used for the upsert)
-    const supabase = createClient(
-      NEXT_PUBLIC_SUPABASE_URL,
-      SUPABASE_SERVICE_ROLE_KEY,
-      { auth: { persistSession: false } }
-    );
+    const supabase = createClient(url, key, { auth: { persistSession: false } });
 
     console.log(
-      "🚀 [Leg3 API] Building Gauntlet Leg 3 payload (manual seeds, W9–12 Guillotine, W13–16 bracket, W17 Grand Championship)…"
+      "🚀 [CF Function] Building Gauntlet Leg 3 payload (manual seeds, W9–12 Guillotine, W13–16 bracket, W17 Grand Championship)…"
     );
 
-    // Your builder already uses the global `supabase` for reads,
-    // so this argument is just extra and safely ignored.
     const payload = await buildGauntletLeg3Payload(supabase);
     const updatedAt = new Date().toISOString();
 
@@ -1283,21 +1259,21 @@ export async function POST(request) {
       );
 
     if (error) {
-      console.error("[Leg3 API] Supabase upsert error:", error);
+      console.error("❌ [CF Function] Supabase upsert error:", error);
       return new Response(
         JSON.stringify({ ok: false, error: "Supabase upsert failed" }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    console.log("✅ [Leg3 API] Gauntlet Leg 3 for 2025 saved to Supabase.");
+    console.log("✅ [CF Function] Gauntlet Leg 3 for 2025 saved to Supabase.");
 
     return new Response(
       JSON.stringify({ ok: true, updatedAt }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (err) {
-    console.error("[Leg3 API] Gauntlet rebuild error:", err);
+    console.error("❌ [CF Function] Gauntlet rebuild error:", err);
     return new Response(
       JSON.stringify({
         ok: false,
@@ -1308,12 +1284,10 @@ export async function POST(request) {
   }
 }
 
-// Simple GET so you can hit it in a browser and verify the route exists
-export async function GET(request) {
+// Optional quick sanity check in browser
+export async function onRequestGet() {
   return new Response(
     JSON.stringify({ ok: true, message: "Use POST to rebuild Leg 3." }),
     { status: 200, headers: { "Content-Type": "application/json" } }
   );
 }
-
-
