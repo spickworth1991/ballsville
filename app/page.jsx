@@ -90,7 +90,7 @@ export default function Page() {
               {/* IMAGE AREA – shows page background through the PNG */}
               <div className="relative w-full aspect-square overflow-hidden bg-card-trans">
                 <img
-                  src="/photos/biggame.webp"
+                  src="/photos/biggame-v2.webp"
                   alt="Bestball tournaments"
                   className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-300"
                   loading="lazy"
@@ -116,7 +116,7 @@ export default function Page() {
             >
               <div className="relative w-full aspect-square overflow-hidden bg-card-trans">
                 <img
-                  src="/photos/redraft.webp"
+                  src="/photos/redraft-v2.webp"
                   alt="Redraft leagues"
                   className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-300"
                   loading="lazy"
@@ -139,7 +139,7 @@ export default function Page() {
             >
               <div className="relative w-full aspect-square overflow-hidden bg-card-trans">
                 <img
-                  src="/photos/dynasty.webp"
+                  src="/photos/dynasty-v2.webp"
                   alt="Dynasty / Empire leagues"
                   className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-300"
                   loading="lazy"
@@ -162,7 +162,7 @@ export default function Page() {
             >
               <div className="relative w-full aspect-square overflow-hidden bg-card-trans">
                 <img
-                  src="/photos/thegauntlet.webp"
+                  src="/photos/thegauntlet-v2.webp"
                   alt="Gauntlet leagues"
                   className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-300"
                   loading="lazy"
@@ -186,7 +186,7 @@ export default function Page() {
             >
               <div className="relative w-full aspect-square overflow-hidden bg-card-trans">
                 <img
-                  src="/photos/minileagues.webp"
+                  src="/photos/minileagues-v2.webp"
                   alt="Mini bestball leagues"
                   className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-300"
                   loading="lazy"
@@ -209,7 +209,7 @@ export default function Page() {
             >
               <div className="relative w-full aspect-square overflow-hidden bg-card-trans">
                 <img
-                  src="/photos/minigames.webp"
+                  src="/photos/minigames-v2.webp"
                   alt="Mini Extras & Challenges"
                   className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-300"
                   loading="lazy"

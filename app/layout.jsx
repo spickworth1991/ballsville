@@ -4,7 +4,6 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { siteConfig } from "@/app/config/siteConfig";
 
-
 export const metadata = {
   metadataBase: new URL(siteConfig.domain),
   title: {
@@ -98,7 +97,6 @@ export default function RootLayout({ children }) {
       suppressHydrationWarning
       className="overflow-x-hidden"
     >
-
       <head>
         {/* Sitewide structured data */}
         <script
@@ -123,8 +121,19 @@ export default function RootLayout({ children }) {
         <meta name="supabase-anon" content={SUPABASE_ANON} />
       </head>
 
-      {/* Body uses theme tokens only; cosmic bg handled by .page-bg on content */}
+      {/* Body uses theme tokens only; cosmic bg now handled by video */}
       <body className="bg-bg text-fg overflow-x-hidden">
+        {/* 🔥 Full-screen video background */}
+        <video
+          className="site-bg-video"
+          autoPlay
+          loop
+          muted
+          playsInline
+        >
+          <source src="/space.mp4" type="video/mp4" />
+        </video>
+
         <Navbar />
         <div className="page-bg">{children}</div>
         <Footer />

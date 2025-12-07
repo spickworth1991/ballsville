@@ -179,7 +179,7 @@ export default function DynastyLeaguesClient() {
       </section>
 
       {/* GAME PAYOUTS / BONUSES (applies to all years) */}
-      <section className="space-y-3">
+      <section className="mt-6 rounded-xl bg-card-surface border border-subtle px-4 py-3 text-xs sm:text-sm text-muted space-y-3">
         <h2 className="text-xl sm:text-2xl font-semibold">
           Payouts &amp; Bonuses
         </h2>

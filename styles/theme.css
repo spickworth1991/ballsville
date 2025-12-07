@@ -480,7 +480,8 @@ body {
 /* Full-page cosmic background (used by layout) */
 .page-bg {
   min-height: calc(100vh - var(--footer-height) - var(--nav-height));
-  background-image: url("/photos/space-bg-vert.png");
+  /* background-image: url("/photos/space-bg-vert-v2.png"); */
+  background-image: url("/photos/space.mp4");
   background-size: cover;
   background-position: top center;
   background-repeat: no-repeat;
@@ -488,6 +489,18 @@ body {
   position:sticky;
   width: 100%;
   overflow-x: hidden;
+}
+
+/* Sitewide background video */
+.site-bg-video {
+  position: fixed;
+  inset: 0;              /* top:0; right:0; bottom:0; left:0 */
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+  z-index: -1;           /* behind navbar + content */
+  pointer-events: none;  /* clicks go to the page, not the video */
+  background-color: #000; /* fallback if video can’t load */
 }
 
 
@@ -593,7 +606,7 @@ body {
 @media (max-width: 768px) {
   .page-bg {
   min-height: calc(100vh - var(--footer-height) - var(--nav-height));
-  background-image: url("/photos/space-bg-vert.png");
+  background-image: url("/photos/space-bg-vert-v2.png");
   background-size: auto auto;
   background-position: top center;
   background-repeat: repeat;

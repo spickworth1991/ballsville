@@ -1,11 +1,18 @@
 // scripts/buildgauntlet.mjs
 // Node script to:
 // 1) Fetch Sleeper data for the 2025 Gauntlet leagues
-// 2) Seed after Week 8 by WIN/LOSS record INCLUDING vs. median each week
+// 2) Use MANUAL seeds from Supabase table `gauntlet_seeds_2025` (Leg 1 is manual now)
 // 3) Apply Guillotine eliminations Weeks 9–12 (lowest weekly score, survivors move up)
 // 4) Compute Leg 3 (Weeks 13–17) Best Ball totals for survivors only
 // 5) Build bracket payload (Weeks 13–16 playoffs) + Week 17 Grand Championship
 // 6) Upsert into Supabase table `gauntlet_leg3`
+//
+// IMPORTANT CHANGES:
+// - No more hard-coded GAUNTLET_2025 league list: leagues + seeds come from `gauntlet_seeds_2025`.
+// - Script checks ALL leagues for missing seeds and lists every problem league.
+// - Script auto-fills league_name in `gauntlet_seeds_2025` from Sleeper if missing.
+// - ✅ Seed completeness is based purely on Supabase: a league is "fully seeded" when
+//   every owner row has a non-null seed (seededCount === ownersCount), not on a fixed 12.
 
 import "dotenv/config";
 import axios from "axios";
@@ -14,11 +21,7 @@ import { createClient } from "@supabase/supabase-js";
 
 /* ================== CONFIG ================== */
 
-const YEAR = "2025";
-
-// Seeding phase (standings):
-const SEED_START = 1;
-const SEED_END = 8; // Weeks 1–8 → standings
+const YEAR = 2025;
 
 // Guillotine phase:
 const LEG2_START = 9;
@@ -39,6 +42,13 @@ const GRAND_CHAMP_WEEK = 17; // Week 17 = all God winners vs each other
 
 const CONCURRENCY = 5;
 const RETRIES = 3;
+
+// Canonical God order (for display + consistent ordering)
+const GOD_ORDER = {
+  Egyptians: ["Amun-Rah", "Osiris", "Horus", "Anubis"],
+  Greeks: ["Zeus", "Ares", "Apollo", "Poseidon"],
+  Romans: ["Jupiter", "Mars", "Minerva", "Saturn"],
+};
 
 // Supabase (service role, server-side only)
 const NEXT_PUBLIC_SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -62,46 +72,7 @@ const supabase = createClient(
 const limit = pLimit(CONCURRENCY);
 const axiosInstance = axios.create();
 
-/**
- * ONLY the 2025 Gauntlet leagues.
- */
-const GAUNTLET_2025 = {
-  name: "2025 Gauntlet",
-  divisions: {
-    Romans: [
-      "1248763372128706560",
-      "1248762972466073600",
-      "1231418044421521408",
-      "1231417737801105408",
-      "1218702306590072832",
-      "1218702136909512705",
-      "1212974613181513728",
-      "1212974482948378624",
-    ],
-    Greeks: [
-      "1248762436618567680",
-      "1248761188276240384",
-      "1231417454689779712",
-      "1231417314214154240",
-      "1218701899885191168",
-      "1218701807333675008",
-      "1212974238936350721",
-      "1212974099479941120",
-    ],
-    Egyptians: [
-      "1248760700227047424",
-      "1248759939321577472",
-      "1231417137134841856",
-      "1231416906401984512",
-      "1218701651540459520",
-      "1218701332836265984",
-      "1212973917774290944",
-      "1212967422475112448",
-    ],
-  },
-};
-
-/* ================== HELPERS ================== */
+/* ================== BASIC HELPERS ================== */
 
 const normId = (x) => (x == null ? null : String(x).trim());
 
@@ -131,6 +102,82 @@ function playerPos(playersDB, id) {
     p.position || (p.fantasy_positions && p.fantasy_positions[0]) || ""
   ).toUpperCase();
 }
+
+// Determine the "current" Leg 3 playoff week across ALL leagues.
+// Logic: walk weeks 13–16 in order; the first week where nobody has
+// a non-zero score is considered "not started yet", so we go back one.
+function detectGlobalCurrentWeek(allTeams) {
+  if (!Array.isArray(allTeams) || allTeams.length === 0) return null;
+
+  let current = null;
+
+  for (let i = 0; i < LEG3_ROUND_WEEKS.length; i++) {
+    const w = LEG3_ROUND_WEEKS[i];
+
+    const anyNonZero = allTeams.some((t) => {
+      const v = t.leg3Weekly?.[w];
+      return typeof v === "number" && v !== 0;
+    });
+
+    if (!anyNonZero) {
+      // First "empty" week → previous week was the last active
+      return current;
+    }
+
+    current = w;
+  }
+
+  // If we got here, all 13–16 have some data → current is Week 16
+  return current;
+}
+
+/**
+ * Fill league_name in gauntlet_seeds_2025 when missing, using Sleeper.
+ */
+async function ensureLeagueNames(leaguesMap) {
+  const toUpdate = [];
+
+  for (const [leagueId, info] of leaguesMap.entries()) {
+    if (info.leagueName) continue; // already have a name, skip
+
+    try {
+      const leagueInfo = await fetchWithRetry(
+        `https://api.sleeper.app/v1/league/${leagueId}`
+      );
+      const name = leagueInfo?.name || leagueId;
+
+      info.leagueName = name;
+      toUpdate.push({ leagueId, name });
+    } catch (err) {
+      console.warn(
+        `⚠️  Could not fetch league name from Sleeper for league ${leagueId}:`,
+        err.message || err
+      );
+    }
+  }
+
+  // Write back to Supabase (one UPDATE per league; small n)
+  for (const u of toUpdate) {
+    const { error } = await supabase
+      .from("gauntlet_seeds_2025")
+      .update({ league_name: u.name })
+      .eq("year", YEAR)
+      .eq("league_id", u.leagueId);
+
+    if (error) {
+      console.warn(
+        `⚠️  Failed to update league_name for league ${u.leagueId}:`,
+        error
+      );
+    } else {
+      console.log(
+        `  ✅ Updated league_name for ${u.leagueId} → ${u.name} in gauntlet_seeds_2025`
+      );
+    }
+  }
+}
+
+/* ================== BEST BALL ================== */
 
 /**
  * Best Ball lineup:
@@ -223,8 +270,183 @@ function computeBestBallLineup(players_points = {}, playersDB) {
       pos: e.pos,
       slot: e.slot,
     })),
-  bench,
-  total,
+    bench,
+    total,
+  };
+}
+
+/* ================== LOAD LEAGUES + SEEDS FROM SUPABASE ================== */
+
+/**
+ * Structure of gauntlet_seeds_2025 (assumed):
+ * - id (PK)
+ * - year (int)
+ * - division (text)  e.g. "Egyptians", "Greeks", "Romans"
+ * - god_name (text)  e.g. "Amun-Rah"
+ * - side (text)      "light" | "dark"
+ * - league_id (text)
+ * - league_name (text, nullable)
+ * - owner_id (text)
+ * - owner_name (text)
+ * - seed (int, nullable)
+ */
+
+async function loadLeaguesAndSeeds(year) {
+  console.log("⬇️  Loading gauntlet seeds from Supabase…");
+
+  const { data, error } = await supabase
+    .from("gauntlet_seeds_2025")
+    .select(
+      "id, year, division, god_name, god, side, league_id, league_name, owner_id, owner_name, seed"
+    )
+    .eq("year", String(year));
+
+  if (error) {
+    console.error("❌ Error loading gauntlet_seeds_2025:", error);
+    throw error;
+  }
+
+  if (!data || !data.length) {
+    throw new Error(
+      "No rows found in gauntlet_seeds_2025 for this year. Populate seeds via /admin/gauntlet/seeds first."
+    );
+  }
+
+  // leagueId -> config
+  const leaguesMap = new Map();
+
+  for (const row of data) {
+    const leagueId = String(row.league_id);
+    if (!leaguesMap.has(leagueId)) {
+      const godName =
+        row.god_name ||
+        row.god || // fallback if an older column was used
+        "Unknown God";
+
+      leaguesMap.set(leagueId, {
+        leagueId,
+        leagueName: row.league_name || null,
+        division: row.division || "Unknown",
+        godName,
+        side: row.side || "light",
+        seedsByOwnerId: {}, // owner_id -> seed|null
+        ownerNamesById: {}, // owner_id -> owner_name
+        seededCount: 0,
+        ownersCount: 0,
+        missingOwners: [], // filled below
+      });
+    }
+
+    const league = leaguesMap.get(leagueId);
+    const ownerId = row.owner_id ? String(row.owner_id) : null;
+
+    if (ownerId) {
+      league.seedsByOwnerId[ownerId] =
+        row.seed != null ? Number(row.seed) : null;
+      league.ownerNamesById[ownerId] = row.owner_name || ownerId;
+    }
+  }
+
+  // Auto-fill missing league_name by hitting Sleeper once per league
+  await ensureLeagueNames(leaguesMap);
+
+  // Calculate seededCount / ownersCount / missingOwners
+  const missingSeedLeagues = [];
+
+  leaguesMap.forEach((league) => {
+    const ownerIds = Object.keys(league.ownerNamesById);
+    league.ownersCount = ownerIds.length;
+
+    const missingOwners = [];
+    let seededCount = 0;
+
+    ownerIds.forEach((ownerId) => {
+      const s = league.seedsByOwnerId[ownerId];
+      if (s != null) {
+        seededCount += 1;
+      } else {
+        missingOwners.push({
+          ownerId,
+          ownerName: league.ownerNamesById[ownerId],
+        });
+      }
+    });
+
+    league.seededCount = seededCount;
+    league.missingOwners = missingOwners;
+
+    // ❗ A league is "missing seeds" if any owner row has a null seed
+    if (seededCount < league.ownersCount) {
+      missingSeedLeagues.push({
+        leagueId: league.leagueId,
+        leagueName: league.leagueName,
+        division: league.division,
+        godName: league.godName,
+        side: league.side,
+        seededCount,
+        ownersCount: league.ownersCount,
+        missingOwners,
+      });
+    }
+  });
+
+  // Build division → gods → {lightLeagueId, darkLeagueId}
+  const godsByDivision = {};
+  leaguesMap.forEach((league) => {
+    const { division, godName, side, leagueId } = league;
+    if (!division || !godName || !side || !leagueId) return;
+    if (!godsByDivision[division]) godsByDivision[division] = {};
+    if (!godsByDivision[division][godName]) {
+      godsByDivision[division][godName] = {
+        division,
+        godName,
+        lightLeagueId: null,
+        darkLeagueId: null,
+      };
+    }
+    if (side === "light") {
+      godsByDivision[division][godName].lightLeagueId = leagueId;
+    } else if (side === "dark") {
+      godsByDivision[division][godName].darkLeagueId = leagueId;
+    }
+  });
+
+  // Turn godsByDivision into an ordered array per division
+  const divisionGodConfig = {};
+  Object.entries(godsByDivision).forEach(([division, godsObj]) => {
+    const arr = [];
+    const inDbNames = Object.keys(godsObj);
+    const order = GOD_ORDER[division] || [];
+
+    // Respect canonical God order first
+    order.forEach((name) => {
+      if (godsObj[name]) arr.push(godsObj[name]);
+    });
+    // Then add any extra gods not in the canonical list
+    inDbNames.forEach((name) => {
+      if (!order.includes(name)) arr.push(godsObj[name]);
+    });
+
+    divisionGodConfig[division] = arr;
+  });
+
+  console.log("\n🧭 Discovered divisions & gods from gauntlet_seeds_2025:");
+  Object.entries(divisionGodConfig).forEach(([division, godsArr]) => {
+    console.log(`  • ${division}:`);
+    godsArr.forEach((g) => {
+      console.log(
+        `     - ${g.godName} (light: ${g.lightLeagueId || "NONE"}, dark: ${
+          g.darkLeagueId || "NONE"
+        })`
+      );
+    });
+  });
+
+  // ⬅️ NO THROW HERE – we return missingSeedLeagues so the caller can handle it.
+  return {
+    divisionGodConfig,
+    leaguesConfig: Object.fromEntries(leaguesMap.entries()),
+    missingSeedLeagues,
   };
 }
 
@@ -232,18 +454,25 @@ function computeBestBallLineup(players_points = {}, playersDB) {
 
 /**
  * Process a single league:
- * - Weeks 1–8: W/L/T standings (H2H + median)
+ * - Uses MANUAL seeds from gauntlet_seeds_2025 as the Leg 1 seeding.
  * - Weeks 9–12: Guillotine eliminations (lowest weekly score / next-week 0 / disappear)
  * - Weeks 13–17: Best Ball scoring for survivors only
  *
  * Leg 3 scoring is per-week BB; bracket logic is built separately.
  */
-async function processLeague(leagueId, divisionName, playersDB) {
+async function processLeague(
+  leagueId,
+  divisionName,
+  godName,
+  side,
+  seedsForLeague,
+  playersDB
+) {
   const baseUrl = `https://api.sleeper.app/v1/league/${leagueId}`;
 
   const leagueInfo = await fetchWithRetry(baseUrl);
   const leagueName = leagueInfo.name;
-  const leagueTag = `[${divisionName}] ${leagueName} (${leagueId})`;
+  const leagueTag = `[${divisionName} – ${godName} – ${side}] ${leagueName} (${leagueId})`;
 
   console.log(`\n🏟  ${leagueTag}`);
 
@@ -255,16 +484,15 @@ async function processLeague(leagueId, divisionName, playersDB) {
     userMap[u.user_id] = u.display_name;
   });
 
-  const rosterOwnerMap = {};
-  rosters.forEach((r) => {
-    rosterOwnerMap[r.roster_id] = r.owner_id;
-  });
-
   const ownersByRoster = new Map();
   rosters.forEach((r) => {
     const rosterId = r.roster_id;
     const ownerId = r.owner_id;
     const ownerName = userMap[ownerId] || `Owner ${ownerId}`;
+    const manualSeed =
+      seedsForLeague && seedsForLeague[ownerId] != null
+        ? Number(seedsForLeague[ownerId])
+        : null;
 
     ownersByRoster.set(rosterId, {
       rosterId,
@@ -273,10 +501,13 @@ async function processLeague(leagueId, divisionName, playersDB) {
       leagueId,
       leagueName,
       division: divisionName,
-      record: { wins: 0, losses: 0, ties: 0 },
+      godName,
+      side,
+      // Leg 1 is MANUAL now:
+      record: { wins: 0, losses: 0, ties: 0 }, // kept for logging, but not used
       seedPointsWeekly: {},
       seedPointsTotal: 0,
-      initialSeed: null,
+      initialSeed: manualSeed, // ← manual seed
       leg2Weekly: {},
       leg2ElimWeek: null,
       leg3Weekly: {},
@@ -287,121 +518,25 @@ async function processLeague(leagueId, divisionName, playersDB) {
     });
   });
 
-  /* ---------- Phase 1: Week 1–8 standings ---------- */
+  // ====== Phase 1: MANUAL SEEDS ONLY (no Week 1–8 computation) ======
 
-  for (let week = SEED_START; week <= SEED_END; week++) {
-    const matchups = await fetchWithRetry(`${baseUrl}/matchups/${week}`);
-    if (!matchups || !matchups.length) {
-      console.log(`  ${leagueTag} • Week ${week}: no matchups (skipping)`);
-      continue;
-    }
-
-    const byMatchup = new Map();
-    const weekPoints = new Map();
-
-    matchups.forEach((m) => {
-      const rosterId = m.roster_id;
-      const owner = ownersByRoster.get(rosterId);
-      if (!owner) return;
-
-      const pts = Number(m.points ?? 0);
-
-      owner.seedPointsWeekly[week] =
-        (owner.seedPointsWeekly[week] || 0) + pts;
-      owner.seedPointsTotal += pts;
-
-      weekPoints.set(rosterId, (weekPoints.get(rosterId) || 0) + pts);
-
-      const matchupId = m.matchup_id;
-      if (matchupId == null) return;
-
-      const list = byMatchup.get(matchupId) || [];
-      list.push({ rosterId, points: pts });
-      byMatchup.set(matchupId, list);
+  console.log(`  ${leagueTag} 🧮 Manual seeds from gauntlet_seeds_2025:`);
+  Array.from(ownersByRoster.values())
+    .sort((a, b) => {
+      const sa = a.initialSeed ?? 999;
+      const sb = b.initialSeed ?? 999;
+      if (sa !== sb) return sa - sb;
+      return (a.ownerName || "").localeCompare(b.ownerName || "");
+    })
+    .forEach((o) => {
+      console.log(
+        `   ${leagueTag}  Seed ${
+          o.initialSeed != null ? String(o.initialSeed).padStart(2, " ") : "??"
+        } – ${o.ownerName} (owner_id=${o.ownerId})`
+      );
     });
-
-    // H2H
-    for (const [, teams] of byMatchup.entries()) {
-      if (!teams.length) continue;
-      const pointsArr = teams.map((t) => t.points);
-      const maxPts = Math.max(...pointsArr);
-      const minPts = Math.min(...pointsArr);
-
-      if (maxPts === minPts) {
-        teams.forEach(({ rosterId }) => {
-          const owner = ownersByRoster.get(rosterId);
-          if (owner) owner.record.ties++;
-        });
-      } else {
-        teams.forEach(({ rosterId, points }) => {
-          const owner = ownersByRoster.get(rosterId);
-          if (!owner) return;
-          if (points === maxPts) owner.record.wins++;
-          else owner.record.losses++;
-        });
-      }
-    }
-
-    // Median
-    const allScores = Array.from(weekPoints.values()).sort((a, b) => a - b);
-    if (!allScores.length) {
-      console.log(`  ${leagueTag} • Week ${week}: no scores for median`);
-      continue;
-    }
-
-    let median;
-    const n = allScores.length;
-    if (n % 2 === 1) {
-      median = allScores[(n - 1) / 2];
-    } else {
-      median = (allScores[n / 2 - 1] + allScores[n / 2]) / 2;
-    }
-
-    weekPoints.forEach((pts, rosterId) => {
-      const owner = ownersByRoster.get(rosterId);
-      if (!owner) return;
-
-      if (pts > median) owner.record.wins++;
-      else if (pts < median) owner.record.losses++;
-      else owner.record.ties++;
-    });
-
-    console.log(
-      `  ${leagueTag} • Week ${week}: median=${median.toFixed(
-        2
-      )}, teams=${weekPoints.size}`
-    );
-  }
 
   const allOwners = Array.from(ownersByRoster.values());
-
-  allOwners.sort((a, b) => {
-    if (b.record.wins !== a.record.wins) return b.record.wins - a.record.wins;
-    if (a.record.losses !== b.record.losses)
-      return a.record.losses - b.record.losses;
-    if (b.seedPointsTotal !== a.seedPointsTotal)
-      return b.seedPointsTotal - a.seedPointsTotal;
-    return (a.ownerName || "").localeCompare(b.ownerName || "");
-  });
-
-  allOwners.forEach((o, idx) => {
-    o.initialSeed = idx + 1;
-  });
-
-  console.log(
-    `  ${leagueTag} 🧮 Initial seeds after Week 8 (W/L vs. opponent + median):`
-  );
-  allOwners.forEach((o) => {
-    const { wins, losses, ties } = o.record;
-    console.log(
-      `   ${leagueTag}  Seed ${String(o.initialSeed).padStart(
-        2,
-        " "
-      )} – ${o.ownerName}  (${wins}-${losses}-${ties}), pts=${o.seedPointsTotal.toFixed(
-        2
-      )}`
-    );
-  });
 
   /* ---------- Phase 2: Leg 2 Guillotine (Weeks 9–12) ---------- */
 
@@ -468,7 +603,7 @@ async function processLeague(leagueId, divisionName, playersDB) {
         );
         console.log(
           `  ${leagueTag} 🔪 Week ${week} Guillotine via week ${nextWeek} ZERO pts: ` +
-            `${eliminated.ownerName} (initial seed ${eliminated.initialSeed})`
+            `${eliminated.ownerName} (seed ${eliminated.initialSeed ?? "??"})`
         );
       } else {
         const nextWeekRosterIds = new Set(
@@ -491,7 +626,7 @@ async function processLeague(leagueId, divisionName, playersDB) {
           );
           console.log(
             `  ${leagueTag} 🔪 Week ${week} Guillotine via week ${nextWeek} DISAPPEARED roster: ` +
-              `${eliminated.ownerName} (initial seed ${eliminated.initialSeed})`
+              `${eliminated.ownerName} (seed ${eliminated.initialSeed ?? "??"})`
           );
         }
       }
@@ -531,8 +666,8 @@ async function processLeague(leagueId, divisionName, playersDB) {
 
       console.log(
         `  ${leagueTag} 🔪 Week ${week} Guillotine FALLBACK (lowest pts this week): ` +
-          `${eliminated.ownerName} – ${minPts.toFixed(2)} pts (initial seed ${
-            eliminated.initialSeed
+          `${eliminated.ownerName} – ${minPts.toFixed(2)} pts (seed ${
+            eliminated.initialSeed ?? "??"
           })`
       );
     }
@@ -547,25 +682,25 @@ async function processLeague(leagueId, divisionName, playersDB) {
 
   const survivors = allOwners.filter((o) => o.leg2ElimWeek == null);
 
+  // Final seeds for bracket: preserve relative ordering of manual seeds
   survivors
-    .sort((a, b) => (a.initialSeed || 999) - (b.initialSeed || 999))
+    .slice()
+    .sort((a, b) => {
+      const sa = a.initialSeed ?? 999;
+      const sb = b.initialSeed ?? 999;
+      if (sa !== sb) return sa - sb;
+      return (a.ownerName || "").localeCompare(b.ownerName || "");
+    })
     .forEach((o, idx) => {
-      o.finalSeed = idx + 1;
+      o.finalSeed = idx + 1; // 1..8 inside each league
     });
 
-  console.log(
-    `  ${leagueTag} 🏅 Final seeds after Guillotine (survivors only):`
-  );
-  survivors.forEach((o) => {
-    console.log(
-      `   ${leagueTag}  Final Seed ${String(o.finalSeed).padStart(
-        2,
-        " "
-      )} – ${o.ownerName} (initial ${o.initialSeed}, elimWeek=${
-        o.leg2ElimWeek ?? "survived"
-      })`
-    );
-  });
+  survivors
+    .slice()
+    .sort((a, b) => (a.finalSeed || 999) - (b.finalSeed || 999))
+    .forEach((o) => {
+      // logging suppressed
+    });
 
   /* ---------- Phase 3: Leg 3 Best Ball (Weeks 13–17, survivors only) ---------- */
 
@@ -599,14 +734,12 @@ async function processLeague(leagueId, divisionName, playersDB) {
   }
 
   console.log(`  ${leagueTag} 🎯 Leg 3 Best Ball totals (survivors):`);
-  survivors.forEach((o) => {
-    console.log(
-      `   ${leagueTag}  Final Seed ${String(o.finalSeed).padStart(
-        2,
-        " "
-      )} – ${o.ownerName}  Leg3Total=${o.leg3Total.toFixed(2)}`
-    );
-  });
+  survivors
+    .slice()
+    .sort((a, b) => (a.finalSeed || 999) - (b.finalSeed || 999))
+    .forEach((o) => {
+      // logging suppressed
+    });
 
   const finalOwners = survivors
     .slice()
@@ -616,6 +749,8 @@ async function processLeague(leagueId, divisionName, playersDB) {
     leagueId,
     leagueName,
     division: divisionName,
+    godName,
+    side,
     owners: finalOwners,
     eliminated: allOwners.filter((o) => o.leg2ElimWeek != null),
   };
@@ -630,38 +765,55 @@ async function processLeague(leagueId, divisionName, playersDB) {
  *  - Round 3 → Week 15 (4 → 2)
  *  - Round 4 → Week 16 (2 → 1)  => God Champion
  *
- * Returns for each God:
- *  - pairings: Round 1 seeded summary (like before, using Leg3 totals)
- *  - bracketRounds: per-round matches (weeks 13–16 as far as played)
- *  - champion: final God champion (once Week 16 is complete)
+ * NOTE (UPDATED):
+ *  - `pairings` is now a **static** view of the Round 1 bracket (Week 13),
+ *    seeded 1–8 vs 8–1 and NEVER changes on later runs.
+ *  - `bracketRounds` holds all the week-by-week results and winners,
+ *    so the frontend can show only the “alive” teams each week.
  */
-function buildGodsForDivisionAndChampions(divisionName, leagueResults) {
+function buildGodsForDivisionAndChampions(
+  divisionName,
+  leagueResults,
+  godConfigs,
+  currentBracketWeek
+) {
   const gods = [];
   const champions = [];
+
   const byId = {};
   leagueResults.forEach((lr) => {
     byId[lr.leagueId] = lr;
   });
-
-  const leagueOrder = GAUNTLET_2025.divisions[divisionName] || [];
-  if (!leagueOrder.length) return { gods, champions };
 
   const getWeekScore = (team, week) => {
     const v = team.leg3Weekly?.[week];
     return typeof v === "number" ? v : 0;
   };
 
-  const getTotalScore = (team) =>
-    Number((team.leg3Total || 0).toFixed(2));
+  for (let g = 0; g < godConfigs.length; g++) {
+    const godCfg = godConfigs[g];
+    const { godName, lightLeagueId, darkLeagueId } = godCfg;
 
-  for (let i = 0; i < leagueOrder.length; i += 2) {
-    const lightId = leagueOrder[i];
-    const darkId = leagueOrder[i + 1];
+    const light = lightLeagueId ? byId[lightLeagueId] : null;
+    const dark = darkLeagueId ? byId[darkLeagueId] : null;
 
-    const light = byId[lightId];
-    const dark = byId[darkId];
-
-    if (!light || !dark) continue;
+    if (!light || !dark) {
+      gods.push({
+        index: g + 1,
+        godName,
+        division: divisionName,
+        lightLeagueId: lightLeagueId || null,
+        lightLeagueName: light?.leagueName || null,
+        darkLeagueId: darkLeagueId || null,
+        darkLeagueName: dark?.leagueName || null,
+        lightSeeds: [],
+        darkSeeds: [],
+        pairings: [],
+        bracketRounds: [],
+        champion: null,
+      });
+      continue;
+    }
 
     const lightTeams = (light.owners || [])
       .map((o) => ({
@@ -670,6 +822,7 @@ function buildGodsForDivisionAndChampions(divisionName, leagueResults) {
         leagueId: light.leagueId,
         leagueName: light.leagueName,
         division: divisionName,
+        godName,
         seed: o.finalSeed ?? o.initialSeed ?? 999,
       }))
       .sort((a, b) => a.seed - b.seed);
@@ -681,16 +834,18 @@ function buildGodsForDivisionAndChampions(divisionName, leagueResults) {
         leagueId: dark.leagueId,
         leagueName: dark.leagueName,
         division: divisionName,
+        godName,
         seed: o.finalSeed ?? o.initialSeed ?? 999,
       }))
       .sort((a, b) => a.seed - b.seed);
 
     const maxSeeds = Math.min(8, lightTeams.length, darkTeams.length);
-    const godIndex = gods.length + 1;
+    const godIndex = g + 1;
 
     if (maxSeeds === 0) {
       gods.push({
         index: godIndex,
+        godName,
         division: divisionName,
         lightLeagueId: light.leagueId,
         lightLeagueName: light.leagueName,
@@ -707,38 +862,11 @@ function buildGodsForDivisionAndChampions(divisionName, leagueResults) {
 
     const allTeams = [...lightTeams, ...darkTeams];
 
-    // 🔍 Determine which Leg 3 week we are currently in:
-    // "current week = latest week that has scores, AND the next mapped week is empty"
-    let currentWeek = null;
-
-    for (let idx = 0; idx < LEG3_ROUND_WEEKS.length; idx++) {
-      const w = LEG3_ROUND_WEEKS[idx];
-      const anyThis = allTeams.some(
-        (t) => typeof t.leg3Weekly?.[w] === "number"
-      );
-      if (!anyThis) continue;
-
-      const nextW = LEG3_ROUND_WEEKS[idx + 1];
-      if (!nextW) {
-        currentWeek = w; // last mapped week
-      } else {
-        const anyNext = allTeams.some(
-          (t) => typeof t.leg3Weekly?.[nextW] === "number"
-        );
-        if (!anyNext) {
-          currentWeek = w;
-          break;
-        } else {
-          currentWeek = w; // keep moving forward
-        }
-      }
-    }
-
-    // Round 1 seed pairings (this is what UI always shows, with rolling totals)
+    // ---------- Round 1 seed pairings (Week 13): 1–8, 2–7, 3–6, 4–5 ----------
     const round1Pairings = [];
     for (let s = 1; s <= maxSeeds; s++) {
       const lightTeam = lightTeams.find((t) => t.seed === s);
-      const darkSeed = maxSeeds - s + 1;
+      const darkSeed = maxSeeds - s + 1; // 8→1, 7→2, ...
       const darkTeam = darkTeams.find((t) => t.seed === darkSeed);
       if (!lightTeam || !darkTeam) continue;
 
@@ -749,43 +877,22 @@ function buildGodsForDivisionAndChampions(divisionName, leagueResults) {
       });
     }
 
-    // If no Leg 3 data at all, just show seeded matchups with 0s
-    if (!currentWeek) {
-      const uiPairings = round1Pairings.map((p) => ({
-        match: p.matchIndex,
-        round: 1,
-        week: LEG3_ROUND_WEEKS[0],
-        lightSeed: p.teamA.seed,
-        darkSeed: p.teamB.seed,
-        lightOwnerName: p.teamA.ownerName,
-        darkOwnerName: p.teamB.ownerName,
-        lightLeg3Total: 0,
-        darkLeg3Total: 0,
-      }));
-
-      gods.push({
-        index: godIndex,
-        division: divisionName,
-        lightLeagueId: light.leagueId,
-        lightLeagueName: light.leagueName,
-        darkLeagueId: dark.leagueId,
-        darkLeagueName: dark.leagueName,
-        lightSeeds: lightTeams,
-        darkSeeds: darkTeams,
-        pairings: uiPairings,
-        bracketRounds: [],
-        champion: null,
-      });
-
-      continue;
-    }
-
-    const currentRoundIndex = LEG3_ROUND_WEEKS.indexOf(currentWeek);
-    const roundsToSimulate = currentRoundIndex + 1; // 1..4
-
+    // ---------- Helper: decide winner ONLY if there are real points ----------
     function decideWinner(pair, week) {
       const scoreA = getWeekScore(pair.teamA, week);
       const scoreB = getWeekScore(pair.teamB, week);
+
+      const hasAnyScore = scoreA !== 0 || scoreB !== 0;
+
+      // If absolutely no scoring yet → no winner, don't advance anyone
+      if (!hasAnyScore) {
+        return {
+          winner: null,
+          loser: null,
+          scoreA,
+          scoreB,
+        };
+      }
 
       if (scoreA > scoreB) {
         return { winner: pair.teamA, loser: pair.teamB, scoreA, scoreB };
@@ -794,6 +901,7 @@ function buildGodsForDivisionAndChampions(divisionName, leagueResults) {
         return { winner: pair.teamB, loser: pair.teamA, scoreA, scoreB };
       }
 
+      // Tie-breaker: better seed (lower number)
       const seedA = pair.teamA.seed ?? 999;
       const seedB = pair.teamB.seed ?? 999;
       if (seedA < seedB) {
@@ -803,6 +911,7 @@ function buildGodsForDivisionAndChampions(divisionName, leagueResults) {
         return { winner: pair.teamB, loser: pair.teamA, scoreA, scoreB };
       }
 
+      // Final tie-break: name
       const nameA = pair.teamA.ownerName || "";
       const nameB = pair.teamB.ownerName || "";
       if (nameA.localeCompare(nameB) <= 0) {
@@ -811,105 +920,160 @@ function buildGodsForDivisionAndChampions(divisionName, leagueResults) {
       return { winner: pair.teamB, loser: pair.teamA, scoreA, scoreB };
     }
 
-    let currentPairings = round1Pairings;
-    const bracketRounds = [];
+    // ---------- Simulate rounds based on currentBracketWeek ----------
+    let bracketRounds = [];
+    let championSummary = null;
 
-    for (let r = 0; r < roundsToSimulate; r++) {
-      const week = LEG3_ROUND_WEEKS[r];
-      const roundNumber = r + 1;
+    if (currentBracketWeek) {
+      const currentRoundIndex = LEG3_ROUND_WEEKS.indexOf(currentBracketWeek);
+      const roundsToSimulate =
+        currentRoundIndex === -1 ? 0 : currentRoundIndex + 1; // 1..4
 
-      const results = [];
-      const winners = [];
+      let currentPairings = round1Pairings;
+      bracketRounds = [];
 
-      for (let idx = 0; idx < currentPairings.length; idx++) {
-        const pair = currentPairings[idx];
-        const { winner, loser, scoreA, scoreB } = decideWinner(pair, week);
+      for (let r = 0; r < roundsToSimulate; r++) {
+        const week = LEG3_ROUND_WEEKS[r];
+        const roundNumber = r + 1;
 
-        results.push({
+        const results = [];
+        const winners = [];
+
+        let allMatchesHaveWinner = true;
+        let anyMatchHasScore = false;
+
+        for (let idx = 0; idx < currentPairings.length; idx++) {
+          const pair = currentPairings[idx];
+          const { winner, loser, scoreA, scoreB } = decideWinner(pair, week);
+
+          if (scoreA !== 0 || scoreB !== 0) {
+            anyMatchHasScore = true;
+          } else {
+            allMatchesHaveWinner = false;
+          }
+
+          results.push({
+            roundNumber,
+            week,
+            matchIndex: idx + 1,
+            teamA: pair.teamA,
+            teamB: pair.teamB,
+            scoreA,
+            scoreB,
+            winner,
+            loser,
+          });
+
+          if (winner) {
+            winners.push(winner);
+          }
+        }
+
+        // If literally no one in this round has any score yet,
+        // don't add this round at all.
+        if (!anyMatchHasScore) {
+          break;
+        }
+
+        bracketRounds.push({
           roundNumber,
           week,
-          matchIndex: idx + 1,
-          teamA: pair.teamA,
-          teamB: pair.teamB,
-          scoreA,
-          scoreB,
-          winner,
-          loser,
+          results,
+          winners,
         });
-        winners.push(winner);
+
+        // If *any* match has no winner yet (0–0), stop here:
+        // we won't build future rounds until this round fully resolves.
+        if (!allMatchesHaveWinner) {
+          break;
+        }
+
+        // Winners feed into the next round (fixed bracket, no reseed)
+        const nextPairings = [];
+        for (let j = 0; j < winners.length; j += 2) {
+          if (j + 1 >= winners.length) break;
+          nextPairings.push({
+            matchIndex: j / 2 + 1,
+            teamA: winners[j],
+            teamB: winners[j + 1],
+          });
+        }
+        currentPairings = nextPairings;
+
+        if (!winners.length) break;
       }
 
-      bracketRounds.push({
-        roundNumber,
-        week,
-        results,
-        winners,
-      });
+      // 🏆 Champion only once ALL bracket weeks are complete (through Week 16)
+      const totalRounds = LEG3_ROUND_WEEKS.length; // 4
+      const lastRound = bracketRounds[bracketRounds.length - 1];
 
-      const nextPairings = [];
-      for (let j = 0; j < winners.length; j += 2) {
-        if (j + 1 >= winners.length) break;
-        nextPairings.push({
-          matchIndex: j / 2 + 1,
-          teamA: winners[j],
-          teamB: winners[j + 1],
-        });
+      const allWeeksFilledForThisGod = LEG3_ROUND_WEEKS.every((w) =>
+        allTeams.some(
+          (t) =>
+            typeof t.leg3Weekly?.[w] === "number" && t.leg3Weekly[w] !== 0
+        )
+      );
+
+      if (
+        lastRound &&
+        bracketRounds.length === totalRounds &&
+        lastRound.week === LEG3_ROUND_WEEKS[totalRounds - 1] && // week 16
+        lastRound.winners.length === 1 &&
+        allWeeksFilledForThisGod
+      ) {
+        const champ = lastRound.winners[0];
+        championSummary = {
+          division: divisionName,
+          godIndex,
+          godName,
+          leagueId: champ.leagueId,
+          leagueName: champ.leagueName,
+          rosterId: champ.rosterId,
+          ownerId: champ.ownerId,
+          ownerName: champ.ownerName,
+          finalSeed: champ.finalSeed ?? champ.seed,
+          leg3Weekly: { ...(champ.leg3Weekly || {}) },
+        };
+        champions.push(championSummary);
       }
-      currentPairings = nextPairings;
-
-      if (!winners.length) break;
     }
 
-    // 🏆 Champion ONLY when:
-    //  - all 4 rounds are simulated (through Week 16), AND
-    //  - the last round has exactly 1 winner, AND
-    //  - we actually have data for **all** bracket weeks for this God
-    let championSummary = null;
-    const totalRounds = LEG3_ROUND_WEEKS.length; // 4
-    const lastRound = bracketRounds[bracketRounds.length - 1];
+    // ---------- Static Week 13 bracket pairings (for seed preview) ----------
+    const uiPairings = round1Pairings.map((p) => {
+      let lightTeam =
+        p.teamA.side === "light"
+          ? p.teamA
+          : p.teamB.side === "light"
+          ? p.teamB
+          : p.teamA;
 
-    const allWeeksFilledForThisGod = LEG3_ROUND_WEEKS.every((w) =>
-      allTeams.some((t) => typeof t.leg3Weekly?.[w] === "number")
-    );
+      let darkTeam =
+        p.teamA.side === "dark"
+          ? p.teamA
+          : p.teamB.side === "dark"
+          ? p.teamB
+          : p.teamB;
 
-    if (
-      lastRound &&
-      roundsToSimulate === totalRounds &&
-      lastRound.week === LEG3_ROUND_WEEKS[totalRounds - 1] && // must be week 16
-      lastRound.winners.length === 1 &&
-      allWeeksFilledForThisGod
-    ) {
-      const champ = lastRound.winners[0];
-      championSummary = {
-        division: divisionName,
-        godIndex,
-        leagueId: champ.leagueId,
-        leagueName: champ.leagueName,
-        rosterId: champ.rosterId,
-        ownerId: champ.ownerId,
-        ownerName: champ.ownerName,
-        finalSeed: champ.finalSeed ?? champ.seed,
-        leg3Weekly: { ...(champ.leg3Weekly || {}) },
+      const lightScoreW13 = getWeekScore(lightTeam, LEG3_ROUND_WEEKS[0]);
+      const darkScoreW13 = getWeekScore(darkTeam, LEG3_ROUND_WEEKS[0]);
+
+      return {
+        match: p.matchIndex,
+        round: 1,
+        week: LEG3_ROUND_WEEKS[0], // always Week 13
+        godName,
+        lightSeed: lightTeam.seed,
+        darkSeed: darkTeam.seed,
+        lightOwnerName: lightTeam.ownerName,
+        darkOwnerName: darkTeam.ownerName,
+        lightLeg3Total: Number((lightScoreW13 || 0).toFixed(2)),
+        darkLeg3Total: Number((darkScoreW13 || 0).toFixed(2)),
       };
-      champions.push(championSummary);
-    }
-
-    // UI pairings: "seeded" view + rolling totals (what you had before),
-    // but we can now ALSO show the full bracketRounds if we want later.
-    const uiPairings = round1Pairings.map((p) => ({
-      match: p.matchIndex,
-      round: 1,
-      week: LEG3_ROUND_WEEKS[0],
-      lightSeed: p.teamA.seed,
-      darkSeed: p.teamB.seed,
-      lightOwnerName: p.teamA.ownerName,
-      darkOwnerName: p.teamB.ownerName,
-      lightLeg3Total: getTotalScore(p.teamA),
-      darkLeg3Total: getTotalScore(p.teamB),
-    }));
+    });
 
     gods.push({
       index: godIndex,
+      godName,
       division: divisionName,
       lightLeagueId: light.leagueId,
       lightLeagueName: light.leagueName,
@@ -952,6 +1116,7 @@ function buildGrandChampionship(champions) {
     return {
       division: ch.division,
       godIndex: ch.godIndex,
+      godName: ch.godName,
       leagueId: ch.leagueId,
       leagueName: ch.leagueName,
       rosterId: ch.rosterId,
@@ -990,47 +1155,159 @@ function buildGrandChampionship(champions) {
 async function buildGauntletLeg3Payload() {
   const playersDB = await getSleeperPlayers();
 
-  const divisions = GAUNTLET_2025.divisions;
+  const { divisionGodConfig, leaguesConfig, missingSeedLeagues } =
+    await loadLeaguesAndSeeds(YEAR);
+
+  // Leagues that are fully seeded = every owner row has a seed set
+  const seededLeagueIds = new Set(
+    Object.values(leaguesConfig)
+      .filter(
+        (lg) => lg.ownersCount > 0 && lg.seededCount === lg.ownersCount
+      )
+      .map((lg) => lg.leagueId)
+  );
+
+  if (missingSeedLeagues.length > 0) {
+    console.log(
+      "\n⚠️ Some leagues are missing manual seeds in gauntlet_seeds_2025:"
+    );
+    missingSeedLeagues.forEach((info) => {
+      console.log(
+        `  - [${info.division}] ${info.godName} (${info.side}) – ${
+          info.leagueName || "No league name"
+        } (${info.leagueId}) has ${info.seededCount}/${info.ownersCount} seeds set.`
+      );
+      if (info.missingOwners?.length) {
+        info.missingOwners.forEach((o) => {
+          console.log(
+            `       · missing seed for ${o.ownerName} (${o.ownerId})`
+          );
+        });
+      }
+    });
+    console.log(
+      "\nWe will still build Leg 3 for fully seeded leagues, " +
+        "and mark partial leagues in payload.missingSeeds for the admin UI."
+    );
+  }
+
   const divisionPayloads = {};
   const allChampions = [];
 
-  for (const [divisionName, leagueIds] of Object.entries(divisions)) {
+  // We'll store league results per division so we can build Gods AFTER
+  // we know the global current week.
+  const divisionLeagueResults = {};
+  const allTeamsForWeekDetection = [];
+
+  // First pass: process only leagues that are fully seeded
+  for (const [divisionName, gods] of Object.entries(divisionGodConfig)) {
     console.log(`\n=== Legion: ${divisionName} ===`);
     const leagueResults = [];
+
+    // Flat list of leagueIds for this division from god configs
+    const leagueIds = [];
+    gods.forEach((g) => {
+      if (g.lightLeagueId) leagueIds.push(g.lightLeagueId);
+      if (g.darkLeagueId) leagueIds.push(g.darkLeagueId);
+    });
 
     await Promise.all(
       leagueIds.map((leagueId) =>
         limit(async () => {
-          const res = await processLeague(leagueId, divisionName, playersDB);
+          const cfg = leaguesConfig[leagueId];
+          if (!cfg) {
+            console.warn(
+              `⚠️  No seeds config for league ${leagueId} in division ${divisionName}`
+            );
+            return;
+          }
+
+          if (!seededLeagueIds.has(leagueId)) {
+            console.log(
+              `  ⏭️  Skipping bracket processing for unseeded league ${leagueId} (${cfg.leagueName || "no name"}) – ${cfg.seededCount}/${cfg.ownersCount} seeds`
+            );
+            return;
+          }
+
+          const res = await processLeague(
+            leagueId,
+            cfg.division,
+            cfg.godName,
+            cfg.side,
+            cfg.seedsByOwnerId,
+            playersDB
+          );
           leagueResults.push(res);
         })
       )
     );
 
+    // Preserve league order as they appear in god configs
     const orderedLeagues = leagueIds
       .map((id) => leagueResults.find((r) => r.leagueId === id))
       .filter(Boolean);
 
+    divisionLeagueResults[divisionName] = orderedLeagues;
+
+    // Collect ALL teams (survivors) from fully seeded leagues for global week detection
+    orderedLeagues.forEach((lr) => {
+      (lr.owners || []).forEach((o) => {
+        allTeamsForWeekDetection.push(o);
+      });
+    });
+  }
+
+  // If no fully-seeded leagues yet, we can still return a payload that
+  // only lists missingSeeds; bracket / grandChamp will just be empty.
+  let globalCurrentWeek = null;
+  if (allTeamsForWeekDetection.length > 0) {
+    globalCurrentWeek = detectGlobalCurrentWeek(allTeamsForWeekDetection);
+    console.log(
+      `\n🎯 Global current Leg 3 playoff week = ${
+        globalCurrentWeek ?? "none (no Leg 3 scores yet)"
+      }`
+    );
+  } else {
+    console.log(
+      "\n🎯 No fully seeded leagues yet – skipping Leg 3 bracket scoring."
+    );
+  }
+
+  // Second pass: build Gods + champions using the global current week
+  for (const [divisionName, godsConfig] of Object.entries(divisionGodConfig)) {
+    const orderedLeagues = divisionLeagueResults[divisionName] || [];
+
     const { gods, champions } = buildGodsForDivisionAndChampions(
       divisionName,
-      orderedLeagues
+      orderedLeagues,
+      godsConfig,
+      globalCurrentWeek
     );
 
     divisionPayloads[divisionName] = {
       division: divisionName,
-      leagues: orderedLeagues,
       gods,
     };
 
     allChampions.push(...champions);
   }
 
-  const grandChampionship = buildGrandChampionship(allChampions);
+  const grandChampionship =
+    allChampions.length > 0 ? buildGrandChampionship(allChampions) : null;
+
+  const status =
+    missingSeedLeagues.length > 0
+      ? seededLeagueIds.size > 0
+        ? "partial" // some leagues ready, some not
+        : "missing_seeds" // nothing ready yet
+      : "ok";
 
   return {
-    year: YEAR,
-    name: `${YEAR} Gauntlet – Leg 3 Bracket (W1–8 standings+median, W9–12 Guillotine, W13–16 playoff, W17 Grand Championship)`,
+    year: String(YEAR),
+    name: `${YEAR} Gauntlet – Leg 3 Bracket (Manual seeds, W9–12 Guillotine, W13–16 playoff, W17 Grand Championship)`,
     updatedAt: new Date().toISOString(),
+    status,
+    missingSeeds: missingSeedLeagues, // includes missingOwners per league
     divisions: divisionPayloads,
     grandChampionship,
   };
@@ -1041,7 +1318,7 @@ async function buildGauntletLeg3Payload() {
 async function main() {
   try {
     console.log(
-      "🚀 Building Gauntlet Leg 3 payload (W1–8 W/L+median, W9–12 Guillotine, W13–16 bracket, W17 Grand Championship)…"
+      "🚀 Building Gauntlet Leg 3 payload (manual seeds, W9–12 Guillotine, W13–16 bracket, W17 Grand Championship)…"
     );
     const payload = await buildGauntletLeg3Payload();
 
@@ -1050,7 +1327,7 @@ async function main() {
       .from("gauntlet_leg3")
       .upsert(
         {
-          year: YEAR,
+          year: String(YEAR),
           payload,
           updated_at: new Date().toISOString(),
         },

@@ -175,7 +175,7 @@ export default function Navbar() {
               onClick={handleNavClick}
             >
               <img
-                src="/logo_navbar@2x.png"
+                src="/logo_navbar@2x-v2.png"
                 alt={siteConfig.name}
                 width={scrolled ? 24 : 32}
                 height={scrolled ? 24 : 32}

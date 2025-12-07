@@ -88,9 +88,10 @@ export default function DynastyPage() {
                 Championship week verification across all leagues
               </span>
             </div>
-
+            <section className="mt-6 rounded-xl space-y-1 border border-subtle bg-card-surface py-2 px-4 shadow-[0_0_80px_rgba(34,211,238,0.25)]">
+        <h2 className="text-xl sm:text-2xl font-semibold"></h2>
             <p className="mt-4 text-xs sm:text-sm text-muted">
-              <span className="font-semibold">Westlex – Welcome to 2025.</span>{" "}
+              <span className="font-semibold">Welcome to 2025.</span>{" "}
               Our Dynasty game is in high demand, which lets us hand-select
               managers we want with us long-term. It creates better leagues,
               better stories, and bigger upside.
@@ -107,6 +108,7 @@ export default function DynastyPage() {
                 outcomes and cross-league verification.
               </li>
             </ul>
+            </section>
 
             <div className="mt-6 rounded-xl bg-card-surface border border-subtle px-4 py-3 text-xs sm:text-sm text-muted">
               Drafts are{" "}
@@ -119,31 +121,40 @@ export default function DynastyPage() {
               (reverse order, a BALLSVILLE setting).
             </div>
           </div>
-
-          <div className="relative h-56 sm:h-64 md:h-80 rounded-2xl overflow-hidden border border-subtle bg-card-surface">
+            <div className="">
+          <div className="relative h-56 sm:h-64 md:h-80 overflow-hidden">
             <Image
-              src="/photos/dynasty.webp"
+              src="/photos/dynasty-v2.webp"
               alt="The Heroes & Dragons of Dynasty"
               fill
-              className="object-cover"
+              className="object-contain"
               priority
             />
             <div className="absolute inset-0 bg-gradient-to-t from-bg/80 via-bg/30 to-transparent" />
-            <div className="absolute bottom-4 left-4 right-4 text-xs sm:text-sm">
+            <div className="absolute text-xs sm:text-sm">
               <div className="inline-flex items-center gap-2 rounded-full bg-bg/80 px-3 py-1 border border-subtle">
                 <span className="text-[11px] tracking-[0.25em] uppercase text-accent">
                   🐉 Dynasty Empire
                 </span>
               </div>
+              
+            </div>
+            
+          </div>
+          <div className="relative h-24">
+          <div className="absolute  bg-gradient-to-t from-bg/90 via-bg/50 to-transparent rounded-md p-3">
               <p className="mt-2 font-semibold">
                 The Heroes of Dynasty &amp; the Dragons of Dynasty
               </p>
               <p className="text-[11px] text-muted">
                 Vets draft now. Rookies draft post-NFL Draft. Derby style
                 startup sets both drafts.
+                
               </p>
-            </div>
-          </div>
+              </div>
+              </div>
+              </div>
+          
         </section>
 
         {/* DOCS / CORE DOCUMENTS */}
