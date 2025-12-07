@@ -1,5 +1,4 @@
-export const dynamic = "force-static"; // required for output: "export" builds
-import { NextResponse } from "next/server";
+
 import { createClient } from "@supabase/supabase-js";
 import pLimit from "p-limit";
 
@@ -1239,7 +1238,8 @@ async function buildGauntletLeg3Payload() {
 }
 
 
-export async function onRequestPost(context) {
+// POST /api/gauntlet/leg3/rebuild → rebuild Leg 3 and save to Supabase
+export async function POST(request) {
   try {
     if (!NEXT_PUBLIC_SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       return new Response(
@@ -1255,6 +1255,7 @@ export async function onRequestPost(context) {
       );
     }
 
+    // Create a Supabase client for this request (used for the upsert)
     const supabase = createClient(
       NEXT_PUBLIC_SUPABASE_URL,
       SUPABASE_SERVICE_ROLE_KEY,
@@ -1262,9 +1263,11 @@ export async function onRequestPost(context) {
     );
 
     console.log(
-      "🚀 [CF Function] Building Gauntlet Leg 3 payload (manual seeds, W9–12 Guillotine, W13–16 bracket, W17 Grand Championship)…"
+      "🚀 [Leg3 API] Building Gauntlet Leg 3 payload (manual seeds, W9–12 Guillotine, W13–16 bracket, W17 Grand Championship)…"
     );
 
+    // Your builder already uses the global `supabase` for reads,
+    // so this argument is just extra and safely ignored.
     const payload = await buildGauntletLeg3Payload(supabase);
     const updatedAt = new Date().toISOString();
 
@@ -1280,21 +1283,21 @@ export async function onRequestPost(context) {
       );
 
     if (error) {
-      console.error("❌ [CF Function] Supabase upsert error:", error);
+      console.error("[Leg3 API] Supabase upsert error:", error);
       return new Response(
         JSON.stringify({ ok: false, error: "Supabase upsert failed" }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    console.log("✅ [CF Function] Gauntlet Leg 3 for 2025 saved to Supabase.");
+    console.log("✅ [Leg3 API] Gauntlet Leg 3 for 2025 saved to Supabase.");
 
     return new Response(
       JSON.stringify({ ok: true, updatedAt }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (err) {
-    console.error("❌ [CF Function] Gauntlet rebuild error:", err);
+    console.error("[Leg3 API] Gauntlet rebuild error:", err);
     return new Response(
       JSON.stringify({
         ok: false,
@@ -1305,11 +1308,12 @@ export async function onRequestPost(context) {
   }
 }
 
-// (Optional) Allow GET to just return a small status so you can hit it in the browser.
-export async function onRequestGet(context) {
+// Simple GET so you can hit it in a browser and verify the route exists
+export async function GET(request) {
   return new Response(
     JSON.stringify({ ok: true, message: "Use POST to rebuild Leg 3." }),
     { status: 200, headers: { "Content-Type": "application/json" } }
   );
 }
+
 
