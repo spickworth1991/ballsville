@@ -1238,35 +1238,34 @@ async function buildGauntletLeg3Payload() {
   };
 }
 
-/* ================== API HANDLER ================== */
 
-// Keep your current imports and POST handler exactly as they are above this.
-
-export async function GET() {
-  return NextResponse.json({
-    ok: true,
-    message: "Gauntlet Leg 3 rebuild endpoint is alive.",
-  });
-}
-
-
-export async function POST() {
-  if (!supabase) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Supabase env vars not set (NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)",
-      },
-      { status: 500 }
-    );
-  }
-
+export async function onRequestPost(context) {
   try {
-    console.log(
-      "🚀 [API] Building Gauntlet Leg 3 payload (manual seeds, W9–12 Guillotine, W13–16 bracket, W17 Grand Championship)…"
+    if (!NEXT_PUBLIC_SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error:
+            "Supabase env vars not set (NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)",
+        }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const supabase = createClient(
+      NEXT_PUBLIC_SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY,
+      { auth: { persistSession: false } }
     );
 
-    const payload = await buildGauntletLeg3Payload();
+    console.log(
+      "🚀 [CF Function] Building Gauntlet Leg 3 payload (manual seeds, W9–12 Guillotine, W13–16 bracket, W17 Grand Championship)…"
+    );
+
+    const payload = await buildGauntletLeg3Payload(supabase);
     const updatedAt = new Date().toISOString();
 
     const { error } = await supabase
@@ -1281,21 +1280,36 @@ export async function POST() {
       );
 
     if (error) {
-      console.error("❌ [API] Supabase upsert error:", error);
-      return NextResponse.json(
-        { ok: false, error: "Supabase upsert failed" },
-        { status: 500 }
+      console.error("❌ [CF Function] Supabase upsert error:", error);
+      return new Response(
+        JSON.stringify({ ok: false, error: "Supabase upsert failed" }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    console.log("✅ [API] Gauntlet Leg 3 for 2025 saved to Supabase.");
+    console.log("✅ [CF Function] Gauntlet Leg 3 for 2025 saved to Supabase.");
 
-    return NextResponse.json({ ok: true, updatedAt });
+    return new Response(
+      JSON.stringify({ ok: true, updatedAt }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
   } catch (err) {
-    console.error("❌ [API] Gauntlet rebuild error:", err);
-    return NextResponse.json(
-      { ok: false, error: err?.message || "Unknown error" },
-      { status: 500 }
+    console.error("❌ [CF Function] Gauntlet rebuild error:", err);
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        error: err?.message || "Unknown error",
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 }
+
+// (Optional) Allow GET to just return a small status so you can hit it in the browser.
+export async function onRequestGet(context) {
+  return new Response(
+    JSON.stringify({ ok: true, message: "Use POST to rebuild Leg 3." }),
+    { status: 200, headers: { "Content-Type": "application/json" } }
+  );
+}
+
