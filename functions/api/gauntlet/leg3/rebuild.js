@@ -51,7 +51,7 @@ function isGameWindow(now = new Date()) {
 async function triggerGithubWorkflow(env) {
   const repo = env.GITHUB_REPO;              // e.g. "spickworth1991/ballsville"
   const workflowFile = env.GAUNTLET_WORKFLOW_FILE; // e.g. "build-gauntlet-leg3.yml"
-  const token = env.GITHUB_TOKEN;            // PAT with workflow permissions
+  const token = env.GH_WORKFLOW_TOKEN;            // PAT with workflow permissions
   const ref = env.GAUNTLET_REF || "main";    // branch to run on
 
   if (!repo || !workflowFile || !token) {
