@@ -4,7 +4,6 @@
 import { useEffect, useState } from "react";
 import { getSupabase } from "@/src/lib/supabaseClient";
 import GauntletUpdateButton from "@/components/GauntletUpdateButton";
-import GauntletLeg3Viewer from "@/components/GauntletLeg3Viewer";
 
 function formatDateTime(dt) {
   if (!dt) return "Never";
@@ -85,7 +84,7 @@ export default function GauntletLeg3Page() {
         <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-              Gauntlet Leg 3 – Bracket View
+              Gauntlet Leg 3 – Bracket View (Admin)
             </h1>
             <p className="mt-1 text-sm text-slate-400">
               Romans, Greeks, and Egyptians &mdash; Leg 3 playoff bracket +
@@ -155,9 +154,7 @@ export default function GauntletLeg3Page() {
                     </span>
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
-                    Data is precomputed from Sleeper and stored in Supabase.
-                    This view is read-only; use the script / GitHub Action to
-                    regenerate scores.
+                    Precomputed from Sleeper and stored in Supabase.
                   </p>
                 </div>
 
@@ -221,7 +218,7 @@ export default function GauntletLeg3Page() {
               </div>
             </section>
 
-            {/* Legions – stacked vertically */}
+            {/* Legions – stacked; Gods are collapsible “tabs” */}
             <section className="space-y-6">
               {Object.entries(divisions).map(([divisionName, division]) => {
                 const gods = Array.isArray(division?.gods)
@@ -237,8 +234,8 @@ export default function GauntletLeg3Page() {
                       <div>
                         <h3 className="text-xl font-semibold">{divisionName}</h3>
                         <p className="text-xs text-slate-400">
-                          4 Gods per Legion &mdash; brackets seeded from Leg 2
-                          survivors, Leg 3 Best Ball decides winners.
+                          4 Gods per Legion &mdash; bracket winners feed the
+                          Week 17 Grand Championship.
                         </p>
                       </div>
                       <span className="inline-flex items-center justify-center rounded-full bg-slate-800 px-4 py-1 text-xs text-slate-300">
@@ -246,7 +243,7 @@ export default function GauntletLeg3Page() {
                       </span>
                     </div>
 
-                    <div className="space-y-4 overflow-y-auto max-h-[620px] pr-1">
+                    <div className="space-y-3">
                       {gods.map((god) => (
                         <GodCard
                           key={god.index}
@@ -367,6 +364,8 @@ export default function GauntletLeg3Page() {
 /* ================== Child Components ================== */
 
 function GodCard({ god, viewMode, roundFilter }) {
+  const [isOpen, setIsOpen] = useState(false);
+
   const pairings = Array.isArray(god?.pairings) ? god.pairings : [];
   const bracketRounds = Array.isArray(god?.bracketRounds)
     ? god.bracketRounds
@@ -455,10 +454,8 @@ function GodCard({ god, viewMode, roundFilter }) {
         darkScore = scoreB;
       }
 
-      const lightIsWinner =
-        winnerId && winnerId === lightTeam.rosterId;
-      const darkIsWinner =
-        winnerId && winnerId === darkTeam.rosterId;
+      const lightIsWinner = winnerId && winnerId === lightTeam.rosterId;
+      const darkIsWinner = winnerId && winnerId === darkTeam.rosterId;
 
       const isPlayed =
         typeof lightScore === "number" &&
@@ -503,49 +500,79 @@ function GodCard({ god, viewMode, roundFilter }) {
     }));
   }
 
+  const hasBracketContent =
+    viewMode === "matchups" ? matchupRows.length > 0 : bracketRounds.length > 0;
+
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div className="rounded-xl border border-slate-800 bg-slate-950/60">
+      {/* Header row acts like a tab/accordion trigger */}
+      <button
+        type="button"
+        onClick={() => setIsOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-slate-900/80 transition"
+      >
         <div>
           <div className="text-sm font-semibold text-slate-100">
             God {god.index}
           </div>
           <div className="mt-1 text-[0.7rem] text-slate-400">
-            Light:{" "}
+            <span className="font-semibold text-amber-200">Light</span>:{" "}
             <span className="text-slate-200">{god.lightLeagueName}</span>
             <span className="mx-1 text-slate-600">•</span>
-            Dark:{" "}
+            <span className="font-semibold text-sky-300">Dark</span>:{" "}
             <span className="text-slate-200">{god.darkLeagueName}</span>
           </div>
         </div>
 
-        {/* Champion pill – gated by real Week 16 data */}
-        {hasWeek16Score && (
-          <div className="inline-flex items-center gap-1 rounded-full bg-emerald-900/40 px-3 py-1 text-[0.7rem] text-emerald-200 border border-emerald-500/40">
-            <span>🏆 Champion</span>
-            <span className="font-semibold truncate max-w-[160px]">
-              {champion.ownerName}
+        <div className="flex flex-col items-end gap-1">
+          {/* Champion pill – gated by real Week 16 data */}
+          {hasWeek16Score && (
+            <div className="inline-flex items-center gap-1 rounded-full bg-emerald-900/40 px-3 py-1 text-[0.7rem] text-emerald-200 border border-emerald-500/40">
+              <span>🏆 Champion</span>
+              <span className="font-semibold truncate max-w-[160px]">
+                {champion.ownerName}
+              </span>
+            </div>
+          )}
+          <span className="flex items-center text-[0.7rem] text-slate-300">
+            {isOpen ? "Hide bracket" : "Show bracket"}{" "}
+            <span className="ml-1 text-xs">
+              {isOpen ? "▴" : "▾"}
             </span>
-          </div>
-        )}
-      </div>
+          </span>
+        </div>
+      </button>
 
-      {viewMode === "matchups" ? (
-        <GodMatchupsTable rows={matchupRows} roundFilter={roundFilter} />
-      ) : (
-        <GodBracket rounds={bracketRounds} />
-      )}
+      {/* Collapsible content */}
+      <div
+        className={`overflow-hidden border-t border-slate-800 transition-all duration-300 ${
+          isOpen ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
+        }`}
+      >
+        <div className="p-3">
+          {hasBracketContent ? (
+            viewMode === "matchups" ? (
+              <GodMatchupsTable rows={matchupRows} roundFilter={roundFilter} />
+            ) : (
+              <GodBracket rounds={bracketRounds} />
+            )
+          ) : (
+            <div className="text-[0.7rem] text-slate-500">
+              No bracket data for this God yet.
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
-
 
 function GodMatchupsTable({ rows, roundFilter }) {
   const safeRows = Array.isArray(rows) ? rows : [];
   const meta = safeRows[0] || null;
 
   return (
-    <div className="mt-3 overflow-hidden rounded-lg border border-slate-800 bg-slate-950/70">
+    <div className="overflow-hidden rounded-lg border border-slate-800 bg-slate-950/70 text-[0.7rem]">
       {/* Round meta bar */}
       <div className="flex items-center justify-between px-2 pt-2 pb-1 text-[0.65rem] text-slate-400">
         <span>
@@ -562,7 +589,7 @@ function GodMatchupsTable({ rows, roundFilter }) {
         <span className="text-center">Dark Score</span>
         <span className="text-center">Dark (Seed)</span>
       </div>
-      <div className="divide-y divide-slate-800 text-[0.7rem]">
+      <div className="divide-y divide-slate-800">
         {safeRows.map((m) => {
           const lightLost = m.isPlayed && !m.lightIsWinner;
           const darkLost = m.isPlayed && !m.darkIsWinner;
@@ -646,53 +673,96 @@ function GodMatchupsTable({ rows, roundFilter }) {
   );
 }
 
-
 function GodBracket({ rounds }) {
   const safeRounds = Array.isArray(rounds) ? rounds : [];
 
   if (!safeRounds.length) {
     return (
-      <div className="mt-3 rounded-lg border border-dashed border-slate-700 bg-slate-950/50 px-3 py-2 text-[0.7rem] text-slate-400">
+      <div className="rounded-lg border border-dashed border-slate-700 bg-slate-950/50 px-3 py-2 text-[0.7rem] text-slate-400">
         Bracket rounds will appear here as Leg 3 weeks complete.
       </div>
     );
   }
 
+  // Use Round 1 to define vertical scale
+  const firstRound = safeRounds[0];
+  const firstRoundMatches = Array.isArray(firstRound.results)
+    ? firstRound.results.length
+    : 0;
+
+  if (!firstRoundMatches) {
+    return (
+      <div className="rounded-lg border border-dashed border-slate-700 bg-slate-950/50 px-3 py-2 text-[0.7rem] text-slate-400">
+        Bracket rounds will appear here as Leg 3 weeks complete.
+      </div>
+    );
+  }
+
+  // Finer grid: each "match height" = 4 sub-rows
+  const UNITS_PER_MATCH = 4;
+
+  // Row 1 = headers, rows 2..(1 + N*UNITS_PER_MATCH) = match area
+  const totalRows = 1 + firstRoundMatches * UNITS_PER_MATCH;
+
   return (
-    <div className="mt-3 overflow-x-auto">
-      <div className="flex gap-6 min-h-[180px] pb-2">
+    <div className="overflow-x-auto text-[0.65rem]">
+      <div
+        className="inline-grid gap-x-4"
+        style={{
+          gridTemplateColumns: `repeat(${safeRounds.length}, minmax(160px, 1fr))`,
+          gridTemplateRows: `repeat(${totalRows}, minmax(0, auto))`,
+        }}
+      >
         {safeRounds.map((round, roundIdx) => {
           const results = Array.isArray(round.results) ? round.results : [];
-          const isLastRound = roundIdx === safeRounds.length - 1;
+          const col = roundIdx + 1;          // 1-based column index
+          const r = roundIdx + 1;            // 1-based round index
+          const blockSize = Math.pow(2, r - 1); // how many R1 matches feed into one match
 
           return (
-            <div
-              key={round.roundNumber}
-              className="relative min-w-[220px] rounded-lg border border-slate-800 bg-slate-950/70 p-2 text-[0.7rem]"
-            >
-              {/* Vertical dashed line hinting flow to the next round */}
-              {!isLastRound && (
-                <div className="pointer-events-none absolute -right-3 top-4 bottom-4 hidden md:block">
-                  <div className="h-full border-r border-dashed border-slate-700 opacity-70" />
-                </div>
-              )}
-
-              <div className="mb-2 text-center text-[0.7rem] font-semibold text-slate-100">
-                Round {round.roundNumber}{" "}
-                <span className="text-slate-400">(Week {round.week})</span>
+            <div key={round.roundNumber} className="contents">
+              {/* Round header: always the top row of this column */}
+              <div
+                className="mb-1 text-center font-semibold text-slate-100"
+                style={{ gridColumn: col, gridRow: 1 }}
+              >
+                R{round.roundNumber}{" "}
+                <span className="text-slate-400">(W{round.week})</span>
               </div>
 
-              {results.length === 0 ? (
-                <div className="text-center text-xs text-slate-500">
-                  TBD – waiting on scores.
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {results.map((match) => (
-                    <BracketMatchCard key={match.matchIndex} match={match} />
-                  ))}
-                </div>
-              )}
+              {/* Matches for this round */}
+              {results.map((match, matchIdx) => {
+                const m = matchIdx + 1; // 1-based match index in this round
+
+                // Which block of Round-1 matches does this match "own"?
+                const startIndex = 1 + (m - 1) * blockSize;
+                const endIndex = startIndex + blockSize - 1;
+                const centerIndex = (startIndex + endIndex) / 2; // can be .5
+
+                // Center of that block in sub-rows:
+                //   - first match center is at:
+                //       row 2  +  (0 * UNITS_PER_MATCH)  +  UNITS_PER_MATCH/2
+                const centerSubRow =
+                  2 + (centerIndex - 1) * UNITS_PER_MATCH + UNITS_PER_MATCH / 2;
+
+                // Give each bracket card one "match height"
+                const rowSpan = UNITS_PER_MATCH;
+
+                // Start row so that the card is centered around centerSubRow
+                const rowStart = Math.round(centerSubRow - rowSpan / 2);
+
+                return (
+                  <div
+                    key={match.matchIndex}
+                    style={{
+                      gridColumn: col,
+                      gridRow: `${rowStart} / span ${rowSpan}`,
+                    }}
+                  >
+                    <BracketMatchCard match={match} />
+                  </div>
+                );
+              })}
             </div>
           );
         })}
@@ -700,6 +770,7 @@ function GodBracket({ rounds }) {
     </div>
   );
 }
+
 
 function BracketMatchCard({ match }) {
   const winnerId = match?.winner?.rosterId;
@@ -718,19 +789,22 @@ function BracketMatchCard({ match }) {
   const teamBLost = teamBPlayed && !teamBIsWinner && winnerId;
 
   return (
-    <div className="relative rounded-md border border-slate-800 bg-slate-950/90 px-2 py-1.5">
+    <div className="relative rounded-md border border-slate-800 bg-slate-950/90 px-1.5 py-1">
+      {/* small connector stub to the next-round column */}
+      <div className="pointer-events-none absolute -right-3 top-1/2 hidden h-px w-3 translate-y-[-50%] bg-slate-700 md:block" />
+
       {/* match label */}
-      <div className="mb-1 flex items-center justify-between text-[0.65rem] text-slate-400">
+      <div className="mb-0.5 flex items-center justify-between text-[0.6rem] text-slate-400">
         <span>Match {match.matchIndex}</span>
       </div>
 
-      {/* connector trunk */}
+      {/* internal connector trunk */}
       <div className="absolute left-0 top-3 bottom-3 border-l border-slate-700/60" />
 
-      <div className="space-y-0.5 pl-3">
+      <div className="space-y-0.5 pl-2.5">
         {/* Team A row */}
         <div
-          className={`flex items-center justify-between gap-2 rounded-sm px-1 py-0.5 ${
+          className={`flex items-center justify-between gap-1 rounded-sm px-1 py-0.5 ${
             teamAIsWinner
               ? "bg-emerald-900/40 text-emerald-200 border border-emerald-500/40"
               : teamALost
@@ -738,21 +812,21 @@ function BracketMatchCard({ match }) {
               : "text-slate-200"
           }`}
         >
-          <span className="truncate max-w-[110px]">
+          <span className="truncate max-w-[90px]">
             {teamA.ownerName ?? "?"}
           </span>
-          <span className="flex items-center gap-1 text-[0.65rem]">
-            <span className="text-slate-400">Seed {teamA.seed ?? "?"}</span>
-            <span className="font-mono">{scoreA.toFixed(2)}</span>
+          <span className="flex items-center gap-1 text-[0.6rem]">
+            <span className="text-slate-400">S{teamA.seed ?? "?"}</span>
+            <span className="font-mono">{scoreA.toFixed(1)}</span>
             {teamALost && (
-              <span className="text-red-400 text-[0.6rem] ml-1">✕</span>
+              <span className="text-red-400 text-[0.55rem] ml-0.5">✕</span>
             )}
           </span>
         </div>
 
         {/* Team B row */}
         <div
-          className={`flex items-center justify-between gap-2 rounded-sm px-1 py-0.5 ${
+          className={`flex items-center justify-between gap-1 rounded-sm px-1 py-0.5 ${
             teamBIsWinner
               ? "bg-emerald-900/40 text-emerald-200 border border-emerald-500/40"
               : teamBLost
@@ -760,21 +834,21 @@ function BracketMatchCard({ match }) {
               : "text-slate-200"
           }`}
         >
-          <span className="truncate max-w-[110px]">
+          <span className="truncate max-w-[90px]">
             {teamB.ownerName ?? "?"}
           </span>
-          <span className="flex items-center gap-1 text-[0.65rem]">
-            <span className="text-slate-400">Seed {teamB.seed ?? "?"}</span>
-            <span className="font-mono">{scoreB.toFixed(2)}</span>
+          <span className="flex items-center gap-1 text-[0.6rem]">
+            <span className="text-slate-400">S{teamB.seed ?? "?"}</span>
+            <span className="font-mono">{scoreB.toFixed(1)}</span>
             {teamBLost && (
-              <span className="text-red-400 text-[0.6rem] ml-1">✕</span>
+              <span className="text-red-400 text-[0.55rem] ml-0.5">✕</span>
             )}
           </span>
         </div>
       </div>
 
       {(teamAIsWinner || teamBIsWinner) && (
-        <div className="mt-1 pl-3 text-[0.6rem] text-emerald-300">
+        <div className="mt-0.5 pl-2.5 text-[0.55rem] text-emerald-300">
           Advances →
         </div>
       )}

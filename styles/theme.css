@@ -481,7 +481,7 @@ body {
 .page-bg {
   min-height: calc(100vh - var(--footer-height) - var(--nav-height));
   /* background-image: url("/photos/space-bg-vert-v2.png"); */
-  background-image: url("/photos/space.mp4");
+
   background-size: cover;
   background-position: top center;
   background-repeat: no-repeat;
