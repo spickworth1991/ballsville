@@ -1241,12 +1241,6 @@ async function buildGauntletLeg3Payload() {
 
 // Keep your current imports and POST handler exactly as they are above this.
 
-export async function GET() {
-  return NextResponse.json({
-    ok: true,
-    message: "Gauntlet Leg 3 rebuild endpoint is alive.",
-  });
-}
 
 
 export async function POST() {
