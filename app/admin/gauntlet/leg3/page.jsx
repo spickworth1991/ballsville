@@ -4,6 +4,7 @@
 import { useEffect, useState, useRef } from "react";
 import { getSupabase } from "@/src/lib/supabaseClient";
 import GauntletUpdateButton from "@/components/GauntletUpdateButton";
+import AdminGuard from "@/components/AdminGuard"; // ⬅️ new
 
 function formatDateTime(dt) {
   if (!dt) return "Never";
@@ -12,7 +13,16 @@ function formatDateTime(dt) {
   return d.toLocaleString();
 }
 
+// Top-level: gate the whole page behind AdminGuard
 export default function GauntletLeg3Page() {
+  return (
+    <AdminGuard>
+      <GauntletLeg3Inner />
+    </AdminGuard>
+  );
+}
+
+function GauntletLeg3Inner() {
   const [payload, setPayload] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -56,22 +66,22 @@ export default function GauntletLeg3Page() {
     setRefreshing(false);
   }
 
-  // Initial load on mount
+  // Initial load
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 🔄 30-second polling: check updated_at, reload only when it changes
+  // 🔄 30s polling — only for admins, on this admin page
   useEffect(() => {
-    if (!payload) return; // don't bother polling until we have something
+    if (!payload) return;
 
     const supabase = getSupabase();
     let cancelled = false;
 
     async function checkForUpdate() {
       try {
-        // Skip if tab isn't visible to avoid useless calls when user is away
+        // Don’t bother if tab isn’t visible
         if (typeof document !== "undefined" && document.hidden) return;
 
         const { data, error } = await supabase
@@ -87,7 +97,7 @@ export default function GauntletLeg3Page() {
 
         if (!data?.updated_at) return;
 
-        // If Supabase has a newer timestamp, pull fresh payload
+        // If Supabase updated_at changed, reload fresh payload
         if (!cancelled && data.updated_at !== updatedAt) {
           await loadData();
         }
@@ -96,7 +106,7 @@ export default function GauntletLeg3Page() {
       }
     }
 
-    const intervalId = setInterval(checkForUpdate, 30_000); // every 30 seconds
+    const intervalId = setInterval(checkForUpdate, 30_000); // every 30s
 
     return () => {
       cancelled = true;
@@ -137,6 +147,9 @@ export default function GauntletLeg3Page() {
             <p className="mt-1 text-xs text-slate-500">
               Last updated:{" "}
               <span className="font-mono">{formatDateTime(updatedAt)}</span>
+            </p>
+            <p className="mt-1 text-[0.65rem] text-slate-500">
+              This admin view auto-checks for new scores every 30 seconds.
             </p>
           </div>
 
@@ -848,7 +861,10 @@ function LineupSide({ title, seed, lineup }) {
 
   const total =
     lineup.total ??
-    lineup.starters?.reduce((sum, p) => sum + Number(p.points || 0), 0);
+    lineup.starters?.reduce(
+      (sum, p) => sum + Number(p.points || 0),
+      0
+    );
 
   return (
     <div className="flex flex-col gap-2">
