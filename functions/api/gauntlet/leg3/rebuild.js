@@ -1220,7 +1220,7 @@ export async function onRequestPost(context) {
 
   try {
     const url = env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = env.SUPABASE_SERVICE_ROLE_KEY;
+    const key = env.NEXT_PUBLIC_SUPABASE_ANON_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!url || !key) {
       return new Response(
