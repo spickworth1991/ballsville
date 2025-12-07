@@ -1,3 +1,4 @@
+export const dynamic = "force-static"; // required for output: "export" builds
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import pLimit from "p-limit";
@@ -1241,6 +1242,12 @@ async function buildGauntletLeg3Payload() {
 
 // Keep your current imports and POST handler exactly as they are above this.
 
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    message: "Gauntlet Leg 3 rebuild endpoint is alive.",
+  });
+}
 
 
 export async function POST() {
