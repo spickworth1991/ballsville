@@ -182,16 +182,27 @@ async function ensureLeagueNames(leaguesMap) {
 /**
  * Best Ball lineup:
  * 1 QB, 2 RB, 3 WR, 1 TE, 2 FLEX, 1 SF
+ * Now also attaches basic metadata from playersDB:
+ *   - team
+ *   - status
+ *   - injury_status
  */
 function computeBestBallLineup(players_points = {}, playersDB) {
   const entries = Object.entries(players_points).map(([rawId, pts]) => {
     const id = normId(rawId);
-    const pos = playerPos(playersDB, id);
+    const p = playersDB[id] || {};
+    const pos = String(
+      p.position || (p.fantasy_positions && p.fantasy_positions[0]) || ""
+    ).toUpperCase();
+
     return {
       id,
-      name: playersDB[id]?.full_name || id,
+      name: p.full_name || id,
       pos,
       points: Number(pts ?? 0),
+      team: p.team || null,
+      status: p.status || null,
+      injury_status: p.injury_status || null,
     };
   });
 
@@ -251,6 +262,9 @@ function computeBestBallLineup(players_points = {}, playersDB) {
       name: e.name,
       points: e.points,
       pos: e.pos,
+      team: e.team || null,
+      status: e.status || null,
+      injury_status: e.injury_status || null,
     }));
 
   const order = { QB: 0, RB: 1, WR: 2, TE: 3, FLEX: 4, SF: 5 };
@@ -269,11 +283,15 @@ function computeBestBallLineup(players_points = {}, playersDB) {
       points: e.points,
       pos: e.pos,
       slot: e.slot,
+      team: e.team || null,
+      status: e.status || null,
+      injury_status: e.injury_status || null,
     })),
     bench,
     total,
   };
 }
+
 
 /* ================== LOAD LEAGUES + SEEDS FROM SUPABASE ================== */
 
@@ -503,19 +521,20 @@ async function processLeague(
       division: divisionName,
       godName,
       side,
-      // Leg 1 is MANUAL now:
-      record: { wins: 0, losses: 0, ties: 0 }, // kept for logging, but not used
+      record: { wins: 0, losses: 0, ties: 0 },
       seedPointsWeekly: {},
       seedPointsTotal: 0,
-      initialSeed: manualSeed, // ← manual seed
+      initialSeed: manualSeed,
       leg2Weekly: {},
       leg2ElimWeek: null,
       leg3Weekly: {},
       leg3Total: 0,
+      leg3BestBall: {},       // 👈 add this
       lastWeekWithData: null,
       lastWeekRoster: null,
       finalSeed: null,
     });
+
   });
 
   // ====== Phase 1: MANUAL SEEDS ONLY (no Week 1–8 computation) ======
@@ -724,12 +743,17 @@ async function processLeague(
 
       owner.leg3Weekly[week] = bb.total;
       owner.leg3Total += bb.total;
+
+      // Save full best-ball lineup for this week
+      owner.leg3BestBall[week] = bb;
+
       owner.lastWeekWithData = week;
       owner.lastWeekRoster = {
         week,
         starters: bb.starters,
         bench: bb.bench,
       };
+
     });
   }
 
@@ -882,6 +906,10 @@ function buildGodsForDivisionAndChampions(
       const scoreA = getWeekScore(pair.teamA, week);
       const scoreB = getWeekScore(pair.teamB, week);
 
+      // Full best ball lineups from processLeague
+      const lineupA = pair.teamA.leg3BestBall?.[week] || null;
+      const lineupB = pair.teamB.leg3BestBall?.[week] || null;
+
       const hasAnyScore = scoreA !== 0 || scoreB !== 0;
 
       // If absolutely no scoring yet → no winner, don't advance anyone
@@ -891,34 +919,37 @@ function buildGodsForDivisionAndChampions(
           loser: null,
           scoreA,
           scoreB,
+          lineupA,
+          lineupB,
         };
       }
 
       if (scoreA > scoreB) {
-        return { winner: pair.teamA, loser: pair.teamB, scoreA, scoreB };
+        return { winner: pair.teamA, loser: pair.teamB, scoreA, scoreB, lineupA, lineupB };
       }
       if (scoreB > scoreA) {
-        return { winner: pair.teamB, loser: pair.teamA, scoreA, scoreB };
+        return { winner: pair.teamB, loser: pair.teamA, scoreA, scoreB, lineupA, lineupB };
       }
 
       // Tie-breaker: better seed (lower number)
       const seedA = pair.teamA.seed ?? 999;
       const seedB = pair.teamB.seed ?? 999;
       if (seedA < seedB) {
-        return { winner: pair.teamA, loser: pair.teamB, scoreA, scoreB };
+        return { winner: pair.teamA, loser: pair.teamB, scoreA, scoreB, lineupA, lineupB };
       }
       if (seedB < seedA) {
-        return { winner: pair.teamB, loser: pair.teamA, scoreA, scoreB };
+        return { winner: pair.teamB, loser: pair.teamA, scoreA, scoreB, lineupA, lineupB };
       }
 
       // Final tie-break: name
       const nameA = pair.teamA.ownerName || "";
       const nameB = pair.teamB.ownerName || "";
       if (nameA.localeCompare(nameB) <= 0) {
-        return { winner: pair.teamA, loser: pair.teamB, scoreA, scoreB };
+        return { winner: pair.teamA, loser: pair.teamB, scoreA, scoreB, lineupA, lineupB };
       }
-      return { winner: pair.teamB, loser: pair.teamA, scoreA, scoreB };
+      return { winner: pair.teamB, loser: pair.teamA, scoreA, scoreB, lineupA, lineupB };
     }
+
 
     // ---------- Simulate rounds based on currentBracketWeek ----------
     let bracketRounds = [];
@@ -944,7 +975,10 @@ function buildGodsForDivisionAndChampions(
 
         for (let idx = 0; idx < currentPairings.length; idx++) {
           const pair = currentPairings[idx];
-          const { winner, loser, scoreA, scoreB } = decideWinner(pair, week);
+          const { winner, loser, scoreA, scoreB, lineupA, lineupB } = decideWinner(
+            pair,
+            week
+          );
 
           if (scoreA !== 0 || scoreB !== 0) {
             anyMatchHasScore = true;
@@ -962,6 +996,8 @@ function buildGodsForDivisionAndChampions(
             scoreB,
             winner,
             loser,
+            lineupA,
+            lineupB,   // 👈 per-side best-ball lineups for this match
           });
 
           if (winner) {

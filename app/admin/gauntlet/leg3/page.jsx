@@ -400,83 +400,89 @@ function GodCard({ god, viewMode, roundFilter }) {
   ) {
     // Use actual results for the selected round
     matchupRows = selectedRound.results.map((m) => {
-      const teamA = m.teamA || {};
-      const teamB = m.teamB || {};
+  const teamA = m.teamA || {};
+  const teamB = m.teamB || {};
 
-      const scoreA =
-        typeof m.scoreA === "number" ? m.scoreA : Number(m.scoreA || 0);
-      const scoreB =
-        typeof m.scoreB === "number" ? m.scoreB : Number(m.scoreB || 0);
+  const scoreA =
+    typeof m.scoreA === "number" ? m.scoreA : Number(m.scoreA || 0);
+  const scoreB =
+    typeof m.scoreB === "number" ? m.scoreB : Number(m.scoreB || 0);
 
-      const winnerId = m?.winner?.rosterId || null;
+  const winnerId = m?.winner?.rosterId || null;
 
-      // Decide orientation:
-      // - If exactly Light vs Dark, keep Light on the left, Dark on the right
-      // - Otherwise (light vs light, dark vs dark, missing sides), keep A vs B
-      let lightTeam;
-      let darkTeam;
+  // Decide orientation (Light always on left when it's Light vs Dark)
+  const aLight = teamA.side === "light";
+  const bLight = teamB.side === "light";
+  const aDark = teamA.side === "dark";
+  const bDark = teamB.side === "dark";
 
-      const aLight = teamA.side === "light";
-      const bLight = teamB.side === "light";
-      const aDark = teamA.side === "dark";
-      const bDark = teamB.side === "dark";
+  const isLightVsDark = (aLight && bDark) || (aDark && bLight);
 
-      const isLightVsDark = (aLight && bDark) || (aDark && bLight);
+  let lightTeam;
+  let darkTeam;
 
-      if (isLightVsDark) {
-        if (aLight && bDark) {
-          lightTeam = teamA;
-          darkTeam = teamB;
-        } else {
-          // aDark && bLight
-          lightTeam = teamB;
-          darkTeam = teamA;
-        }
-      } else {
-        // Same side or missing sides → no “light vs dark” concept; just A vs B
-        lightTeam = teamA;
-        darkTeam = teamB;
-      }
+  if (isLightVsDark) {
+    if (aLight && bDark) {
+      lightTeam = teamA;
+      darkTeam = teamB;
+    } else {
+      lightTeam = teamB;
+      darkTeam = teamA;
+    }
+  } else {
+    lightTeam = teamA;
+    darkTeam = teamB;
+  }
 
-      // Map scores to Light/Dark based on who ended up where
-      let lightScore;
-      let darkScore;
+  let lightScore;
+  let darkScore;
+  let lightLineup = null;
+  let darkLineup = null;
 
-      if (lightTeam === teamA && darkTeam === teamB) {
-        lightScore = scoreA;
-        darkScore = scoreB;
-      } else if (lightTeam === teamB && darkTeam === teamA) {
-        lightScore = scoreB;
-        darkScore = scoreA;
-      } else {
-        // Fallback (shouldn't really hit, but keeps things sane)
-        lightScore = scoreA;
-        darkScore = scoreB;
-      }
+  if (lightTeam === teamA && darkTeam === teamB) {
+    lightScore = scoreA;
+    darkScore = scoreB;
+    lightLineup = m.lineupA || null;
+    darkLineup = m.lineupB || null;
+  } else if (lightTeam === teamB && darkTeam === teamA) {
+    lightScore = scoreB;
+    darkScore = scoreA;
+    lightLineup = m.lineupB || null;
+    darkLineup = m.lineupA || null;
+  } else {
+    lightScore = scoreA;
+    darkScore = scoreB;
+    lightLineup = m.lineupA || null;
+    darkLineup = m.lineupB || null;
+  }
 
-      const lightIsWinner = winnerId && winnerId === lightTeam.rosterId;
-      const darkIsWinner = winnerId && winnerId === darkTeam.rosterId;
+  const lightIsWinner = winnerId && winnerId === lightTeam.rosterId;
+  const darkIsWinner = winnerId && winnerId === darkTeam.rosterId;
 
-      const isPlayed =
-        typeof lightScore === "number" &&
-        typeof darkScore === "number" &&
-        (lightScore !== 0 || darkScore !== 0);
+  const isPlayed =
+    typeof lightScore === "number" &&
+    typeof darkScore === "number" &&
+    (lightScore !== 0 || darkScore !== 0);
 
-      return {
-        match: m.matchIndex,
-        round: selectedRound.roundNumber,
-        week: selectedRound.week,
-        lightOwnerName: lightTeam.ownerName,
-        darkOwnerName: darkTeam.ownerName,
-        lightSeed: lightTeam.seed,
-        darkSeed: darkTeam.seed,
-        lightScore: Number((lightScore || 0).toFixed(2)),
-        darkScore: Number((darkScore || 0).toFixed(2)),
-        lightIsWinner,
-        darkIsWinner,
-        isPlayed,
-      };
-    });
+  return {
+    match: m.matchIndex,
+    round: selectedRound.roundNumber,
+    week: selectedRound.week,
+    lightOwnerName: lightTeam.ownerName,
+    darkOwnerName: darkTeam.ownerName,
+    lightSeed: lightTeam.seed,
+    darkSeed: darkTeam.seed,
+    lightScore: Number((lightScore || 0).toFixed(2)),
+    darkScore: Number((darkScore || 0).toFixed(2)),
+    lightIsWinner,
+    darkIsWinner,
+    isPlayed,
+    // 👇 full best-ball lineups for the breakdown view
+    lightLineup,
+    darkLineup,
+  };
+});
+
   } else if (
     viewMode === "matchups" &&
     (!selectedRound || !selectedRound.results?.length) &&
@@ -571,6 +577,12 @@ function GodMatchupsTable({ rows, roundFilter }) {
   const safeRows = Array.isArray(rows) ? rows : [];
   const meta = safeRows[0] || null;
 
+  const [expandedMatch, setExpandedMatch] = useState(null);
+  const expandedRow =
+    expandedMatch != null
+      ? safeRows.find((r) => r.match === expandedMatch)
+      : null;
+
   return (
     <div className="overflow-hidden rounded-lg border border-slate-800 bg-slate-950/70 text-[0.7rem]">
       {/* Round meta bar */}
@@ -580,8 +592,18 @@ function GodMatchupsTable({ rows, roundFilter }) {
             ? `Round ${meta.round} • Week ${meta.week}`
             : `Round ${roundFilter || "?"}`}
         </span>
+        {expandedRow && (
+          <button
+            type="button"
+            onClick={() => setExpandedMatch(null)}
+            className="text-xs text-amber-300 hover:text-amber-200"
+          >
+            Close matchup breakdown
+          </button>
+        )}
       </div>
 
+      {/* Header row */}
       <div className="grid grid-cols-5 bg-slate-900/80 px-2 py-1 text-[0.65rem] font-medium text-slate-300">
         <span className="text-center">Match</span>
         <span className="text-center">Light (Seed)</span>
@@ -589,22 +611,31 @@ function GodMatchupsTable({ rows, roundFilter }) {
         <span className="text-center">Dark Score</span>
         <span className="text-center">Dark (Seed)</span>
       </div>
+
+      {/* Match rows */}
       <div className="divide-y divide-slate-800">
         {safeRows.map((m) => {
           const lightLost = m.isPlayed && !m.lightIsWinner;
           const darkLost = m.isPlayed && !m.darkIsWinner;
+          const isExpanded = expandedMatch === m.match;
 
           return (
-            <div
+            <button
               key={m.match}
-              className="grid grid-cols-5 px-2 py-1.5 items-center"
+              type="button"
+              onClick={() =>
+                setExpandedMatch((prev) => (prev === m.match ? null : m.match))
+              }
+              className={`grid grid-cols-5 px-2 py-1.5 items-center w-full text-left transition ${
+                isExpanded ? "bg-slate-900/80" : "hover:bg-slate-900/40"
+              }`}
             >
               {/* Match # */}
               <div className="text-center font-mono text-slate-300">
                 {m.match}
               </div>
 
-              {/* Light side: name + seed + eliminated marker */}
+              {/* Light side */}
               <div className="text-center">
                 <div
                   className={`truncate ${
@@ -637,7 +668,7 @@ function GodMatchupsTable({ rows, roundFilter }) {
                 {m.darkScore.toFixed(2)}
               </div>
 
-              {/* Dark side: name + seed + eliminated marker */}
+              {/* Dark side */}
               <div className="text-center">
                 <div
                   className={`truncate ${
@@ -659,7 +690,7 @@ function GodMatchupsTable({ rows, roundFilter }) {
                   </div>
                 )}
               </div>
-            </div>
+            </button>
           );
         })}
 
@@ -669,9 +700,206 @@ function GodMatchupsTable({ rows, roundFilter }) {
           </div>
         )}
       </div>
+
+      {/* Breakdown panel */}
+      {expandedRow && (
+        <MatchupBreakdown row={expandedRow} />
+      )}
     </div>
   );
 }
+
+function InjuryTag({ status, injury_status }) {
+  const raw = (injury_status || status || "").toString().toLowerCase();
+  if (!raw) return null;
+
+  if (raw.includes("question")) {
+    return (
+      <span className="ml-1 inline-flex items-center rounded-full border border-yellow-400/60 bg-yellow-400/10 px-1.5 py-0.5 text-[0.6rem] text-yellow-300">
+        Ques.
+      </span>
+    );
+  }
+
+  if (raw === "ir" || raw.includes("injured reserve")) {
+    return (
+      <span className="ml-1 inline-flex items-center rounded-full border border-red-500/70 bg-red-500/10 px-1.5 py-0.5 text-[0.6rem] text-red-300">
+        IR
+      </span>
+    );
+  }
+
+  if (raw.includes("out")) {
+    return (
+      <span className="ml-1 inline-flex items-center rounded-full border border-red-500/70 bg-red-500/10 px-1.5 py-0.5 text-[0.6rem] text-red-300">
+        OUT
+      </span>
+    );
+  }
+
+  // Other statuses (PUP, SUS, etc.) could get a neutral tag if you want
+  return null;
+}
+
+function LineupSide({ title, seed, lineup }) {
+  if (!lineup) {
+    return (
+      <div className="text-xs text-slate-500">
+        No lineup data yet for this matchup.
+      </div>
+    );
+  }
+
+  const slotsOrder = ["QB", "RB", "WR", "TE", "FLEX", "SF"];
+
+  const startersBySlot = slotsOrder.map((slot) => ({
+    slot,
+    players: (lineup.starters || [])
+      .filter((p) => p.slot === slot)
+      .sort((a, b) => b.points - a.points),
+  }));
+
+  const benchSorted = (lineup.bench || [])
+    .slice()
+    .sort((a, b) => b.points - a.points);
+
+  const total = lineup.total ?? lineup.starters?.reduce(
+    (sum, p) => sum + Number(p.points || 0),
+    0
+  );
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-baseline justify-between">
+        <div className="text-sm font-semibold text-slate-100">
+          {title}
+          {typeof seed === "number" && (
+            <span className="ml-2 text-[0.7rem] text-slate-400">
+              Seed {seed}
+            </span>
+          )}
+        </div>
+        <div className="text-xs font-mono text-emerald-300">
+          {Number(total || 0).toFixed(2)} pts
+        </div>
+      </div>
+
+      {/* Starters */}
+      <div className="rounded-lg border border-slate-800 bg-slate-950/80 p-2">
+        <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-slate-400">
+          Starters
+        </div>
+        <div className="space-y-1">
+          {startersBySlot.map(({ slot, players }) =>
+            players.length ? (
+              <div key={slot}>
+                <div className="text-[0.65rem] font-semibold text-slate-300">
+                  {slot}
+                </div>
+                {players.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between rounded-md bg-slate-900/80 px-2 py-1"
+                  >
+                    <div className="flex flex-col">
+                      <span className="text-xs text-slate-100">
+                        {p.name}
+                        <InjuryTag
+                          status={p.status}
+                          injury_status={p.injury_status}
+                        />
+                      </span>
+                      <span className="text-[0.65rem] text-slate-400">
+                        {p.team || "FA"} • {p.pos}
+                      </span>
+                    </div>
+                    <span className="text-xs font-mono text-slate-100">
+                      {Number(p.points || 0).toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null
+          )}
+        </div>
+      </div>
+
+      {/* Bench */}
+      <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-2">
+        <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-slate-400">
+          Bench
+        </div>
+        <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+          {benchSorted.length === 0 && (
+            <div className="text-[0.65rem] text-slate-500">
+              No bench players recorded.
+            </div>
+          )}
+          {benchSorted.map((p) => (
+            <div
+              key={p.id}
+              className="flex items-center justify-between rounded-md bg-slate-900/60 px-2 py-1"
+            >
+              <div className="flex flex-col">
+                <span className="text-xs text-slate-200">
+                  {p.name}
+                  <InjuryTag
+                    status={p.status}
+                    injury_status={p.injury_status}
+                  />
+                </span>
+                <span className="text-[0.65rem] text-slate-400">
+                  {p.team || "FA"} • {p.pos}
+                </span>
+              </div>
+              <span className="text-xs font-mono text-slate-400">
+                {Number(p.points || 0).toFixed(2)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MatchupBreakdown({ row }) {
+  const { lightLineup, darkLineup, week } = row || {};
+
+  // If we have absolutely no lineups (early season / seed preview mode)
+  if (!lightLineup && !darkLineup) {
+    return (
+      <div className="border-t border-slate-800 bg-slate-950/80 px-3 py-3 text-xs text-slate-500">
+        Lineup breakdown will appear here once Week {week} Best Ball scores are
+        available for this matchup.
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-t border-slate-800 bg-slate-950/80 px-3 py-3">
+      <div className="mb-2 text-[0.7rem] text-slate-400">
+        Matchup breakdown for{" "}
+        <span className="font-mono text-amber-300">
+          Week {week} • Match {row.match}
+        </span>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <LineupSide
+          title={row.lightOwnerName || "Light"}
+          seed={row.lightSeed}
+          lineup={lightLineup}
+        />
+        <LineupSide
+          title={row.darkOwnerName || "Dark"}
+          seed={row.darkSeed}
+          lineup={darkLineup}
+        />
+      </div>
+    </div>
+  );
+}
+
 
 function GodBracket({ rounds }) {
   const safeRounds = Array.isArray(rounds) ? rounds : [];
