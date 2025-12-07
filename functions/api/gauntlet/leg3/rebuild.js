@@ -1,25 +1,34 @@
 // functions/api/gauntlet/leg3/rebuild.js
 
 /**
- * Cloudflare Pages Function
+ * Cloudflare Pages Function that:
+ *   - Optionally respects an NFL "game window" (like the Node script)
+ *   - Triggers the GitHub Actions workflow that runs scripts/buildgauntlet.mjs
  *
- * URL:
- *   POST https://ballsville.pages.dev/api/gauntlet/leg3/rebuild
+ * Flow:
+ *   cron-job.org  →  this function  →  GitHub workflow_dispatch  →  buildgauntlet.mjs
  *
- * Used by:
- *   - cron-job.org (scheduled, external HTTP)
- *   - You (manual curl/PowerShell, with ?force=1 if needed)
- *
- * Behavior:
- *   - Checks "game window" in America/Detroit.
- *   - If outside game window and not forced → no-op, returns { skipped: true }.
- *   - If inside game window OR forced → triggers GitHub Actions workflow_dispatch
- *     for "Build Gauntlet Leg 3" workflow.
+ * Env vars (set in Cloudflare project settings):
+ *   - GITHUB_REPO               e.g. "spickworth1991/ballsville"
+ *   - GAUNTLET_WORKFLOW_FILE    e.g. "build-gauntlet-leg3.yml"
+ *   - GAUNTLET_REF              e.g. "main" (optional, defaults to "main")
+ *   - GITHUB_TOKEN              PAT with "repo" + "workflow" scopes
  */
 
+const GAME_TZ = "America/Detroit";
+
+/**
+ * Rough "NFL game time" window in Eastern Time (America/Detroit):
+ *  - Thursday: 20:00–23:59
+ *  - Sunday:   13:00–23:59
+ *  - Monday:   20:00–23:59
+ *  - Plus spillover 00:00–01:00 after late games on Mon/Tue/Fri
+ *
+ * This doesn't have to be perfect; it just avoids hammering during truly dead times.
+ */
 function isGameWindow(now = new Date()) {
   const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Detroit",
+    timeZone: GAME_TZ,
     weekday: "short",
     hour: "2-digit",
     hour12: false,
@@ -40,7 +49,6 @@ function isGameWindow(now = new Date()) {
   if (weekday === "Thu" && hour >= 20) return true;
 
   // Early-morning spillover (0–1) after late games:
-  // Mon/Tue/Fri 00:00–01:59
   if ((weekday === "Mon" || weekday === "Tue" || weekday === "Fri") && hour <= 1) {
     return true;
   }
@@ -48,11 +56,17 @@ function isGameWindow(now = new Date()) {
   return false;
 }
 
+/**
+ * Trigger the GitHub Actions workflow via workflow_dispatch.
+ *
+ * We only send `{ ref }` – no "inputs" – to avoid 422 errors like:
+ *   "Unexpected inputs provided: [\"triggerSource\"]"
+ */
 async function triggerGithubWorkflow(env) {
   const repo = env.GITHUB_REPO;              // e.g. "spickworth1991/ballsville"
   const workflowFile = env.GAUNTLET_WORKFLOW_FILE; // e.g. "build-gauntlet-leg3.yml"
   const token = env.GH_WORKFLOW_TOKEN;            // PAT with workflow permissions
-  const ref = env.GAUNTLET_REF || "main";    // branch to run on
+  const ref = env.GAUNTLET_REF || "main";         // branch name
 
   if (!repo || !workflowFile || !token) {
     throw new Error(
@@ -61,12 +75,11 @@ async function triggerGithubWorkflow(env) {
   }
 
   const url = `https://api.github.com/repos/${repo}/actions/workflows/${workflowFile}/dispatches`;
+  console.log("Triggering GitHub workflow:", url, "ref:", ref);
 
   const body = {
     ref,
-    inputs: {
-      triggerSource: "cloudflare-leg3",
-    },
+    // ❌ No "inputs" here; your workflow_dispatch has no inputs defined.
   };
 
   const res = await fetch(url, {
@@ -81,59 +94,37 @@ async function triggerGithubWorkflow(env) {
     body: JSON.stringify(body),
   });
 
+  const text = await res.text();
   if (!res.ok) {
-    const text = await res.text();
     throw new Error(
       `GitHub workflow_dispatch failed: ${res.status} ${res.statusText} – ${text}`
     );
   }
 
+  console.log("GitHub workflow_dispatch OK:", text || "<empty body>");
+
   return { repo, workflowFile, ref };
 }
 
-export async function onRequestGet(context) {
-  const url = new URL(context.request.url);
-  const force = url.searchParams.get("force") === "1";
-  const now = new Date();
-  const inWindow = isGameWindow(now);
-
-  return new Response(
-    JSON.stringify({
-      ok: true,
-      message:
-        "Use POST to trigger the Build Gauntlet Leg 3 GitHub workflow. This GET is for sanity checks.",
-      now: now.toISOString(),
-      inGameWindow: inWindow,
-      forceSuggested: !inWindow,
-      forceParamExample: "/api/gauntlet/leg3/rebuild?force=1",
-      forced: force,
-    }),
-    {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    }
-  );
-}
-
 export async function onRequestPost(context) {
-  const { env, request } = context;
-  const url = new URL(request.url);
-  const force = url.searchParams.get("force") === "1";
+  const { request, env } = context;
 
   try {
-    const now = new Date();
-    const inWindow = isGameWindow(now);
+    const url = new URL(request.url);
+    const force = url.searchParams.get("force") === "1";
 
-    if (!inWindow && !force) {
-      // Outside game window → clean no-op
+    // ⏱ Respect game window unless forced
+    if (!force && !isGameWindow()) {
+      console.log(
+        "⏭️  Outside game window; not triggering GitHub workflow. " +
+          "Use ?force=1 to override."
+      );
       return new Response(
         JSON.stringify({
           ok: true,
           triggered: false,
           skipped: true,
-          reason: "Outside configured game window",
-          now: now.toISOString(),
-          inGameWindow: inWindow,
+          reason: "outside_game_window",
         }),
         { status: 200, headers: { "Content-Type": "application/json" } }
       );
@@ -146,15 +137,12 @@ export async function onRequestPost(context) {
         ok: true,
         triggered: true,
         skipped: false,
-        now: now.toISOString(),
-        inGameWindow: inWindow,
-        force,
-        github: info,
+        workflow: info,
       }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (err) {
-    console.error("❌ [CF Function] Error triggering Gauntlet Leg 3 workflow:", err);
+    console.error("❌ [CF] Gauntlet Leg 3 workflow trigger error:", err);
     return new Response(
       JSON.stringify({
         ok: false,
@@ -165,4 +153,16 @@ export async function onRequestPost(context) {
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
+}
+
+// Optional GET sanity check
+export async function onRequestGet() {
+  return new Response(
+    JSON.stringify({
+      ok: true,
+      message:
+        "POST here to trigger the Gauntlet Leg 3 GitHub workflow. Use ?force=1 to ignore game-time checks.",
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } }
+  );
 }
