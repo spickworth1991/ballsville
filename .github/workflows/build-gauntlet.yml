@@ -31,4 +31,4 @@ jobs:
           # 👇 Manual runs (workflow_dispatch) set GAUNTLET_FORCE=1, scheduled runs keep it empty
           GAUNTLET_FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
         run: |
-          node scripts/buildgauntlet.mjs
+          node script/buildgauntlet.mjs
