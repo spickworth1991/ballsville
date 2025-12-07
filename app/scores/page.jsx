@@ -1,4 +1,4 @@
-// src/app/admin/gauntlet/leg3/page.jsx
+// /app/scores
 "use client";
 
 import { useEffect, useState, useRef } from "react";
@@ -112,7 +112,7 @@ export default function GauntletLeg3ScoresPage() {
     );
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 px-4 py-6 md:px-8">
+    <main className="no-chrome min-h-screen bg-slate-950 text-slate-50 px-4 py-6 md:px-8">
       <div className="mx-auto max-w-6xl space-y-6">
         {/* Header */}
         <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -369,7 +369,7 @@ export default function GauntletLeg3ScoresPage() {
           </main>
         )}
       </div>
-    </div>
+    </main>
   );
 }
 
