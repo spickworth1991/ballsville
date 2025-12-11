@@ -2,15 +2,40 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { getSupabase } from "@/src/lib/supabaseClient";
+import AdminGuard from "@/components/AdminGuard";
 import GauntletUpdateButton from "@/components/GauntletUpdateButton";
-import AdminGuard from "@/components/AdminGuard"; // ⬅️ new
+
+const LEG3_YEAR = 2025;
 
 function formatDateTime(dt) {
   if (!dt) return "Never";
   const d = new Date(dt);
   if (Number.isNaN(d.getTime())) return String(dt);
   return d.toLocaleString();
+}
+
+// Public R2 base URL for Gauntlet JSONs
+function getLeg3R2Base() {
+  // Prefer env at build time (like leaderboard app)
+  if (process.env.NEXT_PUBLIC_GAUNTLET_R2_PUBLIC_BASE) {
+    return process.env.NEXT_PUBLIC_GAUNTLET_R2_PUBLIC_BASE;
+  }
+  if (process.env.NEXT_PUBLIC_R2_PUBLIC_BASE) {
+    return process.env.NEXT_PUBLIC_R2_PUBLIC_BASE;
+  }
+  // Fallback: the pub-* URL you showed in the network log
+  return "https://pub-eec34f38e47f4ffbbc39af58bda1bcc2.r2.dev";
+}
+
+function buildManifestUrl(year) {
+  const base = getLeg3R2Base().replace(/\/$/, "");
+  return `${base}/gauntlet/leg3/gauntlet_leg3_${year}.manifest.json`;
+}
+
+function buildKeyUrl(key) {
+  const base = getLeg3R2Base().replace(/\/$/, "");
+  const cleanKey = String(key || "").replace(/^\/+/, "");
+  return `${base}/${cleanKey}`;
 }
 
 // Top-level: gate the whole page behind AdminGuard
@@ -23,7 +48,11 @@ export default function GauntletLeg3Page() {
 }
 
 function GauntletLeg3Inner() {
-  const [payload, setPayload] = useState(null);
+  const [payloadMeta, setPayloadMeta] = useState(null); // manifest-ish
+  const [divisionsData, setDivisionsData] = useState({}); // divisionName -> { gods, champions, ... }
+  const [divisionLoading, setDivisionLoading] = useState({}); // divisionName -> bool
+  const [grand, setGrand] = useState(null);
+
   const [updatedAt, setUpdatedAt] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -31,99 +60,219 @@ function GauntletLeg3Inner() {
   const [viewMode, setViewMode] = useState("matchups"); // "matchups" | "bracket"
   const [roundFilter, setRoundFilter] = useState("1"); // "1" | "2" | "3" | "4"
 
-  async function loadData() {
-    setError("");
-    setLoading(true);
-    try {
-      const supabase = getSupabase();
-      const { data, error } = await supabase
-        .from("gauntlet_leg3")
-        .select("year, payload, updated_at")
-        .eq("year", "2025")
-        .maybeSingle();
+  // ========== Core loaders ==========
+    // Auto-select the current round based on the manifest's currentBracketWeek
+  useEffect(() => {
+    const w = payloadMeta?.currentBracketWeek;
+    if (!w) return;
+    // Leg 3 uses Weeks 13–16 → R1–R4
+    if (w >= 13 && w <= 16) {
+      const round = w - 12; // 13→1, 14→2, 15→3, 16→4
+      setRoundFilter(String(round));
+    }
+  }, [payloadMeta?.currentBracketWeek]);
 
-      if (error) {
-        console.error(error);
-        setError("Failed to load Gauntlet data.");
-      } else if (!data) {
-        setPayload(null);
-        setUpdatedAt(null);
-      } else {
-        setPayload(data.payload);
-        setUpdatedAt(data.updated_at);
+  async function loadManifest({ hard = false } = {}) {
+    setError("");
+
+    if (!hard) {
+      setLoading(true);
+    }
+
+    try {
+      const url = buildManifestUrl(LEG3_YEAR);
+      const res = await fetch(url, {
+        cache: hard ? "no-store" : "default",
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(
+          `Failed to load Gauntlet Leg 3 manifest (${res.status}) ${
+            text || ""
+          }`.trim()
+        );
+      }
+
+      const json = await res.json();
+
+      setPayloadMeta({
+        name:
+          json.name ||
+          `Ballsville Gauntlet – Leg 3 (${json.year || LEG3_YEAR})`,
+        year: json.year || LEG3_YEAR,
+        currentBracketWeek: json.currentBracketWeek || null,
+        divisionsMeta: json.divisions || {},
+        grandMeta: json.grand || null,
+        missingSeedLeaguesSummary: json.missingSeedLeaguesSummary || [],
+      });
+
+      setUpdatedAt(json.updatedAt || null);
+
+      // Kick off a tiny fetch for Grand Championship JSON
+      if (json.grand?.key) {
+        void loadGrand(json.grand.key, { hard: false });
       }
     } catch (err) {
-      console.error(err);
-      setError("Unexpected error loading data.");
+      console.error("Error loading Gauntlet Leg 3 manifest:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unexpected error loading Gauntlet Leg 3 manifest."
+      );
     } finally {
       setLoading(false);
     }
   }
 
+  async function loadGrand(grandKey, { hard = false } = {}) {
+    try {
+      const url = buildKeyUrl(grandKey);
+      const res = await fetch(url, {
+        cache: hard ? "no-store" : "default",
+      });
+      if (!res.ok) return;
+      const json = await res.json();
+      setGrand(json);
+    } catch (err) {
+      console.error("Error loading Gauntlet Grand Championship JSON:", err);
+      // don’t surface in main error banner; it’s a bonus view
+    }
+  }
+
+  async function loadDivision(divisionName, { hard = false } = {}) {
+    if (!payloadMeta?.divisionsMeta?.[divisionName]) return;
+
+    // Don’t re-load if we already have it and not forcing
+    if (!hard && divisionsData[divisionName]) return;
+
+    const meta = payloadMeta.divisionsMeta[divisionName];
+    const key = meta.key;
+    if (!key) return;
+
+    setDivisionLoading((prev) => ({ ...prev, [divisionName]: true }));
+
+    try {
+      const url = buildKeyUrl(key);
+      const res = await fetch(url, {
+        cache: hard ? "no-store" : "default",
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(
+          `Failed to load division JSON for ${divisionName} (${res.status}) ${
+            text || ""
+          }`.trim()
+        );
+      }
+
+      const json = await res.json();
+      setDivisionsData((prev) => ({
+        ...prev,
+        [divisionName]: json,
+      }));
+    } catch (err) {
+      console.error(`Error loading division ${divisionName}:`, err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : `Unexpected error loading ${divisionName} data.`
+      );
+    } finally {
+      setDivisionLoading((prev) => ({ ...prev, [divisionName]: false }));
+    }
+  }
+
   async function handleRefresh() {
     setRefreshing(true);
-    await loadData();
+
+    // Clear division data so we don’t show stale stuff between runs
+    setDivisionsData({});
+    setDivisionLoading({});
+    setGrand(null);
+
+    await loadManifest({ hard: true });
     setRefreshing(false);
   }
 
   // Initial load
   useEffect(() => {
-    loadData();
+    loadManifest();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 🔄 30s polling — only for admins, on this admin page
+  // 🔁 Auto-load ALL Legions when the manifest changes
   useEffect(() => {
-    if (!payload) return;
+    if (!payloadMeta?.divisionsMeta) return;
+    const divisionNames = Object.keys(payloadMeta.divisionsMeta);
+    if (!divisionNames.length) return;
 
-    const supabase = getSupabase();
+    divisionNames.forEach((name) => {
+      // loadDivision has its own "already loaded" guard
+      void loadDivision(name, { hard: false });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payloadMeta]);
+
+  // 30s polling — only for admins, on this admin page
+  useEffect(() => {
+    if (!payloadMeta) return;
+
     let cancelled = false;
 
     async function checkForUpdate() {
       try {
-        // Don’t bother if tab isn’t visible
         if (typeof document !== "undefined" && document.hidden) return;
 
-        const { data, error } = await supabase
-          .from("gauntlet_leg3")
-          .select("updated_at")
-          .eq("year", "2025")
-          .maybeSingle();
+        const url = buildManifestUrl(LEG3_YEAR);
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) return;
 
-        if (error) {
-          console.error("Poll error (gauntlet_leg3.updated_at):", error);
-          return;
-        }
+        const json = await res.json();
+        const newUpdatedAt = json.updatedAt || null;
 
-        if (!data?.updated_at) return;
+        if (!cancelled && newUpdatedAt && newUpdatedAt !== updatedAt) {
+          // do a “soft” reload (manifest, divisions re-fetched lazily/auto)
+          setDivisionsData({});
+          setDivisionLoading({});
+          setGrand(null);
+          setPayloadMeta({
+            name:
+              json.name ||
+              `Ballsville Gauntlet – Leg 3 (${json.year || LEG3_YEAR})`,
+            year: json.year || LEG3_YEAR,
+            currentBracketWeek: json.currentBracketWeek || null,
+            divisionsMeta: json.divisions || {},
+            grandMeta: json.grand || null,
+            missingSeedLeaguesSummary: json.missingSeedLeaguesSummary || [],
+          });
+          setUpdatedAt(newUpdatedAt);
 
-        // If Supabase updated_at changed, reload fresh payload
-        if (!cancelled && data.updated_at !== updatedAt) {
-          await loadData();
+          if (json.grand?.key) {
+            void loadGrand(json.grand.key, { hard: false });
+          }
         }
       } catch (err) {
-        console.error("Poll exception (gauntlet_leg3):", err);
+        console.error("Poll exception (gauntlet_leg3 manifest):", err);
       }
     }
 
-    const intervalId = setInterval(checkForUpdate, 30_000); // every 30s
+    const intervalId = setInterval(checkForUpdate, 30_000);
 
     return () => {
       cancelled = true;
       clearInterval(intervalId);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [payload, updatedAt]);
+  }, [payloadMeta, updatedAt]);
 
-  const divisions = payload?.divisions || {};
-  const grand = payload?.grandChampionship || null;
+  // ====== derived data ======
+  const divisionsMeta = payloadMeta?.divisionsMeta || {};
 
+  const grandStandings = Array.isArray(grand?.standings) ? grand.standings : [];
   const grandParticipants = Array.isArray(grand?.participants)
     ? grand.participants
-    : [];
-  const grandStandings = Array.isArray(grand?.standings)
-    ? grand.standings
-    : [];
+    : grandStandings;
 
   const hasWeek17Scores =
     grandParticipants.length > 0 &&
@@ -186,12 +335,11 @@ function GauntletLeg3Inner() {
           <div className="mt-10 flex justify-center">
             <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-700 border-t-amber-400" />
           </div>
-        ) : !payload ? (
+        ) : !payloadMeta ? (
           <div className="mt-10 rounded-xl border border-slate-800 bg-slate-900/50 p-6 text-center text-sm text-slate-300">
             No Gauntlet Leg 3 data found yet.
             <br />
-            Run the{" "}
-            <span className="font-semibold">buildGauntletLeg3Supabase</span>{" "}
+            Run the <span className="font-semibold">buildgauntlet.mjs</span>{" "}
             script (or GitHub Action) to generate it, then click{" "}
             <span className="font-semibold">Refresh</span>.
           </div>
@@ -202,16 +350,24 @@ function GauntletLeg3Inner() {
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold tracking-tight">
-                    {payload.name}
+                    {payloadMeta.name}
                   </h2>
                   <p className="mt-1 text-sm text-slate-400">
                     Year:{" "}
                     <span className="font-mono text-amber-300">
-                      {payload.year}
+                      {payloadMeta.year}
                     </span>
                   </p>
+                  {payloadMeta.currentBracketWeek && (
+                    <p className="mt-1 text-xs text-slate-500">
+                      Current bracket week:{" "}
+                        <span className="font-mono text-emerald-300">
+                          {payloadMeta.currentBracketWeek}
+                        </span>
+                    </p>
+                  )}
                   <p className="mt-1 text-xs text-slate-500">
-                    Precomputed from Sleeper and stored in Supabase.
+                    Precomputed from Sleeper and shown for your viewing pleasure.
                   </p>
                 </div>
 
@@ -277,48 +433,30 @@ function GauntletLeg3Inner() {
 
             {/* Legions – stacked; Gods are collapsible “tabs” */}
             <section className="space-y-6">
-              {Object.entries(divisions).map(([divisionName, division]) => {
-                const gods = Array.isArray(division?.gods)
-                  ? division.gods
-                  : [];
+              {Object.entries(divisionsMeta).map(
+                ([divisionName, divisionMeta]) => {
+                  const divisionData = divisionsData[divisionName] || null;
+                  const isDivLoading = !!divisionLoading[divisionName];
 
-                return (
-                  <div
-                    key={divisionName}
-                    className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 shadow-md"
-                  >
-                    <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <h3 className="text-xl font-semibold">{divisionName}</h3>
-                        <p className="text-xs text-slate-400">
-                          4 Gods per Legion &mdash; bracket winners feed the
-                          Week 17 Grand Championship.
-                        </p>
-                      </div>
-                      <span className="inline-flex items-center justify-center rounded-full bg-slate-800 px-4 py-1 text-xs text-slate-300">
-                        {gods.length} Gods
-                      </span>
-                    </div>
+                  return (
+                    <DivisionCard
+                      key={divisionName}
+                      divisionName={divisionName}
+                      divisionMeta={divisionMeta}
+                      divisionData={divisionData}
+                      isLoading={isDivLoading}
+                      viewMode={viewMode}
+                      roundFilter={roundFilter}
+                    />
+                  );
+                }
+              )}
 
-                    <div className="space-y-3">
-                      {gods.map((god) => (
-                        <GodCard
-                          key={god.index}
-                          god={god}
-                          viewMode={viewMode}
-                          roundFilter={roundFilter}
-                        />
-                      ))}
-
-                      {gods.length === 0 && (
-                        <div className="rounded-lg border border-dashed border-slate-700 bg-slate-900/60 p-3 text-center text-xs text-slate-400">
-                          No Gods built for this Legion yet.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+              {Object.keys(divisionsMeta).length === 0 && (
+                <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-xs text-slate-400">
+                  No Legions discovered in the manifest yet.
+                </div>
+              )}
             </section>
 
             {/* Grand Championship – Week 17 */}
@@ -383,7 +521,7 @@ function GauntletLeg3Inner() {
                             {p.division}
                           </td>
                           <td className="px-3 py-2 text-slate-200">
-                            God {p.godIndex}
+                            {p.godName || `God ${p.godIndex ?? "?"}`}
                           </td>
                           <td className="px-3 py-2">
                             <div className="text-slate-100 truncate max-w-[140px]">
@@ -391,15 +529,15 @@ function GauntletLeg3Inner() {
                             </div>
                           </td>
                           <td className="px-3 py-2">
-                            <div className="text-slate-300 truncate max-w-[220px]">
+                            <div className="text-slate-300 truncate max-w-[220px]}">
                               {p.leagueName}
                             </div>
                           </td>
                           <td className="px-3 py-2 text-right font-mono text-slate-100">
-                            {p.week17Score.toFixed(2)}
+                            {Number(p.week17Score || 0).toFixed(2)}
                           </td>
                           <td className="px-3 py-2 text-right font-mono text-slate-100">
-                            {p.leg3Total.toFixed(2)}
+                            {Number(p.leg3Total || 0).toFixed(2)}
                           </td>
                         </tr>
                       ))}
@@ -418,6 +556,69 @@ function GauntletLeg3Inner() {
   );
 }
 
+/* ================== Division wrapper ================== */
+
+function DivisionCard({
+  divisionName,
+  divisionMeta,
+  divisionData,
+  isLoading,
+  viewMode,
+  roundFilter,
+}) {
+  const gods = Array.isArray(divisionData?.gods) ? divisionData.gods : [];
+
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 shadow-md">
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="text-xl font-semibold">{divisionName}</h3>
+          <p className="text-xs text-slate-400">
+            4 Gods per Legion &mdash; bracket winners feed the Week 17 Grand
+            Championship.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="inline-flex items-center justify-center rounded-full bg-slate-800 px-4 py-1 text-xs text-slate-300">
+            {divisionMeta.godsCount ?? gods.length ?? 0} Gods
+          </span>
+          {isLoading && !divisionData && (
+            <span className="flex items-center gap-1 text-[0.65rem] text-slate-400">
+              <span className="h-3 w-3 animate-spin rounded-full border border-slate-600 border-t-amber-400" />
+              Loading Legion…
+            </span>
+          )}
+        </div>
+      </div>
+
+      {!divisionData ? (
+        <div className="rounded-lg border border-dashed border-slate-700 bg-slate-900/60 p-3 text-center text-xs text-slate-400">
+          {isLoading
+            ? "Legion data is loading from R2…"
+            : "No Legion data has been generated yet. Run the Gauntlet build script, then refresh this page."}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {gods.map((god) => (
+            <GodCard
+              key={god.index}
+              god={god}
+              viewMode={viewMode}
+              roundFilter={roundFilter}
+            />
+          ))}
+
+          {gods.length === 0 && (
+            <div className="rounded-lg border border-dashed border-slate-700 bg-slate-900/60 p-3 text-center text-xs text-slate-400">
+              No Gods built for this Legion yet.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ================== Child Components ================== */
 
 function GodCard({ god, viewMode, roundFilter }) {
@@ -429,6 +630,16 @@ function GodCard({ god, viewMode, roundFilter }) {
     ? god.bracketRounds
     : [];
   const champion = god?.champion || null;
+
+  // In new payload, champion = { division, godName, winnerTeam, winningRound, winningWeek }
+  const championTeam = champion?.winnerTeam || null;
+
+  // Champion pill only when WEEK 16 has real (non-zero) score
+  const hasWeek16Score =
+    championTeam &&
+    championTeam.leg3Weekly &&
+    typeof championTeam.leg3Weekly[16] === "number" &&
+    championTeam.leg3Weekly[16] !== 0;
 
   // Close when clicking outside this GodCard
   useEffect(() => {
@@ -444,13 +655,6 @@ function GodCard({ god, viewMode, roundFilter }) {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen]);
-
-  // Champion only once WEEK 16 has real (non-zero) score
-  const hasWeek16Score =
-    champion &&
-    champion.leg3Weekly &&
-    typeof champion.leg3Weekly[16] === "number" &&
-    champion.leg3Weekly[16] !== 0;
 
   // Determine which round we want to show in Matchups view
   const desiredIndex = Math.max(
@@ -562,20 +766,38 @@ function GodCard({ god, viewMode, roundFilter }) {
     pairings.length > 0
   ) {
     // No rounds played yet → static Round 1 seed preview (Week 13)
-    matchupRows = pairings.map((p) => ({
-      match: p.match,
-      round: p.round,
-      week: p.week,
-      lightOwnerName: p.lightOwnerName,
-      darkOwnerName: p.darkOwnerName,
-      lightSeed: p.lightSeed,
-      darkSeed: p.darkSeed,
-      lightScore: Number((p.lightLeg3Total || 0).toFixed(2)),
-      darkScore: Number((p.darkLeg3Total || 0).toFixed(2)),
-      lightIsWinner: false,
-      darkIsWinner: false,
-      isPlayed: false,
-    }));
+    matchupRows = pairings.map((p) => {
+      const teamA = p.teamA || {};
+      const teamB = p.teamB || {};
+
+      const aLight = teamA.side === "light";
+      const bLight = teamB.side === "light";
+
+      let lightTeam = teamA;
+      let darkTeam = teamB;
+
+      if (!aLight && bLight) {
+        lightTeam = teamB;
+        darkTeam = teamA;
+      }
+
+      return {
+        match: p.matchIndex,
+        round: 1,
+        week: 13,
+        lightOwnerName: lightTeam.ownerName,
+        darkOwnerName: darkTeam.ownerName,
+        lightSeed: lightTeam.seed,
+        darkSeed: darkTeam.seed,
+        lightScore: 0,
+        darkScore: 0,
+        lightIsWinner: false,
+        darkIsWinner: false,
+        isPlayed: false,
+        lightLineup: null,
+        darkLineup: null,
+      };
+    });
   }
 
   const hasBracketContent =
@@ -609,11 +831,11 @@ function GodCard({ god, viewMode, roundFilter }) {
 
         <div className="flex flex-col items-end gap-1">
           {/* Champion pill – gated by real Week 16 data */}
-          {hasWeek16Score && (
+          {hasWeek16Score && championTeam && (
             <div className="inline-flex items-center gap-1 rounded-full bg-emerald-900/40 px-3 py-1 text-[0.7rem] text-emerald-200 border border-emerald-500/40">
               <span>🏆 Champion</span>
               <span className="font-semibold truncate max-w-[160px]">
-                {champion.ownerName}
+                {championTeam.ownerName}
               </span>
             </div>
           )}
@@ -833,11 +1055,10 @@ function InjuryTag({ status, injury_status }) {
     );
   }
 
-  // Other statuses (PUP, SUS, etc.) could get a neutral tag if you want
   return null;
 }
 
-function LineupSide({ title, seed, lineup }) {
+function LineupSide({ title, seed, lineup, isWinner, isPlayed }) {
   if (!lineup) {
     return (
       <div className="text-xs text-slate-500">
@@ -866,6 +1087,12 @@ function LineupSide({ title, seed, lineup }) {
       0
     );
 
+  const totalColorClass = !isPlayed
+    ? "text-slate-300"
+    : isWinner
+    ? "text-emerald-300"
+    : "text-red-300";
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
@@ -877,7 +1104,7 @@ function LineupSide({ title, seed, lineup }) {
             </span>
           )}
         </div>
-        <div className="text-xs font-mono text-emerald-300">
+        <div className={`text-xs font-mono ${totalColorClass}`}>
           {Number(total || 0).toFixed(2)} pts
         </div>
       </div>
@@ -961,6 +1188,7 @@ function LineupSide({ title, seed, lineup }) {
   );
 }
 
+
 function MatchupBreakdown({ row }) {
   const { lightLineup, darkLineup, week } = row || {};
 
@@ -987,16 +1215,21 @@ function MatchupBreakdown({ row }) {
           title={row.lightOwnerName || "Light"}
           seed={row.lightSeed}
           lineup={lightLineup}
+          isWinner={row.lightIsWinner}
+          isPlayed={row.isPlayed}
         />
         <LineupSide
           title={row.darkOwnerName || "Dark"}
           seed={row.darkSeed}
           lineup={darkLineup}
+          isWinner={row.darkIsWinner}
+          isPlayed={row.isPlayed}
         />
       </div>
     </div>
   );
 }
+
 
 function GodBracket({ rounds }) {
   const safeRounds = Array.isArray(rounds) ? rounds : [];
@@ -1023,7 +1256,6 @@ function GodBracket({ rounds }) {
     );
   }
 
-  // Finer grid: each "match height" = 4 sub-rows
   const UNITS_PER_MATCH = 4;
 
   // Row 1 = headers, rows 2..(1 + N*UNITS_PER_MATCH) = match area
