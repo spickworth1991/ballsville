@@ -38,6 +38,33 @@ function buildKeyUrl(key) {
   return `${base}/${cleanKey}`;
 }
 
+async function hardReloadAll(jsonFromManifest) {
+  const divisions = jsonFromManifest?.divisions || {};
+  const grandKey = jsonFromManifest?.grand?.key || null;
+
+  // show a subtle “live update” state
+  setRefreshing(true);
+
+  // clear current data (optional; you can keep and just update in-place)
+  setDivisionLoading({});
+  setDivisionsData({});
+  setGrand(null);
+
+  // kick off division loads in parallel (no-store)
+  const names = Object.keys(divisions);
+  await Promise.all(
+    names.map((name) => loadDivision(name, { hard: true }))
+  );
+
+  // reload grand (no-store)
+  if (grandKey) {
+    await loadGrand(grandKey, { hard: true });
+  }
+
+  setRefreshing(false);
+}
+
+
 // Top-level: gate the whole page behind AdminGuard
 export default function GauntletLeg3Page() {
   return (
@@ -233,10 +260,6 @@ function GauntletLeg3Inner() {
         const newUpdatedAt = json.updatedAt || null;
 
         if (!cancelled && newUpdatedAt && newUpdatedAt !== updatedAt) {
-          // do a “soft” reload (manifest, divisions re-fetched lazily/auto)
-          setDivisionsData({});
-          setDivisionLoading({});
-          setGrand(null);
           setPayloadMeta({
             name:
               json.name ||
@@ -249,10 +272,11 @@ function GauntletLeg3Inner() {
           });
           setUpdatedAt(newUpdatedAt);
 
-          if (json.grand?.key) {
-            void loadGrand(json.grand.key, { hard: false });
-          }
+          // ✅ hard refresh all underlying JSONs without a full page reload
+          void hardReloadAll(json);
         }
+
+        
       } catch (err) {
         console.error("Poll exception (gauntlet_leg3 manifest):", err);
       }
@@ -297,6 +321,11 @@ function GauntletLeg3Inner() {
               Last updated:{" "}
               <span className="font-mono">{formatDateTime(updatedAt)}</span>
             </p>
+            {refreshing && (
+              <span className="ml-2 inline-flex items-center rounded-full bg-slate-800 px-2 py-0.5 text-[0.65rem] text-slate-200">
+                Updating…
+              </span>
+            )}
             <p className="mt-1 text-[0.65rem] text-slate-500">
               This admin view auto-checks for new scores every 30 seconds.
             </p>
