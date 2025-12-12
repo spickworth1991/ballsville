@@ -61,6 +61,12 @@ function GauntletLeg3Inner() {
   const [viewMode, setViewMode] = useState("matchups"); // "matchups" | "bracket"
   const [roundFilter, setRoundFilter] = useState("1"); // "1" | "2" | "3" | "4"
 
+  const [expandedGods, setExpandedGods] = useState(() => ({}));
+  // key: `${divisionName}::${godIndex}` => true/false
+
+  const [expandAllGods, setExpandAllGods] = useState(false);
+
+
   // ========== Core loaders ==========
       async function hardReloadAll(jsonFromManifest) {
         const divisions = jsonFromManifest?.divisions || {};
@@ -68,30 +74,24 @@ function GauntletLeg3Inner() {
 
         setRefreshing(true);
 
-        // clear current data (optional; you can keep and just update in-place)
-        setDivisionLoading({});
-        setDivisionsData({});
-        setGrand(null);
-
-        // kick off division loads in parallel (no-store)
         const names = Object.keys(divisions);
 
-        // Important: loadDivision checks payloadMeta.divisionsMeta,
-        // so we need payloadMeta updated FIRST (you already do that)
         await Promise.all(
           names.map((name) =>
-            loadDivision(name, { hard: true, divisionsMetaOverride: jsonFromManifest.divisions })
+            loadDivision(name, {
+              hard: true,
+              divisionsMetaOverride: divisions,
+            })
           )
         );
 
-
-        // reload grand (no-store)
         if (grandKey) {
           await loadGrand(grandKey, { hard: true });
         }
 
         setRefreshing(false);
       }
+
 
 
     // Auto-select the current round based on the manifest's currentBracketWeek
@@ -157,6 +157,21 @@ function GauntletLeg3Inner() {
       setLoading(false);
     }
   }
+
+  function godKey(divisionName, godIndex) {
+    return `${divisionName}::${godIndex}`;
+  }
+
+  function isGodOpen(divisionName, godIndex) {
+    if (expandAllGods) return true;
+    return !!expandedGods[godKey(divisionName, godIndex)];
+  }
+
+  function toggleGodOpen(divisionName, godIndex) {
+    const k = godKey(divisionName, godIndex);
+    setExpandedGods((prev) => ({ ...prev, [k]: !prev[k] }));
+  }
+
 
   async function loadGrand(grandKey, { hard = false } = {}) {
     try {
@@ -343,6 +358,7 @@ function GauntletLeg3Inner() {
                 <span className="text-xs text-red-400 max-w-xs text-right">
                   {error}
                 </span>
+                
               )}
               <button
                 type="button"
@@ -363,6 +379,28 @@ function GauntletLeg3Inner() {
               />
             </div>
           </div>
+          <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
+            <button
+              type="button"
+              onClick={() => setExpandAllGods((v) => !v)}
+              className={`rounded-full border px-3 py-1 text-xs transition ${
+                expandAllGods
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+                  : "border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
+              }`}
+            >
+              {expandAllGods ? "✅ Keep All Expanded" : "Keep All Expanded"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setExpandedGods({})}
+              className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-200 hover:bg-slate-800 transition"
+            >
+              Collapse All
+            </button>
+          </div>
+
         </header>
 
         {/* Loading / Empty states */}
@@ -482,7 +520,10 @@ function GauntletLeg3Inner() {
                       isLoading={isDivLoading}
                       viewMode={viewMode}
                       roundFilter={roundFilter}
+                      isGodOpen={isGodOpen}
+                      toggleGodOpen={toggleGodOpen}
                     />
+
                   );
                 }
               )}
@@ -600,7 +641,10 @@ function DivisionCard({
   isLoading,
   viewMode,
   roundFilter,
+  isGodOpen,
+  toggleGodOpen,
 }) {
+
   const gods = Array.isArray(divisionData?.gods) ? divisionData.gods : [];
 
   return (
@@ -638,10 +682,14 @@ function DivisionCard({
             <GodCard
               key={god.index}
               god={god}
+              divisionName={divisionName}
+              isOpen={isGodOpen(divisionName, god.index)}
+              onToggle={() => toggleGodOpen(divisionName, god.index)}
               viewMode={viewMode}
               roundFilter={roundFilter}
             />
           ))}
+
 
           {gods.length === 0 && (
             <div className="rounded-lg border border-dashed border-slate-700 bg-slate-900/60 p-3 text-center text-xs text-slate-400">
@@ -656,8 +704,7 @@ function DivisionCard({
 
 /* ================== Child Components ================== */
 
-function GodCard({ god, viewMode, roundFilter }) {
-  const [isOpen, setIsOpen] = useState(false);
+function GodCard({ god, divisionName, isOpen, onToggle, viewMode, roundFilter }) {
   const cardRef = useRef(null);
 
   const pairings = Array.isArray(god?.pairings) ? god.pairings : [];
@@ -675,21 +722,6 @@ function GodCard({ god, viewMode, roundFilter }) {
     championTeam.leg3Weekly &&
     typeof championTeam.leg3Weekly[16] === "number" &&
     championTeam.leg3Weekly[16] !== 0;
-
-  // Close when clicking outside this GodCard
-  useEffect(() => {
-    if (!isOpen) return;
-
-    function handleClickOutside(e) {
-      if (!cardRef.current) return;
-      if (!cardRef.current.contains(e.target)) {
-        setIsOpen(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isOpen]);
 
   // Determine which round we want to show in Matchups view
   const desiredIndex = Math.max(
@@ -848,7 +880,7 @@ function GodCard({ god, viewMode, roundFilter }) {
       {/* Header row acts like a tab/accordion trigger */}
       <button
         type="button"
-        onClick={() => setIsOpen((v) => !v)}
+        onClick={onToggle}
         className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-slate-900/80 transition"
       >
         <div>
