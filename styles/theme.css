@@ -625,14 +625,13 @@ body {
 }
 
 .no-chrome {
-  padding: 1 !important;
+  padding: 20 !important;
   margin: 0 !important;
 }
 
 
 /* Hide Navbar + Footer when the Gauntlet embed page is in the tree */
 body:has(.no-chrome) nav,
-body:has(.no-chrome) header,
 body:has(.no-chrome) footer {
   display: none !important;
 }

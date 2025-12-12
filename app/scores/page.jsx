@@ -319,10 +319,11 @@ function GauntletLeg3Inner() {
     );
 
   return (
+    
     <div className="no-chrome min-h-screen bg-slate-950 text-slate-50 px-4 py-6 md:px-8">
-      <div className="mx-auto max-w-6xl space-y-6">
+      <div className="mx-auto max-w-6xl space-y-6 ">
         {/* Header */}
-        <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <header className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
               Gauntlet Leg 3 – Bracket View
