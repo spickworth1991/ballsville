@@ -30,5 +30,10 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           # 👇 Manual runs (workflow_dispatch) set GAUNTLET_FORCE=1, scheduled runs keep it empty
           GAUNTLET_FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
+          
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_GAUNTLET: ${{ secrets.R2_BUCKET_GAUNTLET }}
         run: |
           node script/buildgauntlet.mjs
