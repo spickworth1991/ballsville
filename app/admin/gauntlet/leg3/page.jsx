@@ -38,32 +38,6 @@ function buildKeyUrl(key) {
   return `${base}/${cleanKey}`;
 }
 
-async function hardReloadAll(jsonFromManifest) {
-  const divisions = jsonFromManifest?.divisions || {};
-  const grandKey = jsonFromManifest?.grand?.key || null;
-
-  // show a subtle “live update” state
-  setRefreshing(true);
-
-  // clear current data (optional; you can keep and just update in-place)
-  setDivisionLoading({});
-  setDivisionsData({});
-  setGrand(null);
-
-  // kick off division loads in parallel (no-store)
-  const names = Object.keys(divisions);
-  await Promise.all(
-    names.map((name) => loadDivision(name, { hard: true }))
-  );
-
-  // reload grand (no-store)
-  if (grandKey) {
-    await loadGrand(grandKey, { hard: true });
-  }
-
-  setRefreshing(false);
-}
-
 
 // Top-level: gate the whole page behind AdminGuard
 export default function GauntletLeg3Page() {
@@ -88,6 +62,38 @@ function GauntletLeg3Inner() {
   const [roundFilter, setRoundFilter] = useState("1"); // "1" | "2" | "3" | "4"
 
   // ========== Core loaders ==========
+      async function hardReloadAll(jsonFromManifest) {
+        const divisions = jsonFromManifest?.divisions || {};
+        const grandKey = jsonFromManifest?.grand?.key || null;
+
+        setRefreshing(true);
+
+        // clear current data (optional; you can keep and just update in-place)
+        setDivisionLoading({});
+        setDivisionsData({});
+        setGrand(null);
+
+        // kick off division loads in parallel (no-store)
+        const names = Object.keys(divisions);
+
+        // Important: loadDivision checks payloadMeta.divisionsMeta,
+        // so we need payloadMeta updated FIRST (you already do that)
+        await Promise.all(
+          names.map((name) =>
+            loadDivision(name, { hard: true, divisionsMetaOverride: jsonFromManifest.divisions })
+          )
+        );
+
+
+        // reload grand (no-store)
+        if (grandKey) {
+          await loadGrand(grandKey, { hard: true });
+        }
+
+        setRefreshing(false);
+      }
+
+
     // Auto-select the current round based on the manifest's currentBracketWeek
   useEffect(() => {
     const w = payloadMeta?.currentBracketWeek;
@@ -167,13 +173,13 @@ function GauntletLeg3Inner() {
     }
   }
 
-  async function loadDivision(divisionName, { hard = false } = {}) {
-    if (!payloadMeta?.divisionsMeta?.[divisionName]) return;
+  async function loadDivision(divisionName, { hard = false, divisionsMetaOverride } = {}) {
+    const metaMap = divisionsMetaOverride || payloadMeta?.divisionsMeta;
 
-    // Don’t re-load if we already have it and not forcing
+    if (!metaMap?.[divisionName]) return;
     if (!hard && divisionsData[divisionName]) return;
 
-    const meta = payloadMeta.divisionsMeta[divisionName];
+    const meta = metaMap[divisionName];
     const key = meta.key;
     if (!key) return;
 
