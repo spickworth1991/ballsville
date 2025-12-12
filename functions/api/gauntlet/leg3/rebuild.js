@@ -19,9 +19,9 @@ const GAME_TZ = "America/Detroit";
 
 /**
  * Rough "NFL game time" window in Eastern Time (America/Detroit):
- *  - Thursday: 20:00–23:59
+ *  - Thursday: 19:00–23:59
  *  - Sunday:   13:00–23:59
- *  - Monday:   20:00–23:59
+ *  - Monday:   19:00–23:59
  *  - Plus spillover 00:00–01:00 after late games on Mon/Tue/Fri
  *
  * This doesn't have to be perfect; it just avoids hammering during truly dead times.
@@ -43,10 +43,10 @@ function isGameWindow(now = new Date()) {
   if (weekday === "Sun" && hour >= 13) return true;
 
   // Monday window: 20:00–23:59
-  if (weekday === "Mon" && hour >= 20) return true;
+  if (weekday === "Mon" && hour >= 19) return true;
 
   // Thursday window: 20:00–23:59
-  if (weekday === "Thu" && hour >= 20) return true;
+  if (weekday === "Thu" && hour >= 19) return true;
 
   // Early-morning spillover (0–1) after late games:
   if ((weekday === "Mon" || weekday === "Tue" || weekday === "Fri") && hour <= 1) {
