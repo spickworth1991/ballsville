@@ -220,7 +220,7 @@ function GauntletLeg3Inner() {
       try {
         if (typeof document !== "undefined" && document.hidden) return;
 
-        const url = buildManifestUrl(LEG3_YEAR);
+        const url = buildManifestUrl(LEG3_YEAR) + `?t=${Date.now()}`;
         const res = await fetch(url, { cache: "no-store" });
         if (!res.ok) return;
 
