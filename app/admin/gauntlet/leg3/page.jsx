@@ -16,16 +16,22 @@ function formatDateTime(dt) {
 
 // Public R2 base URL for Gauntlet JSONs
 function getLeg3R2Base() {
-  // Prefer env at build time (like leaderboard app)
-  if (process.env.NEXT_PUBLIC_GAUNTLET_R2_PUBLIC_BASE) {
-    return process.env.NEXT_PUBLIC_GAUNTLET_R2_PUBLIC_BASE;
+  // Optional override if you ever want to change it
+  if (process.env.NEXT_PUBLIC_GAUNTLET_R2_PROXY_BASE) {
+    return process.env.NEXT_PUBLIC_GAUNTLET_R2_PROXY_BASE; // e.g. "/r2"
   }
-  if (process.env.NEXT_PUBLIC_R2_PUBLIC_BASE) {
-    return process.env.NEXT_PUBLIC_R2_PUBLIC_BASE;
+
+  // Local dev: Pages Functions won't run in next dev, so hit R2 directly
+  if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+    if (process.env.NEXT_PUBLIC_GAUNTLET_R2_PUBLIC_BASE) return process.env.NEXT_PUBLIC_GAUNTLET_R2_PUBLIC_BASE;
+    if (process.env.NEXT_PUBLIC_R2_PUBLIC_BASE) return process.env.NEXT_PUBLIC_R2_PUBLIC_BASE;
+    return "https://pub-eec34f38e47f4ffbbc39af58bda1bcc2.r2.dev";
   }
-  // Fallback: the pub-* URL you showed in the network log
-  return "https://pub-eec34f38e47f4ffbbc39af58bda1bcc2.r2.dev";
+
+  // Production: SAME-ORIGIN proxy (prevents r2.dev being blocked)
+  return "/r2";
 }
+
 
 function buildManifestUrl(year) {
   const base = getLeg3R2Base().replace(/\/$/, "");
