@@ -16,6 +16,8 @@ import {
   FiHelpCircle,
   FiGrid,
   FiChevronDown,
+  FiAward,
+  FiFileText,
 } from "react-icons/fi";
 
 const NAV_ITEMS = [
@@ -31,11 +33,16 @@ const NAV_ITEMS = [
       { name: "Gauntlet", to: "/gauntlet" }, // adjust if your route is different
     ],
   },
-  { id: "leaderboards", name: "Leaderboards", to: "/leaderboards", icon: FiBarChart2 },
+  { id: "leaderboards", name: "Leaderboards", icon: FiBarChart2,children: [
+      { name: "Leaderboards", to: "/leaderboards" },
+      { name: "Gauntlet Bracket", to: "/scores" },
+    ], },
+  { id: "joe-street-journal", name: "Joe Street Journal", to: "/joe-street-journal", icon: FiFileText },
   { id: "about", name: "About", to: "/about", icon: FiUsers },
   { id: "constitution", name: "Constitution", to: "/constitution", icon: FiBriefcase },
   { id: "news", name: "News", to: "/news", icon: FiTrendingUp },
   { id: "faqs", name: "Faqs", to: "/faq", icon: FiHelpCircle },
+  { id: "hall-of-fame", name: "Hall of Fame", to: "/hall-of-fame", icon: FiAward },
 ];
 
 export default function Navbar() {
@@ -53,6 +60,8 @@ export default function Navbar() {
   const linksRef = useRef([]);
   const logoRef = useRef(null);
   const rightRef = useRef(null);
+  const innerRef = useRef(null);
+
 
   const overflow = NAV_ITEMS.slice(visibleLinks);
 
@@ -84,40 +93,64 @@ export default function Navbar() {
 
   // ---------------- LINK MEASUREMENT ----------------
   const updateVisibleLinks = () => {
-    if (!containerRef.current) return;
+    if (!innerRef.current) return;
 
-    const navWidth = containerRef.current.offsetWidth || 0;
+    const rowWidth = innerRef.current.offsetWidth || 0;
     const logoWidth = logoRef.current?.offsetWidth || 0;
-    const rightWidth = rightRef.current?.offsetWidth || 0;
 
-    const horizontalPadding = 32;
-    const buffer = 20;
+    // right side measured width (theme + maybe hamburger)
+    let rightWidth = rightRef.current?.offsetWidth || 0;
 
-    const availableWidth =
-      navWidth - logoWidth - rightWidth - horizontalPadding - buffer;
-
-    if (availableWidth <= 0) {
-      setVisibleLinks(1);
-      return;
+    // If hamburger currently exists, subtract its real width so rightWidth is stable
+    const burgerBtn = rightRef.current?.querySelector("button[aria-label='Open menu']");
+    if (burgerBtn) {
+      rightWidth -= (burgerBtn.offsetWidth || 0);
+      // also subtract the space-x-2 gap (8px) if both buttons exist
+      rightWidth -= 8;
     }
 
-    let used = 0;
-    let count = 0;
+    const buffer = 64;
+    const gap = 16; // space-x-4
 
-    for (let i = 0; i < NAV_ITEMS.length; i++) {
-      const el = linksRef.current[i];
-      if (!el) break;
-      const w = el.offsetWidth || 0;
+    // helper: count how many fit given available space
+    const countThatFit = (availableWidth) => {
+      let used = 0;
+      let count = 0;
 
-      if (used + w > availableWidth) break;
+      for (let i = 0; i < NAV_ITEMS.length; i++) {
+        const el = linksRef.current[i];
+        if (!el) break;
 
-      used += w + 16; // gap
-      count++;
+        const sizer = el.querySelector("span[aria-hidden='true'] span");
+        const w = sizer?.offsetWidth || el.offsetWidth || 0;
+
+        const addGap = count === 0 ? 0 : gap;
+        if (used + addGap + w > availableWidth) break;
+
+        used += addGap + w;
+        count++;
+      }
+
+      return count;
+    };
+
+    // PASS 1: assume NO hamburger
+    const availableNoBurger = rowWidth - logoWidth - rightWidth - buffer;
+    let count = countThatFit(availableNoBurger);
+
+    // PASS 2: if not all fit, reserve hamburger and re-count
+    if (count < NAV_ITEMS.length) {
+      const hamburgerReserve = 48; // 40px button + ~8px spacing
+      const availableWithBurger =
+        rowWidth - logoWidth - rightWidth - hamburgerReserve - buffer;
+
+      count = countThatFit(availableWithBurger);
     }
 
     const MIN_VISIBLE = 1;
-    setVisibleLinks(Math.max(count, MIN_VISIBLE));
+    setVisibleLinks(Math.max(MIN_VISIBLE, Math.min(count, NAV_ITEMS.length)));
   };
+
 
   useLayoutEffect(() => {
     updateVisibleLinks();
@@ -128,14 +161,21 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
+    const t = setTimeout(updateVisibleLinks, 50);
+    return () => clearTimeout(t);
+  }, []);
+
+
+  useEffect(() => {
     updateVisibleLinks();
   }, [dark]);
 
   // lock body scroll when sidebar open; auto-close if no overflow
   useEffect(() => {
     document.body.classList.toggle("overflow-hidden", open);
-    if (open && overflow.length === 0) setOpen(false);
-  }, [open, overflow.length]);
+    return () => document.body.classList.remove("overflow-hidden");
+  }, [open]);
+
 
   // Close dropdowns/sidebar on route change
   useEffect(() => {
@@ -165,7 +205,10 @@ export default function Navbar() {
           scrolled ? "h-12" : "h-16"
         }`}
       >
-        <div className="max-w-7xl mx-auto flex items-center justify-between h-full px-4 md:px-8">
+        <div
+            ref={innerRef}
+            className="max-w-7xl mx-auto flex items-center justify-between h-full px-4 md:px-8"
+          >
           {/* Left: logo + links */}
           <div className="flex items-center flex-1 min-w-0">
             <Link
@@ -193,14 +236,27 @@ export default function Navbar() {
 
                 return (
                   <li
-                    key={item.id}
-                    ref={(el) => (linksRef.current[i] = el)}
-                    className={`relative transition-all duration-300 ease-in-out ${
-                      i < visibleLinks
-                        ? "opacity-100 static pointer-events-auto"
-                        : "opacity-0 absolute -z-10 pointer-events-none"
-                    }`}
+                  key={item.id}
+                  ref={(el) => (linksRef.current[i] = el)}
+                  className={`relative transition-all duration-300 ease-in-out ${
+                    i < visibleLinks
+                      ? "opacity-100 static pointer-events-auto"
+                      : "opacity-0 absolute -z-10 pointer-events-none"
+                  }`}
+                >
+                  {/* ✅ SIZER: always in DOM, always measurable */}
+                  <span
+                    className="absolute -left-[9999px] top-0 opacity-0 pointer-events-none"
+                    aria-hidden="true"
                   >
+                    <span className="inline-flex items-center space-x-1">
+                      {item.icon && <item.icon className="w-5 h-5" />}
+                      <span className="whitespace-nowrap">{item.name}</span>
+                      {Array.isArray(item.children) && item.children.length > 0 && (
+                        <FiChevronDown className="w-4 h-4" />
+                      )}
+                    </span>
+                  </span>
                     {/* Simple link item */}
                     {!hasChildren && (
                       <Link
@@ -273,28 +329,35 @@ export default function Navbar() {
             className="flex items-center flex-shrink-0 space-x-2 pl-4"
             ref={rightRef}
           >
+            {/* Theme toggle */}
             <button
               onClick={() => setDark((prev) => !prev)}
-              className="p-2 text-xl text-fg hover:text-accent transition"
+              className="w-10 h-10 grid place-items-center rounded-lg text-[0px] leading-none hover:opacity-90 transition"
               aria-label="Toggle dark mode"
               type="button"
             >
-              {dark ? <FiSun /> : <FiMoon />}
+              {dark ? (
+                <FiSun className="w-6 h-6 text-fg" />
+              ) : (
+                <FiMoon className="w-6 h-6 text-fg" />
+              )}
             </button>
 
+            {/* Hamburger */}
             {overflow.length > 0 && (
               <button
-                className="p-2 text-2xl text-primary"
+                className="w-10 h-10 grid place-items-center rounded-lg text-[0px] leading-none hover:opacity-90 transition"
                 onClick={() => setOpen(true)}
                 aria-label="Open menu"
                 aria-controls="mobile-menu"
                 aria-expanded={open ? "true" : "false"}
                 type="button"
               >
-                <FiMenu />
+                <FiMenu className="w-7 h-7 text-primary" />
               </button>
             )}
           </div>
+
         </div>
       </nav>
 
@@ -312,7 +375,7 @@ export default function Navbar() {
         id="mobile-menu"
         className={`fixed top-0 left-0 h-full w-3/4 max-w-xs z-50 transform transition-transform duration-300 ease-in-out bg-card-surface border border-subtle rounded-r-2xl shadow-md ${
           open ? "translate-x-0" : "-translate-x-full"
-        } flex flex-col justify-between touch-none`}
+        } flex flex-col justify-between`}
         role="dialog"
         aria-modal="true"
       >
@@ -403,13 +466,13 @@ export default function Navbar() {
 
             {/* Theme toggle inside sidebar */}
             <button
-              onClick={() => setDark((prev) => !prev)}
-              className="flex items-center space-x-2 text-xl p-2 mt-6 text-fg hover:text-accent transition"
-              type="button"
-            >
-              {dark ? <FiSun className="w-6 h-6" /> : <FiMoon className="w-6 h-6" />}
-              <span>{dark ? "Light Mode" : "Dark Mode"}</span>
-            </button>
+            onClick={() => setDark((prev) => !prev)}
+            className="inline-flex items-center justify-center p-2 text-xl leading-none text-fg hover:text-accent transition"
+            aria-label="Toggle dark mode"
+            type="button"
+          >
+            {dark ? <FiSun className="block" /> : <FiMoon className="block" />}
+          </button>
           </nav>
         </div>
       </aside>

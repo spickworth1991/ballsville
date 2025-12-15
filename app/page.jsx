@@ -335,7 +335,7 @@ export default function Page() {
       {/* HALL OF FAME / 2024 WINNERS */}
       <section className="px-4 py-16">
         <div className="max-w-4xl mx-auto text-center space-y-6">
-          <Link href="/winners/2024" className="inline-block group">
+          <Link href="/hall-of-fame" className="inline-block group">
             <picture>
               <source
                 type="image/webp"

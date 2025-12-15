@@ -369,32 +369,29 @@ body {
 /* ========== NAVBAR ========== */
 
 .navbar {
-  position: sticky;
+  position: fixed;
   top: 0;
-  z-index: 50;
+  left: 0;
+  right: 0;
+
+  /* ✅ MUST be above page content + scrim */
+  z-index: 1000;
+
   color: var(--color-nav-fg);
+
+  background: color-mix(
+    in oklab,
+    var(--color-nav-bg) calc(var(--nav-opacity) * 100%),
+    transparent
+  );
+
   -webkit-backdrop-filter: blur(var(--nav-blur));
   backdrop-filter: blur(var(--nav-blur));
+
   border-bottom: 1px solid
     color-mix(in oklab, var(--color-fg) 10%, transparent);
-  isolation: isolate;
 }
 
-.navbar::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: var(--color-nav-bg);
-  opacity: var(--nav-opacity);
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* keep navbar content above overlay */
-.navbar > * {
-  position: relative;
-  z-index: 1;
-}
 
 /* Mobile overlay scrim */
 .scrim {
@@ -403,7 +400,13 @@ body {
     var(--color-fg) calc(var(--overlay-alpha) * 100%),
     transparent
   );
+
+  /* ✅ must sit above page, below nav + sidebar */
+  z-index: 900;
+
+  pointer-events: auto;
 }
+
 
 /* ========== FOOTER ========== */
 
@@ -479,22 +482,28 @@ body {
 
 /* Full-page cosmic background (used by layout) */
 .page-bg {
+  padding-top: 64px;
   min-height: calc(100vh - var(--footer-height) - var(--nav-height));
-  /* background-image: url("/photos/space-bg-vert-v2.png"); */
 
   background-size: cover;
   background-position: top center;
   background-repeat: no-repeat;
-  background-attachment:local;
-  position:sticky;
+  background-attachment: local;
+
+  position: relative;
+
+  /* ✅ keep page content below navbar */
+  z-index: 0;
+
   width: 100%;
   overflow-x: hidden;
 }
 
+
 /* Sitewide background video */
 .site-bg-video {
   position: fixed;
-  inset: 0;              /* top:0; right:0; bottom:0; left:0 */
+  inset:0;           /* top:0; right:0; bottom:0; left:0 */
   width: 100vw;
   height: 100vh;
   object-fit: cover;
@@ -508,14 +517,21 @@ body {
   content: "";
   position: absolute;
   inset: 0;
-  /* background: rgba(0, 0, 0, 0.55); */
   z-index: 0;
+  pointer-events: none; 
 }
 
 .page-bg > * {
   position: relative;
   z-index: 1;
+  pointer-events: auto; 
 }
+.page-bg,
+.page-bg * {
+  pointer-events: auto;
+}
+
+
 
 /* ========== THEME UTILITIES FOR REACT PAGES ========== */
 
@@ -606,13 +622,16 @@ body {
 @media (max-width: 768px) {
   .page-bg {
   min-height: calc(100vh - var(--footer-height) - var(--nav-height));
-  background-image: url("/photos/space-bg-vert-v2.png");
   background-size: auto auto;
   background-position: top center;
   background-repeat: repeat;
   background-attachment:scroll;
   width: 100%;
   }
+}
+
+#mobile-menu {
+  z-index: 1100;
 }
 
 
