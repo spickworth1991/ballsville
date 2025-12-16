@@ -33,11 +33,21 @@ const NAV_ITEMS = [
       { name: "Gauntlet", to: "/gauntlet" }, // adjust if your route is different
     ],
   },
-  { id: "leaderboards", name: "Leaderboards", icon: FiBarChart2,children: [
+  {
+    id: "leaderboards",
+    name: "Leaderboards",
+    icon: FiBarChart2,
+    children: [
       { name: "Leaderboards", to: "/leaderboards" },
       { name: "Gauntlet Bracket", to: "/scores" },
-    ], },
-  { id: "joe-street-journal", name: "Joe Street Journal", to: "/joe-street-journal", icon: FiFileText },
+    ],
+  },
+  {
+    id: "joe-street-journal",
+    name: "Joe Street Journal",
+    to: "/joe-street-journal",
+    icon: FiFileText,
+  },
   { id: "about", name: "About", to: "/about", icon: FiUsers },
   { id: "constitution", name: "Constitution", to: "/constitution", icon: FiBriefcase },
   { id: "news", name: "News", to: "/news", icon: FiTrendingUp },
@@ -48,10 +58,12 @@ const NAV_ITEMS = [
 export default function Navbar() {
   const pathname = usePathname();
 
-  const [dark, setDark] = useState(false);
+  // const [dark, setDark] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
-  const [visibleLinks, setVisibleLinks] = useState(NAV_ITEMS.length);
+
+  // ✅ Start conservative to prevent initial overlap stealing clicks
+  const [visibleLinks, setVisibleLinks] = useState(1);
 
   const [openDesktopMenuId, setOpenDesktopMenuId] = useState(null);
   const [openMobileMenuId, setOpenMobileMenuId] = useState(null);
@@ -62,27 +74,26 @@ export default function Navbar() {
   const rightRef = useRef(null);
   const innerRef = useRef(null);
 
-
   const overflow = NAV_ITEMS.slice(visibleLinks);
 
   // ---------------- THEME ----------------
-  useEffect(() => {
-    const saved =
-      typeof window !== "undefined" ? localStorage.getItem("theme") : null;
-    const prefersDark =
-      typeof window !== "undefined" &&
-      window.matchMedia &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches;
+  // useEffect(() => {
+  //   const saved =
+  //     typeof window !== "undefined" ? localStorage.getItem("theme") : null;
+  //   const prefersDark =
+  //     typeof window !== "undefined" &&
+  //     window.matchMedia &&
+  //     window.matchMedia("(prefers-color-scheme: dark)").matches;
 
-    setDark(saved ? saved === "dark" : !!prefersDark);
-  }, []);
+  //   setDark(saved ? saved === "dark" : !!prefersDark);
+  // }, []);
 
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", dark);
-    try {
-      localStorage.setItem("theme", dark ? "dark" : "light");
-    } catch {}
-  }, [dark]);
+  // useEffect(() => {
+  //   document.documentElement.classList.toggle("dark", dark);
+  //   try {
+  //     localStorage.setItem("theme", dark ? "dark" : "light");
+  //   } catch {}
+  // }, [dark]);
 
   // ---------------- SCROLL SHRINK ----------------
   useLayoutEffect(() => {
@@ -102,17 +113,18 @@ export default function Navbar() {
     let rightWidth = rightRef.current?.offsetWidth || 0;
 
     // If hamburger currently exists, subtract its real width so rightWidth is stable
-    const burgerBtn = rightRef.current?.querySelector("button[aria-label='Open menu']");
+    const burgerBtn = rightRef.current?.querySelector(
+      "button[aria-label='Open menu']"
+    );
     if (burgerBtn) {
-      rightWidth -= (burgerBtn.offsetWidth || 0);
-      // also subtract the space-x-2 gap (8px) if both buttons exist
+      rightWidth -= burgerBtn.offsetWidth || 0;
+      // subtract the gap between theme + burger (space-x-2)
       rightWidth -= 8;
     }
 
     const buffer = 64;
     const gap = 16; // space-x-4
 
-    // helper: count how many fit given available space
     const countThatFit = (availableWidth) => {
       let used = 0;
       let count = 0;
@@ -130,7 +142,6 @@ export default function Navbar() {
         used += addGap + w;
         count++;
       }
-
       return count;
     };
 
@@ -151,31 +162,38 @@ export default function Navbar() {
     setVisibleLinks(Math.max(MIN_VISIBLE, Math.min(count, NAV_ITEMS.length)));
   };
 
-
+  // ✅ Measure immediately (layout) + 2 RAF passes (fonts/icons settle)
   useLayoutEffect(() => {
     updateVisibleLinks();
+    const r1 = requestAnimationFrame(() => {
+      updateVisibleLinks();
+      const r2 = requestAnimationFrame(updateVisibleLinks);
+      // cleanup for r2
+      (updateVisibleLinks._r2 = r2);
+    });
+
     const onResize = () => updateVisibleLinks();
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+
+    return () => {
+      window.removeEventListener("resize", onResize);
+      cancelAnimationFrame(r1);
+      if (updateVisibleLinks._r2) cancelAnimationFrame(updateVisibleLinks._r2);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    const t = setTimeout(updateVisibleLinks, 50);
-    return () => clearTimeout(t);
-  }, []);
+  // Re-measure on theme toggle (icon widths can shift a hair)
+  // useEffect(() => {
+  //   updateVisibleLinks();
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [dark]);
 
-
-  useEffect(() => {
-    updateVisibleLinks();
-  }, [dark]);
-
-  // lock body scroll when sidebar open; auto-close if no overflow
+  // lock body scroll when sidebar open
   useEffect(() => {
     document.body.classList.toggle("overflow-hidden", open);
     return () => document.body.classList.remove("overflow-hidden");
   }, [open]);
-
 
   // Close dropdowns/sidebar on route change
   useEffect(() => {
@@ -186,9 +204,7 @@ export default function Navbar() {
 
   // Also collapse mobile submenus when sidebar closes
   useEffect(() => {
-    if (!open) {
-      setOpenMobileMenuId(null);
-    }
+    if (!open) setOpenMobileMenuId(null);
   }, [open]);
 
   const handleNavClick = () => {
@@ -206,9 +222,9 @@ export default function Navbar() {
         }`}
       >
         <div
-            ref={innerRef}
-            className="max-w-7xl mx-auto flex items-center justify-between h-full px-4 md:px-8"
-          >
+          ref={innerRef}
+          className="max-w-7xl mx-auto flex items-center justify-between h-full px-4 md:px-8"
+        >
           {/* Left: logo + links */}
           <div className="flex items-center flex-1 min-w-0">
             <Link
@@ -226,38 +242,37 @@ export default function Navbar() {
               />
             </Link>
 
-            <ul className="flex items-center space-x-4 ml-6 flex-nowrap relative">
+            <ul className="flex items-center space-x-4 ml-6 flex-nowrap relative min-w-0">
               {NAV_ITEMS.map((item, i) => {
                 const hasChildren =
                   Array.isArray(item.children) && item.children.length > 0;
+
                 const isActive = hasChildren
                   ? item.children.some((child) => pathname.startsWith(child.to))
                   : pathname === item.to;
 
                 return (
                   <li
-                  key={item.id}
-                  ref={(el) => (linksRef.current[i] = el)}
-                  className={`relative transition-all duration-300 ease-in-out ${
-                    i < visibleLinks
-                      ? "opacity-100 static pointer-events-auto"
-                      : "opacity-0 absolute -z-10 pointer-events-none"
-                  }`}
-                >
-                  {/* ✅ SIZER: always in DOM, always measurable */}
-                  <span
-                    className="absolute -left-[9999px] top-0 opacity-0 pointer-events-none"
-                    aria-hidden="true"
+                    key={item.id}
+                    ref={(el) => (linksRef.current[i] = el)}
+                    className={`relative transition-all duration-300 ease-in-out ${
+                      i < visibleLinks
+                        ? "opacity-100 static pointer-events-auto"
+                        : "opacity-0 absolute -z-10 pointer-events-none"
+                    }`}
                   >
-                    <span className="inline-flex items-center space-x-1">
-                      {item.icon && <item.icon className="w-5 h-5" />}
-                      <span className="whitespace-nowrap">{item.name}</span>
-                      {Array.isArray(item.children) && item.children.length > 0 && (
-                        <FiChevronDown className="w-4 h-4" />
-                      )}
+                    {/* SIZER (always measurable) */}
+                    <span
+                      className="absolute -left-[9999px] top-0 opacity-0 pointer-events-none"
+                      aria-hidden="true"
+                    >
+                      <span className="inline-flex items-center space-x-1">
+                        {item.icon && <item.icon className="w-5 h-5" />}
+                        <span className="whitespace-nowrap">{item.name}</span>
+                        {hasChildren && <FiChevronDown className="w-4 h-4" />}
+                      </span>
                     </span>
-                  </span>
-                    {/* Simple link item */}
+
                     {!hasChildren && (
                       <Link
                         href={item.to}
@@ -273,7 +288,6 @@ export default function Navbar() {
                       </Link>
                     )}
 
-                    {/* Menu item with dropdown (e.g. Game Modes) */}
                     {hasChildren && (
                       <div className="relative">
                         <button
@@ -324,15 +338,14 @@ export default function Navbar() {
             </ul>
           </div>
 
-          {/* Right: controls */}
+          {/* Right: controls (✅ always above link area) */}
           <div
-            className="flex items-center flex-shrink-0 space-x-2 pl-4"
+            className="relative z-20 flex items-center flex-shrink-0 space-x-2 pl-4"
             ref={rightRef}
           >
-            {/* Theme toggle */}
-            <button
+            {/* <button
               onClick={() => setDark((prev) => !prev)}
-              className="w-10 h-10 grid place-items-center rounded-lg text-[0px] leading-none hover:opacity-90 transition"
+              className="w-10 h-10 grid place-items-center rounded-lg hover:opacity-90 transition"
               aria-label="Toggle dark mode"
               type="button"
             >
@@ -341,12 +354,11 @@ export default function Navbar() {
               ) : (
                 <FiMoon className="w-6 h-6 text-fg" />
               )}
-            </button>
+            </button> */}
 
-            {/* Hamburger */}
             {overflow.length > 0 && (
               <button
-                className="w-10 h-10 grid place-items-center rounded-lg text-[0px] leading-none hover:opacity-90 transition"
+                className="w-10 h-10 grid place-items-center rounded-lg hover:opacity-90 transition"
                 onClick={() => setOpen(true)}
                 aria-label="Open menu"
                 aria-controls="mobile-menu"
@@ -357,25 +369,23 @@ export default function Navbar() {
               </button>
             )}
           </div>
-
         </div>
       </nav>
 
-      {/* Sidebar Overlay */}
       {open && (
         <div
-          className="fixed inset-0 scrim backdrop-blur-sm z-40"
+          className="fixed inset-0 scrim backdrop-blur-sm"
           onClick={() => setOpen(false)}
           aria-hidden="true"
         />
       )}
 
-      {/* Left Slide-in Sidebar (overflow links) */}
       <aside
         id="mobile-menu"
-        className={`fixed top-0 left-0 h-full w-3/4 max-w-xs z-50 transform transition-transform duration-300 ease-in-out bg-card-surface border border-subtle rounded-r-2xl shadow-md ${
+        className={`fixed top-16 left-0 h-full w-3/4 max-w-xs transform transition-transform duration-300 ease-in-out bg-card-surface border border-subtle rounded-r-2xl shadow-md ${
           open ? "translate-x-0" : "-translate-x-full"
         } flex flex-col justify-between`}
+        style={{ zIndex: 975 }} // ✅ above scrim, below navbar (navbar is 1000)
         role="dialog"
         aria-modal="true"
       >
@@ -400,7 +410,6 @@ export default function Navbar() {
                 ? item.children.some((child) => pathname.startsWith(child.to))
                 : pathname === item.to;
 
-              // Simple link in sidebar
               if (!hasChildren) {
                 return (
                   <Link
@@ -417,7 +426,6 @@ export default function Navbar() {
                 );
               }
 
-              // Menu with expandable children (Game Modes)
               return (
                 <div key={item.id} className="space-y-2">
                   <button
@@ -464,15 +472,14 @@ export default function Navbar() {
               );
             })}
 
-            {/* Theme toggle inside sidebar */}
-            <button
-            onClick={() => setDark((prev) => !prev)}
-            className="inline-flex items-center justify-center p-2 text-xl leading-none text-fg hover:text-accent transition"
-            aria-label="Toggle dark mode"
-            type="button"
-          >
-            {dark ? <FiSun className="block" /> : <FiMoon className="block" />}
-          </button>
+            {/* <button
+              onClick={() => setDark((prev) => !prev)}
+              className="inline-flex items-center justify-center p-2 text-xl leading-none text-fg hover:text-accent transition"
+              aria-label="Toggle dark mode"
+              type="button"
+            >
+              {dark ? <FiSun className="block" /> : <FiMoon className="block" />}
+            </button> */}
           </nav>
         </div>
       </aside>

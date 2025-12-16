@@ -3,6 +3,8 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { siteConfig } from "@/app/config/siteConfig";
+import BackgroundVideo from "@/components/BackgroundVideo";
+
 
 export const metadata = {
   metadataBase: new URL(siteConfig.domain),
@@ -124,16 +126,7 @@ export default function RootLayout({ children }) {
       {/* Body uses theme tokens only; cosmic bg now handled by video */}
       <body className="bg-bg text-fg overflow-x-hidden">
         {/* 🔥 Full-screen video background */}
-        <video
-          className="site-bg-video"
-          autoPlay
-          loop
-          muted
-          playsInline
-        >
-          <source src="/space.mp4" type="video/mp4" />
-        </video>
-
+        <BackgroundVideo src="/space.mp4" start={2} end={45} />
         <Navbar />
         <div className="page-bg">{children}</div>
         <Footer />

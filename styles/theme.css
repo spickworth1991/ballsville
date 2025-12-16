@@ -21,6 +21,9 @@ body {
 }
 
 :root {
+  --bg-video-dim-top: 0.45;
+  --bg-video-dim-bot: 0.55;
+
   /* Brand (same vibe, just more visible on lighter cards) */
   --color-primary: #e59f3c;  /* warm CTA / highlight */
   --color-accent:  #7ad4f2;  /* cyan accent that pops on navy */
@@ -98,6 +101,9 @@ body {
 
 /* ========== DARK THEME OVERRIDES ========== */
 .dark:root {
+  --bg-video-dim-top: 0.35;
+  --bg-video-dim-bot: 0.65;
+
   /* Cosmic shell (dark) */
   --color-bg:    #020617;       /* page shell (under space bg) */
   --color-bg2:   #020617;
@@ -162,6 +168,9 @@ body {
 }
 
 /* ========== CARD COMPONENTS ========== */
+.site-bg-video {
+  filter: brightness(0.9) saturate(0.9) contrast(1.05);
+}
 
 /* Generic cards (older components) – still theme-aware */
 .card {
@@ -401,11 +410,12 @@ body {
     transparent
   );
 
-  /* ✅ must sit above page, below nav + sidebar */
-  z-index: 900;
+  /* Above page content, below sidebar(975) and navbar(1000) */
+  z-index: 950;
 
   pointer-events: auto;
 }
+
 
 
 /* ========== FOOTER ========== */
@@ -518,8 +528,16 @@ body {
   position: absolute;
   inset: 0;
   z-index: 0;
-  pointer-events: none; 
+  pointer-events: none;
+
+  /* ✅ Dulls the video behind everything */
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, var(--bg-video-dim-top)),
+    rgba(0, 0, 0, var(--bg-video-dim-bot))
+  );
 }
+
 
 .page-bg > * {
   position: relative;
