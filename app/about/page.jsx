@@ -18,31 +18,48 @@ export const metadata = {
 };
 
 export default function Page() {
-  // Let this be flexible: if you add aboutVideoId/aboutVideoMp4 later, it’ll use those;
-  // otherwise it falls back to the hero video config.
   const aboutVideoId = siteConfig.aboutVideoId || siteConfig.heroVideoId || "";
   const aboutMp4 = siteConfig.aboutVideoMp4 || siteConfig.heroVideoMp4 || "";
 
   return (
     <main className="section">
-      <div className="container-site space-y-10">
-        {/* HERO */}
-        <header className="text-center max-w-3xl mx-auto space-y-3">
-          <span className="badge">About the BALLSVILLE game</span>
+      <div className="container-site space-y-8">
+        {/* HERO (match the newer “card-surface + glow” style) */}
+        <header className="relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-10">
+          <div className="pointer-events-none absolute inset-0 opacity-55 mix-blend-screen">
+            <div className="absolute -top-24 -left-16 h-64 w-64 rounded-full bg-[color:var(--color-accent)]/18 blur-3xl" />
+            <div className="absolute -bottom-24 -right-16 h-64 w-64 rounded-full bg-[color:var(--color-primary)]/14 blur-3xl" />
+          </div>
 
-          <h1 className="h1 mt-1 text-primary">
-            How BALLSVILLE Became a Game of Games
-          </h1>
+          <div className="relative text-center max-w-3xl mx-auto space-y-3">
+            <span className="badge">About the BALLSVILLE game</span>
 
-          <p className="lead mt-2 text-muted">
-            From a handful of best ball leagues to a full ecosystem of tournaments,
-            dynasty empires, and redraft tiers — all built around big ceilings and
-            fair odds.
-          </p>
+            <h1 className="h1 mt-1 text-primary">
+              How BALLSVILLE Became a Game of Games
+            </h1>
+
+            <p className="lead mt-2 text-muted">
+              From a handful of best ball leagues to a full ecosystem of tournaments,
+              dynasty empires, and redraft tiers — all built around big ceilings and
+              fair odds.
+            </p>
+
+            <div className="mt-5 flex flex-wrap justify-center gap-2 text-xs sm:text-sm">
+              <span className="rounded-full border border-subtle bg-card-trans px-3 py-1 backdrop-blur-sm">
+                🏈 Formats for everyone
+              </span>
+              <span className="rounded-full border border-subtle bg-card-trans px-3 py-1 backdrop-blur-sm">
+                💸 Big upside
+              </span>
+              <span className="rounded-full border border-subtle bg-card-trans px-3 py-1 backdrop-blur-sm">
+                ⚖️ Fair odds
+              </span>
+            </div>
+          </div>
         </header>
 
         {/* ORIGINS / HISTORY CARD */}
-        <article className="rounded-2xl border border-subtle bg-card-surface shadow-sm p-6 md:p-8 space-y-4">
+        <article className="rounded-3xl border border-subtle bg-card-surface shadow-md p-6 md:p-8 space-y-4">
           <h2 className="h3 text-primary">The BALLSVILLE game</h2>
 
           <p className="text-fg">
@@ -90,7 +107,7 @@ export default function Page() {
           </h3>
 
           {(aboutVideoId || aboutMp4) && (
-            <div className="mt-4 rounded-xl border border-subtle bg-subtle-surface overflow-hidden">
+            <div className="mt-4 rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm overflow-hidden shadow-sm">
               <LiteYouTube
                 id={aboutVideoId}
                 mp4Src={aboutMp4}
@@ -101,7 +118,7 @@ export default function Page() {
         </article>
 
         {/* TODAY / CODE CARD */}
-        <article className="rounded-2xl border border-subtle bg-card-surface shadow-sm p-6 md:p-8 space-y-4">
+        <article className="rounded-3xl border border-subtle bg-card-surface shadow-md p-6 md:p-8 space-y-4">
           <h2 className="h3 text-primary">How the game runs today</h2>
 
           <p className="text-fg">

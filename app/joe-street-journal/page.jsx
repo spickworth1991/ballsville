@@ -24,51 +24,70 @@ export const metadata = {
 export default function JoeStreetJournalPage() {
   return (
     <section className="section">
-      <div className="container-site space-y-10">
-        {/* Hero */}
-        <header className="bg-card-surface border border-subtle shadow-md rounded-2xl p-6 md:p-10 overflow-hidden relative">
-          {/* subtle glow accents */}
-          <div className="absolute -top-24 -left-24 w-72 h-72 rounded-full opacity-30 blur-3xl bg-[color:var(--color-accent)]" />
-          <div className="absolute -bottom-24 -right-24 w-72 h-72 rounded-full opacity-25 blur-3xl bg-[color:var(--color-primary)]" />
+      <div className="container-site space-y-8">
+        {/* HERO */}
+        <header className="relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-10">
+          {/* premium glow */}
+          <div className="pointer-events-none absolute inset-0 opacity-55 mix-blend-screen">
+            <div className="absolute -top-24 -left-16 h-64 w-64 rounded-full bg-[color:var(--color-accent)]/18 blur-3xl" />
+            <div className="absolute -bottom-24 -right-16 h-64 w-64 rounded-full bg-[color:var(--color-primary)]/14 blur-3xl" />
+          </div>
 
-          <div className="relative">
-            <span className="badge">Weekly Feature</span>
+          <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,.8fr)] lg:items-start">
+            {/* left */}
+            <div className="space-y-4">
+              <span className="badge">Weekly Feature</span>
 
-            <h1 className="h1 mt-4">The Joe Street Journal</h1>
+              <h1 className="h1 mt-2">The Joe Street Journal</h1>
 
-            <p className="lead mt-3 max-w-2xl">
-              A living Ballsville doc — updated whenever Joe drops the hammer.
-              Read it here, share it, and keep receipts.
-            </p>
+              <p className="lead max-w-2xl">
+                A living Ballsville doc — updated whenever Joe drops the hammer.
+                Read it here, share it, and keep receipts.
+              </p>
 
-            <div className="mt-6 flex flex-wrap gap-3">
-              <a className="btn btn-primary" href={DOC_URL} target="_blank" rel="noreferrer">
-                Open in a new tab
-              </a>
+              <div className="flex flex-wrap gap-3 pt-2">
+                <a className="btn btn-primary" href={DOC_URL} target="_blank" rel="noreferrer">
+                  Open in a new tab
+                </a>
+                <a className="btn btn-outline" href="/hall-of-fame">
+                  Hall of Fame
+                </a>
+                <a className="btn btn-outline" href="/leaderboards">
+                  Leaderboards
+                </a>
+              </div>
 
-              <a className="btn btn-outline" href="/hall-of-fame">
-                Hall of Fame
-              </a>
-
-              <a className="btn btn-outline" href="/leaderboards">
-                Leaderboards
-              </a>
+              <p className="text-sm text-muted">
+                Tip: If the embed ever looks zoomed, “Open in a new tab” is the cleanest view.
+              </p>
             </div>
 
-            <div className="mt-6 text-sm text-muted">
-              Tip: If the embed ever looks zoomed, use “Open in a new tab” for the cleanest view.
+            {/* right: small “info bubble” panel to match your new hero style */}
+            <div className="rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm p-5 shadow-lg">
+              <p className="text-[11px] uppercase tracking-[0.25em] text-muted">
+                What&apos;s inside
+              </p>
+              <ul className="mt-3 space-y-2 text-sm text-fg">
+                <li>• Power rankings</li>
+                <li>• Weekly storylines</li>
+                <li>• Receipts + chaos</li>
+                <li>• Live edits (no refresh needed)</li>
+              </ul>
+              <div className="mt-4">
+                <a className="btn btn-outline w-full" href={DOC_URL} target="_blank" rel="noreferrer">
+                  Fullscreen / New Tab
+                </a>
+              </div>
             </div>
           </div>
         </header>
 
-        {/* Embed */}
-        <div className="bg-card-surface border border-subtle shadow-md rounded-2xl p-4 md:p-6">
+        {/* EMBED */}
+        <div className="bg-card-surface border border-subtle shadow-md rounded-3xl p-4 md:p-6">
           <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
             <div>
               <h2 className="h3">Live Journal</h2>
-              <p className="text-muted mt-1">
-                Auto-updates as the Google Doc changes.
-              </p>
+              <p className="text-muted mt-1">Auto-updates as the Google Doc changes.</p>
             </div>
 
             <div className="flex gap-2 flex-wrap">
@@ -80,10 +99,7 @@ export default function JoeStreetJournalPage() {
 
           <div
             className="rounded-2xl overflow-hidden border border-subtle bg-subtle-surface"
-            style={{
-              // keeps it tall on desktop, but still usable on mobile
-              height: "min(78vh, 980px)",
-            }}
+            style={{ height: "min(78vh, 980px)" }}
           >
             <iframe
               title="The Joe Street Journal"
@@ -97,8 +113,6 @@ export default function JoeStreetJournalPage() {
             />
           </div>
         </div>
-
-        
       </div>
     </section>
   );

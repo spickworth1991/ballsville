@@ -21,8 +21,8 @@ body {
 }
 
 :root {
-  --bg-video-dim-top: 0.45;
-  --bg-video-dim-bot: 0.55;
+  --bg-video-dim-top: 0.05;
+  --bg-video-dim-bot: 0.15;
 
   /* Brand (same vibe, just more visible on lighter cards) */
   --color-primary: #e59f3c;  /* warm CTA / highlight */
@@ -675,4 +675,23 @@ body:has(.no-chrome) footer {
 
 body:has(.no-chrome) .page-bg {
   padding: 0;
+}
+
+
+.badge-status-filling {
+  background: color-mix(in oklab, var(--color-warning) 18%, transparent);
+  border-color: color-mix(in oklab, var(--color-warning) 55%, transparent);
+  color: var(--color-warning);
+}
+
+.badge-status-drafting {
+  background: color-mix(in oklab, var(--color-accent) 18%, transparent);
+  border-color: color-mix(in oklab, var(--color-accent) 55%, transparent);
+  color: var(--color-accent);
+}
+
+.badge-status-tbd {
+  background: color-mix(in oklab, var(--color-status-default) 18%, transparent);
+  border-color: color-mix(in oklab, var(--color-status-default) 55%, transparent);
+  color: var(--color-status-default);
 }

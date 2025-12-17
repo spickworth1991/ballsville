@@ -203,10 +203,11 @@ export default function BigGameDivisionClient() {
                 d
               )}`}
               className={`rounded-full px-3 py-1 border ${
-                d === division
-                  ? "border-accent bg-card-surface text-accent"
-                  : "border-subtle bg-panel text-muted hover:border-accent"
-              }`}
+              d === division
+                ? "border-accent bg-card-surface text-accent"
+                : "border-subtle bg-subtle-surface text-muted hover:border-accent"
+            }`}
+
             >
               {d}
             </Link>

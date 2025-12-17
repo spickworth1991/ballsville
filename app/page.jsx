@@ -18,6 +18,23 @@ export const metadata = {
   },
 };
 
+function ReadableSection({ children, className = "" }) {
+  return (
+    <section className={`section ${className}`}>
+      <div className="container-site">
+        {/* subtle premium framing + glow */}
+        <div className="relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-10">
+          <div className="pointer-events-none absolute inset-0 opacity-50 mix-blend-screen">
+            <div className="absolute -top-24 -left-16 h-60 w-60 rounded-full bg-[color:var(--color-accent)]/15 blur-3xl" />
+            <div className="absolute -bottom-24 -right-16 h-60 w-60 rounded-full bg-[color:var(--color-primary)]/12 blur-3xl" />
+          </div>
+          <div className="relative">{children}</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function Page() {
   const videoId = siteConfig.heroVideoId;
   const mp4Src = siteConfig.heroVideoMp4;
@@ -25,27 +42,37 @@ export default function Page() {
   return (
     <>
       {/* HERO */}
-      <section className="">
-        
-        <div className="max-w-7xl mx-auto px-4 md:px-8 py-8 grid md:grid-cols-2 gap-10 items-center">
+      <ReadableSection className="pt-8 pb-6">
+        <div className="grid md:grid-cols-2 gap-10 items-center">
           <div>
-            {/* SEO H1 */}
             <h1 className="text-4xl md:text-5xl font-extrabold text-primary leading-tight">
               {siteConfig.default} on{" "}
-              <span className="text-accent">{siteConfig.platformLabel ?? "Sleeper!"}</span>
+              <span className="text-accent">
+                {siteConfig.platformLabel ?? "Sleeper!"}
+              </span>
             </h1>
 
-            {/* Brand slogan */}
             <p className="mt-2 text-2xl md:text-3xl font-semibold text-primary">
               {siteConfig.brandslogan1}{" "}
               <span className="text-accent">{siteConfig.brandslogan2}</span>
             </p>
 
-            <p className="mt-4 text-lg text-fg">
-              {siteConfig.description}
-            </p>
+            <p className="mt-4 text-lg text-fg">{siteConfig.description}</p>
 
-            <div className="mt-8 flex flex-wrap gap-4">
+            {/* quick “wow” badges */}
+            <div className="mt-5 flex flex-wrap gap-2 text-xs sm:text-sm">
+              <span className="rounded-full border border-subtle bg-card-trans px-3 py-1 backdrop-blur-sm">
+                ⚡ Live tools + content
+              </span>
+              <span className="rounded-full border border-subtle bg-card-trans px-3 py-1 backdrop-blur-sm">
+                🏆 Payout formats that scale
+              </span>
+              <span className="rounded-full border border-subtle bg-card-trans px-3 py-1 backdrop-blur-sm">
+                🎥 Shows + recaps
+              </span>
+            </div>
+
+            <div className="mt-7 flex flex-wrap gap-4">
               <Link
                 href="https://youtube.com/@theballsvillegame?si=AaqiZ31C1a1pjVMh"
                 target="_blank"
@@ -55,41 +82,40 @@ export default function Page() {
                 Check out our YouTube!
               </Link>
 
-              <Link
-                href="/constitution"
-                className="btn btn-outline rounded-xl"
-              >
+              <Link href="/constitution" className="btn btn-outline rounded-xl">
                 View Code of Conduct
               </Link>
             </div>
           </div>
 
-          <div className="rounded-2xl overflow-hidden shadow-xl border border-subtle bg-subtle-surface">
+          <div className="rounded-2xl overflow-hidden shadow-xl border border-subtle bg-card-trans backdrop-blur-sm">
             <LiteYouTube id={videoId} mp4Src={mp4Src} title="Ballsville Games" />
           </div>
         </div>
-      </section>
+      </ReadableSection>
 
       {/* GAMES OFFERED */}
-      <section className="px-4 py-16 ">
+      <ReadableSection className="py-6">
         <div className="max-w-5xl mx-auto text-center space-y-6">
-          <h2 className="text-3xl font-bold text-primary">Games Offered</h2>
+          <div className="space-y-2">
+            <p className="text-xs uppercase tracking-[0.35em] text-accent">
+              Formats
+            </p>
+            <h2 className="text-3xl font-bold text-primary">Games Offered</h2>
+          </div>
 
           <p className="text-lg text-fg leading-relaxed max-w-3xl mx-auto">
-            <strong>{siteConfig.name}</strong> is proud to provide a full slate of
-            <strong> fantasy football formats</strong> designed for every type of player —{" "}
-            from competitive veterans to casual fans.
+            <strong>{siteConfig.name}</strong> is proud to provide a full slate
+            of <strong> fantasy football formats</strong> designed for every
+            type of player — from competitive veterans to casual fans.
           </p>
 
-          {/* Game Cards Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mt-10">
-            {/* Bestball */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mt-8">
             <Link
               href="/big-game/"
               className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
             >
-              {/* IMAGE AREA – shows page background through the PNG */}
-              <div className="relative w-full aspect-square overflow-hidden bg-card-trans">
+              <div className="relative w-full aspect-square overflow-hidden bg-card-trans backdrop-blur-sm">
                 <img
                   src="/photos/biggame-v2.webp"
                   alt="Bestball tournaments"
@@ -97,25 +123,22 @@ export default function Page() {
                   loading="lazy"
                 />
               </div>
-
-              {/* TEXT AREA – uses card surface so it still feels like a card */}
               <div className="bg-card-surface p-4 flex-1 flex flex-col justify-between group-hover:bg-subtle-surface transition-colors">
                 <h3 className="text-lg font-semibold text-primary group-hover:text-accent">
                   Bestball Tournaments
                 </h3>
                 <p className="mt-2 text-sm text-muted">
-                  High-volume, high-upside contests with season-long sweat and no weekly lineup stress.
+                  High-volume, high-upside contests with season-long sweat and
+                  no weekly lineup stress.
                 </p>
               </div>
             </Link>
 
-
-            {/* Redraft */}
             <Link
               href="/redraft/"
               className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
             >
-              <div className="relative w-full aspect-square overflow-hidden bg-card-trans">
+              <div className="relative w-full aspect-square overflow-hidden bg-card-trans backdrop-blur-sm">
                 <img
                   src="/photos/redraft-v2.webp"
                   alt="Redraft leagues"
@@ -128,17 +151,17 @@ export default function Page() {
                   Redraft
                 </h3>
                 <p className="mt-2 text-sm text-muted">
-                  Classic one-year leagues with tiered buy-ins and a clean slate every season.
+                  Classic one-year leagues with tiered buy-ins and a clean slate
+                  every season.
                 </p>
               </div>
             </Link>
 
-            {/* Dynasty */}
             <Link
               href="/dynasty"
               className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
             >
-              <div className="relative w-full aspect-square overflow-hidden bg-card-trans">
+              <div className="relative w-full aspect-square overflow-hidden bg-card-trans backdrop-blur-sm">
                 <img
                   src="/photos/dynasty-v2.webp"
                   alt="Dynasty / Empire leagues"
@@ -151,17 +174,17 @@ export default function Page() {
                   Dynasty / Empire
                 </h3>
                 <p className="mt-2 text-sm text-muted">
-                  Long-term team building in the Dragons of Dynasty &amp; Empire-style formats.
+                  Long-term team building in the Dragons of Dynasty &amp;
+                  Empire-style formats.
                 </p>
               </div>
             </Link>
 
-            {/* Gauntlet Leagues */}
             <Link
               href="/gauntlet"
               className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
             >
-              <div className="relative w-full aspect-square overflow-hidden bg-card-trans">
+              <div className="relative w-full aspect-square overflow-hidden bg-card-trans backdrop-blur-sm">
                 <img
                   src="/photos/thegauntlet-v2.webp"
                   alt="Gauntlet leagues"
@@ -174,18 +197,17 @@ export default function Page() {
                   Gauntlet Leagues
                 </h3>
                 <p className="mt-2 text-sm text-muted">
-                  A Ballsville spin on fantasy: start in redraft, survive guillotine, finish in
-                  bestball.
+                  A Ballsville spin on fantasy: start in redraft, survive
+                  guillotine, finish in bestball.
                 </p>
               </div>
             </Link>
 
-            {/* Mini Leagues */}
             <Link
               href="/games/mini"
               className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
             >
-              <div className="relative w-full aspect-square overflow-hidden bg-card-trans">
+              <div className="relative w-full aspect-square overflow-hidden bg-card-trans backdrop-blur-sm">
                 <img
                   src="/photos/minileagues-v2.webp"
                   alt="Mini bestball leagues"
@@ -203,12 +225,11 @@ export default function Page() {
               </div>
             </Link>
 
-            {/* Mini Games */}
             <Link
               href="/news"
               className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
             >
-              <div className="relative w-full aspect-square overflow-hidden bg-card-trans">
+              <div className="relative w-full aspect-square overflow-hidden bg-card-trans backdrop-blur-sm">
                 <img
                   src="/photos/minigames-v2.webp"
                   alt="Mini Extras & Challenges"
@@ -221,38 +242,38 @@ export default function Page() {
                   Mini Games
                 </h3>
                 <p className="mt-2 text-sm text-muted">
-                  Various minigames throughout the year. Check out the news for a chance to win
-                  free entries!
+                  Various minigames throughout the year. Check out the news for
+                  a chance to win free entries!
                 </p>
               </div>
             </Link>
           </div>
         </div>
-      </section>
+      </ReadableSection>
 
       {/* LEAGUE SHOWS / PODCASTS */}
-      <section className="py-16 px-4">
+      <ReadableSection className="py-6">
         <div className="max-w-5xl mx-auto space-y-10">
-          {/* Intro copy */}
           <div className="space-y-4 text-center">
+            <p className="text-xs uppercase tracking-[0.35em] text-accent">
+              Shows
+            </p>
             <h2 className="text-3xl font-bold text-primary">{siteConfig.name}</h2>
             <p className="text-lg text-fg">
-              Welcome to <strong>{siteConfig.name}</strong> — your trusted resource for{" "}
-              <strong>Fantasy Football.</strong>
+              Welcome to <strong>{siteConfig.name}</strong> — your trusted
+              resource for <strong>Fantasy Football.</strong>
             </p>
             <p className="text-fg max-w-2xl mx-auto">
-              We&apos;re building more than leagues — we&apos;re building a show slate.
-              Tune in for weekly recaps, soundboards, and league-specific content
-              featuring trades, score leaders, and our best competitors.
+              We&apos;re building more than leagues — we&apos;re building a show
+              slate. Tune in for weekly recaps, soundboards, and league-specific
+              content featuring trades, score leaders, and our best competitors.
             </p>
             <h3 className="text-xl font-bold text-primary">
               Check out our league podcasts &amp; live shows
             </h3>
           </div>
 
-          {/* Show cards */}
           <div className="grid gap-8 md:grid-cols-2">
-            {/* The Gauntlet Recap */}
             <Link
               href="https://youtube.com/@theballsvillegame?si=AaqiZ31C1a1pjVMh"
               target="_blank"
@@ -285,13 +306,10 @@ export default function Page() {
                   <li>• Weekly Gauntlet breakdowns &amp; storylines</li>
                   <li>• @8:30 PM EST (subject to change)</li>
                 </ul>
-                <p className="mt-3 text-xs text-muted">
-                  Click to watch on YouTube →
-                </p>
+                <p className="mt-3 text-xs text-muted">Click to watch on YouTube →</p>
               </div>
             </Link>
 
-            {/* FF SoundBoard */}
             <Link
               href="https://youtube.com/@theballsvillegame?si=AaqiZ31C1a1pjVMh"
               target="_blank"
@@ -324,18 +342,20 @@ export default function Page() {
                   <li>• Clips, reactions, and league sound drops</li>
                   <li>• @8:30 PM EST (subject to change)</li>
                 </ul>
-                <p className="mt-3 text-xs text-muted">
-                  Click to watch on YouTube →
-                </p>
+                <p className="mt-3 text-xs text-muted">Click to watch on YouTube →</p>
               </div>
             </Link>
           </div>
         </div>
-      </section>
+      </ReadableSection>
 
       {/* HALL OF FAME / 2024 WINNERS */}
-      <section className="px-4 py-16">
+      <ReadableSection className="py-6 pb-10">
         <div className="max-w-4xl mx-auto text-center space-y-6">
+          <p className="text-xs uppercase tracking-[0.35em] text-accent">
+            History
+          </p>
+
           <Link href="/hall-of-fame" className="inline-block group">
             <picture>
               <source
@@ -355,8 +375,17 @@ export default function Page() {
           <h2 className="text-3xl font-bold text-primary">
             Our Game Winners For 2024
           </h2>
+
+          <div className="flex flex-wrap justify-center gap-3 text-sm">
+            <Link href="/hall-of-fame" className="btn btn-outline rounded-xl">
+              View Hall of Fame →
+            </Link>
+            <Link href="/news" className="btn btn-primary rounded-xl">
+              Latest Updates →
+            </Link>
+          </div>
         </div>
-      </section>
+      </ReadableSection>
     </>
   );
 }

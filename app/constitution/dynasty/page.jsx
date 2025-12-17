@@ -1,4 +1,4 @@
-// app/services/page.jsx
+// app/constitution/dynasty/page.jsx
 import { siteConfig } from "@/app/config/siteConfig";
 
 const pageTitle = `Dynasty Bye-Laws & Code of Conduct | ${siteConfig.shortName}`;
@@ -30,40 +30,41 @@ const dynSections = [
 
 export default function Page() {
   return (
-    <>
     <main className="min-h-screen text-fg relative">
-      {/* Same neon shell vibe as BIG Game – uses your global .hero-glow */}
+      {/* background vibe */}
       <div className="pointer-events-none absolute inset-0 -z-10">
         <div className="hero-glow" />
       </div>
+
       {/* Hero / Title */}
       <section className="border-b border-subtle">
         <div className="max-w-5xl mx-auto px-4 md:px-8 py-10 space-y-4 text-center">
           <p className="text-xs uppercase tracking-[0.25em] text-accent">
             The BALLSVILLE Game
           </p>
+
           <h1 className="text-3xl md:text-4xl font-extrabold text-primary">
             Dynasty Bye-Laws &amp; Code of Conduct
           </h1>
+
           <p className="text-sm text-muted">
             the Dragons of Dynasty &amp; the Heroes of Dynasty Bylaws
           </p>
+
           <p className="text-xs text-muted">
             These are Common practices for all “Westlex” leagues, specified to the BALLSVILLE game.
           </p>
-        </div>
-        {/* Meta card */}
-          <div className="bg-card-surface text-center border border-subtle rounded-2xl p-5 shadow-sm text-sm text-muted space-y-1">
-            <p className="">
-              Amendment 2025</p>
-            <p>
-              The Heroes expansion is included here and will be added to the wagering demo.
-            </p>
-            <p>“Wagering Demos, will be in your leagues”</p>
+
+          {/* meta card (fixed: stays inside the container + centered) */}
+          <div className="mt-6 bg-card-surface border border-subtle rounded-2xl p-5 shadow-sm text-sm text-muted space-y-1">
+            <p className="font-semibold text-fg">Amendment 2025</p>
+            <p>The Heroes expansion is included here and will be added to the wagering demo.</p>
+            <p>“Wagering Demos will be in your leagues”</p>
           </div>
+        </div>
       </section>
 
-      {/* Meta / Intro block + mini TOC */}
+      {/* TOC + Content */}
       <section className="px-4 md:px-8 py-10">
         <div className="max-w-5xl mx-auto grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)] items-start">
           {/* TOC Card */}
@@ -72,99 +73,99 @@ export default function Page() {
               <h2 className="text-sm font-semibold text-primary uppercase tracking-wide mb-3">
                 Table of Contents
               </h2>
+
               <nav className="text-sm space-y-1">
-              {dynSections.map((s) => (
-                <a
-                  key={s.id}
-                  href={`#${s.id}`}
-                  className="block px-3 py-2 rounded-lg text-muted hover:text-primary hover:bg-bg transition"
-                >
-                  {s.label}
-                </a>
-              ))}
-            </nav>
-              
+                {dynSections.map((s) => (
+                  <a
+                    key={s.id}
+                    href={`#${s.id}`}
+                    className="block px-3 py-2 rounded-lg text-muted hover:text-primary hover:bg-subtle-surface transition"
+                  >
+                    {s.label}
+                  </a>
+                ))}
+              </nav>
             </div>
           </aside>
 
-      {/* Main Content */}
-      <section className="space-y-6 leading-relaxed text-sm md:text-base">
-        <div className="max-w-5xl mx-auto space-y-6 text-fg leading-relaxed text-sm md:text-base">
-          {/* WAIVERS */}
-          <section
-            id="waivers"
-            className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
-          >
-            <h2 className="text-xl md:text-2xl font-bold text-primary">WAIVERS</h2>
-            <p>Durring the season..</p>
-            <p>Custom waivers will run @ 11:59 pm EST.</p>
-            <p>On</p>
-            <p>TUESDAY</p>
-            <p>WEDNESDAY</p>
-            <p>FRIDAY</p>
-            <p>SATURDAY</p>
-            <p>During the season, Free agency will be OPEN</p>
-            <p>THURSDAY</p>
-            <p>SUNDAY</p>
-            <p>MONDAY</p>
-            <p>This is to allow last minute pivots before game time.</p>
-            <p>Players will still be locked until Tuesday, once they have played their weekly game.</p>
-            <p>
-              During the off-season we will allow open FA until the NFL draft. After that, as news breaks
-              about players, we will run all waivers at 11:59 pm EST each day.
-            </p>
-            <p>
-              This will allow all owners equal chance to utilize their annual FAAB allowance of 100 to
-              acquire players.
-            </p>
-            <p>FAAB will not reset until the season is over.</p>
-          </section>
+          {/* Main Content */}
+          <div className="space-y-6 leading-relaxed text-sm md:text-base">
+            {/* NOTE: your existing sections below are unchanged — just wrapped correctly */}
+            {/* WAIVERS */}
+            <section
+              id="waivers"
+              className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
+            >
+              <h2 className="text-xl md:text-2xl font-bold text-primary">WAIVERS</h2>
+              <p>Durring the season..</p>
+              <p>Custom waivers will run @ 11:59 pm EST.</p>
+              <p>On</p>
+              <p>TUESDAY</p>
+              <p>WEDNESDAY</p>
+              <p>FRIDAY</p>
+              <p>SATURDAY</p>
+              <p>During the season, Free agency will be OPEN</p>
+              <p>THURSDAY</p>
+              <p>SUNDAY</p>
+              <p>MONDAY</p>
+              <p>This is to allow last minute pivots before game time.</p>
+              <p>Players will still be locked until Tuesday, once they have played their weekly game.</p>
+              <p>
+                During the off-season we will allow open FA until the NFL draft. After that, as news breaks
+                about players, we will run all waivers at 11:59 pm EST each day.
+              </p>
+              <p>
+                This will allow all owners equal chance to utilize their annual FAAB allowance of 100 to
+                acquire players.
+              </p>
+              <p>FAAB will not reset until the season is over.</p>
+            </section>
 
-          {/* TRADING */}
-          <section
-            id="trading"
-            className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
-          >
-            <h2 className="text-xl md:text-2xl font-bold text-primary">TRADING</h2>
-            <p>We have No trade deadline</p>
-            <p>As of 2024, trades will only be restricted:</p>
-            <p>– when there is a flagged trade, with suspicion (Someone dumping their team)</p>
-            <p>– While a league trade issue is actively being resolved.</p>
-            <p>-While a league has unsettled dues During the off season. </p>
-            <p>
-              –  In April, AFTER our payment date has passed, and If I’m expecting to replace a player
-            </p>
-            <p>I may set a review period, until new players are settled in.</p>
-            <p>(Our due date is April 1st)</p>
-            <p>– ⚠️ When a player has (Unofficially) clinched a playoff spot. </p>
-            <p>
-              Unofficially – Once it’s obvious you’re winning the matchup to clinch, you shouldn’t be
-              trading.
-            </p>
-            <p>Your leaguemates can hold you accountable here. </p>
-            <p>
-              Whenever the league is filled, paid up, and free of any alarming issues, or pending changes,
-              trading will be INSTANT
-            </p>
-            <p>
-              During  RESTRICTION, there will be a waiting period. I will review and process trades as I
-              see them and verify trade eligibility.
-            </p>
-            <p>On occasion an owner may be under review, or penalized, and a trade may be denied. </p>
-            <p>All trades will be judged by the league, this is inevitable. We all have the right to complain. </p>
-            <p>
-              What we do not want, is any owner calling out offers in chat to shame another owner. SHAMING
-              could result in action.
-            </p>
-            <p>
-              Receiving offers is a luxury. Appreciate the effort, accept, decline, counter or negotiate
-              privately. Don’t be the one who discourages trading.
-            </p>
-            <p>
-              On the opposite end, If you’re sending the trade…  HARASSMENT is real. Do not spam trades if
-              they’re unwanted. If this is brought to my attention, there could be action.
-            </p>
-          </section>
+            {/* TRADING */}
+            <section
+              id="trading"
+              className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
+            >
+              <h2 className="text-xl md:text-2xl font-bold text-primary">TRADING</h2>
+              <p>We have No trade deadline</p>
+              <p>As of 2024, trades will only be restricted:</p>
+              <p>– when there is a flagged trade, with suspicion (Someone dumping their team)</p>
+              <p>– While a league trade issue is actively being resolved.</p>
+              <p>-While a league has unsettled dues During the off season. </p>
+              <p>
+                –  In April, AFTER our payment date has passed, and If I’m expecting to replace a player
+              </p>
+              <p>I may set a review period, until new players are settled in.</p>
+              <p>(Our due date is April 1st)</p>
+              <p>– ⚠️ When a player has (Unofficially) clinched a playoff spot. </p>
+              <p>
+                Unofficially – Once it’s obvious you’re winning the matchup to clinch, you shouldn’t be
+                trading.
+              </p>
+              <p>Your leaguemates can hold you accountable here. </p>
+              <p>
+                Whenever the league is filled, paid up, and free of any alarming issues, or pending changes,
+                trading will be INSTANT
+              </p>
+              <p>
+                During  RESTRICTION, there will be a waiting period. I will review and process trades as I
+                see them and verify trade eligibility.
+              </p>
+              <p>On occasion an owner may be under review, or penalized, and a trade may be denied. </p>
+              <p>All trades will be judged by the league, this is inevitable. We all have the right to complain. </p>
+              <p>
+                What we do not want, is any owner calling out offers in chat to shame another owner. SHAMING
+                could result in action.
+              </p>
+              <p>
+                Receiving offers is a luxury. Appreciate the effort, accept, decline, counter or negotiate
+                privately. Don’t be the one who discourages trading.
+              </p>
+              <p>
+                On the opposite end, If you’re sending the trade…  HARASSMENT is real. Do not spam trades if
+                they’re unwanted. If this is brought to my attention, there could be action.
+              </p>
+            </section>
 
           {/* Draft Picks */}
           <section
@@ -405,10 +406,8 @@ export default function Page() {
             <p>That is all for now. Thanks and good luck</p>
           </section>
         </div>
+        </div>
       </section>
-      </div>
-      </section>
-      </main>
-    </>
+    </main>
   );
 }

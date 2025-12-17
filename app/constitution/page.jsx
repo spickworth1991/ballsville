@@ -35,7 +35,7 @@ const sections = [
 export default function Page() {
   return (
     <main className="min-h-screen text-fg relative">
-      {/* Same neon shell vibe as BIG Game – uses your global .hero-glow */}
+      {/* background vibe */}
       <div className="pointer-events-none absolute inset-0 -z-10">
         <div className="hero-glow" />
       </div>
@@ -73,6 +73,7 @@ export default function Page() {
             parts of this Constitution are considered{" "}
             <span className="italic">“where applicable.”</span>
           </p>
+
           <p className="text-xs text-muted">
             Individual league pages may add format-specific bylaws, but may not
             override the spirit of this document without clear, written approval.
@@ -89,6 +90,7 @@ export default function Page() {
               <h2 className="text-sm font-semibold text-primary uppercase tracking-wide mb-3">
                 Table of Contents
               </h2>
+
               <nav className="space-y-2 text-sm">
                 {sections.map((s) => (
                   <a
@@ -100,6 +102,7 @@ export default function Page() {
                   </a>
                 ))}
               </nav>
+
               <p className="mt-4 text-[11px] text-muted leading-snug">
                 Use this Constitution as the baseline. Each league’s{" "}
                 <span className="font-semibold">League Info</span> page and any
@@ -111,6 +114,7 @@ export default function Page() {
 
           {/* Content Cards */}
           <div className="space-y-6 leading-relaxed text-sm md:text-base">
+            {/* (your sections unchanged below) */}
             {/* Section 1 */}
             <section
               id="section-1"
