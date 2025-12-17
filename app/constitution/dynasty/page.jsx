@@ -31,11 +31,16 @@ const dynSections = [
 export default function Page() {
   return (
     <>
+    <main className="min-h-screen text-fg relative">
+      {/* Same neon shell vibe as BIG Game – uses your global .hero-glow */}
+      <div className="pointer-events-none absolute inset-0 -z-10">
+        <div className="hero-glow" />
+      </div>
       {/* Hero / Title */}
-      <section className="bg-bg border-b border-subtle">
+      <section className="border-b border-subtle">
         <div className="max-w-5xl mx-auto px-4 md:px-8 py-10 space-y-4 text-center">
           <p className="text-xs uppercase tracking-[0.25em] text-accent">
-            the BALLSVILLE game
+            The BALLSVILLE Game
           </p>
           <h1 className="text-3xl md:text-4xl font-extrabold text-primary">
             Dynasty Bye-Laws &amp; Code of Conduct
@@ -47,32 +52,27 @@ export default function Page() {
             These are Common practices for all “Westlex” leagues, specified to the BALLSVILLE game.
           </p>
         </div>
-      </section>
-
-      {/* Meta / Intro block + mini TOC */}
-      <section className="bg-bg px-4 md:px-8 py-8 border-b border-subtle">
-        <div className="max-w-5xl mx-auto grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.6fr)]">
-          {/* Meta card */}
-          <div className="bg-card border border-subtle rounded-2xl p-5 shadow-sm text-sm text-muted space-y-1">
-            <p>the BALLSVILLE game</p>
-            <p>the Dragons of Dynasty & the Heroes of Dynasty</p>
-            <p>Bylaws</p>
-            <p className="pt-2">
-              These are Common practices for all “Westlex” leagues, specified to the BALLSVILLE game.
-            </p>
-            <p>Amendment 2025</p>
+        {/* Meta card */}
+          <div className="bg-card-surface text-center border border-subtle rounded-2xl p-5 shadow-sm text-sm text-muted space-y-1">
+            <p className="">
+              Amendment 2025</p>
             <p>
               The Heroes expansion is included here and will be added to the wagering demo.
             </p>
             <p>“Wagering Demos, will be in your leagues”</p>
           </div>
+      </section>
 
-          {/* Mini TOC card */}
-          <div className="bg-card border border-subtle rounded-2xl p-5 shadow-sm">
-            <h2 className="text-sm font-semibold text-primary uppercase tracking-wide mb-3">
-              Sections
-            </h2>
-            <nav className="text-sm space-y-1">
+      {/* Meta / Intro block + mini TOC */}
+      <section className="px-4 md:px-8 py-10">
+        <div className="max-w-5xl mx-auto grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)] items-start">
+          {/* TOC Card */}
+          <aside className="space-y-4">
+            <div className="bg-card-surface border border-subtle rounded-2xl p-5 shadow-sm sticky top-4">
+              <h2 className="text-sm font-semibold text-primary uppercase tracking-wide mb-3">
+                Table of Contents
+              </h2>
+              <nav className="text-sm space-y-1">
               {dynSections.map((s) => (
                 <a
                   key={s.id}
@@ -83,17 +83,17 @@ export default function Page() {
                 </a>
               ))}
             </nav>
-          </div>
-        </div>
-      </section>
+              
+            </div>
+          </aside>
 
       {/* Main Content */}
-      <section className="bg-bg px-4 md:px-8 py-10">
+      <section className="space-y-6 leading-relaxed text-sm md:text-base">
         <div className="max-w-5xl mx-auto space-y-6 text-fg leading-relaxed text-sm md:text-base">
           {/* WAIVERS */}
           <section
             id="waivers"
-            className="bg-card border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
+            className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
           >
             <h2 className="text-xl md:text-2xl font-bold text-primary">WAIVERS</h2>
             <p>Durring the season..</p>
@@ -123,7 +123,7 @@ export default function Page() {
           {/* TRADING */}
           <section
             id="trading"
-            className="bg-card border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
+            className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
           >
             <h2 className="text-xl md:text-2xl font-bold text-primary">TRADING</h2>
             <p>We have No trade deadline</p>
@@ -169,7 +169,7 @@ export default function Page() {
           {/* Draft Picks */}
           <section
             id="draft-picks"
-            className="bg-card border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
+            className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
           >
             <h2 className="text-xl md:text-2xl font-bold text-primary">Draft picks</h2>
             <p>
@@ -202,7 +202,7 @@ export default function Page() {
           {/* ACTIVITY */}
           <section
             id="activity"
-            className="bg-card border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
+            className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
           >
             <h2 className="text-xl md:text-2xl font-bold text-primary">ACTIVITY</h2>
             <p>⚠️ You must be active:</p>
@@ -253,7 +253,7 @@ export default function Page() {
           {/* CODE OF CONDUCT */}
           <section
             id="conduct"
-            className="bg-card border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
+            className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
           >
             <h2 className="text-xl md:text-2xl font-bold text-primary">CODE OF CONDUCT</h2>
             <p>Fantasy football is in fact, just a game. Games are meant to be fun.</p>
@@ -289,7 +289,7 @@ export default function Page() {
           {/* COLLUSION */}
           <section
             id="collusion"
-            className="bg-card border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
+            className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
           >
             <h2 className="text-xl md:text-2xl font-bold text-primary">— COLLUSION –</h2>
             <p>We all know what collusion is. </p>
@@ -316,7 +316,7 @@ export default function Page() {
           {/* ACTION */}
           <section
             id="action"
-            className="bg-card border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
+            className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
           >
             <h2 className="text-xl md:text-2xl font-bold text-primary">ACTION</h2>
             <p>
@@ -353,7 +353,7 @@ export default function Page() {
           {/* FORFEITURE OF DUES */}
           <section
             id="forfeiture"
-            className="bg-card border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
+            className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
           >
             <h2 className="text-xl md:text-2xl font-bold text-primary">FORFEITURE OF DUES</h2>
             <p>Should an existing owner;</p>
@@ -385,7 +385,7 @@ export default function Page() {
           {/* IN CLOSING */}
           <section
             id="closing"
-            className="bg-card border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
+            className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
           >
             <h2 className="text-xl md:text-2xl font-bold text-primary">– IN CLOSING –</h2>
             <p>
@@ -406,6 +406,9 @@ export default function Page() {
           </section>
         </div>
       </section>
+      </div>
+      </section>
+      </main>
     </>
   );
 }

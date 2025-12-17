@@ -4,10 +4,28 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabaseClient";
 
+function getFramePreset(w, h) {
+  if (!w || !h) return { aspect: "aspect-[16/9]", fit: "object-cover" };
+
+  const r = w / h;
+
+  // Portrait
+  if (r <= 0.85) return { aspect: "aspect-[3/4]", fit: "object-cover" };
+
+  // Square-ish
+  if (r > 0.85 && r < 1.15) return { aspect: "aspect-square", fit: "object-cover" };
+
+  // Wide
+  return { aspect: "aspect-[16/9]", fit: "object-cover" };
+}
+
 export default function HallOfFameClient() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+
+  // store image dims per item id
+  const [dimsById, setDimsById] = useState({});
 
   useEffect(() => {
     let alive = true;
@@ -46,6 +64,15 @@ export default function HallOfFameClient() {
     };
   }, []);
 
+  function setDims(id, w, h) {
+    setDimsById((prev) => {
+      // avoid re-renders if already set
+      const cur = prev[id];
+      if (cur && cur.w === w && cur.h === h) return prev;
+      return { ...prev, [id]: { w, h } };
+    });
+  }
+
   return (
     <section className="section">
       <div className="container-site space-y-10">
@@ -75,6 +102,10 @@ export default function HallOfFameClient() {
           <div className="space-y-8">
             {items.map((item, idx) => {
               const flip = idx % 2 === 1;
+
+              const dims = dimsById[item.id];
+              const preset = getFramePreset(dims?.w, dims?.h);
+
               return (
                 <article
                   key={item.id}
@@ -84,14 +115,25 @@ export default function HallOfFameClient() {
                 >
                   {/* Image */}
                   <div className={flip ? "md:order-2" : ""}>
-                    <div className="relative w-full aspect-[16/9] rounded-2xl overflow-hidden border border-subtle shadow-md">
+                    <div
+                      className={[
+                        "relative w-full",
+                        preset.aspect,
+                        "rounded-2xl overflow-hidden border border-subtle shadow-md",
+                        // ✅ “bubble” feel + subtle glow edge
+                        "ring-1 ring-white/10",
+                      ].join(" ")}
+                    >
                       <Image
                         src={item.image_url}
                         alt={item.image_alt}
                         fill
                         sizes="(max-width: 768px) 100vw, 420px"
-                        className="object-cover"
+                        className={preset.fit}
                         priority={idx === 0}
+                        onLoadingComplete={(img) =>
+                          setDims(item.id, img.naturalWidth, img.naturalHeight)
+                        }
                       />
                     </div>
                   </div>
