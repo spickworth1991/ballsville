@@ -1,4 +1,4 @@
-// app/about/page.jsx  (Server Component)
+// app/about/page.jsx 
 import LiteYouTube from "@/components/LiteYouTube";
 import { siteConfig } from "@/app/config/siteConfig";
 
