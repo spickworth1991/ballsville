@@ -4,19 +4,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabaseClient";
 
-// token-driven UI bits
 const cardCls =
   "card bg-card-surface border border-subtle relative p-6 transition shadow-sm hover:shadow-md hover:-translate-y-[2px]";
-const chipBase =
-  "text-sm px-3 py-1 rounded-full border transition";
-const chipActive =
-  "bg-primary text-white border-primary";
+const chipBase = "text-sm px-3 py-1 rounded-full border transition";
+const chipActive = "bg-primary text-white border-primary";
 const chipIdle =
   "bg-transparent text-primary border-primary hover:bg-primary hover:text-white";
 const tagPill =
-  "text-xs px-2 py-0.5 rounded-full border border-subtle text-muted";
-
-// --- helpers mapping coupon -> mini game ---
+  "text-xs px-2 py-0.5 rounded-full border border-subtle text-muted hover:text-accent hover:border-[color:var(--color-accent)] transition";
 
 function isMiniGame(row) {
   return !!row.is_coupon;
@@ -42,17 +37,13 @@ function splitAndSort(rows) {
     }
   }
 
-  // Active mini games: nearest closing first
   activeMini.sort((a, b) => {
     const aTime = a.expires_at ? new Date(a.expires_at).getTime() : Number.MAX_SAFE_INTEGER;
     const bTime = b.expires_at ? new Date(b.expires_at).getTime() : Number.MAX_SAFE_INTEGER;
     return aTime - bTime || new Date(b.created_at) - new Date(a.created_at);
   });
 
-  // Regular posts: newest first
   regularPosts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-  // Closed mini games: newest first
   closedMini.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
   return { activeMini, regularPosts, closedMini };
@@ -62,27 +53,21 @@ function getDisplayTags(row) {
   const base = (row.tags || []).slice();
   const lower = base.map((t) => t.toLowerCase());
 
-  if (isMiniGame(row) && !isClosed(row) && !lower.includes("mini game")) {
-    base.push("Mini Game");
-  }
-  if (isClosed(row) && !lower.includes("mini game (closed)")) {
-    base.push("Mini Game (Closed)");
-  }
+  if (isMiniGame(row) && !isClosed(row) && !lower.includes("mini game")) base.push("Mini Game");
+  if (isClosed(row) && !lower.includes("mini game (closed)")) base.push("Mini Game (Closed)");
+
   return base;
 }
 
-// ---- media helpers: image vs video ----
 function isVideoUrl(url) {
   if (!url) return false;
   const clean = url.split("?")[0].toLowerCase();
   return /\.(mp4|mov|webm|ogg|mpe?g)$/.test(clean);
 }
 
-// ---- body helper: turn URLs into clickable links ----
 function linkifyBody(text) {
   if (!text) return null;
   const urlRegex = /(https?:\/\/[^\s]+)/g;
-
   const parts = text.split(urlRegex);
 
   return parts.map((part, idx) => {
@@ -141,7 +126,6 @@ export default function NewsPage() {
 
     for (const r of rows) {
       (r.tags || []).forEach((t) => set.add(t));
-
       if (isMiniGame(r)) {
         if (isClosed(r)) sawClosedMini = true;
         else sawActiveMini = true;
@@ -158,57 +142,58 @@ export default function NewsPage() {
     if (!activeTag) return rows;
     const tagLower = activeTag.toLowerCase();
 
-    if (tagLower === "mini game") {
-      return rows.filter((r) => isMiniGame(r) && !isClosed(r));
-    }
-    if (tagLower === "mini game (closed)") {
-      return rows.filter((r) => isMiniGame(r) && isClosed(r));
-    }
+    if (tagLower === "mini game") return rows.filter((r) => isMiniGame(r) && !isClosed(r));
+    if (tagLower === "mini game (closed)") return rows.filter((r) => isMiniGame(r) && isClosed(r));
 
-    return rows.filter((r) =>
-      (r.tags || []).some((t) => t.toLowerCase() === tagLower)
-    );
+    return rows.filter((r) => (r.tags || []).some((t) => t.toLowerCase() === tagLower));
   }, [rows, activeTag]);
 
-  const { activeMini, regularPosts, closedMini } = useMemo(
-    () => splitAndSort(filtered),
-    [filtered]
-  );
+  const { activeMini, regularPosts, closedMini } = useMemo(() => splitAndSort(filtered), [filtered]);
   const display = [...activeMini, ...regularPosts, ...closedMini];
 
   return (
     <section className="section">
-      <div className="container-site max-w-3xl mx-auto">
-        {/* Header */}
-        <header className="text-center mb-8 space-y-3">
-          <span className="badge">League news</span>
-          <h1 className="h1 mt-1 text-primary">News, Mini Games &amp; Updates</h1>
-          <p className="lead mt-1 text-muted">
-            Announcements for Ballsville leagues, plus rotating mini games and side contests.
-          </p>
+      <div className="container-site max-w-4xl mx-auto space-y-6">
+        {/* HERO CARD (more readable, less “busy”) */}
+        <header className="relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-10 text-center">
+          <div className="pointer-events-none absolute inset-0 opacity-55 mix-blend-screen">
+            <div className="absolute -top-24 -left-20 h-64 w-64 rounded-full bg-[color:var(--color-accent)]/18 blur-3xl" />
+            <div className="absolute -bottom-24 -right-20 h-64 w-64 rounded-full bg-[color:var(--color-primary)]/14 blur-3xl" />
+            <div className="absolute top-10 right-16 h-44 w-44 rounded-full bg-purple-500/10 blur-3xl" />
+          </div>
+
+          <div className="relative">
+            <span className="badge">League news</span>
+            <h1 className="h1 mt-3 text-primary">News, Mini Games &amp; Updates</h1>
+            <p className="lead mt-3 text-muted max-w-2xl mx-auto">
+              Announcements for Ballsville leagues, plus rotating mini games and side contests.
+            </p>
+          </div>
         </header>
 
-        {/* Tag filters */}
-        <div className="flex flex-wrap items-center justify-center gap-2 mb-8">
-          <button
-            onClick={() => setActiveTag("")}
-            className={`${chipBase} ${!activeTag ? chipActive : chipIdle}`}
-          >
-            All
-          </button>
-          {allTags.map((t) => (
+        {/* Tag filters (separate readable card) */}
+        <div className="bg-card-surface border border-subtle rounded-2xl p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-center gap-2">
             <button
-              key={t}
-              onClick={() => setActiveTag(t)}
-              className={`${chipBase} ${activeTag === t ? chipActive : chipIdle}`}
+              onClick={() => setActiveTag("")}
+              className={`${chipBase} ${!activeTag ? chipActive : chipIdle}`}
             >
-              {t}
+              All
             </button>
-          ))}
+            {allTags.map((t) => (
+              <button
+                key={t}
+                onClick={() => setActiveTag(t)}
+                className={`${chipBase} ${activeTag === t ? chipActive : chipIdle}`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
         </div>
 
         {loading ? (
-          <div className="card bg-card-surface border border-subtle p-6 text-center">
+          <div className="bg-card-surface border border-subtle rounded-2xl p-6 text-center shadow-sm">
             <p className="text-muted">Loading…</p>
           </div>
         ) : (
@@ -226,13 +211,7 @@ export default function NewsPage() {
                   {/* Closed ribbon for mini games */}
                   {isMiniGame(p) && closed && (
                     <div className="absolute -top-2 -right-2">
-                      <div
-                        className="rotate-6 rounded px-2 py-1 text-[10px] font-semibold shadow"
-                        style={{
-                          background: "var(--color-card)",
-                          color: "var(--color-fg)",
-                        }}
-                      >
+                      <div className="rotate-6 rounded px-2 py-1 text-[10px] font-semibold shadow bg-card-surface border border-subtle">
                         MINI GAME CLOSED
                       </div>
                     </div>
@@ -241,6 +220,7 @@ export default function NewsPage() {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <h2 className="text-xl font-semibold text-primary">{p.title}</h2>
+
                       {!!tags.length && (
                         <div className="mt-2 flex flex-wrap gap-2">
                           {tags.map((t) => (
@@ -279,11 +259,7 @@ export default function NewsPage() {
                   {p.image_url && (
                     <div className="mt-4 rounded-xl overflow-hidden border border-subtle bg-subtle-surface">
                       {isVideoUrl(p.image_url) ? (
-                        <video
-                          className="w-full rounded-none"
-                          controls
-                          preload="metadata"
-                        >
+                        <video className="w-full" controls preload="metadata">
                           <source src={p.image_url} />
                           Your browser does not support the video tag.
                         </video>
@@ -309,16 +285,16 @@ export default function NewsPage() {
                     {isMiniGame(p) && p.expires_at && (
                       <>
                         {" "}
-                        • Sign-up closes{" "}
-                        {new Date(p.expires_at).toLocaleString()}
+                        • Sign-up closes {new Date(p.expires_at).toLocaleString()}
                       </>
                     )}
                   </div>
                 </li>
               );
             })}
+
             {!display.length && (
-              <li className="card bg-card-surface border border-subtle p-6 text-center">
+              <li className="bg-card-surface border border-subtle rounded-2xl p-6 text-center shadow-sm">
                 <p className="text-muted">No news or mini games yet.</p>
               </li>
             )}

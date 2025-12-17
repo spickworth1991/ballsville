@@ -1,5 +1,6 @@
 // app/constitution/page.jsx
 import Image from "next/image";
+import Link from "next/link";
 import { siteConfig } from "@/app/config/siteConfig";
 
 const pageTitle = `League Constitution | ${siteConfig.shortName}`;
@@ -40,176 +41,212 @@ export default function Page() {
         <div className="hero-glow" />
       </div>
 
-      {/* Hero */}
-      <section className="border-b border-subtle">
-        <div className="max-w-5xl mx-auto px-4 md:px-8 py-10 space-y-4 text-center">
-          <p className="text-xs uppercase tracking-[0.25em] text-accent">
-            The BALLSVILLE Game
-          </p>
-
-          <h1 className="text-3xl md:text-4xl font-extrabold text-primary flex items-center justify-center gap-3 flex-wrap">
-            League Code of Conduct
-            <Image
-              src="/photos/bylaws.webp"
-              alt="BALLSVILLE game & code of conduct rulebook"
-              width={120}
-              height={80}
-              className="inline-block mb-1 rounded-md"
-              priority
-            />
-          </h1>
-
-          <p className="text-sm md:text-base text-muted max-w-2xl mx-auto">
-            This Constitution defines the core rules, protections, and expectations
-            that apply across all BALLSVILLE / Westlex fantasy league formats —
-            including dynasty, redraft, best ball, tournaments, and custom leagues.
-          </p>
-
-          <p className="text-[11px] text-muted max-w-3xl mx-auto leading-snug">
-            <strong>Scope &amp; Applicability.</strong> Not every section will apply
-            to every league. Some formats may disable trading, waivers, FAAB, or
-            certain playoff structures. In those cases, the platform settings and
-            a league’s specific bylaws / addendum take priority, and the relevant
-            parts of this Constitution are considered{" "}
-            <span className="italic">“where applicable.”</span>
-          </p>
-
-          <p className="text-xs text-muted">
-            Individual league pages may add format-specific bylaws, but may not
-            override the spirit of this document without clear, written approval.
-          </p>
-        </div>
-      </section>
-
-      {/* Main layout */}
-      <section className="px-4 md:px-8 py-10">
-        <div className="max-w-5xl mx-auto grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)] items-start">
-          {/* TOC Card */}
-          <aside className="space-y-4">
-            <div className="bg-card-surface border border-subtle rounded-2xl p-5 shadow-sm sticky top-4">
-              <h2 className="text-sm font-semibold text-primary uppercase tracking-wide mb-3">
-                Table of Contents
-              </h2>
-
-              <nav className="space-y-2 text-sm">
-                {sections.map((s) => (
-                  <a
-                    key={s.id}
-                    href={`#${s.id}`}
-                    className="block rounded-lg px-3 py-2 text-left text-muted hover:text-accent hover:bg-subtle-surface transition"
-                  >
-                    {s.label}
-                  </a>
-                ))}
-              </nav>
-
-              <p className="mt-4 text-[11px] text-muted leading-snug">
-                Use this Constitution as the baseline. Each league’s{" "}
-                <span className="font-semibold">League Info</span> page and any
-                posted bylaws will clarify which options are enabled (trades, FAAB,
-                best ball rules, etc.) for that specific league.
-              </p>
+      <section className="section">
+        <div className="container-site space-y-8">
+          {/* HERO (card-surface + card-trans bubble) */}
+          <header className="relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-10">
+            {/* premium glow */}
+            <div className="pointer-events-none absolute inset-0 opacity-55 mix-blend-screen">
+              <div className="absolute -top-24 -left-16 h-64 w-64 rounded-full bg-[color:var(--color-accent)]/20 blur-3xl" />
+              <div className="absolute -bottom-24 -right-16 h-64 w-64 rounded-full bg-[color:var(--color-primary)]/14 blur-3xl" />
+              <div className="absolute top-10 right-16 h-44 w-44 rounded-full bg-purple-500/10 blur-3xl" />
             </div>
-          </aside>
 
-          {/* Content Cards */}
-          <div className="space-y-6 leading-relaxed text-sm md:text-base">
-            {/* (your sections unchanged below) */}
-            {/* Section 1 */}
-            <section
-              id="section-1"
-              className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
-            >
-              <h2 className="text-xl md:text-2xl font-bold text-primary">
-                1. League Governance
-              </h2>
-              <p>
-                1.1 <strong>Commissioner Role.</strong> Each league will have one or
-                more Commissioners (“Commish”) responsible for administering
-                settings, enforcing rules, resolving disputes, and preserving the
-                competitive integrity of the league, regardless of format.
-              </p>
-              <p>
-                1.2 <strong>League Owners.</strong> Each team is controlled by one
-                manager (with optional co-managers where permitted). All managers
-                are expected to read and understand this Constitution and any
-                league-specific addenda before the season begins.
-              </p>
-              <p>
-                1.3 <strong>Authority &amp; Discretion.</strong> The Commish has
-                final say on interpreting ambiguous situations, applying penalties,
-                and making emergency adjustments when the platform, NFL schedule, or
-                unforeseen events would otherwise cause league-breaking issues.
-                Wherever possible, major decisions will be discussed in league chat
-                and/or put to a vote.
-              </p>
-              <p>
-                1.4 <strong>Voting.</strong> Unless otherwise specified, league
-                votes are decided by a simple majority of active, non-suspended
-                managers. Some topics (e.g. buying out a manager, raising dues) may
-                require a higher threshold, as described later in this document or
-                in league-specific bylaws.
-              </p>
-              <p>
-                1.5 <strong>Platform of Record.</strong> The Sleeper app (or other
-                specified host platform) is the primary system of record for
-                rosters, scores, and transactions. In the rare case where the app’s
-                behavior clearly conflicts with this Constitution, the Commish may
-                manually correct results in a reasonable manner.
-              </p>
-            </section>
+            <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,.9fr)] lg:items-start">
+              {/* left */}
+              <div className="space-y-4">
+                <p className="text-xs uppercase tracking-[0.35em] text-accent">
+                  BALLSVILLE GOVERNANCE
+                </p>
 
-            {/* Section 2 */}
-            <section
-              id="section-2"
-              className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
-            >
-              <h2 className="text-xl md:text-2xl font-bold text-primary">
-                2. League Formats &amp; Rosters
-              </h2>
-              <p>
-                2.1 <strong>Supported Formats.</strong> BALLSVILLE / Westlex leagues
-                may include redraft, dynasty, best ball, multi-copy, tournaments,
-                and other custom structures. Each league’s specific format
-                (including year-over-year carryover of players, picks, or standings)
-                will be documented on that league’s info page or bylaws.
-              </p>
-              <p>
-                2.2 <strong>Roster Breakdown.</strong> Default roster size,
-                positional requirements, and IR / Taxi / Bench spots will be defined
-                per league. Managers must always comply with roster limits set in
-                the app and may be required to drop players to become
-                roster-compliant.
-              </p>
-              <p>
-                2.3 <strong>Position Eligibility.</strong> A player’s eligible
-                positions are determined by the host platform. The Commish will
-                generally not override position designations unless there is a clear
-                platform error that materially impacts the league.
-              </p>
-              <p>
-                2.4 <strong>Lineup Responsibility (Where Applicable).</strong> In
-                formats where managers set lineups (e.g. redraft, dynasty, most
-                custom leagues), managers must make a good-faith effort to set a
-                valid lineup every week, using available players who are active and
-                not on bye. In best ball formats where lineups are optimized
-                automatically, this responsibility is limited to maintaining a legal
-                roster.
-              </p>
-              <p>
-                2.5 <strong>IR / Injury / Suspension.</strong> Use of IR / NFI / PUP
-                / suspension / COVID or similar slots must follow the platform’s
-                eligibility rules. Stashing ineligible players in these slots for
-                roster advantage is prohibited and may be corrected by the Commish,
-                regardless of format.
-              </p>
-              <p>
-                2.6 <strong>Identical Rules Across Linked Leagues.</strong> Where
-                leagues share a common tournament or hub (e.g. BIG Game divisions),
-                scoring and roster settings are expected to be identical unless
-                clearly stated otherwise in advance.
-              </p>
-            </section>
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold leading-tight text-primary">
+                  League Constitution{" "}
+                  <span className="text-accent">&amp; Code of Conduct</span>
+                </h1>
+
+                <p className="text-sm sm:text-base text-muted max-w-prose">
+                  The baseline rules, protections, and expectations across all BALLSVILLE / Westlex
+                  formats — dynasty, redraft, best ball, tournaments, and custom leagues.
+                </p>
+
+                <div className="flex flex-wrap gap-3 pt-2">
+                  <a
+                    href="#section-1"
+                    className="btn btn-primary"
+                  >
+                    Start Reading →
+                  </a>
+                  <Link href="/leaderboards" className="btn btn-outline">
+                    Leaderboards
+                  </Link>
+                  <Link href="/hall-of-fame" className="btn btn-outline">
+                    Hall of Fame
+                  </Link>
+                </div>
+
+                <div className="mt-4 inline-flex flex-wrap gap-2 text-xs sm:text-sm">
+                  <span className="rounded-full border border-subtle bg-card-trans px-3 py-1 backdrop-blur-sm">
+                    Applies “where applicable”
+                  </span>
+                  <span className="rounded-full border border-subtle bg-card-trans px-3 py-1 backdrop-blur-sm">
+                    League-specific bylaws may add details
+                  </span>
+                </div>
+              </div>
+
+              {/* right bubble */}
+              <div className="rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm overflow-hidden shadow-lg">
+                <div className="px-4 py-3 border-b border-subtle flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                    QUICK NAV
+                  </span>
+
+                  <Image
+                    src="/photos/bylaws.webp"
+                    alt="BALLSVILLE game & code of conduct rulebook"
+                    width={120}
+                    height={80}
+                    className="rounded-md"
+                    priority
+                  />
+                </div>
+
+                <div className="p-4">
+                  <p className="text-xs text-muted leading-snug">
+                    Tip: Use the Table of Contents below to jump between sections fast.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </header>
+
+          {/* Main layout */}
+          <section className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)] items-start">
+            {/* TOC Card */}
+            <aside className="space-y-4">
+              <div className="bg-card-surface border border-subtle rounded-2xl p-5 shadow-sm sticky top-4">
+                <h2 className="text-sm font-semibold text-primary uppercase tracking-wide mb-3">
+                  Table of Contents
+                </h2>
+
+                <nav className="space-y-2 text-sm">
+                  {sections.map((s) => (
+                    <a
+                      key={s.id}
+                      href={`#${s.id}`}
+                      className="block rounded-lg px-3 py-2 text-left text-muted hover:text-accent hover:bg-subtle-surface transition"
+                    >
+                      {s.label}
+                    </a>
+                  ))}
+                </nav>
+
+                <p className="mt-4 text-[11px] text-muted leading-snug">
+                  Use this Constitution as the baseline. Each league’s{" "}
+                  <span className="font-semibold">League Info</span> page and any posted bylaws clarify
+                  which options are enabled (trades, FAAB, best ball rules, etc.).
+                </p>
+              </div>
+            </aside>
+
+            {/* Content Cards */}
+            <div className="space-y-6 leading-relaxed text-sm md:text-base">
+              {/* Section 1 */}
+              <section
+                id="section-1"
+                className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
+              >
+                <h2 className="text-xl md:text-2xl font-bold text-primary">
+                  1. League Governance
+                </h2>
+                <p>
+                  1.1 <strong>Commissioner Role.</strong> Each league will have one or
+                  more Commissioners (“Commish”) responsible for administering
+                  settings, enforcing rules, resolving disputes, and preserving the
+                  competitive integrity of the league, regardless of format.
+                </p>
+                <p>
+                  1.2 <strong>League Owners.</strong> Each team is controlled by one
+                  manager (with optional co-managers where permitted). All managers
+                  are expected to read and understand this Constitution and any
+                  league-specific addenda before the season begins.
+                </p>
+                <p>
+                  1.3 <strong>Authority &amp; Discretion.</strong> The Commish has
+                  final say on interpreting ambiguous situations, applying penalties,
+                  and making emergency adjustments when the platform, NFL schedule, or
+                  unforeseen events would otherwise cause league-breaking issues.
+                  Wherever possible, major decisions will be discussed in league chat
+                  and/or put to a vote.
+                </p>
+                <p>
+                  1.4 <strong>Voting.</strong> Unless otherwise specified, league
+                  votes are decided by a simple majority of active, non-suspended
+                  managers. Some topics (e.g. buying out a manager, raising dues) may
+                  require a higher threshold, as described later in this document or
+                  in league-specific bylaws.
+                </p>
+                <p>
+                  1.5 <strong>Platform of Record.</strong> The Sleeper app (or other
+                  specified host platform) is the primary system of record for
+                  rosters, scores, and transactions. In the rare case where the app’s
+                  behavior clearly conflicts with this Constitution, the Commish may
+                  manually correct results in a reasonable manner.
+                </p>
+              </section>
+
+              {/* Section 2 */}
+              <section
+                id="section-2"
+                className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
+              >
+                <h2 className="text-xl md:text-2xl font-bold text-primary">
+                  2. League Formats &amp; Rosters
+                </h2>
+                <p>
+                  2.1 <strong>Supported Formats.</strong> BALLSVILLE / Westlex leagues
+                  may include redraft, dynasty, best ball, multi-copy, tournaments,
+                  and other custom structures. Each league’s specific format
+                  (including year-over-year carryover of players, picks, or standings)
+                  will be documented on that league’s info page or bylaws.
+                </p>
+                <p>
+                  2.2 <strong>Roster Breakdown.</strong> Default roster size,
+                  positional requirements, and IR / Taxi / Bench spots will be defined
+                  per league. Managers must always comply with roster limits set in
+                  the app and may be required to drop players to become
+                  roster-compliant.
+                </p>
+                <p>
+                  2.3 <strong>Position Eligibility.</strong> A player’s eligible
+                  positions are determined by the host platform. The Commish will
+                  generally not override position designations unless there is a clear
+                  platform error that materially impacts the league.
+                </p>
+                <p>
+                  2.4 <strong>Lineup Responsibility (Where Applicable).</strong> In
+                  formats where managers set lineups (e.g. redraft, dynasty, most
+                  custom leagues), managers must make a good-faith effort to set a
+                  valid lineup every week, using available players who are active and
+                  not on bye. In best ball formats where lineups are optimized
+                  automatically, this responsibility is limited to maintaining a legal
+                  roster.
+                </p>
+                <p>
+                  2.5 <strong>IR / Injury / Suspension.</strong> Use of IR / NFI / PUP
+                  / suspension / COVID or similar slots must follow the platform’s
+                  eligibility rules. Stashing ineligible players in these slots for
+                  roster advantage is prohibited and may be corrected by the Commish,
+                  regardless of format.
+                </p>
+                <p>
+                  2.6 <strong>Identical Rules Across Linked Leagues.</strong> Where
+                  leagues share a common tournament or hub (e.g. BIG Game divisions),
+                  scoring and roster settings are expected to be identical unless
+                  clearly stated otherwise in advance.
+                </p>
+              </section>
+
 
             {/* Section 3 */}
             <section
@@ -582,6 +619,7 @@ export default function Page() {
               </p>
             </section>
           </div>
+          </section>
         </div>
       </section>
     </main>

@@ -19,7 +19,6 @@ export const metadata = {
   },
 };
 
-// Ballsville / Sleeper FAQs
 const faqs = [
   {
     question: "What is The Ballsville Game?",
@@ -84,8 +83,7 @@ export default function Page() {
     })),
   };
 
-  const discordUrl =
-    siteConfig.discordUrl || "https://discord.gg/mtqCRRW3";
+  const discordUrl = siteConfig.discordUrl || "https://discord.gg/mtqCRRW3";
   const emailHref = "mailto:theballsvillegame@gmail.com";
 
   return (
@@ -95,17 +93,25 @@ export default function Page() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
-      {/* Hero */}
       <section className="section">
-        <div className="container-site">
-          <div className="text-center mb-8">
-            <span className="badge">Answers you can trust</span>
-            <h1 className="h1 mt-3">Frequently Asked Questions</h1>
-            <p className="lead mt-3">
-              Quick answers about formats, payouts, Sleeper setup, and how
-              the BALLSVILLE game works.
-            </p>
-          </div>
+        <div className="container-site space-y-6">
+          {/* HERO CARD (readable + premium) */}
+          <header className="relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-10">
+            {/* subtle glows */}
+            <div className="pointer-events-none absolute inset-0 opacity-55 mix-blend-screen">
+              <div className="absolute -top-24 -left-20 h-64 w-64 rounded-full bg-[color:var(--color-accent)]/18 blur-3xl" />
+              <div className="absolute -bottom-24 -right-20 h-64 w-64 rounded-full bg-[color:var(--color-primary)]/14 blur-3xl" />
+              <div className="absolute top-10 right-16 h-44 w-44 rounded-full bg-purple-500/10 blur-3xl" />
+            </div>
+
+            <div className="relative text-center max-w-3xl mx-auto">
+              <span className="badge">Answers you can trust</span>
+              <h1 className="h1 mt-3">Frequently Asked Questions</h1>
+              <p className="lead mt-3 text-muted">
+                Quick answers about formats, payouts, Sleeper setup, and how the BALLSVILLE game works.
+              </p>
+            </div>
+          </header>
 
           {/* Layout: left info card, right accordion */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -113,15 +119,19 @@ export default function Page() {
             <aside className="bg-card-surface border border-subtle rounded-2xl p-6 lg:sticky lg:top-20 self-start shadow-sm">
               <h2 className="h3 mb-2">Still have a question?</h2>
               <p className="text-muted">
-                Reach out if you need help with a league rule, mini game,
-                or Sleeper setup.
+                Reach out if you need help with a league rule, mini game, or Sleeper setup.
               </p>
 
               <div className="mt-5 grid gap-3">
                 <a href={emailHref} className="btn btn-primary">
                   Email the commissioner
                 </a>
-                <a href={discordUrl} className="btn btn-outline" target="_blank" rel="noopener noreferrer">
+                <a
+                  href={discordUrl}
+                  className="btn btn-outline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   Join the Discord
                 </a>
                 <a href="/leaderboards" className="btn btn-outline">
@@ -131,8 +141,7 @@ export default function Page() {
 
               <div className="divider-subtle mt-6 pt-6">
                 <p className="text-sm text-muted">
-                  For detailed rules and governance (trades, conduct,
-                  tiebreakers, and more), see the{" "}
+                  For detailed rules and governance (trades, conduct, tiebreakers, and more), see the{" "}
                   <a
                     href="/constitution"
                     className="underline underline-offset-4 decoration-accent hover:text-accent"

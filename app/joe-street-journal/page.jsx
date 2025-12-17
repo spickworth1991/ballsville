@@ -68,10 +68,9 @@ export default function JoeStreetJournalPage() {
                 What&apos;s inside
               </p>
               <ul className="mt-3 space-y-2 text-sm text-fg">
-                <li>• Power rankings</li>
-                <li>• Weekly storylines</li>
-                <li>• Receipts + chaos</li>
-                <li>• Live edits (no refresh needed)</li>
+                <li>• Positional DFS</li>
+                <li>• prop Bets</li>
+                <li>• Updated Weekly!</li>
               </ul>
               <div className="mt-4">
                 <a className="btn btn-outline w-full" href={DOC_URL} target="_blank" rel="noreferrer">

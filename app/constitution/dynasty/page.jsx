@@ -1,4 +1,5 @@
 // app/constitution/dynasty/page.jsx
+import Link from "next/link";
 import { siteConfig } from "@/app/config/siteConfig";
 
 const pageTitle = `Dynasty Bye-Laws & Code of Conduct | ${siteConfig.shortName}`;
@@ -36,90 +37,126 @@ export default function Page() {
         <div className="hero-glow" />
       </div>
 
-      {/* Hero / Title */}
-      <section className="border-b border-subtle">
-        <div className="max-w-5xl mx-auto px-4 md:px-8 py-10 space-y-4 text-center">
-          <p className="text-xs uppercase tracking-[0.25em] text-accent">
-            The BALLSVILLE Game
-          </p>
-
-          <h1 className="text-3xl md:text-4xl font-extrabold text-primary">
-            Dynasty Bye-Laws &amp; Code of Conduct
-          </h1>
-
-          <p className="text-sm text-muted">
-            the Dragons of Dynasty &amp; the Heroes of Dynasty Bylaws
-          </p>
-
-          <p className="text-xs text-muted">
-            These are Common practices for all “Westlex” leagues, specified to the BALLSVILLE game.
-          </p>
-
-          {/* meta card (fixed: stays inside the container + centered) */}
-          <div className="mt-6 bg-card-surface border border-subtle rounded-2xl p-5 shadow-sm text-sm text-muted space-y-1">
-            <p className="font-semibold text-fg">Amendment 2025</p>
-            <p>The Heroes expansion is included here and will be added to the wagering demo.</p>
-            <p>“Wagering Demos will be in your leagues”</p>
-          </div>
-        </div>
-      </section>
-
-      {/* TOC + Content */}
-      <section className="px-4 md:px-8 py-10">
-        <div className="max-w-5xl mx-auto grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)] items-start">
-          {/* TOC Card */}
-          <aside className="space-y-4">
-            <div className="bg-card-surface border border-subtle rounded-2xl p-5 shadow-sm sticky top-4">
-              <h2 className="text-sm font-semibold text-primary uppercase tracking-wide mb-3">
-                Table of Contents
-              </h2>
-
-              <nav className="text-sm space-y-1">
-                {dynSections.map((s) => (
-                  <a
-                    key={s.id}
-                    href={`#${s.id}`}
-                    className="block px-3 py-2 rounded-lg text-muted hover:text-primary hover:bg-subtle-surface transition"
-                  >
-                    {s.label}
-                  </a>
-                ))}
-              </nav>
+      <section className="section">
+        <div className="container-site space-y-8">
+          {/* HERO (card-surface + card-trans bubble) */}
+          <header className="relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-10">
+            <div className="pointer-events-none absolute inset-0 opacity-55 mix-blend-screen">
+              <div className="absolute -top-24 -left-16 h-64 w-64 rounded-full bg-[color:var(--color-accent)]/18 blur-3xl" />
+              <div className="absolute -bottom-24 -right-16 h-64 w-64 rounded-full bg-[color:var(--color-primary)]/14 blur-3xl" />
+              <div className="absolute top-10 right-16 h-44 w-44 rounded-full bg-purple-500/10 blur-3xl" />
             </div>
-          </aside>
 
-          {/* Main Content */}
-          <div className="space-y-6 leading-relaxed text-sm md:text-base">
-            {/* NOTE: your existing sections below are unchanged — just wrapped correctly */}
-            {/* WAIVERS */}
-            <section
-              id="waivers"
-              className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
-            >
-              <h2 className="text-xl md:text-2xl font-bold text-primary">WAIVERS</h2>
-              <p>Durring the season..</p>
-              <p>Custom waivers will run @ 11:59 pm EST.</p>
-              <p>On</p>
-              <p>TUESDAY</p>
-              <p>WEDNESDAY</p>
-              <p>FRIDAY</p>
-              <p>SATURDAY</p>
-              <p>During the season, Free agency will be OPEN</p>
-              <p>THURSDAY</p>
-              <p>SUNDAY</p>
-              <p>MONDAY</p>
-              <p>This is to allow last minute pivots before game time.</p>
-              <p>Players will still be locked until Tuesday, once they have played their weekly game.</p>
-              <p>
-                During the off-season we will allow open FA until the NFL draft. After that, as news breaks
-                about players, we will run all waivers at 11:59 pm EST each day.
-              </p>
-              <p>
-                This will allow all owners equal chance to utilize their annual FAAB allowance of 100 to
-                acquire players.
-              </p>
-              <p>FAAB will not reset until the season is over.</p>
-            </section>
+            <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,.9fr)] lg:items-start">
+              {/* left */}
+              <div className="space-y-4">
+                <p className="text-xs uppercase tracking-[0.35em] text-accent">
+                  DYNASTY GOVERNANCE
+                </p>
+
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold leading-tight text-primary">
+                  Dynasty Bye-Laws{" "}
+                  <span className="text-accent">&amp; Code of Conduct</span>
+                </h1>
+
+                <p className="text-sm sm:text-base text-muted max-w-prose">
+                  Common practices for all Westlex dynasty leagues — including Dragons of Dynasty
+                  and Heroes expansion rules.
+                </p>
+
+                <div className="mt-4 inline-flex flex-wrap gap-2 text-xs sm:text-sm">
+                  <span className="rounded-full border border-subtle bg-card-trans px-3 py-1 backdrop-blur-sm">
+                    Amendment 2025
+                  </span>
+                  <span className="rounded-full border border-subtle bg-card-trans px-3 py-1 backdrop-blur-sm">
+                    Read first, then use TOC
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-3 pt-2">
+                  <a href="#waivers" className="btn btn-primary">
+                    Start Reading →
+                  </a>
+                  <Link href="/constitution" className="btn btn-outline">
+                    League Constitution
+                  </Link>
+                  <Link href="/leaderboards" className="btn btn-outline">
+                    Leaderboards
+                  </Link>
+                </div>
+              </div>
+
+              {/* right bubble */}
+              <div className="rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm overflow-hidden shadow-lg">
+                <div className="px-4 py-3 border-b border-subtle">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                    QUICK NOTES
+                  </p>
+                </div>
+                <div className="p-4 space-y-2 text-sm text-muted">
+                  <p className="font-semibold text-fg">Meta</p>
+                  <p>The Heroes expansion is included here and will be added to the wagering demo.</p>
+                  <p>“Wagering Demos will be in your leagues”</p>
+                </div>
+              </div>
+            </div>
+          </header>
+
+          {/* TOC + Content */}
+          <section className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)] items-start">
+            {/* TOC Card */}
+            <aside className="space-y-4">
+              <div className="bg-card-surface border border-subtle rounded-2xl p-5 shadow-sm sticky top-4">
+                <h2 className="text-sm font-semibold text-primary uppercase tracking-wide mb-3">
+                  Table of Contents
+                </h2>
+
+                <nav className="text-sm space-y-1">
+                  {dynSections.map((s) => (
+                    <a
+                      key={s.id}
+                      href={`#${s.id}`}
+                      className="block px-3 py-2 rounded-lg text-muted hover:text-primary hover:bg-subtle-surface transition"
+                    >
+                      {s.label}
+                    </a>
+                  ))}
+                </nav>
+              </div>
+            </aside>
+
+            {/* Main Content */}
+            <div className="space-y-6 leading-relaxed text-sm md:text-base">
+              {/* (your existing sections below are unchanged; paste them here as-is) */}
+              {/* WAIVERS */}
+              <section
+                id="waivers"
+                className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm space-y-3"
+              >
+                <h2 className="text-xl md:text-2xl font-bold text-primary">WAIVERS</h2>
+                <p>Durring the season..</p>
+                <p>Custom waivers will run @ 11:59 pm EST.</p>
+                <p>On</p>
+                <p>TUESDAY</p>
+                <p>WEDNESDAY</p>
+                <p>FRIDAY</p>
+                <p>SATURDAY</p>
+                <p>During the season, Free agency will be OPEN</p>
+                <p>THURSDAY</p>
+                <p>SUNDAY</p>
+                <p>MONDAY</p>
+                <p>This is to allow last minute pivots before game time.</p>
+                <p>Players will still be locked until Tuesday, once they have played their weekly game.</p>
+                <p>
+                  During the off-season we will allow open FA until the NFL draft. After that, as news breaks
+                  about players, we will run all waivers at 11:59 pm EST each day.
+                </p>
+                <p>
+                  This will allow all owners equal chance to utilize their annual FAAB allowance of 100 to
+                  acquire players.
+                </p>
+                <p>FAAB will not reset until the season is over.</p>
+              </section>
 
             {/* TRADING */}
             <section
@@ -406,6 +443,7 @@ export default function Page() {
             <p>That is all for now. Thanks and good luck</p>
           </section>
         </div>
+          </section>
         </div>
       </section>
     </main>

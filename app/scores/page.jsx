@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { siteConfig } from "@/app/config/siteConfig";
 
 const LEG3_YEAR = 2025;
 
@@ -14,22 +15,20 @@ function formatDateTime(dt) {
 
 // Public R2 base URL for Gauntlet JSONs
 function getLeg3R2Base() {
-  // Optional override if you ever want to change it
   if (process.env.NEXT_PUBLIC_GAUNTLET_R2_PROXY_BASE) {
     return process.env.NEXT_PUBLIC_GAUNTLET_R2_PROXY_BASE; // e.g. "/r2"
   }
 
-  // Local dev: Pages Functions won't run in next dev, so hit R2 directly
   if (typeof window !== "undefined" && window.location.hostname === "localhost") {
-    if (process.env.NEXT_PUBLIC_GAUNTLET_R2_PUBLIC_BASE) return process.env.NEXT_PUBLIC_GAUNTLET_R2_PUBLIC_BASE;
-    if (process.env.NEXT_PUBLIC_R2_PUBLIC_BASE) return process.env.NEXT_PUBLIC_R2_PUBLIC_BASE;
+    if (process.env.NEXT_PUBLIC_GAUNTLET_R2_PUBLIC_BASE)
+      return process.env.NEXT_PUBLIC_GAUNTLET_R2_PUBLIC_BASE;
+    if (process.env.NEXT_PUBLIC_R2_PUBLIC_BASE)
+      return process.env.NEXT_PUBLIC_R2_PUBLIC_BASE;
     return "https://pub-eec34f38e47f4ffbbc39af58bda1bcc2.r2.dev";
   }
 
-  // Production: SAME-ORIGIN proxy (prevents r2.dev being blocked)
   return "/r2";
 }
-
 
 function buildManifestUrl(year) {
   const base = getLeg3R2Base().replace(/\/$/, "");
@@ -42,98 +41,78 @@ function buildKeyUrl(key) {
   return `${base}/${cleanKey}`;
 }
 
-
 // Public, no-guard version
 export default function GauntletLeg3PublicPage() {
   return <GauntletLeg3Inner />;
 }
 
 function GauntletLeg3Inner() {
-  const [payloadMeta, setPayloadMeta] = useState(null); // manifest-ish
-  const [divisionsData, setDivisionsData] = useState({}); // divisionName -> { gods, champions, ... }
-  const [divisionLoading, setDivisionLoading] = useState({}); // divisionName -> bool
+  const [payloadMeta, setPayloadMeta] = useState(null);
+  const [divisionsData, setDivisionsData] = useState({});
+  const [divisionLoading, setDivisionLoading] = useState({});
   const [grand, setGrand] = useState(null);
   const [expandedGods, setExpandedGods] = useState(() => ({}));
-  // key: `${divisionName}::${godIndex}` => true/false
-
   const [expandAllGods, setExpandAllGods] = useState(false);
-
 
   const [updatedAt, setUpdatedAt] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [viewMode, setViewMode] = useState("matchups"); // "matchups" | "bracket"
-  const [roundFilter, setRoundFilter] = useState("1"); // "1" | "2" | "3" | "4"
+  const [viewMode, setViewMode] = useState("matchups");
+  const [roundFilter, setRoundFilter] = useState("1");
 
-  
+  async function hardReloadAll(jsonFromManifest) {
+    const divisions = jsonFromManifest?.divisions || {};
+    const grandKey = jsonFromManifest?.grand?.key || null;
 
+    setRefreshing(true);
+    const names = Object.keys(divisions);
 
-  // ========== Core loaders ==========
-    async function hardReloadAll(jsonFromManifest) {
-      const divisions = jsonFromManifest?.divisions || {};
-      const grandKey = jsonFromManifest?.grand?.key || null;
+    await Promise.all(
+      names.map((name) =>
+        loadDivision(name, {
+          hard: true,
+          divisionsMetaOverride: divisions,
+        })
+      )
+    );
 
-      setRefreshing(true);
-
-      const names = Object.keys(divisions);
-
-      await Promise.all(
-        names.map((name) =>
-          loadDivision(name, {
-            hard: true,
-            divisionsMetaOverride: divisions,
-          })
-        )
-      );
-
-      if (grandKey) {
-        await loadGrand(grandKey, { hard: true });
-      }
-
-      setRefreshing(false);
+    if (grandKey) {
+      await loadGrand(grandKey, { hard: true });
     }
 
+    setRefreshing(false);
+  }
 
-  // Auto-select the current round based on the manifest's currentBracketWeek
+  // Auto-select current round based on manifest currentBracketWeek (13–16 => R1–R4)
   useEffect(() => {
     const w = payloadMeta?.currentBracketWeek;
     if (!w) return;
-    // Leg 3 uses Weeks 13–16 → R1–R4
     if (w >= 13 && w <= 16) {
-      const round = w - 12; // 13→1, 14→2, 15→3, 16→4
+      const round = w - 12;
       setRoundFilter(String(round));
     }
   }, [payloadMeta?.currentBracketWeek]);
 
   async function loadManifest({ hard = false } = {}) {
     setError("");
-
-    if (!hard) {
-      setLoading(true);
-    }
+    if (!hard) setLoading(true);
 
     try {
       const url = buildManifestUrl(LEG3_YEAR);
-      const res = await fetch(url, {
-        cache: hard ? "no-store" : "default",
-      });
+      const res = await fetch(url, { cache: hard ? "no-store" : "default" });
 
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(
-          `Failed to load Gauntlet Leg 3 manifest (${res.status}) ${
-            text || ""
-          }`.trim()
+          `Failed to load Gauntlet Leg 3 manifest (${res.status}) ${text || ""}`.trim()
         );
       }
 
       const json = await res.json();
 
       setPayloadMeta({
-        name:
-          json.name ||
-          `Ballsville Gauntlet – Leg 3 (${json.year || LEG3_YEAR})`,
+        name: json.name || `Ballsville Gauntlet – Leg 3 (${json.year || LEG3_YEAR})`,
         year: json.year || LEG3_YEAR,
         currentBracketWeek: json.currentBracketWeek || null,
         divisionsMeta: json.divisions || {},
@@ -143,7 +122,6 @@ function GauntletLeg3Inner() {
 
       setUpdatedAt(json.updatedAt || null);
 
-      // Kick off a tiny fetch for Grand Championship JSON
       if (json.grand?.key) {
         void loadGrand(json.grand.key, { hard: false });
       }
@@ -177,21 +155,20 @@ function GauntletLeg3Inner() {
   async function loadGrand(grandKey, { hard = false } = {}) {
     try {
       const url = buildKeyUrl(grandKey);
-      const res = await fetch(url, {
-        cache: hard ? "no-store" : "default",
-      });
+      const res = await fetch(url, { cache: hard ? "no-store" : "default" });
       if (!res.ok) return;
       const json = await res.json();
       setGrand(json);
     } catch (err) {
       console.error("Error loading Gauntlet Grand Championship JSON:", err);
-      // don’t surface in main error banner; it’s a bonus view
     }
   }
 
-  async function loadDivision(divisionName, { hard = false, divisionsMetaOverride } = {}) {
+  async function loadDivision(
+    divisionName,
+    { hard = false, divisionsMetaOverride } = {}
+  ) {
     const metaMap = divisionsMetaOverride || payloadMeta?.divisionsMeta;
-
     if (!metaMap?.[divisionName]) return;
     if (!hard && divisionsData[divisionName]) return;
 
@@ -203,30 +180,21 @@ function GauntletLeg3Inner() {
 
     try {
       const url = buildKeyUrl(key);
-      const res = await fetch(url, {
-        cache: hard ? "no-store" : "default",
-      });
+      const res = await fetch(url, { cache: hard ? "no-store" : "default" });
 
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(
-          `Failed to load division JSON for ${divisionName} (${res.status}) ${
-            text || ""
-          }`.trim()
+          `Failed to load division JSON for ${divisionName} (${res.status}) ${text || ""}`.trim()
         );
       }
 
       const json = await res.json();
-      setDivisionsData((prev) => ({
-        ...prev,
-        [divisionName]: json,
-      }));
+      setDivisionsData((prev) => ({ ...prev, [divisionName]: json }));
     } catch (err) {
       console.error(`Error loading division ${divisionName}:`, err);
       setError(
-        err instanceof Error
-          ? err.message
-          : `Unexpected error loading ${divisionName} data.`
+        err instanceof Error ? err.message : `Unexpected error loading ${divisionName} data.`
       );
     } finally {
       setDivisionLoading((prev) => ({ ...prev, [divisionName]: false }));
@@ -235,35 +203,27 @@ function GauntletLeg3Inner() {
 
   async function handleRefresh() {
     setRefreshing(true);
-
-    // Clear division data so we don’t show stale stuff between runs
     setDivisionsData({});
     setDivisionLoading({});
     setGrand(null);
-
     await loadManifest({ hard: true });
   }
 
-  // Initial load
   useEffect(() => {
     loadManifest();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 🔁 Auto-load ALL Legions when the manifest changes
   useEffect(() => {
     if (!payloadMeta?.divisionsMeta) return;
     const divisionNames = Object.keys(payloadMeta.divisionsMeta);
     if (!divisionNames.length) return;
 
-    divisionNames.forEach((name) => {
-      // loadDivision has its own "already loaded" guard
-      void loadDivision(name, { hard: false });
-    });
+    divisionNames.forEach((name) => void loadDivision(name, { hard: false }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payloadMeta]);
 
-  // 30s polling — public live view
+  // 30s polling
   useEffect(() => {
     if (!payloadMeta) return;
 
@@ -282,9 +242,7 @@ function GauntletLeg3Inner() {
 
         if (!cancelled && newUpdatedAt && newUpdatedAt !== updatedAt) {
           setPayloadMeta({
-            name:
-              json.name ||
-              `Ballsville Gauntlet – Leg 3 (${json.year || LEG3_YEAR})`,
+            name: json.name || `Ballsville Gauntlet – Leg 3 (${json.year || LEG3_YEAR})`,
             year: json.year || LEG3_YEAR,
             currentBracketWeek: json.currentBracketWeek || null,
             divisionsMeta: json.divisions || {},
@@ -293,26 +251,21 @@ function GauntletLeg3Inner() {
           });
           setUpdatedAt(newUpdatedAt);
 
-          // ✅ hard refresh all underlying JSONs without a full page reload
           void hardReloadAll(json);
         }
-
       } catch (err) {
         console.error("Poll exception (gauntlet_leg3 manifest):", err);
       }
     }
 
     const intervalId = setInterval(checkForUpdate, 30_000);
-
     return () => {
       cancelled = true;
       clearInterval(intervalId);
     };
   }, [payloadMeta, updatedAt]);
 
-  // ====== derived data ======
   const divisionsMeta = payloadMeta?.divisionsMeta || {};
-
   const grandStandings = Array.isArray(grand?.standings) ? grand.standings : [];
   const grandParticipants = Array.isArray(grand?.participants)
     ? grand.participants
@@ -320,120 +273,118 @@ function GauntletLeg3Inner() {
 
   const hasWeek17Scores =
     grandParticipants.length > 0 &&
-    grandParticipants.some(
-      (p) => typeof p.week17Score === "number" && p.week17Score !== 0
-    );
+    grandParticipants.some((p) => typeof p.week17Score === "number" && p.week17Score !== 0);
 
   return (
-    
-    <div className="no-chrome min-h-screen bg-slate-950 text-slate-50 px-4 py-6 md:px-8">
-      <div className="mx-auto max-w-6xl space-y-6 ">
-        {/* Header */}
-        <header className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-              Gauntlet Leg 3 – Bracket View
-            </h1>
-            <p className="mt-1 text-sm text-slate-400">
-              Romans, Greeks, and Egyptians &mdash; Leg 3 playoff bracket +
-              Week 17 Grand Championship.
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              Last updated:{" "}
-              <span className="font-mono">{formatDateTime(updatedAt)}</span>
-            </p>
-            {refreshing && (
-              <span className="ml-2 inline-flex items-center rounded-full bg-slate-800 px-2 py-0.5 text-[0.65rem] text-slate-200">
-                Updating…
-              </span>
-            )}
-
-            <p className="mt-1 text-[0.65rem] text-slate-500">
-              This page updates automatically as the script completes new runs.
-            </p>
+    <section className="section">
+      <div className="container-site max-w-6xl space-y-6">
+        {/* HERO */}
+        <header className="relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-10">
+          <div className="pointer-events-none absolute inset-0 opacity-55 mix-blend-screen">
+            <div className="absolute -top-24 -left-20 h-64 w-64 rounded-full bg-[color:var(--color-accent)]/18 blur-3xl" />
+            <div className="absolute -bottom-24 -right-20 h-64 w-64 rounded-full bg-[color:var(--color-primary)]/14 blur-3xl" />
+            <div className="absolute top-10 right-16 h-44 w-44 rounded-full bg-purple-500/10 blur-3xl" />
           </div>
 
-          <div className="flex flex-col items-end gap-3 sm:flex-row sm:items-center sm:justify-end">
-            {error && (
-              <span className="text-xs text-red-400 max-w-xs text-right">
-                {error}
-              </span>
-            )}
-            
-          </div>
-          <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
-            <button
-              type="button"
-              onClick={() => setExpandAllGods((v) => !v)}
-              className={`rounded-full border px-3 py-1 text-xs transition ${
-                expandAllGods
-                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
-                  : "border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
-              }`}
-            >
-              {expandAllGods ? "✅ Keep All Expanded" : "Keep All Expanded"}
-            </button>
+          <div className="relative flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div className="max-w-3xl">
+              <span className="badge">Gauntlet</span>
+              <h1 className="h1 mt-3">Gauntlet Leg 3 — Bracket & Matchups</h1>
+              <p className="lead mt-3 text-muted">
+                Romans, Greeks, and Egyptians — Leg 3 playoff bracket + Week 17 Grand Championship.
+              </p>
 
-            <button
-              type="button"
-              onClick={() => setExpandedGods({})}
-              className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-200 hover:bg-slate-800 transition"
-            >
-              Collapse All
-            </button>
-          </div>
+              <p className="mt-3 text-xs text-muted">
+                Last updated: <span className="font-mono">{formatDateTime(updatedAt)}</span>
+                {refreshing && (
+                  <span className="ml-2 inline-flex items-center rounded-full border border-subtle bg-subtle-surface px-2 py-0.5 text-[0.65rem] text-muted">
+                    Updating…
+                  </span>
+                )}
+              </p>
 
+              <p className="mt-1 text-[0.65rem] text-muted">
+                Auto-refreshes every ~30 seconds while this tab is open.
+              </p>
+            </div>
+
+            <div className="relative flex flex-wrap items-center justify-start md:justify-end gap-2">
+              {error && (
+                <div className="text-xs text-danger max-w-md">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleRefresh}
+                className="btn btn-outline"
+              >
+                Refresh
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setExpandAllGods((v) => !v)}
+                className={`btn ${expandAllGods ? "btn-primary" : "btn-outline"}`}
+              >
+                {expandAllGods ? "Keep All Expanded" : "Expand All"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setExpandedGods({})}
+                className="btn btn-outline"
+              >
+                Collapse All
+              </button>
+            </div>
+          </div>
         </header>
 
-        {/* Loading / Empty states */}
+        {/* Loading / empty */}
         {loading ? (
-          <div className="mt-10 flex justify-center">
-            <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-700 border-t-amber-400" />
+          <div className="bg-card-surface border border-subtle rounded-2xl p-6 text-center shadow-sm">
+            <p className="text-muted">Loading Gauntlet Leg 3…</p>
           </div>
         ) : !payloadMeta ? (
-          <div className="mt-10 rounded-xl border border-slate-800 bg-slate-900/50 p-6 text-center text-sm text-slate-300">
-            No Gauntlet Leg 3 data found yet.
+          <div className="bg-card-surface border border-subtle rounded-2xl p-6 text-center shadow-sm">
+            <p className="text-muted">No Gauntlet Leg 3 data found yet.</p>
           </div>
         ) : (
-          <main className="space-y-8">
-            {/* Overall summary + view toggle */}
-            <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+          <main className="space-y-6">
+            {/* SUMMARY + VIEW TOGGLES */}
+            <section className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold tracking-tight">
-                    {payloadMeta.name}
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-400">
-                    Year:{" "}
-                    <span className="font-mono text-amber-300">
-                      {payloadMeta.year}
-                    </span>
+                  <h2 className="h3">{payloadMeta.name}</h2>
+                  <p className="mt-2 text-sm text-muted">
+                    Year: <span className="font-mono text-primary">{payloadMeta.year}</span>
+                    {payloadMeta.currentBracketWeek && (
+                      <>
+                        <span className="mx-2 text-muted">•</span>
+                        Current bracket week:{" "}
+                        <span className="font-mono text-accent">
+                          {payloadMeta.currentBracketWeek}
+                        </span>
+                      </>
+                    )}
                   </p>
-                  {payloadMeta.currentBracketWeek && (
-                    <p className="mt-1 text-xs text-slate-500">
-                      Current bracket week:{" "}
-                      <span className="font-mono text-emerald-300">
-                        {payloadMeta.currentBracketWeek}
-                      </span>
-                    </p>
-                  )}
-                  <p className="mt-1 text-xs text-slate-500">
-                    Precomputed from Sleeper and shown for your viewing
-                    pleasure.
+                  <p className="mt-1 text-xs text-muted">
+                    Precomputed from Sleeper and shown for your viewing pleasure.
                   </p>
                 </div>
 
-                {/* View + round toggle */}
-                <div className="flex flex-col items-end gap-2">
+                <div className="flex flex-col items-start sm:items-end gap-3">
                   {/* Matchups vs Bracket */}
-                  <div className="inline-flex items-center rounded-full border border-slate-700 bg-slate-900 p-1 text-xs shadow-inner">
+                  <div className="inline-flex items-center rounded-full border border-subtle bg-subtle-surface p-1 text-xs shadow-inner">
                     <button
                       type="button"
                       onClick={() => setViewMode("matchups")}
                       className={`px-3 py-1.5 rounded-full transition ${
                         viewMode === "matchups"
-                          ? "bg-amber-400 text-slate-950 font-semibold shadow"
-                          : "text-slate-300 hover:text-slate-100"
+                          ? "bg-primary text-white font-semibold shadow"
+                          : "text-muted hover:text-fg"
                       }`}
                     >
                       Matchups
@@ -443,21 +394,20 @@ function GauntletLeg3Inner() {
                       onClick={() => setViewMode("bracket")}
                       className={`px-3 py-1.5 rounded-full transition ${
                         viewMode === "bracket"
-                          ? "bg-amber-400 text-slate-950 font-semibold shadow"
-                          : "text-slate-300 hover:text-slate-100"
+                          ? "bg-primary text-white font-semibold shadow"
+                          : "text-muted hover:text-fg"
                       }`}
                     >
                       Bracket
                     </button>
                   </div>
 
-                  {/* Round selector for matchups (R1–R4) */}
                   {viewMode === "matchups" && (
-                    <div className="flex items-center gap-2 text-xs text-slate-400">
-                      <span className="hidden sm:inline">Matchups round:</span>
-                      <div className="inline-flex items-center rounded-full border border-slate-700 bg-slate-900 p-1 shadow-inner">
+                    <div className="flex items-center gap-2 text-xs text-muted">
+                      <span className="hidden sm:inline">Round:</span>
+                      <div className="inline-flex items-center rounded-full border border-subtle bg-subtle-surface p-1 shadow-inner">
                         {["1", "2", "3", "4"].map((r) => {
-                          const week = 12 + Number(r); // 13–16
+                          const week = 12 + Number(r);
                           return (
                             <button
                               key={r}
@@ -465,12 +415,12 @@ function GauntletLeg3Inner() {
                               onClick={() => setRoundFilter(r)}
                               className={`px-2 py-1 rounded-full transition ${
                                 roundFilter === r
-                                  ? "bg-emerald-400 text-slate-950 font-semibold shadow"
-                                  : "text-slate-300 hover:text-slate-100"
+                                  ? "bg-[color:var(--color-accent)] text-white font-semibold shadow"
+                                  : "text-muted hover:text-fg"
                               }`}
                             >
                               R{r}
-                              <span className="ml-1 hidden text-[0.6rem] text-slate-400 sm:inline">
+                              <span className="ml-1 hidden text-[0.65rem] text-muted sm:inline">
                                 (W{week})
                               </span>
                             </button>
@@ -483,79 +433,65 @@ function GauntletLeg3Inner() {
               </div>
             </section>
 
-            {/* Legions – stacked; Gods are collapsible “tabs” */}
+            {/* LEGIONS */}
             <section className="space-y-6">
-              {Object.entries(divisionsMeta).map(
-                ([divisionName, divisionMeta]) => {
-                  const divisionData = divisionsData[divisionName] || null;
-                  const isDivLoading = !!divisionLoading[divisionName];
+              {Object.entries(divisionsMeta).map(([divisionName, divisionMeta]) => {
+                const divisionData = divisionsData[divisionName] || null;
+                const isDivLoading = !!divisionLoading[divisionName];
 
-                  return (
-                    <DivisionCard
-                      key={divisionName}
-                      divisionName={divisionName}
-                      divisionMeta={divisionMeta}
-                      divisionData={divisionData}
-                      isLoading={isDivLoading}
-                      viewMode={viewMode}
-                      roundFilter={roundFilter}
-                      isGodOpen={isGodOpen}
-                      toggleGodOpen={toggleGodOpen}
-                    />
-
-                  );
-                }
-              )}
+                return (
+                  <DivisionCard
+                    key={divisionName}
+                    divisionName={divisionName}
+                    divisionMeta={divisionMeta}
+                    divisionData={divisionData}
+                    isLoading={isDivLoading}
+                    viewMode={viewMode}
+                    roundFilter={roundFilter}
+                    isGodOpen={isGodOpen}
+                    toggleGodOpen={toggleGodOpen}
+                  />
+                );
+              })}
 
               {Object.keys(divisionsMeta).length === 0 && (
-                <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-xs text-slate-400">
+                <div className="bg-card-surface border border-subtle rounded-2xl p-6 text-sm text-muted shadow-sm">
                   No Legions discovered in the manifest yet.
                 </div>
               )}
             </section>
 
-            {/* Grand Championship – Week 17 */}
-            <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 space-y-3">
+            {/* GRAND CHAMPIONSHIP */}
+            <section className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm space-y-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold tracking-tight">
-                    Grand Championship &mdash; Week 17
-                  </h2>
-                  <p className="mt-1 text-xs text-slate-400">
-                    All God champions (Romans, Greeks, Egyptians) battle in
-                    Week 17 Best Ball.
+                  <h2 className="h3">Grand Championship — Week 17</h2>
+                  <p className="mt-1 text-sm text-muted">
+                    All God champions (Romans, Greeks, Egyptians) battle in Week 17 Best Ball.
                   </p>
                 </div>
+
                 {grand && (
-                  <div className="text-xs text-slate-400">
-                    Week:{" "}
-                    <span className="font-mono text-amber-300">
-                      {grand.week}
-                    </span>
-                    <span className="mx-2 text-slate-600">•</span>
-                    Participants:{" "}
-                    <span className="font-mono">
-                      {grandParticipants.length}
-                    </span>
+                  <div className="text-xs text-muted">
+                    Week: <span className="font-mono text-primary">{grand.week}</span>
+                    <span className="mx-2 text-muted">•</span>
+                    Participants: <span className="font-mono">{grandParticipants.length}</span>
                   </div>
                 )}
               </div>
 
               {!grand || grandParticipants.length === 0 ? (
-                <div className="mt-3 rounded-lg border border-dashed border-slate-700 bg-slate-900/60 px-4 py-3 text-sm text-slate-400">
-                  Grand Championship standings will appear here once at least
-                  one God champion has Week 17 scores.
+                <div className="rounded-xl border border-subtle bg-subtle-surface px-4 py-3 text-sm text-muted">
+                  Grand Championship standings will appear here once at least one God champion has Week 17 scores.
                 </div>
               ) : !hasWeek17Scores ? (
-                <div className="mt-3 rounded-lg border border-dashed border-slate-700 bg-slate-900/60 px-4 py-3 text-sm text-slate-400">
-                  Week 17 has not posted any scores yet. Once Sleeper shows
-                  Week 17 matchups for the God champions and you re-run the
-                  Gauntlet build script, standings will update automatically.
+                <div className="rounded-xl border border-subtle bg-subtle-surface px-4 py-3 text-sm text-muted">
+                  Week 17 has not posted any scores yet. Once Sleeper shows Week 17 matchups for the God champions and you re-run the Gauntlet build script, standings will update automatically.
                 </div>
               ) : (
-                <div className="mt-3 overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/60">
+                <div className="overflow-x-auto rounded-2xl border border-subtle bg-subtle-surface">
                   <table className="min-w-full text-left text-xs">
-                    <thead className="bg-slate-900/80 text-[0.7rem] uppercase tracking-wide text-slate-300">
+                    <thead className="border-b border-subtle text-[0.7rem] uppercase tracking-wide text-muted">
                       <tr>
                         <th className="px-3 py-2 text-center">Rank</th>
                         <th className="px-3 py-2">Legion</th>
@@ -566,39 +502,31 @@ function GauntletLeg3Inner() {
                         <th className="px-3 py-2 text-right">Leg 3 Total</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800 text-[0.7rem]">
+                    <tbody className="divide-y divide-subtle text-[0.75rem]">
                       {grandStandings.map((p) => (
                         <tr key={`${p.leagueId}-${p.rosterId}`}>
-                          <td className="px-3 py-2 text-center font-mono text-amber-300">
+                          <td className="px-3 py-2 text-center font-mono text-primary">
                             {p.rank}
                           </td>
-                          <td className="px-3 py-2 text-slate-100">
-                            {p.division}
-                          </td>
-                          <td className="px-3 py-2 text-slate-200">
-                            {p.godName || `God ${p.godIndex ?? "?"}`}
+                          <td className="px-3 py-2">{p.division}</td>
+                          <td className="px-3 py-2">{p.godName || `God ${p.godIndex ?? "?"}`}</td>
+                          <td className="px-3 py-2">
+                            <div className="truncate max-w-[160px]">{p.ownerName}</div>
                           </td>
                           <td className="px-3 py-2">
-                            <div className="text-slate-100 truncate max-w-[140px]">
-                              {p.ownerName}
-                            </div>
+                            <div className="truncate max-w-[260px] text-muted">{p.leagueName}</div>
                           </td>
-                          <td className="px-3 py-2">
-                            <div className="text-slate-300 truncate max-w-[220px]">
-                              {p.leagueName}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 text-right font-mono text-slate-100">
+                          <td className="px-3 py-2 text-right font-mono">
                             {Number(p.week17Score || 0).toFixed(2)}
                           </td>
-                          <td className="px-3 py-2 text-right font-mono text-slate-100">
+                          <td className="px-3 py-2 text-right font-mono">
                             {Number(p.leg3Total || 0).toFixed(2)}
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                  <p className="px-3 py-2 text-[0.65rem] text-slate-500">
+                  <p className="px-3 py-2 text-[0.65rem] text-muted">
                     Ties are broken by total Leg 3 score, then by better seed.
                   </p>
                 </div>
@@ -607,7 +535,7 @@ function GauntletLeg3Inner() {
           </main>
         )}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -623,37 +551,35 @@ function DivisionCard({
   isGodOpen,
   toggleGodOpen,
 }) {
-
   const gods = Array.isArray(divisionData?.gods) ? divisionData.gods : [];
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 shadow-md">
-      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3 className="text-xl font-semibold">{divisionName}</h3>
-          <p className="text-xs text-slate-400">
-            4 Gods per Legion &mdash; bracket winners feed the Week 17 Grand
-            Championship.
+          <h3 className="h3">{divisionName}</h3>
+          <p className="text-sm text-muted">
+            4 Gods per Legion — bracket winners feed the Week 17 Grand Championship.
           </p>
         </div>
+
         <div className="flex items-center gap-3">
-          <span className="inline-flex items-center justify-center rounded-full bg-slate-800 px-4 py-1 text-xs text-slate-300">
+          <span className="badge">
             {divisionMeta.godsCount ?? gods.length ?? 0} Gods
           </span>
+
           {isLoading && !divisionData && (
-            <span className="flex items-center gap-1 text-[0.65rem] text-slate-400">
-              <span className="h-3 w-3 animate-spin rounded-full border border-slate-600 border-t-amber-400" />
-              Loading Legion…
+            <span className="flex items-center gap-2 text-xs text-muted">
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-subtle border-t-[color:var(--color-primary)]" />
+              Loading…
             </span>
           )}
         </div>
       </div>
 
       {!divisionData ? (
-        <div className="rounded-lg border border-dashed border-slate-700 bg-slate-900/60 p-3 text-center text-xs text-slate-400">
-          {isLoading
-            ? "Legion data is loading from R2…"
-            : "No Legion data has been generated yet."}
+        <div className="rounded-xl border border-subtle bg-subtle-surface p-4 text-center text-sm text-muted">
+          {isLoading ? "Legion data is loading from R2…" : "No Legion data has been generated yet."}
         </div>
       ) : (
         <div className="space-y-3">
@@ -669,9 +595,8 @@ function DivisionCard({
             />
           ))}
 
-
           {gods.length === 0 && (
-            <div className="rounded-lg border border-dashed border-slate-700 bg-slate-900/60 p-3 text-center text-xs text-slate-400">
+            <div className="rounded-xl border border-subtle bg-subtle-surface p-4 text-center text-sm text-muted">
               No Gods built for this Legion yet.
             </div>
           )}
@@ -684,34 +609,22 @@ function DivisionCard({
 /* ================== Child Components ================== */
 
 function GodCard({ god, divisionName, isOpen, onToggle, viewMode, roundFilter }) {
-  
   const cardRef = useRef(null);
 
   const pairings = Array.isArray(god?.pairings) ? god.pairings : [];
-  const bracketRounds = Array.isArray(god?.bracketRounds)
-    ? god.bracketRounds
-    : [];
+  const bracketRounds = Array.isArray(god?.bracketRounds) ? god.bracketRounds : [];
   const champion = god?.champion || null;
-
-  // In new payload, champion = { division, godName, winnerTeam, winningRound, winningWeek }
   const championTeam = champion?.winnerTeam || null;
 
-  // Champion pill only when WEEK 16 has real (non-zero) score
   const hasWeek16Score =
     championTeam &&
     championTeam.leg3Weekly &&
     typeof championTeam.leg3Weekly[16] === "number" &&
     championTeam.leg3Weekly[16] !== 0;
 
-
-  // Determine which round we want to show in Matchups view
-  const desiredIndex = Math.max(
-    0,
-    (parseInt(roundFilter || "1", 10) || 1) - 1
-  );
+  const desiredIndex = Math.max(0, (parseInt(roundFilter || "1", 10) || 1) - 1);
   const selectedRound =
-    bracketRounds[desiredIndex] &&
-    Array.isArray(bracketRounds[desiredIndex].results)
+    bracketRounds[desiredIndex] && Array.isArray(bracketRounds[desiredIndex].results)
       ? bracketRounds[desiredIndex]
       : null;
 
@@ -723,19 +636,15 @@ function GodCard({ god, divisionName, isOpen, onToggle, viewMode, roundFilter })
     Array.isArray(selectedRound.results) &&
     selectedRound.results.length
   ) {
-    // Use actual results for the selected round
     matchupRows = selectedRound.results.map((m) => {
       const teamA = m.teamA || {};
       const teamB = m.teamB || {};
 
-      const scoreA =
-        typeof m.scoreA === "number" ? m.scoreA : Number(m.scoreA || 0);
-      const scoreB =
-        typeof m.scoreB === "number" ? m.scoreB : Number(m.scoreB || 0);
+      const scoreA = typeof m.scoreA === "number" ? m.scoreA : Number(m.scoreA || 0);
+      const scoreB = typeof m.scoreB === "number" ? m.scoreB : Number(m.scoreB || 0);
 
       const winnerId = m?.winner?.rosterId || null;
 
-      // Decide orientation (Light always on left when it's Light vs Dark)
       const aLight = teamA.side === "light";
       const bLight = teamB.side === "light";
       const aDark = teamA.side === "dark";
@@ -802,7 +711,6 @@ function GodCard({ god, divisionName, isOpen, onToggle, viewMode, roundFilter })
         lightIsWinner,
         darkIsWinner,
         isPlayed,
-        // full best-ball lineups for the breakdown view
         lightLineup,
         darkLineup,
       };
@@ -813,7 +721,6 @@ function GodCard({ god, divisionName, isOpen, onToggle, viewMode, roundFilter })
     (roundFilter === "1" || !roundFilter) &&
     pairings.length > 0
   ) {
-    // No rounds played yet → static Round 1 seed preview (Week 13)
     matchupRows = pairings.map((p) => {
       const teamA = p.teamA || {};
       const teamB = p.teamB || {};
@@ -849,58 +756,47 @@ function GodCard({ god, divisionName, isOpen, onToggle, viewMode, roundFilter })
   }
 
   const hasBracketContent =
-    viewMode === "matchups"
-      ? matchupRows.length > 0
-      : bracketRounds.length > 0;
+    viewMode === "matchups" ? matchupRows.length > 0 : bracketRounds.length > 0;
 
   return (
-    <div
-      ref={cardRef}
-      className="rounded-xl border border-slate-800 bg-slate-950/60"
-    >
-      {/* Header row acts like a tab/accordion trigger */}
+    <div ref={cardRef} className="rounded-2xl border border-subtle bg-subtle-surface">
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-slate-900/80 transition"
+        className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-[color:var(--color-card)]/50 transition"
       >
         <div>
-          <div className="text-sm font-semibold text-slate-100">
-            God {god.index}
-          </div>
-          <div className="mt-1 text-[0.7rem] text-slate-400">
-            <span className="font-semibold text-amber-200">Light</span>:{" "}
-            <span className="text-slate-200">{god.lightLeagueName}</span>
-            <span className="mx-1 text-slate-600">•</span>
-            <span className="font-semibold text-sky-300">Dark</span>:{" "}
-            <span className="text-slate-200">{god.darkLeagueName}</span>
+          <div className="text-sm font-semibold">God {god.index}</div>
+          <div className="mt-1 text-[0.75rem] text-muted">
+            <span className="font-semibold text-primary">Light</span>:{" "}
+            <span className="text-fg">{god.lightLeagueName}</span>
+            <span className="mx-2 text-muted">•</span>
+            <span className="font-semibold text-[color:var(--color-accent)]">Dark</span>:{" "}
+            <span className="text-fg">{god.darkLeagueName}</span>
           </div>
         </div>
 
         <div className="flex flex-col items-end gap-1">
-          {/* Champion pill – gated by real Week 16 data */}
           {hasWeek16Score && championTeam && (
-            <div className="inline-flex items-center gap-1 rounded-full bg-emerald-900/40 px-3 py-1 text-[0.7rem] text-emerald-200 border border-emerald-500/40">
-              <span>🏆 Champion</span>
-              <span className="font-semibold truncate max-w-[160px]">
-                {championTeam.ownerName}
-              </span>
+            <div className="inline-flex items-center gap-2 rounded-full border border-subtle bg-subtle-surface px-3 py-1 text-[0.75rem]">
+              <span>🏆</span>
+              <span className="font-semibold truncate max-w-[180px]">{championTeam.ownerName}</span>
             </div>
           )}
-          <span className="flex items-center text-[0.7rem] text-slate-300">
-            {isOpen ? "Hide bracket" : "Show bracket"}{" "}
+
+          <span className="flex items-center text-[0.75rem] text-muted">
+            {isOpen ? "Hide" : "Show"}{" "}
             <span className="ml-1 text-xs">{isOpen ? "▴" : "▾"}</span>
           </span>
         </div>
       </button>
 
-      {/* Collapsible content */}
       <div
-        className={`overflow-hidden border-t border-slate-800 transition-all duration-300 ${
+        className={`overflow-hidden border-t border-subtle transition-all duration-300 ${
           isOpen ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
         }`}
       >
-        <div className="p-3">
+        <div className="p-4">
           {hasBracketContent ? (
             viewMode === "matchups" ? (
               <GodMatchupsTable rows={matchupRows} roundFilter={roundFilter} />
@@ -908,15 +804,15 @@ function GodCard({ god, divisionName, isOpen, onToggle, viewMode, roundFilter })
               <GodBracket rounds={bracketRounds} />
             )
           ) : (
-            <div className="text-[0.7rem] text-slate-500">
-              No bracket data for this God yet.
-            </div>
+            <div className="text-sm text-muted">No bracket data for this God yet.</div>
           )}
         </div>
       </div>
     </div>
   );
 }
+
+/* ======== Matchups table + breakdown (logic unchanged, restyled) ======== */
 
 function GodMatchupsTable({ rows, roundFilter }) {
   const safeRows = Array.isArray(rows) ? rows : [];
@@ -926,21 +822,14 @@ function GodMatchupsTable({ rows, roundFilter }) {
   const containerRef = useRef(null);
 
   const expandedRow =
-    expandedMatch != null
-      ? safeRows.find((r) => r.match === expandedMatch)
-      : null;
+    expandedMatch != null ? safeRows.find((r) => r.match === expandedMatch) : null;
 
-  // Close expanded matchup when clicking outside the table
   useEffect(() => {
     if (expandedMatch == null) return;
-
     function handleClickOutside(e) {
       if (!containerRef.current) return;
-      if (!containerRef.current.contains(e.target)) {
-        setExpandedMatch(null);
-      }
+      if (!containerRef.current.contains(e.target)) setExpandedMatch(null);
     }
-
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [expandedMatch]);
@@ -948,28 +837,24 @@ function GodMatchupsTable({ rows, roundFilter }) {
   return (
     <div
       ref={containerRef}
-      className="overflow-hidden rounded-lg border border-slate-800 bg-slate-950/70 text-[0.7rem]"
+      className="overflow-hidden rounded-2xl border border-subtle bg-card-surface text-[0.8rem]"
     >
-      {/* Round meta bar */}
-      <div className="flex items-center justify-between px-2 pt-2 pb-1 text-[0.65rem] text-slate-400">
+      <div className="flex items-center justify-between px-4 pt-4 pb-2 text-xs text-muted">
         <span>
-          {meta
-            ? `Round ${meta.round} • Week ${meta.week}`
-            : `Round ${roundFilter || "?"}`}
+          {meta ? `Round ${meta.round} • Week ${meta.week}` : `Round ${roundFilter || "?"}`}
         </span>
         {expandedRow && (
           <button
             type="button"
             onClick={() => setExpandedMatch(null)}
-            className="text-xs text-amber-300 hover:text-amber-200"
+            className="text-xs underline underline-offset-4 decoration-accent hover:text-accent"
           >
             Close matchup breakdown
           </button>
         )}
       </div>
 
-      {/* Header row */}
-      <div className="grid grid-cols-5 bg-slate-900/80 px-2 py-1 text-[0.65rem] font-medium text-slate-300">
+      <div className="grid grid-cols-5 border-y border-subtle bg-subtle-surface px-4 py-2 text-[0.7rem] uppercase tracking-wide text-muted">
         <span className="text-center">Match</span>
         <span className="text-center">Light (Seed)</span>
         <span className="text-center">Light Score</span>
@@ -977,86 +862,56 @@ function GodMatchupsTable({ rows, roundFilter }) {
         <span className="text-center">Dark (Seed)</span>
       </div>
 
-      {/* Match rows + inline breakdowns */}
-      <div className="divide-y divide-slate-800">
+      <div className="divide-y divide-subtle">
         {safeRows.map((m) => {
           const lightLost = m.isPlayed && !m.lightIsWinner;
           const darkLost = m.isPlayed && !m.darkIsWinner;
           const isExpanded = expandedMatch === m.match;
 
           return (
-            <div
-              key={m.match}
-              className="border-b border-slate-800 last:border-b-0"
-            >
+            <div key={m.match} className="last:border-b-0">
               <button
                 type="button"
-                onClick={() =>
-                  setExpandedMatch((prev) => (prev === m.match ? null : m.match))
-                }
-                className={`grid grid-cols-5 px-2 py-1.5 items-center w-full text-left transition ${
-                  isExpanded ? "bg-slate-900/80" : "hover:bg-slate-900/40"
+                onClick={() => setExpandedMatch((prev) => (prev === m.match ? null : m.match))}
+                className={`grid grid-cols-5 px-4 py-3 items-center w-full text-left transition ${
+                  isExpanded ? "bg-subtle-surface" : "hover:bg-subtle-surface/60"
                 }`}
               >
-                {/* Match # */}
-                <div className="text-center font-mono text-slate-300">
-                  {m.match}
-                </div>
+                <div className="text-center font-mono text-muted">{m.match}</div>
 
-                {/* Light side */}
                 <div className="text-center">
                   <div
                     className={`truncate ${
                       m.lightIsWinner
-                        ? "text-emerald-300 font-semibold"
+                        ? "text-[color:var(--color-success)] font-semibold"
                         : lightLost
-                        ? "text-red-300 line-through"
-                        : "text-slate-100"
+                        ? "text-danger line-through"
+                        : "text-fg"
                     }`}
                   >
                     {m.lightOwnerName}
                   </div>
-                  <div className="text-[0.6rem] text-amber-300">
-                    Seed {m.lightSeed}
-                  </div>
-                  {lightLost && (
-                    <div className="text-[0.6rem] text-red-400">
-                      ✕ Eliminated
-                    </div>
-                  )}
+                  <div className="text-[0.7rem] text-primary">Seed {m.lightSeed}</div>
+                  {lightLost && <div className="text-[0.7rem] text-danger">Eliminated</div>}
                 </div>
 
-                {/* Light score */}
-                <div className="text-center font-mono text-xs text-slate-100">
-                  {m.lightScore.toFixed(2)}
-                </div>
+                <div className="text-center font-mono text-fg">{m.lightScore.toFixed(2)}</div>
+                <div className="text-center font-mono text-fg">{m.darkScore.toFixed(2)}</div>
 
-                {/* Dark score */}
-                <div className="text-center font-mono text-xs text-slate-100">
-                  {m.darkScore.toFixed(2)}
-                </div>
-
-                {/* Dark side */}
                 <div className="text-center">
                   <div
                     className={`truncate ${
                       m.darkIsWinner
-                        ? "text-emerald-300 font-semibold"
+                        ? "text-[color:var(--color-success)] font-semibold"
                         : darkLost
-                        ? "text-red-300 line-through"
-                        : "text-slate-100"
+                        ? "text-danger line-through"
+                        : "text-fg"
                     }`}
                   >
                     {m.darkOwnerName}
                   </div>
-                  <div className="text-[0.6rem] text-sky-300">
-                    Seed {m.darkSeed}
-                  </div>
-                  {darkLost && (
-                    <div className="text-[0.6rem] text-red-400">
-                      ✕ Eliminated
-                    </div>
-                  )}
+                  <div className="text-[0.7rem] text-accent">Seed {m.darkSeed}</div>
+                  {darkLost && <div className="text-[0.7rem] text-danger">Eliminated</div>}
                 </div>
               </button>
 
@@ -1066,7 +921,7 @@ function GodMatchupsTable({ rows, roundFilter }) {
         })}
 
         {safeRows.length === 0 && (
-          <div className="px-2 py-2 text-center text-xs text-slate-500">
+          <div className="px-4 py-4 text-center text-sm text-muted">
             No matchups for this round yet.
           </div>
         )}
@@ -1081,151 +936,115 @@ function InjuryTag({ status, injury_status }) {
 
   if (raw.includes("question")) {
     return (
-      <span className="ml-1 inline-flex items-center rounded-full border border-yellow-400/60 bg-yellow-400/10 px-1.5 py-0.5 text-[0.6rem] text-yellow-300">
-        Ques.
+      <span className="ml-1 inline-flex items-center rounded-full border border-yellow-400/60 bg-yellow-400/10 px-1.5 py-0.5 text-[0.65rem] text-yellow-300">
+        Q
       </span>
     );
   }
-
   if (raw === "ir" || raw.includes("injured reserve")) {
     return (
-      <span className="ml-1 inline-flex items-center rounded-full border border-red-500/70 bg-red-500/10 px-1.5 py-0.5 text-[0.6rem] text-red-300">
+      <span className="ml-1 inline-flex items-center rounded-full border border-red-500/70 bg-red-500/10 px-1.5 py-0.5 text-[0.65rem] text-red-300">
         IR
       </span>
     );
   }
-
   if (raw.includes("out")) {
     return (
-      <span className="ml-1 inline-flex items-center rounded-full border border-red-500/70 bg-red-500/10 px-1.5 py-0.5 text-[0.6rem] text-red-300">
+      <span className="ml-1 inline-flex items-center rounded-full border border-red-500/70 bg-red-500/10 px-1.5 py-0.5 text-[0.65rem] text-red-300">
         OUT
       </span>
     );
   }
-
   return null;
 }
 
 function LineupSide({ title, seed, lineup, isWinner, isPlayed }) {
-  if (!lineup) {
-    return (
-      <div className="text-xs text-slate-500">
-        No lineup data yet for this matchup.
-      </div>
-    );
-  }
+  if (!lineup) return <div className="text-sm text-muted">No lineup data yet.</div>;
 
   const slotsOrder = ["QB", "RB", "WR", "TE", "FLEX", "SF"];
 
   const startersBySlot = slotsOrder.map((slot) => ({
     slot,
-    players: (lineup.starters || [])
-      .filter((p) => p.slot === slot)
-      .sort((a, b) => b.points - a.points),
+    players: (lineup.starters || []).filter((p) => p.slot === slot).sort((a, b) => b.points - a.points),
   }));
 
-  const benchSorted = (lineup.bench || [])
-    .slice()
-    .sort((a, b) => b.points - a.points);
+  const benchSorted = (lineup.bench || []).slice().sort((a, b) => b.points - a.points);
 
   const total =
     lineup.total ??
-    lineup.starters?.reduce(
-      (sum, p) => sum + Number(p.points || 0),
-      0
-    );
+    lineup.starters?.reduce((sum, p) => sum + Number(p.points || 0), 0);
 
-  const totalColorClass = !isPlayed
-    ? "text-slate-300"
+  const totalClass = !isPlayed
+    ? "text-muted"
     : isWinner
-    ? "text-emerald-300"
-    : "text-red-300";
+    ? "text-[color:var(--color-success)]"
+    : "text-danger";
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between">
-        <div className="text-sm font-semibold text-slate-100">
+        <div className="text-sm font-semibold">
           {title}
-          {typeof seed === "number" && (
-            <span className="ml-2 text-[0.7rem] text-slate-400">
-              Seed {seed}
-            </span>
-          )}
+          {typeof seed === "number" && <span className="ml-2 text-xs text-muted">Seed {seed}</span>}
         </div>
-        <div className={`text-xs font-mono ${totalColorClass}`}>
-          {Number(total || 0).toFixed(2)} pts
-        </div>
+        <div className={`text-xs font-mono ${totalClass}`}>{Number(total || 0).toFixed(2)} pts</div>
       </div>
 
-      {/* Starters */}
-      <div className="rounded-lg border border-slate-800 bg-slate-950/80 p-2">
-        <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-slate-400">
+      <div className="rounded-2xl border border-subtle bg-subtle-surface p-3">
+        <div className="mb-2 text-[0.7rem] font-semibold uppercase tracking-wide text-muted">
           Starters
         </div>
-        <div className="space-y-1">
+        <div className="space-y-2">
           {startersBySlot.map(({ slot, players }) =>
             players.length ? (
               <div key={slot}>
-                <div className="text-[0.65rem] font-semibold text-slate-300">
-                  {slot}
-                </div>
-                {players.map((p) => (
-                  <div
-                    key={p.id}
-                    className="flex items-center justify-between rounded-md bg-slate-900/80 px-2 py-1"
-                  >
-                    <div className="flex flex-col">
-                      <span className="text-xs text-slate-100">
-                        {p.name}
-                        <InjuryTag
-                          status={p.status}
-                          injury_status={p.injury_status}
-                        />
-                      </span>
-                      <span className="text-[0.65rem] text-slate-400">
-                        {p.team || "FA"} • {p.pos}
-                      </span>
+                <div className="text-xs font-semibold text-muted">{slot}</div>
+                <div className="mt-1 space-y-1">
+                  {players.map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between rounded-xl border border-subtle bg-card-surface px-3 py-2"
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-sm">
+                          {p.name}
+                          <InjuryTag status={p.status} injury_status={p.injury_status} />
+                        </span>
+                        <span className="text-xs text-muted">
+                          {p.team || "FA"} • {p.pos}
+                        </span>
+                      </div>
+                      <span className="text-sm font-mono">{Number(p.points || 0).toFixed(2)}</span>
                     </div>
-                    <span className="text-xs font-mono text-slate-100">
-                      {Number(p.points || 0).toFixed(2)}
-                    </span>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             ) : null
           )}
         </div>
       </div>
 
-      {/* Bench */}
-      <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-2">
-        <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-slate-400">
+      <div className="rounded-2xl border border-subtle bg-subtle-surface p-3">
+        <div className="mb-2 text-[0.7rem] font-semibold uppercase tracking-wide text-muted">
           Bench
         </div>
         <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
-          {benchSorted.length === 0 && (
-            <div className="text-[0.65rem] text-slate-500">
-              No bench players recorded.
-            </div>
-          )}
+          {benchSorted.length === 0 && <div className="text-xs text-muted">No bench players recorded.</div>}
           {benchSorted.map((p) => (
             <div
               key={p.id}
-              className="flex items-center justify-between rounded-md bg-slate-900/60 px-2 py-1"
+              className="flex items-center justify-between rounded-xl border border-subtle bg-card-surface px-3 py-2"
             >
               <div className="flex flex-col">
-                <span className="text-xs text-slate-200">
+                <span className="text-sm">
                   {p.name}
-                  <InjuryTag
-                    status={p.status}
-                    injury_status={p.injury_status}
-                  />
+                  <InjuryTag status={p.status} injury_status={p.injury_status} />
                 </span>
-                <span className="text-[0.65rem] text-slate-400">
+                <span className="text-xs text-muted">
                   {p.team || "FA"} • {p.pos}
                 </span>
               </div>
-              <span className="text-xs font-mono text-slate-400">
+              <span className="text-xs font-mono text-muted">
                 {Number(p.points || 0).toFixed(2)}
               </span>
             </div>
@@ -1239,24 +1058,23 @@ function LineupSide({ title, seed, lineup, isWinner, isPlayed }) {
 function MatchupBreakdown({ row }) {
   const { lightLineup, darkLineup, week } = row || {};
 
-  // If we have absolutely no lineups (early season / seed preview mode)
   if (!lightLineup && !darkLineup) {
     return (
-      <div className="border-t border-slate-800 bg-slate-950/80 px-3 py-3 text-xs text-slate-500">
-        Lineup breakdown will appear here once Week {week} Best Ball scores are
-        available for this matchup.
+      <div className="border-t border-subtle bg-subtle-surface px-4 py-4 text-sm text-muted">
+        Lineup breakdown will appear here once Week {week} Best Ball scores are available.
       </div>
     );
   }
 
   return (
-    <div className="border-t border-slate-800 bg-slate-950/80 px-3 py-3">
-      <div className="mb-2 text-[0.7rem] text-slate-400">
+    <div className="border-t border-subtle bg-subtle-surface px-4 py-4">
+      <div className="mb-3 text-xs text-muted">
         Matchup breakdown for{" "}
-        <span className="font-mono text-amber-300">
+        <span className="font-mono text-primary">
           Week {week} • Match {row.match}
         </span>
       </div>
+
       <div className="grid gap-4 md:grid-cols-2">
         <LineupSide
           title={row.lightOwnerName || "Light"}
@@ -1277,79 +1095,66 @@ function MatchupBreakdown({ row }) {
   );
 }
 
+/* ======== Bracket view (kept logic, lightly restyled wrapper) ======== */
+
 function GodBracket({ rounds }) {
   const safeRounds = Array.isArray(rounds) ? rounds : [];
-
   if (!safeRounds.length) {
     return (
-      <div className="rounded-lg border border-dashed border-slate-700 bg-slate-950/50 px-3 py-2 text-[0.7rem] text-slate-400">
+      <div className="rounded-2xl border border-subtle bg-subtle-surface px-4 py-3 text-sm text-muted">
         Bracket rounds will appear here as Leg 3 weeks complete.
       </div>
     );
   }
 
-  // Use Round 1 to define vertical scale
   const firstRound = safeRounds[0];
-  const firstRoundMatches = Array.isArray(firstRound.results)
-    ? firstRound.results.length
-    : 0;
+  const firstRoundMatches = Array.isArray(firstRound.results) ? firstRound.results.length : 0;
 
   if (!firstRoundMatches) {
     return (
-      <div className="rounded-lg border border-dashed border-slate-700 bg-slate-950/50 px-3 py-2 text-[0.7rem] text-slate-400">
+      <div className="rounded-2xl border border-subtle bg-subtle-surface px-4 py-3 text-sm text-muted">
         Bracket rounds will appear here as Leg 3 weeks complete.
       </div>
     );
   }
 
   const UNITS_PER_MATCH = 4;
-
-  // Row 1 = headers, rows 2..(1 + N*UNITS_PER_MATCH) = match area
   const totalRows = 1 + firstRoundMatches * UNITS_PER_MATCH;
 
   return (
-    <div className="overflow-x-auto text-[0.65rem]">
+    <div className="overflow-x-auto text-xs">
       <div
         className="inline-grid gap-x-4"
         style={{
-          gridTemplateColumns: `repeat(${safeRounds.length}, minmax(160px, 1fr))`,
+          gridTemplateColumns: `repeat(${safeRounds.length}, minmax(180px, 1fr))`,
           gridTemplateRows: `repeat(${totalRows}, minmax(0, auto))`,
         }}
       >
         {safeRounds.map((round, roundIdx) => {
           const results = Array.isArray(round.results) ? round.results : [];
-          const col = roundIdx + 1; // 1-based column index
-          const r = roundIdx + 1; // 1-based round index
-          const blockSize = Math.pow(2, r - 1); // how many R1 matches feed into one match
+          const col = roundIdx + 1;
+          const r = roundIdx + 1;
+          const blockSize = Math.pow(2, r - 1);
 
           return (
             <div key={round.roundNumber} className="contents">
-              {/* Round header: always the top row of this column */}
               <div
-                className="mb-1 text-center font-semibold text-slate-100"
+                className="mb-2 text-center font-semibold"
                 style={{ gridColumn: col, gridRow: 1 }}
               >
                 R{round.roundNumber}{" "}
-                <span className="text-slate-400">(W{round.week})</span>
+                <span className="text-muted">(W{round.week})</span>
               </div>
 
-              {/* Matches for this round */}
               {results.map((match, matchIdx) => {
-                const m = matchIdx + 1; // 1-based match index in this round
-
-                // Which block of Round-1 matches does this match "own"?
+                const m = matchIdx + 1;
                 const startIndex = 1 + (m - 1) * blockSize;
                 const endIndex = startIndex + blockSize - 1;
-                const centerIndex = (startIndex + endIndex) / 2; // can be .5
-
-                // Center of that block in sub-rows:
+                const centerIndex = (startIndex + endIndex) / 2;
                 const centerSubRow =
                   2 + (centerIndex - 1) * UNITS_PER_MATCH + UNITS_PER_MATCH / 2;
 
-                // Give each bracket card one "match height"
                 const rowSpan = UNITS_PER_MATCH;
-
-                // Start row so that the card is centered around centerSubRow
                 const rowStart = Math.round(centerSubRow - rowSpan / 2);
 
                 return (
@@ -1382,73 +1187,48 @@ function BracketMatchCard({ match }) {
   const teamAIsWinner = winnerId && winnerId === teamA.rosterId;
   const teamBIsWinner = winnerId && winnerId === teamB.rosterId;
 
-  const teamAPlayed = scoreA !== 0 || scoreB !== 0;
-  const teamBPlayed = scoreA !== 0 || scoreB !== 0;
-
-  const teamALost = teamAPlayed && !teamAIsWinner && winnerId;
-  const teamBLost = teamBPlayed && !teamBIsWinner && winnerId;
+  const played = scoreA !== 0 || scoreB !== 0;
+  const teamALost = played && !teamAIsWinner && winnerId;
+  const teamBLost = played && !teamBIsWinner && winnerId;
 
   return (
-    <div className="relative rounded-md border border-slate-800 bg-slate-950/90 px-1.5 py-1">
-      {/* small connector stub to the next-round column */}
-      <div className="pointer-events-none absolute -right-3 top-1/2 hidden h-px w-3 translate-y-[-50%] bg-slate-700 md:block" />
-
-      {/* match label */}
-      <div className="mb-0.5 flex items-center justify-between text-[0.6rem] text-slate-400">
+    <div className="relative rounded-2xl border border-subtle bg-card-surface px-3 py-2">
+      <div className="mb-1 flex items-center justify-between text-[0.7rem] text-muted">
         <span>Match {match.matchIndex}</span>
       </div>
 
-      {/* internal connector trunk */}
-      <div className="absolute left-0 top-3 bottom-3 border-l border-slate-700/60" />
-
-      <div className="space-y-0.5 pl-2.5">
-        {/* Team A row */}
+      <div className="space-y-1">
         <div
-          className={`flex items-center justify-between gap-1 rounded-sm px-1 py-0.5 ${
+          className={`flex items-center justify-between gap-2 rounded-xl px-2 py-1 border ${
             teamAIsWinner
-              ? "bg-emerald-900/40 text-emerald-200 border border-emerald-500/40"
-              : teamALost
-              ? "text-red-300 line-through"
-              : "text-slate-200"
-          }`}
+              ? "border-[color:var(--color-success)]/40 bg-[color:var(--color-success)]/10"
+              : "border-subtle bg-subtle-surface"
+          } ${teamALost ? "text-danger line-through" : ""}`}
         >
-          <span className="truncate max-w-[90px]">
-            {teamA.ownerName ?? "?"}
-          </span>
-          <span className="flex items-center gap-1 text-[0.6rem]">
-            <span className="text-slate-400">S{teamA.seed ?? "?"}</span>
+          <span className="truncate max-w-[120px]">{teamA.ownerName ?? "?"}</span>
+          <span className="flex items-center gap-2 text-[0.7rem]">
+            <span className="text-muted">S{teamA.seed ?? "?"}</span>
             <span className="font-mono">{scoreA.toFixed(1)}</span>
-            {teamALost && (
-              <span className="text-red-400 text-[0.55rem] ml-0.5">✕</span>
-            )}
           </span>
         </div>
 
-        {/* Team B row */}
         <div
-          className={`flex items-center justify-between gap-1 rounded-sm px-1 py-0.5 ${
+          className={`flex items-center justify-between gap-2 rounded-xl px-2 py-1 border ${
             teamBIsWinner
-              ? "bg-emerald-900/40 text-emerald-200 border border-emerald-500/40"
-              : teamBLost
-              ? "text-red-300 line-through"
-              : "text-slate-200"
-          }`}
+              ? "border-[color:var(--color-success)]/40 bg-[color:var(--color-success)]/10"
+              : "border-subtle bg-subtle-surface"
+          } ${teamBLost ? "text-danger line-through" : ""}`}
         >
-          <span className="truncate max-w-[90px]">
-            {teamB.ownerName ?? "?"}
-          </span>
-          <span className="flex items-center gap-1 text-[0.6rem]">
-            <span className="text-slate-400">S{teamB.seed ?? "?"}</span>
+          <span className="truncate max-w-[120px]">{teamB.ownerName ?? "?"}</span>
+          <span className="flex items-center gap-2 text-[0.7rem]">
+            <span className="text-muted">S{teamB.seed ?? "?"}</span>
             <span className="font-mono">{scoreB.toFixed(1)}</span>
-            {teamBLost && (
-              <span className="text-red-400 text-[0.55rem] ml-0.5">✕</span>
-            )}
           </span>
         </div>
       </div>
 
       {(teamAIsWinner || teamBIsWinner) && (
-        <div className="mt-0.5 pl-2.5 text-[0.55rem] text-emerald-300">
+        <div className="mt-2 text-[0.7rem] text-[color:var(--color-success)]">
           Advances →
         </div>
       )}
