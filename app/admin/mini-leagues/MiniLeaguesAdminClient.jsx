@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { getSupabase } from "@/src/lib/supabaseClient";
@@ -14,182 +14,183 @@ const STATUS_OPTIONS = [
   { value: "full", label: "FULL" },
 ];
 
-function emptyDivision(division_code) {
-  const base = {
-    season: SEASON,
-    division_code,
-    division_name: "",
-    division_order: 0,
-    division_image_path: "",
-    active: true,
+const DEFAULT_PAGE = {
+  season: SEASON,
+  hero: {
+    eyebrow: "WELCOME TO",
+    title: "the Mini-Leagues game",
+    subtitle:
+      "Way-too-early, rookie-inclusive, budget Best Ball redraft leagues. Most points wins. Optional wagering. Bonuses stack.",
+    updatedText: "Updated: 01/23/2025",
+    promoImageKey: "",
+    promoImageUrl: "/photos/minileagues-v2.webp",
+    updatesHtml: "<p>Updates will show here.</p>",
+  },
+  winners: {
+    title: "Last Year’s Winners",
+    imageKey: "",
+    imageUrl: "/photos/hall-of-fame/minileageus2024.png",
+    caption: "",
+  },
+};
+
+function emptyDivision(code = "100") {
+  return {
+    divisionCode: String(code),
+    title: `Division ${code}`,
     status: "tbd",
-    league_size: 12,
-    notes: "",
+    order: Number(code) / 100,
+    imageKey: "",
+    imageUrl: "",
+    leagues: Array.from({ length: 10 }).map((_, i) => ({
+      name: `League ${i + 1}`,
+      url: "",
+      status: "tbd",
+      active: true,
+      order: i + 1,
+      imageKey: "",
+      imageUrl: "",
+    })),
   };
+}
 
-  for (let i = 1; i <= 10; i++) {
-    base[`league${i}_name`] = "";
-    base[`league${i}_url`] = "";
-    base[`league${i}_status`] = "tbd";
-    base[`league${i}_active`] = true;
-    base[`league${i}_order`] = i;
-    base[`league${i}_image_path`] = "";
-  }
+async function getAccessToken() {
+  const supabase = getSupabase();
+  const { data } = await supabase.auth.getSession();
+  return data?.session?.access_token || "";
+}
 
-  return base;
+async function apiGET(type) {
+  const token = await getAccessToken();
+  const res = await fetch(`/api/admin/mini-leagues?season=${SEASON}&type=${type}`, {
+    headers: { authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+async function apiPUT(type, data) {
+  const token = await getAccessToken();
+  const res = await fetch(`/api/admin/mini-leagues?season=${SEASON}`, {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ type, data }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+async function uploadImage(file, folder = "mini-leagues") {
+  const token = await getAccessToken();
+  const form = new FormData();
+  form.append("file", file);
+  form.append("folder", folder);
+
+  const res = await fetch("/api/admin/upload", {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}` },
+    body: form,
+  });
+
+  if (!res.ok) throw new Error(await res.text());
+  return res.json(); // { ok, key, url }
 }
 
 export default function MiniLeaguesAdminClient() {
-  const [divs, setDivs] = useState([]);
-  const [creatingCode, setCreatingCode] = useState("");
+  const [tab, setTab] = useState("page"); // "page" | "divisions"
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
+  const [err, setErr] = useState("");
 
-  async function load() {
+  const [pageCfg, setPageCfg] = useState(DEFAULT_PAGE);
+  const [divisions, setDivisions] = useState([]);
+
+  const promoPreview = pageCfg?.hero?.promoImageKey
+    ? `/r2/${pageCfg.hero.promoImageKey}`
+    : pageCfg?.hero?.promoImageUrl;
+
+  const winnersPreview = pageCfg?.winners?.imageKey
+    ? `/r2/${pageCfg.winners.imageKey}`
+    : pageCfg?.winners?.imageUrl;
+
+  async function loadAll() {
     setErr("");
     setOk("");
     setLoading(true);
     try {
-      const supabase = getSupabase();
-      const { data, error } = await supabase
-        .from("minileagues_divisions")
-        .select("*")
-        .eq("season", SEASON)
-        .order("division_order", { ascending: true })
-        .order("division_code", { ascending: true });
+      const page = await apiGET("page");
+      const pageData = page?.data || null;
+      setPageCfg({
+        ...DEFAULT_PAGE,
+        ...pageData,
+        hero: { ...DEFAULT_PAGE.hero, ...(pageData?.hero || {}) },
+        winners: { ...DEFAULT_PAGE.winners, ...(pageData?.winners || {}) },
+      });
 
-      if (error) throw error;
-      setDivs(data || []);
+      const div = await apiGET("divisions");
+      const raw = div?.data;
+      const list = Array.isArray(raw?.divisions) ? raw.divisions : Array.isArray(raw) ? raw : [];
+      setDivisions(list.length ? list : [emptyDivision("100"), emptyDivision("200"), emptyDivision("400")]);
     } catch (e) {
       setErr(e?.message || "Failed to load.");
-      setDivs([]);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    load();
+    loadAll();
   }, []);
 
-  function patchRow(idx, patch) {
-    setDivs((prev) => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], ...patch };
-      return next;
-    });
-  }
-
-  async function createDivision() {
+  async function savePage() {
+    setSaving(true);
     setErr("");
     setOk("");
-
-    const code = Number(creatingCode);
-    if (!Number.isFinite(code)) {
-      setErr("Enter a valid division code (ex: 100, 200, 400).");
-      return;
-    }
-
-    setSaving(true);
     try {
-      const supabase = getSupabase();
-      const payload = emptyDivision(code);
-
-      const { error } = await supabase.from("minileagues_divisions").insert(payload);
-      if (error) throw error;
-
-      setCreatingCode("");
-      setOk(`Created Division ${code}.`);
-      await load();
-    } catch (e) {
-      setErr(e?.message || "Create failed.");
-    } finally {
-      setSaving(false);
-      setTimeout(() => setOk(""), 2500);
-    }
-  }
-
-  async function saveAll() {
-    setErr("");
-    setOk("");
-    setSaving(true);
-
-    try {
-      const supabase = getSupabase();
-
-      const cleaned = divs.map((d) => {
-        const out = {
-          season: SEASON,
-          division_code: Number(d.division_code),
-          division_name: d.division_name || null,
-          division_order: Number.isFinite(Number(d.division_order)) ? Number(d.division_order) : 0,
-          division_image_path: d.division_image_path || null,
-          active: d.active !== false,
-          status: (d.status || "tbd"),
-          league_size: Number.isFinite(Number(d.league_size)) ? Number(d.league_size) : 12,
-          notes: d.notes || null,
-        };
-
-        for (let i = 1; i <= 10; i++) {
-          out[`league${i}_name`] = d[`league${i}_name`] || null;
-          out[`league${i}_url`] = d[`league${i}_url`] || null;
-
-          const s = d[`league${i}_status`];
-          out[`league${i}_status`] = (s === "full" || s === "filling" || s === "drafting" || s === "tbd") ? s : "tbd";
-
-          out[`league${i}_active`] = d[`league${i}_active`] !== false;
-
-          const ord = Number(d[`league${i}_order`]);
-          out[`league${i}_order`] = Number.isFinite(ord) ? ord : i;
-
-          out[`league${i}_image_path`] = d[`league${i}_image_path`] || null;
-        }
-
-        return out;
-      });
-
-      const { error } = await supabase
-        .from("minileagues_divisions")
-        .upsert(cleaned, { onConflict: "season,division_code" });
-
-      if (error) throw error;
-
-      setOk("Saved.");
-      await load();
+      await apiPUT("page", pageCfg);
+      setOk("Saved page sections to R2.");
     } catch (e) {
       setErr(e?.message || "Save failed.");
     } finally {
       setSaving(false);
-      setTimeout(() => setOk(""), 2500);
     }
   }
 
-  async function deleteDivision(season, division_code) {
+  async function saveDivisions() {
+    setSaving(true);
     setErr("");
     setOk("");
-    setSaving(true);
-
     try {
-      const supabase = getSupabase();
-      const { error } = await supabase
-        .from("minileagues_divisions")
-        .delete()
-        .eq("season", season)
-        .eq("division_code", division_code);
-
-      if (error) throw error;
-
-      setOk(`Deleted Division ${division_code}.`);
-      await load();
+      await apiPUT("divisions", { season: SEASON, divisions });
+      setOk("Saved divisions to R2.");
     } catch (e) {
-      setErr(e?.message || "Delete failed.");
+      setErr(e?.message || "Save failed.");
     } finally {
       setSaving(false);
-      setTimeout(() => setOk(""), 2500);
     }
   }
+
+  function updateDivision(idx, patch) {
+    setDivisions((prev) => prev.map((d, i) => (i === idx ? { ...d, ...patch } : d)));
+  }
+
+  function updateLeague(divIdx, leagueIdx, patch) {
+    setDivisions((prev) =>
+      prev.map((d, i) => {
+        if (i !== divIdx) return d;
+        const leagues = Array.isArray(d.leagues) ? d.leagues.slice() : [];
+        leagues[leagueIdx] = { ...leagues[leagueIdx], ...patch };
+        return { ...d, leagues };
+      })
+    );
+  }
+
+  const canSave = !saving && !loading;
 
   return (
     <main className="relative min-h-screen text-fg">
@@ -199,289 +200,373 @@ export default function MiniLeaguesAdminClient() {
 
       <section className="section">
         <div className="container-site space-y-6">
-          <header className="relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-10">
-            <div className="pointer-events-none absolute inset-0 opacity-55 mix-blend-screen">
-              <div className="absolute -top-24 -left-16 h-64 w-64 rounded-full bg-[color:var(--color-accent)]/18 blur-3xl" />
-              <div className="absolute -bottom-24 -right-16 h-64 w-64 rounded-full bg-[color:var(--color-primary)]/14 blur-3xl" />
-            </div>
-
-            <div className="relative space-y-4">
-              <p className="text-xs uppercase tracking-[0.35em] text-accent">Admin</p>
-              <h1 className="text-3xl sm:text-4xl font-semibold leading-tight">
-                Mini-Leagues Divisions <span className="text-primary">(Editor)</span>
-              </h1>
-
-              <div className="flex flex-wrap gap-3 pt-2">
-                <Link href="/admin" className="btn btn-outline">
-                  ← Admin Home
-                </Link>
-                <Link href="/mini-leagues" className="btn btn-outline">
-                  View Public Page →
-                </Link>
-                <button
-                  type="button"
-                  onClick={saveAll}
-                  disabled={saving || loading}
-                  className="btn btn-primary"
-                >
-                  {saving ? "Saving…" : "Save All"}
-                </button>
+          <header className="rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-8">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div className="space-y-2">
+                <p className="text-xs uppercase tracking-[0.35em] text-accent">Admin</p>
+                <h1 className="text-3xl font-semibold">
+                  Mini-Leagues <span className="text-primary">Editor</span>
+                </h1>
+                <p className="text-sm text-muted">
+                  Edit only what should be editable: Hero, Winners, and Divisions/Leagues (with direct R2 image uploads).
+                </p>
               </div>
 
-              <div className="flex flex-wrap gap-2 pt-2 items-center">
-                <input
-                  className="rounded-xl border border-subtle bg-card-trans px-3 py-2 w-56"
-                  value={creatingCode}
-                  onChange={(e) => setCreatingCode(e.target.value)}
-                  placeholder="New division code (ex: 100)"
-                />
-                <button
-                  type="button"
-                  onClick={createDivision}
-                  disabled={saving}
-                  className="btn btn-outline"
-                >
-                  + Create Division
+              <div className="flex flex-wrap gap-2">
+                <Link className="btn btn-outline" href="/mini-leagues">View Page</Link>
+                <button className="btn btn-outline" type="button" onClick={loadAll} disabled={!canSave}>
+                  Refresh
                 </button>
               </div>
-
-              {err ? (
-                <div className="rounded-2xl border border-subtle bg-card-surface p-3 text-sm text-red-300">
-                  {err}
-                </div>
-              ) : null}
-              {ok ? (
-                <div className="rounded-2xl border border-subtle bg-card-surface p-3 text-sm text-green-300">
-                  {ok}
-                </div>
-              ) : null}
             </div>
+
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setTab("page")}
+                className={`btn ${tab === "page" ? "btn-primary" : "btn-outline"}`}
+              >
+                Page Sections
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab("divisions")}
+                className={`btn ${tab === "divisions" ? "btn-primary" : "btn-outline"}`}
+              >
+                Divisions & Leagues
+              </button>
+            </div>
+
+            {err ? (
+              <div className="mt-4 rounded-2xl border border-subtle bg-card-surface p-3 text-sm text-red-300">
+                {err}
+              </div>
+            ) : null}
+            {ok ? (
+              <div className="mt-4 rounded-2xl border border-subtle bg-card-surface p-3 text-sm text-green-300">
+                {ok}
+              </div>
+            ) : null}
           </header>
 
           {loading ? (
             <div className="rounded-2xl border border-subtle bg-card-surface p-4 text-sm text-muted">
               Loading…
             </div>
-          ) : divs.length === 0 ? (
-            <div className="rounded-2xl border border-subtle bg-card-surface p-6 text-sm text-muted">
-              No divisions yet. Create one (ex: 100) to start.
-            </div>
+          ) : tab === "page" ? (
+            <section className="grid gap-6 lg:grid-cols-2">
+              <div className="rounded-3xl border border-subtle bg-card-surface p-6 shadow-sm space-y-4">
+                <h2 className="text-xl font-semibold text-primary">Hero</h2>
+
+                <label className="block text-sm text-muted">Eyebrow</label>
+                <input
+                  className="input w-full"
+                  value={pageCfg.hero.eyebrow}
+                  onChange={(e) => setPageCfg((p) => ({ ...p, hero: { ...p.hero, eyebrow: e.target.value } }))}
+                />
+
+                <label className="block text-sm text-muted">Title</label>
+                <input
+                  className="input w-full"
+                  value={pageCfg.hero.title}
+                  onChange={(e) => setPageCfg((p) => ({ ...p, hero: { ...p.hero, title: e.target.value } }))}
+                />
+
+                <label className="block text-sm text-muted">Subtitle</label>
+                <textarea
+                  className="input w-full min-h-[96px]"
+                  value={pageCfg.hero.subtitle}
+                  onChange={(e) => setPageCfg((p) => ({ ...p, hero: { ...p.hero, subtitle: e.target.value } }))}
+                />
+
+                <label className="block text-sm text-muted">Updated text</label>
+                <input
+                  className="input w-full"
+                  value={pageCfg.hero.updatedText}
+                  onChange={(e) => setPageCfg((p) => ({ ...p, hero: { ...p.hero, updatedText: e.target.value } }))}
+                />
+
+                <label className="block text-sm text-muted">Updates (HTML allowed)</label>
+                <textarea
+                  className="input w-full min-h-[140px]"
+                  value={pageCfg.hero.updatesHtml}
+                  onChange={(e) => setPageCfg((p) => ({ ...p, hero: { ...p.hero, updatesHtml: e.target.value } }))}
+                />
+
+                <div className="pt-2 flex items-center justify-between gap-3">
+                  <div className="text-sm text-muted">Promo image</div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      setErr("");
+                      setOk("");
+                      try {
+                        const up = await uploadImage(f, "mini-leagues");
+                        setPageCfg((p) => ({ ...p, hero: { ...p.hero, promoImageKey: up.key } }));
+                        setOk("Uploaded promo image.");
+                      } catch (ex) {
+                        setErr(ex?.message || "Upload failed.");
+                      } finally {
+                        e.target.value = "";
+                      }
+                    }}
+                  />
+                </div>
+
+                <div className="relative w-full aspect-[16/9] rounded-2xl overflow-hidden border border-subtle bg-black/20">
+                  <Image src={promoPreview} alt="Promo preview" fill className="object-cover" />
+                </div>
+
+                <button className="btn btn-primary w-full" type="button" onClick={savePage} disabled={!canSave}>
+                  {saving ? "Saving…" : "Save Hero + Winners"}
+                </button>
+              </div>
+
+              <div className="rounded-3xl border border-subtle bg-card-surface p-6 shadow-sm space-y-4">
+                <h2 className="text-xl font-semibold text-primary">Last Year’s Winners</h2>
+
+                <label className="block text-sm text-muted">Section title</label>
+                <input
+                  className="input w-full"
+                  value={pageCfg.winners.title}
+                  onChange={(e) => setPageCfg((p) => ({ ...p, winners: { ...p.winners, title: e.target.value } }))}
+                />
+
+                <label className="block text-sm text-muted">Caption (optional)</label>
+                <input
+                  className="input w-full"
+                  value={pageCfg.winners.caption}
+                  onChange={(e) => setPageCfg((p) => ({ ...p, winners: { ...p.winners, caption: e.target.value } }))}
+                />
+
+                <div className="pt-2 flex items-center justify-between gap-3">
+                  <div className="text-sm text-muted">Winners image</div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      setErr("");
+                      setOk("");
+                      try {
+                        const up = await uploadImage(f, "mini-leagues");
+                        setPageCfg((p) => ({ ...p, winners: { ...p.winners, imageKey: up.key } }));
+                        setOk("Uploaded winners image.");
+                      } catch (ex) {
+                        setErr(ex?.message || "Upload failed.");
+                      } finally {
+                        e.target.value = "";
+                      }
+                    }}
+                  />
+                </div>
+
+                <div className="relative w-full aspect-[16/9] rounded-2xl overflow-hidden border border-subtle bg-black/20">
+                  <Image src={winnersPreview} alt="Winners preview" fill className="object-contain" />
+                </div>
+              </div>
+            </section>
           ) : (
-            <div className="space-y-6">
-              {divs.map((d, idx) => (
-                <div
-                  key={`${d.season}-${d.division_code}`}
-                  className="rounded-3xl border border-subtle bg-card-surface shadow-sm overflow-hidden"
-                >
-                  <div className="px-5 py-4 border-b border-subtle flex flex-wrap items-center justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="text-sm font-semibold">Division {d.division_code}</div>
-                      <div className="text-xs text-muted">Season {d.season}</div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 items-center">
-                      <select
-                        className="rounded-xl border border-subtle bg-card-trans px-3 py-2"
-                        value={d.status || "tbd"}
-                        onChange={(e) => patchRow(idx, { status: e.target.value })}
-                      >
-                        {STATUS_OPTIONS.map((s) => (
-                          <option key={s.value} value={s.value}>
-                            {s.label}
-                          </option>
-                        ))}
-                      </select>
-
-                      <label className="flex items-center gap-2 text-sm text-muted">
-                        <input
-                          type="checkbox"
-                          checked={d.active !== false}
-                          onChange={(e) => patchRow(idx, { active: e.target.checked })}
-                        />
-                        Active
-                      </label>
-
-                      <button
-                        type="button"
-                        className="btn btn-outline"
-                        onClick={() => deleteDivision(d.season, d.division_code)}
-                        disabled={saving}
-                      >
-                        Delete
-                      </button>
-                    </div>
+            <section className="space-y-6">
+              <div className="rounded-3xl border border-subtle bg-card-surface p-6 shadow-sm space-y-2">
+                <div className="flex items-end justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-semibold text-primary">Divisions</h2>
+                    <p className="text-sm text-muted">Each division has 10 leagues. Status: full / filling / tbd / drafting.</p>
                   </div>
+                  <button className="btn btn-primary" type="button" onClick={saveDivisions} disabled={!canSave}>
+                    {saving ? "Saving…" : "Save Divisions"}
+                  </button>
+                </div>
+              </div>
 
-                  <div className="p-5 grid gap-4">
-                    {/* Division fields */}
-                    <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                      <div>
-                        <label className="text-xs uppercase tracking-[0.18em] text-muted">
-                          Division Name (optional)
-                        </label>
-                        <input
-                          className="mt-1 w-full rounded-xl border border-subtle bg-card-trans px-3 py-2"
-                          value={d.division_name || ""}
-                          onChange={(e) => patchRow(idx, { division_name: e.target.value })}
-                          placeholder="Example: Early Bird"
-                        />
-                      </div>
+              <div className="grid gap-6 lg:grid-cols-2">
+                {divisions.map((d, divIdx) => {
+                  const divPreview = d.imageKey ? `/r2/${d.imageKey}` : d.imageUrl || "";
+                  return (
+                    <div key={d.divisionCode} className="rounded-3xl border border-subtle bg-card-surface shadow-sm overflow-hidden">
+                      <div className="p-5 border-b border-subtle space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-2 flex-1">
+                            <label className="block text-xs uppercase tracking-[0.18em] text-muted">Division Title</label>
+                            <input
+                              className="input w-full"
+                              value={d.title}
+                              onChange={(e) => updateDivision(divIdx, { title: e.target.value })}
+                            />
 
-                      <div>
-                        <label className="text-xs uppercase tracking-[0.18em] text-muted">
-                          Division Order
-                        </label>
-                        <input
-                          type="number"
-                          className="mt-1 w-full rounded-xl border border-subtle bg-card-trans px-3 py-2"
-                          value={d.division_order ?? 0}
-                          onChange={(e) => patchRow(idx, { division_order: e.target.value })}
-                          placeholder="0"
-                        />
-                      </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs uppercase tracking-[0.18em] text-muted">Status</label>
+                                <select
+                                  className="input w-full"
+                                  value={d.status}
+                                  onChange={(e) => updateDivision(divIdx, { status: e.target.value })}
+                                >
+                                  {STATUS_OPTIONS.map((o) => (
+                                    <option key={o.value} value={o.value}>
+                                      {o.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
 
-                      <div>
-                        <label className="text-xs uppercase tracking-[0.18em] text-muted">
-                          League Size (display)
-                        </label>
-                        <input
-                          type="number"
-                          className="mt-1 w-full rounded-xl border border-subtle bg-card-trans px-3 py-2"
-                          value={d.league_size ?? 12}
-                          onChange={(e) => patchRow(idx, { league_size: e.target.value })}
-                          placeholder="12"
-                        />
-                      </div>
-
-                      <div className="md:col-span-2 lg:col-span-2">
-                        <label className="text-xs uppercase tracking-[0.18em] text-muted">
-                          Division Image Path (optional)
-                        </label>
-                        <input
-                          className="mt-1 w-full rounded-xl border border-subtle bg-card-trans px-3 py-2"
-                          value={d.division_image_path || ""}
-                          onChange={(e) => patchRow(idx, { division_image_path: e.target.value })}
-                          placeholder="/photos/divisions/div-100.webp"
-                        />
-                        {d.division_image_path ? (
-                          <div className="mt-2 rounded-2xl border border-subtle overflow-hidden">
-                            <div className="relative h-28 w-full">
-                              <Image
-                                src={d.division_image_path}
-                                alt="Division preview"
-                                fill
-                                className="object-cover"
-                                sizes="100vw"
-                              />
+                              <div>
+                                <label className="block text-xs uppercase tracking-[0.18em] text-muted">Order</label>
+                                <input
+                                  className="input w-full"
+                                  inputMode="numeric"
+                                  value={d.order ?? ""}
+                                  onChange={(e) => updateDivision(divIdx, { order: Number(e.target.value || 0) })}
+                                />
+                              </div>
                             </div>
                           </div>
-                        ) : null}
-                      </div>
 
-                      <div className="md:col-span-2 lg:col-span-3">
-                        <label className="text-xs uppercase tracking-[0.18em] text-muted">
-                          Notes (optional)
-                        </label>
-                        <input
-                          className="mt-1 w-full rounded-xl border border-subtle bg-card-trans px-3 py-2"
-                          value={d.notes || ""}
-                          onChange={(e) => patchRow(idx, { notes: e.target.value })}
-                          placeholder="Optional notes shown on public page"
-                        />
-                      </div>
-                    </div>
-
-                    {/* 10 leagues */}
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                      {Array.from({ length: 10 }).map((_, i) => {
-                        const n = i + 1;
-                        const active = d[`league${n}_active`] !== false;
-                        return (
-                          <div
-                            key={n}
-                            className="rounded-2xl border border-subtle bg-subtle-surface p-4 space-y-2"
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
-                                League {n}
-                              </div>
-                              <label className="flex items-center gap-2 text-xs text-muted">
-                                <input
-                                  type="checkbox"
-                                  checked={active}
-                                  onChange={(e) => patchRow(idx, { [`league${n}_active`]: e.target.checked })}
-                                />
-                                Active
-                              </label>
-                            </div>
-
+                          <div className="space-y-2">
+                            <div className="text-xs uppercase tracking-[0.18em] text-muted">Division Image</div>
                             <input
-                              className="w-full rounded-xl border border-subtle bg-card-trans px-3 py-2"
-                              value={d[`league${n}_name`] || ""}
-                              onChange={(e) => patchRow(idx, { [`league${n}_name`]: e.target.value })}
-                              placeholder="League name"
+                              type="file"
+                              accept="image/*"
+                              onChange={async (e) => {
+                                const f = e.target.files?.[0];
+                                if (!f) return;
+                                setErr("");
+                                setOk("");
+                                try {
+                                  const up = await uploadImage(f, "mini-leagues");
+                                  updateDivision(divIdx, { imageKey: up.key });
+                                  setOk(`Uploaded image for ${d.title}.`);
+                                } catch (ex) {
+                                  setErr(ex?.message || "Upload failed.");
+                                } finally {
+                                  e.target.value = "";
+                                }
+                              }}
                             />
-
-                            <input
-                              className="w-full rounded-xl border border-subtle bg-card-trans px-3 py-2"
-                              value={d[`league${n}_url`] || ""}
-                              onChange={(e) => patchRow(idx, { [`league${n}_url`]: e.target.value })}
-                              placeholder="Sleeper URL"
-                            />
-
-                            <select
-                              className="w-full rounded-xl border border-subtle bg-card-trans px-3 py-2"
-                              value={d[`league${n}_status`] || "tbd"}
-                              onChange={(e) => patchRow(idx, { [`league${n}_status`]: e.target.value })}
-                            >
-                              {STATUS_OPTIONS.map((s) => (
-                                <option key={s.value} value={s.value}>
-                                  {s.label}
-                                </option>
-                              ))}
-                            </select>
-
-                            <div className="grid grid-cols-2 gap-2">
-                              <input
-                                type="number"
-                                className="w-full rounded-xl border border-subtle bg-card-trans px-3 py-2"
-                                value={d[`league${n}_order`] ?? n}
-                                onChange={(e) => patchRow(idx, { [`league${n}_order`]: e.target.value })}
-                                placeholder={`${n}`}
-                              />
-                              <div className="text-xs text-muted flex items-center">
-                                Order
-                              </div>
-                            </div>
-
-                            <input
-                              className="w-full rounded-xl border border-subtle bg-card-trans px-3 py-2"
-                              value={d[`league${n}_image_path`] || ""}
-                              onChange={(e) => patchRow(idx, { [`league${n}_image_path`]: e.target.value })}
-                              placeholder="/photos/leagues/league.webp"
-                            />
-
-                            {d[`league${n}_image_path`] ? (
-                              <div className="rounded-xl border border-subtle overflow-hidden">
-                                <div className="relative h-20 w-full">
-                                  <Image
-                                    src={d[`league${n}_image_path`]}
-                                    alt={`League ${n} preview`}
-                                    fill
-                                    className="object-cover"
-                                    sizes="20vw"
-                                  />
-                                </div>
+                            {divPreview ? (
+                              <div className="relative h-14 w-14 rounded-xl overflow-hidden border border-subtle bg-black/20">
+                                <Image src={divPreview} alt={`${d.title} preview`} fill className="object-cover" />
                               </div>
                             ) : null}
                           </div>
-                        );
-                      })}
+                        </div>
+                      </div>
+
+                      <div className="p-5 space-y-4">
+                        <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted">Leagues (10)</h3>
+
+                        <div className="space-y-4">
+                          {(Array.isArray(d.leagues) ? d.leagues : []).map((l, leagueIdx) => {
+                            const leaguePreview = l.imageKey ? `/r2/${l.imageKey}` : l.imageUrl || "";
+                            return (
+                              <div key={`${d.divisionCode}-${leagueIdx}`} className="rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm p-4 space-y-3">
+                                <div className="grid gap-3 md:grid-cols-[1.2fr_1.6fr_.7fr_.5fr_auto] items-end">
+                                  <div>
+                                    <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Name</label>
+                                    <input
+                                      className="input w-full"
+                                      value={l.name || ""}
+                                      onChange={(e) => updateLeague(divIdx, leagueIdx, { name: e.target.value })}
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">URL</label>
+                                    <input
+                                      className="input w-full"
+                                      value={l.url || ""}
+                                      onChange={(e) => updateLeague(divIdx, leagueIdx, { url: e.target.value })}
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Status</label>
+                                    <select
+                                      className="input w-full"
+                                      value={l.status || "tbd"}
+                                      onChange={(e) => updateLeague(divIdx, leagueIdx, { status: e.target.value })}
+                                    >
+                                      {STATUS_OPTIONS.map((o) => (
+                                        <option key={o.value} value={o.value}>{o.label}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Order</label>
+                                    <input
+                                      className="input w-full"
+                                      inputMode="numeric"
+                                      value={l.order ?? ""}
+                                      onChange={(e) => updateLeague(divIdx, leagueIdx, { order: Number(e.target.value || 0) })}
+                                    />
+                                  </div>
+
+                                  <div className="flex items-center gap-3">
+                                    <div>
+                                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Image</div>
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={async (e) => {
+                                          const f = e.target.files?.[0];
+                                          if (!f) return;
+                                          setErr("");
+                                          setOk("");
+                                          try {
+                                            const up = await uploadImage(f, "mini-leagues");
+                                            updateLeague(divIdx, leagueIdx, { imageKey: up.key });
+                                            setOk(`Uploaded image for ${l.name || `League ${leagueIdx + 1}`}.`);
+                                          } catch (ex) {
+                                            setErr(ex?.message || "Upload failed.");
+                                          } finally {
+                                            e.target.value = "";
+                                          }
+                                        }}
+                                      />
+                                    </div>
+
+                                    {leaguePreview ? (
+                                      <div className="relative h-12 w-12 rounded-xl overflow-hidden border border-subtle bg-black/20">
+                                        <Image src={leaguePreview} alt="League preview" fill className="object-cover" />
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                </div>
+
+                                <label className="inline-flex items-center gap-2 text-sm text-muted">
+                                  <input
+                                    type="checkbox"
+                                    checked={l.active !== false}
+                                    onChange={(e) => updateLeague(divIdx, leagueIdx, { active: e.target.checked })}
+                                  />
+                                  Active
+                                </label>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  );
+                })}
+              </div>
+
+              <div className="rounded-3xl border border-subtle bg-card-surface p-6 shadow-sm">
+                <button
+                  className="btn btn-outline"
+                  type="button"
+                  onClick={() => setDivisions((prev) => [...prev, emptyDivision(String((prev.length + 1) * 100))])}
+                >
+                  + Add Division
+                </button>
+              </div>
+            </section>
           )}
         </div>
       </section>

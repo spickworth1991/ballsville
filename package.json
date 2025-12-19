@@ -4,11 +4,12 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "next dev",
+    "proxy": "wrangler pages dev --proxy 3000 --port 8788",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "icons": "node scripts/make-icons.mjs public/logo-source.webp",
-    "git": "git add . && git commit -m \"Update\" && git push origin main",
+    "git": "git add . && git commit -m \"Update\" && git push origin mini-leagues-cms",
     "leg3": "node script/buildgauntlet.mjs"
   },
   "dependencies": {
@@ -31,7 +32,8 @@
     "postcss": "8.5.6",
     "sharp": "^0.34.4",
     "tailwindcss": "3.4.13",
-    "to-ico": "^1.0.1"
+    "to-ico": "^1.0.1",
+    "wrangler": "^4.56.0"
   },
   "browserslist": [
     "defaults and not ie 11 and not op_mini all"
