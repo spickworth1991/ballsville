@@ -22,7 +22,6 @@ export const metadata = {
     description: siteConfig.description,
     images: [{ url: siteConfig.ogImage, width: 1200, height: 630 }],
   },
-  alternates: { canonical: siteConfig.domain },
   icons: {
     icon: "/favicon.ico",
     apple: "/logo192.png",

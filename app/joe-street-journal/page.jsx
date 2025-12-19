@@ -5,15 +5,14 @@ const DOC_URL =
   "https://docs.google.com/document/d/e/2PACX-1vTNyddNULSiiFSM2bYknXzpoFh5qi_szayYZ7Y4Ze6Vo62ZLhV3BFCK53v-19TaB6n4-e94K2eHpHuY/pub?embedded=true";
 
 const pageTitle = `The Joe Street Journal | ${siteConfig.shortName}`;
-const pageUrl = `${siteConfig.domain}/joe-street-journal`;
 
 export const metadata = {
   title: pageTitle,
   description:
     "The Joe Street Journal — Ballsville's weekly write-up, updated live. Power rankings, storylines, and chaos.",
-  alternates: { canonical: pageUrl },
+  alternates: { canonical: "/joe-street-journal" },
   openGraph: {
-    url: pageUrl,
+    url: "/joe-street-journal",
     title: pageTitle,
     description:
       "The Joe Street Journal — Ballsville's weekly write-up, updated live. Power rankings, storylines, and chaos.",

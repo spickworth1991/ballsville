@@ -4,15 +4,14 @@ import Link from "next/link";
 import { siteConfig } from "@/app/config/siteConfig";
 
 const pageTitle = `League Constitution | ${siteConfig.shortName}`;
-const pageUrl = `${siteConfig.domain}/constitution`;
 
 export const metadata = {
   title: pageTitle,
   description:
     "Core constitution, code of conduct, and governance framework for all BALLSVILLE / Westlex fantasy leagues.",
-  alternates: { canonical: pageUrl },
+  alternates: { canonical: "/constitution" },
   openGraph: {
-    url: pageUrl,
+    url: "/constitution",
     title: pageTitle,
     description:
       "Core constitution, code of conduct, and governance framework for all BALLSVILLE / Westlex fantasy leagues.",

@@ -3,15 +3,14 @@ import { siteConfig } from "@/app/config/siteConfig";
 import HallOfFameClient from "@/components/HallOfFameClient";
 
 const pageTitle = `Hall of Fame | ${siteConfig.shortName}`;
-const pageUrl = `${siteConfig.domain}/hall-of-fame`;
 
 export const metadata = {
   title: pageTitle,
   description:
     "Ballsville Hall of Fame: championship winners across each Ballsville game mode, plus Player of the Year.",
-  alternates: { canonical: pageUrl },
+  alternates: { canonical: "/hall-of-fame" },
   openGraph: {
-    url: pageUrl,
+    url: "/hall-of-fame",
     title: pageTitle,
     description:
       "Ballsville Hall of Fame: champions from Dragons of Dynasty, The BIG Game, Mini-Leagues, Redraft, and Player of the Year.",

@@ -3,14 +3,13 @@ import LiteYouTube from "@/components/LiteYouTube";
 import { siteConfig } from "@/app/config/siteConfig";
 
 const pageTitle = `About | ${siteConfig.shortName}`;
-const pageUrl = `${siteConfig.domain}/about`;
 
 export const metadata = {
   title: pageTitle,
   description: `About the BALLSVILLE game and Westlex fantasy leagues.`,
-  alternates: { canonical: pageUrl },
+  alternates: { canonical: "/about" },
   openGraph: {
-    url: pageUrl,
+    url: "/about",
     title: pageTitle,
     description: `Learn the history and structure of the BALLSVILLE game and Westlex fantasy leagues.`,
     images: [{ url: siteConfig.ogImage, width: 1200, height: 630 }],

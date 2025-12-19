@@ -8,9 +8,9 @@ const pageUrl = `${siteConfig.domain}/services`;
 export const metadata = {
   title: pageTitle,
   description: "Dynasty Bye-Laws & Code of Conduct for the BALLSVILLE game leagues.",
-  alternates: { canonical: pageUrl },
+  alternates: { canonical: "/constitution/dynasty" },
   openGraph: {
-    url: pageUrl,
+    url: "/constitution/dynasty",
     title: pageTitle,
     description: "Dynasty Bye-Laws & Code of Conduct for the BALLSVILLE game leagues.",
     images: [{ url: siteConfig.ogImage, width: 1200, height: 630 }],

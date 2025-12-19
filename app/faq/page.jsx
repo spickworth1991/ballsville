@@ -3,15 +3,14 @@ import FAQItem from "@/components/FAQItem";
 import { siteConfig } from "@/app/config/siteConfig";
 
 const pageTitle = `FAQ | ${siteConfig.shortName}`;
-const pageUrl = `${siteConfig.domain}/faq`;
 
 export const metadata = {
   title: pageTitle,
   description:
     "Frequently asked questions about The Ballsville Game: formats, payouts, Sleeper, mini games, and how to join.",
-  alternates: { canonical: pageUrl },
+  alternates: { canonical: "/faq" },
   openGraph: {
-    url: pageUrl,
+    url: "/faq",
     title: pageTitle,
     description:
       "Frequently asked questions about The Ballsville Game, formats, payouts, Sleeper setup, and mini games.",

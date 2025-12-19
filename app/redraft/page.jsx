@@ -2,15 +2,14 @@
 import { siteConfig } from "@/app/config/siteConfig";
 
 const pageTitle = `The Redraft Game | ${siteConfig.shortName}`;
-const pageUrl = `${siteConfig.domain}/redraft`;
 
 export const metadata = {
   title: pageTitle,
   description:
     "Details for the BALLSVILLE redraft game: league settings, payouts, wagering formula, and championship structure.",
-  alternates: { canonical: pageUrl },
+  alternates: { canonical: "/redraft" },
   openGraph: {
-    url: pageUrl,
+    url: "/redraft",
     title: pageTitle,
     description:
       "Learn how the BALLSVILLE redraft game works, including settings, payouts, and our custom wagering formula.",

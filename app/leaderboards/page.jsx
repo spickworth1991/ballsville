@@ -2,15 +2,14 @@
 import { siteConfig } from "@/app/config/siteConfig";
 
 const pageTitle = `Leaderboards | ${siteConfig.shortName}`;
-const pageUrl = `${siteConfig.domain}/leaderboards`;
 
 export const metadata = {
   title: pageTitle,
   description:
     "Live BALLSVILLE standings and leaderboards for all divisions and games.",
-  alternates: { canonical: pageUrl },
+  alternates: { canonical: "/leaderboards" },
   openGraph: {
-    url: pageUrl,
+    url: "/leaderboards",
     title: pageTitle,
     description:
       "Live BALLSVILLE standings and leaderboards for all divisions and games.",

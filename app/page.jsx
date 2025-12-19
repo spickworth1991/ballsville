@@ -4,14 +4,13 @@ import LiteYouTube from "@/components/LiteYouTube";
 import { siteConfig } from "@/app/config/siteConfig";
 
 const pageTitle = `${siteConfig.title}`;
-const pageUrl = `${siteConfig.domain}/`;
 
 export const metadata = {
   title: pageTitle,
   description: siteConfig.description,
-  alternates: { canonical: pageUrl },
+  alternates: { canonical: "/" },
   openGraph: {
-    url: pageUrl,
+    url: "/",
     title: pageTitle,
     description: siteConfig.description,
     images: [{ url: siteConfig.ogImage, width: 1200, height: 630 }],
