@@ -1,5 +1,5 @@
 import { siteConfig } from "@/app/config/siteConfig";
-import MiniLeaguesPageClient from "./MiniLeaguesPageClient";
+import MiniLeaguesClient from "./MiniLeaguesClient";
 
 const pageTitle = `Mini-Leagues | ${siteConfig.shortName}`;
 const pageUrl = `${siteConfig.domain}/mini-leagues`;
@@ -19,5 +19,5 @@ export const metadata = {
 };
 
 export default function Page() {
-  return <MiniLeaguesPageClient />;
+  return <MiniLeaguesClient />;
 }
