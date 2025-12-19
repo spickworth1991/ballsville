@@ -18,6 +18,7 @@ import {
   FiChevronDown,
   FiAward,
   FiFileText,
+  FiLayers,
 } from "react-icons/fi";
 
 const NAV_ITEMS = [
@@ -28,9 +29,10 @@ const NAV_ITEMS = [
     icon: FiGrid,
     children: [
       { name: "The BIG Game", to: "/big-game" },
+      { name: "Mini-Leagues", to: "/mini-leagues"},
       { name: "Redraft", to: "/redraft" },
       { name: "Dynasty", to: "/dynasty" },
-      { name: "Gauntlet", to: "/gauntlet" }, // adjust if your route is different
+      { name: "Gauntlet", to: "/gauntlet" }
     ],
   },
   {

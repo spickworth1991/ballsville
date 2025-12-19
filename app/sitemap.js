@@ -8,19 +8,27 @@ export default function sitemap() {
   const base = siteConfig.domain.replace(/\/$/, "");
 
   const paths = [
-    "/",
+    "/", // home
     "/about",
-    "/big-game",
-    "/constitution",
-    "/dynasty",
+    "/news",
     "/faq",
+
+    // Core game hubs
+    "/big-game",
+    "/dynasty",
+    "/dynasty/intro",
+    "/dynasty/wagering-demo",
+    "/dynasty/rosters",
+    "/redraft",
     "/gauntlet",
+    "/leaderboards",
+    "/scores",
     "/hall-of-fame",
     "/joe-street-journal",
-    "/leaderboards",
-    "/news",
-    "/redraft",
-    "/scores",
+
+    // Governance
+    "/constitution",
+    "/constitution/dynasty",
   ];
 
   const today = new Date().toISOString().slice(0, 10);

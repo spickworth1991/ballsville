@@ -132,6 +132,17 @@ export default function AdminHomePage() {
             </p>
           </Link>
           <Link
+            href="/admin/dynasty/wagering"
+            className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
+          >
+            <h2 className="text-lg font-semibold text-primary">
+              Dynasty Wagering
+            </h2>
+            <p className="mt-1 text-sm text-muted">
+              Manage Wagering for dynasty leagues.
+            </p>
+          </Link>
+          <Link
             href="/admin/big-game"
             className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
           >
@@ -140,6 +151,17 @@ export default function AdminHomePage() {
             </h2>
             <p className="mt-1 text-sm text-muted">
               Manage the big game.
+            </p>
+          </Link>
+          <Link
+            href="/admin/mini-leagues"
+            className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
+          >
+            <h2 className="text-lg font-semibold text-primary">
+              Mini Divisions/Leagues
+            </h2>
+            <p className="mt-1 text-sm text-muted">
+              Manage the mini league game.
             </p>
           </Link>
           <Link

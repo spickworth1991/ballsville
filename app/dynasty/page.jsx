@@ -13,7 +13,7 @@ const DYNASTY_DOCS = [
   {
     label: "Game Intro",
     description: "Start here to understand the Heroes & Dragons of Dynasty.",
-    href: "#",
+    href: "/dynasty/intro",
   },
   {
     label: "Bye-Laws & Code of Conduct",
@@ -23,17 +23,12 @@ const DYNASTY_DOCS = [
   {
     label: "Wagering Demo (Optional)",
     description: "See how wagers map to the big upside in Week 17.",
-    href: "#",
-  },
-  {
-    label: "Leaguesafe Collective (Majority Rule)",
-    description: "How funds are managed and protected.",
-    href: "#",
+    href: "/dynasty/wagering-demo",
   },
   {
     label: "All Dyno Rosters",
     description: "Reference doc for every roster across the Dynasty Empire.",
-    href: "#",
+    href: "/dynasty/rosters",
   },
 ];
 
