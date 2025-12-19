@@ -4,7 +4,7 @@
 import AdminGuard from "@/components/AdminGuard";
 import MiniLeaguesAdminClient from "./MiniLeaguesAdminClient";
 
-export default function Page() {
+export default function AdminMiniLeaguesPage() {
   return (
     <AdminGuard>
       <MiniLeaguesAdminClient />

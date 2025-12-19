@@ -1,23 +1,23 @@
-// app/mini-leagues/page.jsx
 import { siteConfig } from "@/app/config/siteConfig";
-import MiniLeaguesClient from "./MiniLeaguesClient";
+import MiniLeaguesPageClient from "./MiniLeaguesPageClient";
 
 const pageTitle = `Mini-Leagues | ${siteConfig.shortName}`;
-const pageDesc =
-  "Way-too-early, rookie-inclusive, budget Best Ball redraft mini-leagues. Most points wins, optional wagering, and stacked bonuses.";
+const pageUrl = `${siteConfig.domain}/mini-leagues`;
 
 export const metadata = {
   title: pageTitle,
-  description: pageDesc,
-  alternates: { canonical: "/mini-leagues" },
+  description:
+    "Budget best ball redraft mini-leagues with optional wagering, division bonuses, and championship bonuses.",
+  alternates: { canonical: pageUrl },
   openGraph: {
-    url: "/mini-leagues",
+    url: pageUrl,
     title: pageTitle,
-    description: pageDesc,
+    description:
+      "Budget best ball redraft mini-leagues with optional wagering, division bonuses, and championship bonuses.",
     images: [{ url: siteConfig.ogImage, width: 1200, height: 630 }],
   },
 };
 
 export default function Page() {
-  return <MiniLeaguesClient />;
+  return <MiniLeaguesPageClient />;
 }
