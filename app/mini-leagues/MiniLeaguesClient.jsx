@@ -3,136 +3,121 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { MINI_LEAGUES_SEASON, miniLeaguesDefault, normalizeMiniLeaguesPayload, buildMiniLeaguesPublicModel } from "./content";
 
-function Badge({ children }) {
-  return (
-    <span className="rounded-full border border-subtle bg-card-trans px-3 py-1 text-xs sm:text-sm backdrop-blur-sm">
-      {children}
-    </span>
-  );
+const SEASON = 2025;
+
+const STATUS_LABEL = {
+  full: "FULL",
+  filling: "FILLING",
+  drafting: "DRAFTING",
+  tbd: "TBD",
+};
+
+const STATUS_BADGE = {
+  full: "bg-emerald-500/15 text-emerald-200 border-emerald-400/20",
+  filling: "bg-amber-500/15 text-amber-200 border-amber-400/20",
+  drafting: "bg-sky-500/15 text-sky-200 border-sky-400/20",
+  tbd: "bg-zinc-500/15 text-zinc-200 border-zinc-400/20",
+};
+
+const DEFAULT_PAGE = {
+  season: SEASON,
+  hero: {
+    eyebrow: "WELCOME TO",
+    title: "the Mini-Leagues game",
+    subtitle:
+      "Way-too-early, rookie-inclusive, budget Best Ball redraft leagues. Most points wins. Optional wagering. Bonuses stack.",
+    updatedText: "Updated: 01/23/2025",
+    promoImageKey: "", // R2 key (preferred)
+    promoImageUrl: "/photos/minileagues-v2.webp", // fallback
+    updatesHtml: "<p>Updates will show here.</p>",
+  },
+  winners: {
+    title: "Last Year’s Winners",
+    imageKey: "",
+    imageUrl: "/photos/hall-of-fame/minileageus2024.png",
+    caption: "",
+  },
+};
+
+function normLeague(l, idx) {
+  return {
+    name: String(l?.name || `League ${idx + 1}`),
+    url: String(l?.url || ""),
+    status: ["full", "filling", "drafting", "tbd"].includes(l?.status) ? l.status : "tbd",
+    active: l?.active !== false,
+    order: Number.isFinite(Number(l?.order)) ? Number(l.order) : idx + 1,
+    imageKey: String(l?.imageKey || ""),
+    imageUrl: String(l?.imageUrl || ""),
+  };
 }
 
-function StatusPill({ status }) {
-  const s = String(status || "tbd").toLowerCase();
-  const label = s === "full" ? "FULL" : s === "filling" ? "FILLING" : s === "drafting" ? "DRAFTING" : "TBD";
-  const cls =
-    s === "full"
-      ? "bg-emerald-500/10 text-emerald-200 border-emerald-400/20"
-      : s === "filling"
-      ? "bg-amber-500/10 text-amber-200 border-amber-400/20"
-      : s === "drafting"
-      ? "bg-sky-500/10 text-sky-200 border-sky-400/20"
-      : "bg-zinc-500/10 text-zinc-200 border-zinc-400/20";
+function normDivision(d, idx) {
+  const leaguesRaw = Array.isArray(d?.leagues) ? d.leagues : [];
+  const leagues = leaguesRaw.map(normLeague).filter((x) => x.active !== false);
 
-  return <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold tracking-wide ${cls}`}>{label}</span>;
-}
+  leagues.sort((a, b) => a.order - b.order);
 
-function LeagueCard({ league }) {
-  const disabled = !league?.active || !league?.url;
-  const img = league?.imagePath;
-
-  const body = (
-    <div className="group relative overflow-hidden rounded-2xl border border-subtle bg-card-surface shadow-sm hover:shadow-md transition">
-      {img ? (
-        <div className="relative h-32 w-full">
-          <Image src={img} alt={league?.name || "League"} fill className="object-cover" sizes="(max-width: 768px) 100vw, 33vw" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
-        </div>
-      ) : (
-        <div className="h-12 bg-subtle-surface" />
-      )}
-
-      <div className="p-4 space-y-2">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-fg">{league?.name || "League"}</p>
-            <p className="text-xs text-muted">{league?.url ? "Open in Sleeper" : "Link not set yet"}</p>
-          </div>
-          <StatusPill status={league?.status} />
-        </div>
-      </div>
-    </div>
-  );
-
-  if (disabled) return <div className="opacity-60">{body}</div>;
-  return (
-    <a href={league.url} target="_blank" rel="noreferrer" className="block">
-      {body}
-    </a>
-  );
-}
-
-function DivisionCard({ div }) {
-  return (
-    <section className="rounded-3xl border border-subtle bg-card-surface shadow-sm overflow-hidden">
-      <div className="relative">
-        {div?.imagePath ? (
-          <div className="relative h-40 w-full">
-            <Image src={div.imagePath} alt={div?.name || `Division ${div?.code || ""}`} fill className="object-cover" sizes="(max-width: 768px) 100vw, 50vw" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/15 to-transparent" />
-          </div>
-        ) : (
-          <div className="h-10 bg-subtle-surface" />
-        )}
-
-        <div className="absolute bottom-3 left-4 right-4 flex items-end justify-between gap-3">
-          <div className="space-y-1">
-            <p className="text-xs uppercase tracking-[0.35em] text-muted">Division</p>
-            <h2 className="text-2xl sm:text-3xl font-semibold text-fg">
-              {div?.code ? <span className="text-primary">{div.code}</span> : null}{" "}
-              {div?.name ? <span className="text-fg">{div.name}</span> : null}
-            </h2>
-          </div>
-          <StatusPill status={div?.status} />
-        </div>
-      </div>
-
-      <div className="p-5">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {(div?.leagues || []).slice(0, 10).map((league, idx) => (
-            <LeagueCard key={`${div.code || "div"}-${idx}`} league={league} />
-          ))}
-        </div>
-      </div>
-    </section>
-  );
+  return {
+    divisionCode: String(d?.divisionCode || d?.code || `${(idx + 1) * 100}`),
+    title: String(d?.title || `Division ${String(d?.divisionCode || (idx + 1) * 100)}`),
+    status: ["full", "filling", "drafting", "tbd"].includes(d?.status) ? d.status : "tbd",
+    order: Number.isFinite(Number(d?.order)) ? Number(d.order) : idx + 1,
+    imageKey: String(d?.imageKey || ""),
+    imageUrl: String(d?.imageUrl || ""),
+    leagues,
+  };
 }
 
 export default function MiniLeaguesClient() {
-  const [payload, setPayload] = useState(miniLeaguesDefault);
+  const [pageCfg, setPageCfg] = useState(DEFAULT_PAGE);
+  const [divisions, setDivisions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [err, setErr] = useState("");
+
+  const promoSrc = pageCfg?.hero?.promoImageKey ? `/r2/${pageCfg.hero.promoImageKey}` : pageCfg?.hero?.promoImageUrl;
+  const winnersSrc = pageCfg?.winners?.imageKey ? `/r2/${pageCfg.winners.imageKey}` : pageCfg?.winners?.imageUrl;
+
+  async function loadAll() {
+    setErr("");
+    setLoading(true);
+
+    try {
+      // 1) page sections
+      const pageRes = await fetch(`/r2/content/mini-leagues/page_${SEASON}.json`, { cache: "no-store" });
+      if (pageRes.ok) {
+        const pageData = await pageRes.json();
+        setPageCfg({
+          ...DEFAULT_PAGE,
+          ...pageData,
+          hero: { ...DEFAULT_PAGE.hero, ...(pageData?.hero || {}) },
+          winners: { ...DEFAULT_PAGE.winners, ...(pageData?.winners || {}) },
+        });
+      } else {
+        setPageCfg(DEFAULT_PAGE);
+      }
+
+      // 2) divisions
+      const divRes = await fetch(`/r2/data/mini-leagues/divisions_${SEASON}.json`, { cache: "no-store" });
+      if (divRes.ok) {
+        const divData = await divRes.json();
+        const list = Array.isArray(divData?.divisions) ? divData.divisions : Array.isArray(divData) ? divData : [];
+        const normalized = list.map(normDivision);
+        normalized.sort((a, b) => a.order - b.order);
+        setDivisions(normalized);
+      } else {
+        setDivisions([]);
+      }
+    } catch (e) {
+      setErr(e?.message || "Failed to load Mini-Leagues data.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      setError("");
-      setLoading(true);
-      try {
-        const res = await fetch(`/api/public/mini-leagues?season=${MINI_LEAGUES_SEASON}`, { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        const merged = normalizeMiniLeaguesPayload(json?.data || json || {});
-        if (!cancelled) setPayload(merged);
-      } catch (e) {
-        if (!cancelled) {
-          setError("Could not load Mini-Leagues content. Showing defaults.");
-          setPayload(miniLeaguesDefault);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    load();
-    return () => {
-      cancelled = true;
-    };
+    loadAll();
   }, []);
-
-  const model = useMemo(() => buildMiniLeaguesPublicModel(payload), [payload]);
 
   return (
     <main className="relative min-h-screen text-fg">
@@ -141,164 +126,215 @@ export default function MiniLeaguesClient() {
       </div>
 
       <section className="section">
-        <div className="container-site space-y-8">
+        <div className="container-site space-y-10">
+          {/* HERO (editable) */}
           <header className="relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-10">
             <div className="pointer-events-none absolute inset-0 opacity-55 mix-blend-screen">
               <div className="absolute -top-24 -left-16 h-64 w-64 rounded-full bg-[color:var(--color-accent)]/18 blur-3xl" />
               <div className="absolute -bottom-24 -right-16 h-64 w-64 rounded-full bg-[color:var(--color-primary)]/14 blur-3xl" />
             </div>
 
-            <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,.85fr)] lg:items-start">
+            <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,.9fr)] lg:items-start">
               <div className="space-y-4">
-                <p className="text-xs uppercase tracking-[0.35em] text-accent">{model.hero?.kicker || "Welcome to"}</p>
+                <p className="text-xs uppercase tracking-[0.35em] text-accent">
+                  {pageCfg?.hero?.eyebrow || "WELCOME TO"}
+                </p>
 
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold leading-tight">
-                  <span className="text-fg">{model.hero?.title || "the Mini-Leagues game"}</span>
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold leading-tight text-primary">
+                  {pageCfg?.hero?.title || "the Mini-Leagues game"}
                 </h1>
 
-                <p className="text-sm sm:text-base text-muted max-w-prose">{model.hero?.subhead}</p>
+                <p className="text-sm sm:text-base text-muted max-w-prose">
+                  {pageCfg?.hero?.subtitle || DEFAULT_PAGE.hero.subtitle}
+                </p>
 
                 <div className="flex flex-wrap gap-3 pt-2">
-                  <a href="#divisions" className="btn btn-primary">
-                    View Divisions →
-                  </a>
-                  <Link href="/biggame" className="btn btn-outline">
-                    BIG Game
-                  </Link>
-                  <Link href="/dynasty" className="btn btn-outline">
-                    Dynasty
-                  </Link>
+                  <Link href="/dynasty" className="btn btn-outline">Dynasty</Link>
+                  <Link href="/big-game" className="btn btn-outline">Big Game</Link>
+                  <Link href="/hall-of-fame" className="btn btn-outline">Hall of Fame</Link>
                 </div>
 
-                <div className="mt-4 inline-flex flex-wrap gap-2">
-                  {(model.hero?.chips || []).map((c, idx) => (
-                    <Badge key={idx}>{c}</Badge>
-                  ))}
+                <div className="mt-4 inline-flex flex-wrap gap-2 text-xs sm:text-sm">
+                  <span className="rounded-full border border-subtle bg-card-trans px-3 py-1 backdrop-blur-sm">
+                    {pageCfg?.hero?.updatedText || DEFAULT_PAGE.hero.updatedText}
+                  </span>
                 </div>
-
-                {error ? <p className="text-xs text-amber-200/80">{error}</p> : null}
-                {!loading ? null : <p className="text-xs text-muted">Loading…</p>}
               </div>
 
               <div className="rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm overflow-hidden shadow-lg">
-                <div className="relative h-48 w-full">
-                  <Image
-                    src={model.hero?.heroImagePath || "/photos/minileagues-hero.webp"}
-                    alt="Mini-Leagues promo"
-                    fill
-                    className="object-cover"
-                    priority
-                    sizes="(max-width: 1024px) 100vw, 40vw"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/15 to-transparent" />
+                <div className="px-4 py-3 border-b border-subtle flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                    PROMO
+                  </span>
                 </div>
-                <div className="p-4">
-                  <p className="text-xs text-muted leading-snug">Most points wins. Optional wagering. Bonuses stack.</p>
+
+                <div className="p-4 space-y-3">
+                  <div className="relative w-full aspect-[16/9] rounded-xl overflow-hidden border border-subtle bg-black/20">
+                    <Image
+                      src={promoSrc}
+                      alt="Mini-Leagues promo"
+                      fill
+                      sizes="(max-width: 1024px) 100vw, 520px"
+                      className="object-cover"
+                      priority
+                    />
+                  </div>
+
+                  <div
+                    className="prose prose-invert max-w-none text-sm text-muted"
+                    dangerouslySetInnerHTML={{ __html: pageCfg?.hero?.updatesHtml || DEFAULT_PAGE.hero.updatesHtml }}
+                  />
                 </div>
               </div>
             </div>
           </header>
 
+          {/* HARD-CODED CONTENT (not editable) */}
           <section className="grid gap-6 lg:grid-cols-3">
-            <div className="rounded-2xl border border-subtle bg-card-surface p-5 shadow-sm space-y-3">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted">{model.settings?.title}</h2>
-              <ul className="list-disc pl-5 space-y-1 text-sm text-muted">
-                {(model.settings?.bullets || []).map((b, i) => (
-                  <li key={i}>{b}</li>
-                ))}
+            <div className="rounded-2xl border border-subtle bg-card-surface p-6 shadow-sm space-y-2">
+              <h2 className="text-lg font-semibold text-primary">BALLSVILLE SETTINGS</h2>
+              <ul className="text-sm text-muted space-y-1">
+                <li>Most points wins ⚠️</li>
+                <li>12 team SF (No TEP, 2x Flex, +6 passing TD)</li>
+                <li>Rookie-inclusive drafting</li>
+                <li>3x shuffle or quick Derby</li>
+                <li>No 3rd-round reversal</li>
+                <li>No trading</li>
+                <li>1–2 hr timers or fast draft (predetermined)</li>
+                <li>Pure draft &amp; go</li>
               </ul>
             </div>
 
-            <div className="rounded-2xl border border-subtle bg-card-surface p-5 shadow-sm space-y-3 lg:col-span-2">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted">{model.howItWorks?.title}</h2>
-
-              <div className="space-y-2 text-sm text-muted">
-                {(model.howItWorks?.paragraphs || []).map((p, i) => (
-                  <p key={i}>{p}</p>
-                ))}
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2 pt-2">
-                <div className="rounded-2xl border border-subtle bg-subtle-surface p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted font-semibold">{model.howItWorks?.withoutWager?.title}</p>
-                  <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-muted">
-                    {(model.howItWorks?.withoutWager?.bullets || []).map((b, i) => (
-                      <li key={i}>{b}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="rounded-2xl border border-subtle bg-subtle-surface p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted font-semibold">{model.howItWorks?.withWager?.title}</p>
-                  <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-muted">
-                    {(model.howItWorks?.withWager?.bullets || []).map((b, i) => (
-                      <li key={i}>{b}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-
-              {model.howItWorks?.footerNote ? <p className="pt-2 text-sm font-semibold text-primary">{model.howItWorks.footerNote}</p> : null}
-            </div>
-          </section>
-
-          <section className="grid gap-6 lg:grid-cols-2">
-            <div className="rounded-2xl border border-subtle bg-card-surface p-5 shadow-sm space-y-3">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted">{model.cash?.title}</h2>
-              <ul className="list-disc pl-5 space-y-1 text-sm text-muted">
-                {(model.cash?.bullets || []).map((b, i) => (
-                  <li key={i}>{b}</li>
-                ))}
-              </ul>
-              <div className="pt-2">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted font-semibold">{model.cash?.paymentsTitle}</p>
-                <p className="mt-1 text-sm text-muted">{model.cash?.paymentsText}</p>
-              </div>
+            <div className="rounded-2xl border border-subtle bg-card-surface p-6 shadow-sm space-y-2">
+              <h2 className="text-lg font-semibold text-primary">How the game works</h2>
+              <p className="text-sm text-muted">
+                Win your league (most points through Week 14) → earn $30 (🪙). After Week 14, a game manager
+                will ask if you’d like to <strong>wager</strong> your 🪙 or keep it.
+              </p>
+              <p className="text-sm text-muted">
+                Without a wager: eligible for Division Bonus (+$30) and Championship Bonus (+$100).<br />
+                With a wager: eligible for <strong>all wagers</strong>, both bonuses, and Wager Bonus (+$60).
+              </p>
+              <p className="text-sm text-muted font-semibold">Bonuses stack.</p>
             </div>
 
-            <div className="rounded-2xl border border-subtle bg-card-surface p-5 shadow-sm space-y-3">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted">{model.etiquette?.title}</h2>
-              <ul className="list-disc pl-5 space-y-1 text-sm text-muted">
-                {(model.etiquette?.bullets || []).map((b, i) => (
-                  <li key={i}>{b}</li>
-                ))}
+            <div className="rounded-2xl border border-subtle bg-card-surface p-6 shadow-sm space-y-2">
+              <h2 className="text-lg font-semibold text-primary">Draft etiquette</h2>
+              <ul className="text-sm text-muted space-y-1">
+                <li>Please tag the next person up.</li>
+                <li>Please don’t rush people.</li>
+                <li>League can vote to reduce timer after Round 10.</li>
+                <li>No one auto-picks Round 1 ⚠️ (spot may be substituted).</li>
+                <li>If you auto at 1.12, the 2.01 may be pushed through.</li>
+                <li>Mistakes: tag managers immediately for a chance at reversal (not for expired clocks).</li>
               </ul>
             </div>
           </section>
 
-          <section id="divisions" className="space-y-4">
-            <div>
-              <h2 className="text-2xl sm:text-3xl font-semibold">{model.divisions?.title || "Divisions"}</h2>
-              <p className="mt-1 text-sm text-muted">{model.divisions?.blurb}</p>
-            </div>
-
-            <div className="space-y-6">
-              {(model.divisions?.items || []).length ? (
-                model.divisions.items.map((d, idx) => <DivisionCard key={`${d.code || idx}`} div={d} />)
-              ) : (
-                <div className="rounded-2xl border border-subtle bg-card-surface p-5 text-sm text-muted">
-                  No divisions added yet.
-                </div>
+          {/* DIVISIONS (editable via R2 like Big Game) */}
+          <section className="space-y-4">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <h2 className="text-2xl sm:text-3xl font-semibold">Divisions</h2>
+                <p className="text-sm text-muted">Divisions contain 10 leagues each (12 teams per league).</p>
+              </div>
+              {loading ? null : (
+                <button className="btn btn-outline" type="button" onClick={loadAll}>
+                  Refresh
+                </button>
               )}
             </div>
+
+            {err ? (
+              <div className="rounded-2xl border border-subtle bg-card-surface p-4 text-sm text-red-300">
+                {err}
+              </div>
+            ) : null}
+
+            {loading ? (
+              <div className="rounded-2xl border border-subtle bg-card-surface p-4 text-sm text-muted">
+                Loading…
+              </div>
+            ) : divisions.length === 0 ? (
+              <div className="rounded-2xl border border-subtle bg-card-surface p-4 text-sm text-muted">
+                No divisions loaded yet.
+              </div>
+            ) : (
+              <div className="grid gap-6 lg:grid-cols-2">
+                {divisions.map((d) => {
+                  const divImage = d.imageKey ? `/r2/${d.imageKey}` : d.imageUrl || "";
+                  return (
+                    <div key={d.divisionCode} className="rounded-3xl border border-subtle bg-card-surface shadow-sm overflow-hidden">
+                      <div className="p-5 border-b border-subtle flex items-center justify-between gap-3">
+                        <div className="space-y-1">
+                          <h3 className="text-xl font-semibold text-primary">{d.title}</h3>
+                          <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${STATUS_BADGE[d.status] || STATUS_BADGE.tbd}`}>
+                            {STATUS_LABEL[d.status] || "TBD"}
+                          </span>
+                        </div>
+
+                        {divImage ? (
+                          <div className="relative h-12 w-12 rounded-xl overflow-hidden border border-subtle bg-black/20">
+                            <Image src={divImage} alt={`${d.title} image`} fill className="object-cover" />
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="p-5 grid gap-3 sm:grid-cols-2">
+                        {d.leagues.map((l, idx) => {
+                          const badge = STATUS_BADGE[l.status] || STATUS_BADGE.tbd;
+                          const label = STATUS_LABEL[l.status] || "TBD";
+                          const img = l.imageKey ? `/r2/${l.imageKey}` : l.imageUrl || "";
+                          return (
+                            <a
+                              key={`${d.divisionCode}-${idx}-${l.name}`}
+                              href={l.url || "#"}
+                              target={l.url ? "_blank" : undefined}
+                              rel={l.url ? "noreferrer" : undefined}
+                              className="rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm p-4 hover:bg-subtle-surface/30 transition"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="space-y-1 min-w-0">
+                                  <div className="font-semibold text-fg truncate">{l.name}</div>
+                                  <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badge}`}>
+                                    {label}
+                                  </span>
+                                </div>
+
+                                {img ? (
+                                  <div className="relative h-10 w-10 rounded-lg overflow-hidden border border-subtle bg-black/20 shrink-0">
+                                    <Image src={img} alt={`${l.name} image`} fill className="object-cover" />
+                                  </div>
+                                ) : null}
+                              </div>
+                            </a>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </section>
 
-          <section className="rounded-3xl border border-subtle bg-card-surface shadow-sm overflow-hidden">
-            <div className="p-5 sm:p-6 flex items-end justify-between gap-4 flex-wrap">
-              <div>
-                <h2 className="text-2xl sm:text-3xl font-semibold">{model.winners?.title}</h2>
-                <p className="mt-1 text-sm text-muted">{model.winners?.subtitle}</p>
-              </div>
-            </div>
+          {/* WINNERS (editable) */}
+          <section className="space-y-4">
+            <h2 className="text-2xl sm:text-3xl font-semibold">{pageCfg?.winners?.title || "Last Year’s Winners"}</h2>
 
-            <div className="relative h-[260px] sm:h-[340px] w-full">
-              <Image
-                src={model.winners?.winnersImagePath || "/photos/minileagues-winners.webp"}
-                alt="Last year’s winners"
-                fill
-                className="object-cover"
-                sizes="100vw"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+            <div className="rounded-3xl border border-subtle bg-card-surface shadow-sm overflow-hidden">
+              <div className="relative w-full aspect-[16/9] bg-black/20">
+                <Image
+                  src={winnersSrc}
+                  alt="Last year winners"
+                  fill
+                  sizes="100vw"
+                  className="object-contain"
+                />
+              </div>
+              {pageCfg?.winners?.caption ? (
+                <div className="p-4 text-sm text-muted border-t border-subtle">{pageCfg.winners.caption}</div>
+              ) : null}
             </div>
           </section>
         </div>
