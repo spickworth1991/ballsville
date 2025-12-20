@@ -29,9 +29,6 @@ const DEFAULT_PAGE_EDITABLE = {
     title: "Last Year’s Winners",
     imageKey: "",
     imageUrl: "/photos/hall-of-fame/minileageus2024.png", // fallback
-    // ✅ new second image slot
-    imageKey2: "",
-    imageUrl2: "",
     caption: "",
   },
 };
@@ -102,11 +99,17 @@ async function apiPUT(type, data) {
   return res.json();
 }
 
-async function uploadImage(file, folder = "mini-leagues") {
+async function uploadImage(file, payload) {
   const token = await getAccessToken();
   const form = new FormData();
   form.append("file", file);
-  form.append("folder", folder);
+
+  // required routing info (no UI option)
+  form.append("section", payload.section);
+  form.append("season", String(payload.season));
+
+  if (payload.divisionCode) form.append("divisionCode", String(payload.divisionCode));
+  if (payload.leagueOrder) form.append("leagueOrder", String(payload.leagueOrder));
 
   const res = await fetch("/api/admin/upload", {
     method: "POST",
@@ -117,6 +120,7 @@ async function uploadImage(file, folder = "mini-leagues") {
   if (!res.ok) throw new Error(await readApiError(res));
   return res.json();
 }
+
 
 function StatusPill({ status }) {
   const label = (STATUS_OPTIONS.find((x) => x.value === status)?.label || "TBD").toUpperCase();
@@ -151,9 +155,7 @@ export default function MiniLeaguesAdminClient() {
 
   const updatesPreview = pageCfg?.hero?.promoImageKey ? `/r2/${pageCfg.hero.promoImageKey}` : pageCfg?.hero?.promoImageUrl;
 
-  const winnersPreview1 = pageCfg?.winners?.imageKey ? `/r2/${pageCfg.winners.imageKey}` : pageCfg?.winners?.imageUrl;
-
-  const winnersPreview2 = pageCfg?.winners?.imageKey2 ? `/r2/${pageCfg.winners.imageKey2}` : pageCfg?.winners?.imageUrl2;
+  const winnersPreview = pageCfg?.winners?.imageKey ? `/r2/${pageCfg.winners.imageKey}` : pageCfg?.winners?.imageUrl;
 
   const divisionCount = divisions.length;
   const leagueCount = useMemo(() => {
@@ -185,9 +187,6 @@ export default function MiniLeaguesAdminClient() {
           caption: winners.caption ?? DEFAULT_PAGE_EDITABLE.winners.caption,
           imageKey: winners.imageKey ?? "",
           imageUrl: winners.imageUrl ?? DEFAULT_PAGE_EDITABLE.winners.imageUrl,
-          // ✅ new
-          imageKey2: winners.imageKey2 ?? "",
-          imageUrl2: winners.imageUrl2 ?? DEFAULT_PAGE_EDITABLE.winners.imageUrl2,
         },
       });
 
@@ -232,9 +231,6 @@ export default function MiniLeaguesAdminClient() {
           caption: pageCfg.winners.caption,
           imageKey: pageCfg.winners.imageKey,
           imageUrl: pageCfg.winners.imageUrl,
-          // ✅ new
-          imageKey2: pageCfg.winners.imageKey2,
-          imageUrl2: pageCfg.winners.imageUrl2,
         },
       });
       setOk("Saved Updates + Winners to R2.");
@@ -325,7 +321,7 @@ export default function MiniLeaguesAdminClient() {
                   Mini-Leagues <span className="text-primary">CMS</span>
                 </h1>
                 <p className="text-sm text-muted">
-                  Editable blocks: <strong>Updates</strong> (image + HTML) and <strong>Last Year’s Winners</strong> (1–2 images + title/caption), plus <strong>Divisions/Leagues</strong>.
+                  Editable blocks: <strong>Updates</strong> (image + HTML) and <strong>Last Year’s Winners</strong> (image + title/caption), plus <strong>Divisions/Leagues</strong>.
                 </p>
               </div>
 
@@ -396,7 +392,7 @@ export default function MiniLeaguesAdminClient() {
                       setErr("");
                       setOk("");
                       try {
-                        const up = await uploadImage(f, "mini-leagues");
+                        const up = await uploadImage(f, { section: "mini-leagues-updates", season: SEASON });
                         setPageCfg((p) => ({ ...p, hero: { ...p.hero, promoImageKey: up.key } }));
                         setOk("Uploaded updates image.");
                       } catch (ex) {
@@ -435,67 +431,33 @@ export default function MiniLeaguesAdminClient() {
                   onChange={(e) => setPageCfg((p) => ({ ...p, winners: { ...p.winners, caption: e.target.value } }))}
                 />
 
-                {/* ✅ Image uploads (1 and 2) */}
-                <div className="pt-2 grid gap-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm text-muted">Winners image (1)</div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={async (e) => {
-                        const f = e.target.files?.[0];
-                        if (!f) return;
-                        setErr("");
-                        setOk("");
-                        try {
-                          const up = await uploadImage(f, "mini-leagues");
-                          setPageCfg((p) => ({ ...p, winners: { ...p.winners, imageKey: up.key } }));
-                          setOk("Uploaded winners image (1).");
-                        } catch (ex) {
-                          setErr(ex?.message || "Upload failed.");
-                        } finally {
-                          e.target.value = "";
-                        }
-                      }}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm text-muted">Winners image (2) (optional)</div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={async (e) => {
-                        const f = e.target.files?.[0];
-                        if (!f) return;
-                        setErr("");
-                        setOk("");
-                        try {
-                          const up = await uploadImage(f, "mini-leagues");
-                          setPageCfg((p) => ({ ...p, winners: { ...p.winners, imageKey2: up.key } }));
-                          setOk("Uploaded winners image (2).");
-                        } catch (ex) {
-                          setErr(ex?.message || "Upload failed.");
-                        } finally {
-                          e.target.value = "";
-                        }
-                      }}
-                    />
-                  </div>
+                <div className="pt-2 flex items-center justify-between gap-3">
+                  <div className="text-sm text-muted">Winners image</div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      setErr("");
+                      setOk("");
+                      try {
+                        const up = await uploadImage(f, { section: "mini-leagues-winners", season: SEASON });
+                        setPageCfg((p) => ({ ...p, winners: { ...p.winners, imageKey: up.key } }));
+                        setOk("Uploaded winners image.");
+                      } catch (ex) {
+                        setErr(ex?.message || "Upload failed.");
+                      } finally {
+                        e.target.value = "";
+                      }
+                    }}
+                  />
                 </div>
 
-                {/* ✅ Preview (1-up or 2-up) */}
+                {/* Controlled display size: looks good even if image is huge or weird ratio */}
                 <div className="rounded-2xl border border-subtle bg-black/20 overflow-hidden p-4">
-                  <div className={`w-full max-w-[980px] mx-auto grid gap-4 ${winnersPreview2 ? "md:grid-cols-2" : "grid-cols-1"}`}>
-                    <div className="relative w-full h-[280px] sm:h-[340px]">
-                      <Image src={winnersPreview1} alt="Winners preview (1)" fill className="object-contain" />
-                    </div>
-
-                    {winnersPreview2 ? (
-                      <div className="relative w-full h-[280px] sm:h-[340px]">
-                        <Image src={winnersPreview2} alt="Winners preview (2)" fill className="object-contain" />
-                      </div>
-                    ) : null}
+                  <div className="relative w-full max-w-[720px] mx-auto h-[320px] sm:h-[380px]">
+                    <Image src={winnersPreview} alt="Winners preview" fill className="object-contain" />
                   </div>
                 </div>
 
@@ -632,7 +594,12 @@ export default function MiniLeaguesAdminClient() {
                                       setErr("");
                                       setOk("");
                                       try {
-                                        const up = await uploadImage(f, "mini-leagues");
+                                        const up = await uploadImage(f, {
+                                            section: "mini-leagues-division",
+                                            season: SEASON,
+                                            divisionCode: d.divisionCode,
+                                            });
+
                                         updateDivision(divIdx, { imageKey: up.key });
                                         setOk(`Uploaded image for ${d.title}.`);
                                       } catch (ex) {
@@ -731,7 +698,13 @@ export default function MiniLeaguesAdminClient() {
                                                 setErr("");
                                                 setOk("");
                                                 try {
-                                                  const up = await uploadImage(f, "mini-leagues");
+                                                  const up = await uploadImage(f, {
+                                                    section: "mini-leagues-league",
+                                                    season: SEASON,
+                                                    divisionCode: d.divisionCode,
+                                                    leagueOrder: l.order ?? (leagueIdx + 1),
+                                                    });
+
                                                   updateLeague(divIdx, leagueIdx, { imageKey: up.key });
                                                   setOk(`Uploaded image for ${l.name || `League ${leagueIdx + 1}`}.`);
                                                 } catch (ex) {
