@@ -60,13 +60,32 @@ async function getAccessToken() {
   return data?.session?.access_token || "";
 }
 
+async function readApiError(res) {
+  // Many platform errors return an HTML page; keep the admin UI from printing raw markup.
+  const ct = (res.headers.get("content-type") || "").toLowerCase();
+  try {
+    if (ct.includes("application/json")) {
+      const j = await res.json();
+      return j?.error || j?.message || JSON.stringify(j);
+    }
+  } catch {
+    // fall through
+  }
+  const text = await res.text();
+  if (!text) return `Request failed (${res.status})`;
+  // If it looks like HTML, show a short, human message.
+  if (text.trim().startsWith("<"))
+    return `Request failed (${res.status}). See Cloudflare Pages function logs for details.`;
+  return text;
+}
+
 async function apiGET(type) {
   const token = await getAccessToken();
   const res = await fetch(`/api/admin/mini-leagues?season=${SEASON}&type=${type}`, {
     headers: { authorization: `Bearer ${token}` },
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await readApiError(res));
   return res.json();
 }
 
@@ -80,7 +99,7 @@ async function apiPUT(type, data) {
     },
     body: JSON.stringify({ type, data }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await readApiError(res));
   return res.json();
 }
 
@@ -96,9 +115,10 @@ async function uploadImage(file, folder = "mini-leagues") {
     body: form,
   });
 
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await readApiError(res));
   return res.json(); // { ok, key, url }
 }
+
 
 export default function MiniLeaguesAdminClient() {
   const [tab, setTab] = useState("page"); // "page" | "divisions"
