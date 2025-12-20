@@ -164,6 +164,16 @@ export default function AdminHomePage() {
               Manage the mini league game.
             </p>
           </Link>
+
+          <Link
+            href="/admin/redraft"
+            className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
+          >
+            <h2 className="text-lg font-semibold text-primary">Redraft</h2>
+            <p className="mt-1 text-sm text-muted">
+              Manage the Redraft page updates block and live league list.
+            </p>
+          </Link>
           <Link
             href="/admin/gauntlet"
             className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"

@@ -9,6 +9,8 @@
 //    "mini-leagues-winners-2"    (NEW winner slot 2)
 //    "mini-leagues-division"
 //    "mini-leagues-league"
+//    "redraft-updates"
+//    "redraft-league"
 // - season: "2025" (required for mini-leagues sections)
 // - divisionCode: "100" (required for division/league uploads)
 // - leagueOrder: "1" (required for league uploads)
@@ -129,6 +131,16 @@ function baseKeyForUpload({ section, season, divisionCode, leagueOrder }) {
   if (section === "mini-leagues-league") {
     return `media/mini-leagues/leagues/${season}/${divisionCode}/${leagueOrder}`;
   }
+
+  // =====================
+  // REDRAFT (no divisions)
+  // =====================
+  if (section === "redraft-updates") {
+    return `media/redraft/updates_${season}`;
+  }
+  if (section === "redraft-league") {
+    return `media/redraft/leagues/${season}/${leagueOrder}`;
+  }
   return "";
 }
 
@@ -176,6 +188,10 @@ export async function onRequest(context) {
     }
     if (section === "mini-leagues-league" && (!divisionCode || !leagueOrder)) {
       return json({ ok: false, error: "Missing divisionCode or leagueOrder" }, 400);
+    }
+
+    if (section === "redraft-league" && !leagueOrder) {
+      return json({ ok: false, error: "Missing leagueOrder" }, 400);
     }
 
     const baseKey = baseKeyForUpload({ section, season, divisionCode, leagueOrder });
