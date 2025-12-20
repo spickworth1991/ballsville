@@ -31,30 +31,41 @@ function isGameWindow(now = new Date()) {
     timeZone: GAME_TZ,
     weekday: "short",
     hour: "2-digit",
+    minute: "2-digit",
     hour12: false,
   });
 
   const parts = fmt.formatToParts(now);
-  const weekday = parts.find((p) => p.type === "weekday")?.value; // "Sun", "Mon", ...
-  const hourStr = parts.find((p) => p.type === "hour")?.value || "00";
-  const hour = parseInt(hourStr, 10); // 0–23
+  const weekday = parts.find((p) => p.type === "weekday")?.value;
 
-  // Sunday window: 13:00–23:59
-  if (weekday === "Sun" && hour >= 13) return true;
+  const hour = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
+  const minute = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
 
-  // Monday window: 20:00–23:59
-  if (weekday === "Mon" && hour >= 19) return true;
+  const time = hour + minute / 60; // decimal hour
 
-  // Thursday window: 20:00–23:59
-  if (weekday === "Thu" && hour >= 19) return true;
+  // Saturday window: 16:30+
+  if (weekday === "Sat" && time >= 16.5) return true;
 
-  // Early-morning spillover (0–1) after late games:
-  if ((weekday === "Mon" || weekday === "Tue" || weekday === "Fri") && hour <= 1) {
+  // Sunday window: 12:30+
+  if (weekday === "Sun" && time >= 12.5) return true;
+
+  // Monday window: 19:00+
+  if (weekday === "Mon" && time >= 19) return true;
+
+  // Thursday window: 19:00+
+  if (weekday === "Thu" && time >= 19) return true;
+
+  // Early-morning spillover (00:00–01:59)
+  if (
+    (weekday === "Mon" || weekday === "Tue" || weekday === "Fri") &&
+    time < 2
+  ) {
     return true;
   }
 
   return false;
 }
+
 
 /**
  * Trigger the GitHub Actions workflow via workflow_dispatch.

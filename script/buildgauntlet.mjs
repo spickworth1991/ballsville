@@ -268,38 +268,6 @@ function makeLeagueLogger(leagueTag) {
 
 
 
-
-// ================== GAME WINDOW CHECK ==================
-// Rough "NFL game time" window in Eastern Time (America/Detroit):
-// - Thursday: 7pm–1am
-// - Sunday: 1pm–1am
-// - Monday: 7pm–1am
-// This doesn't have to be perfect; it's just to avoid hammering during totally dead times.
-function isGameWindow(now = new Date()) {
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Detroit",
-    weekday: "short",
-    hour: "2-digit",
-    hour12: false,
-  });
-  const parts = fmt.formatToParts(now);
-  const weekday = parts.find((p) => p.type === "weekday")?.value;
-  const hourStr = parts.find((p) => p.type === "hour")?.value || "00";
-  const hour = parseInt(hourStr, 10);
-
-  // Sunday window: 13:00–23:59
-  if (weekday === "Sun" && hour >= 13) return true;
-  // Monday window: 19:00–23:59
-  if (weekday === "Mon" && hour >= 19) return true;
-  // Thursday window: 19:00–23:59
-  if (weekday === "Thu" && hour >= 20) return true;
-  // Early-morning spillover (0–1) after late games:
-  if ((weekday === "Mon" || weekday === "Tue" || weekday === "Fri") && hour <= 1) {
-    return true;
-  }
-  return false;
-}
-
 const normId = (x) => (x == null ? null : String(x).trim());
 
 async function fetchWithRetry(url, retries = RETRIES) {
@@ -1723,11 +1691,6 @@ async function main() {
   dbgSection("RUN START", `YEAR=${YEAR}`);
 
 
-  if (!isGameWindow()) {
-    console.log(
-      "ℹ️ Not in game window (NFL times). Still running, but consider throttling cron if needed."
-    );
-  }
 
   // 1) Sleeper players DB
   const playersDB = await getSleeperPlayers();

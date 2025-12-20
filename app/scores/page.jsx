@@ -1505,9 +1505,7 @@ function BracketMatchCard({ match, roundWeek, finalizedThroughWeek }) {
         <span>Match {match.matchIndex}</span>
         <span className="font-mono">
           W{matchupWeek || "?"}
-          {!weekFinalized && matchupWeek ? (
-            <span className="ml-2 text-[0.65rem] text-muted">(not finalized)</span>
-          ) : null}
+          
         </span>
       </div>
 
