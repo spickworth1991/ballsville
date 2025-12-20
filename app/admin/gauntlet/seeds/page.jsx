@@ -393,22 +393,35 @@ export default function GauntletSeedsPage() {
         userMap[u.user_id] = u.display_name;
       });
 
-      const rows = (rosters || []).map((r) => ({
-        year: YEAR,
-        division,
-        god: godName,            // ✅ set both
-        god_name: godName,
-        side,
-        league_id: leagueId,
-        league_name: leagueInfo?.name || null,
-        owner_id: r.owner_id,
-        owner_name: userMap[r.owner_id] || r.owner_id,
-        seed: null,
-      }));
+      // IMPORTANT:
+      // Sleeper can return open rosters with owner_id = null.
+      // owner_name is NOT NULL and onConflict won't de-dupe NULL owner_id rows.
+      // So ONLY seed real owners here. Open/manual slots are handled in this UI.
+      const rows = (rosters || [])
+        .filter((r) => !!r?.owner_id)
+        .map((r) => {
+          const oid = String(r.owner_id);
+          const oname = (userMap[oid] || `Owner ${oid}` || "").trim() || `Owner ${oid}`;
+          return {
+            year: YEAR,
+            division,
+            god: godName,
+            god_name: godName,
+            side,
+            league_id: leagueId,
+            league_name: leagueInfo?.name || null,
+            owner_id: oid,
+            owner_name: oname,
+            seed: null,
+          };
+        });
 
       if (!rows.length) {
-        throw new Error("No rosters returned from Sleeper; cannot seed league.");
+        throw new Error(
+          "No owned rosters returned from Sleeper (all owner_id were null); cannot sync owners."
+        );
       }
+
 
       const { error } = await supabase
         .from("gauntlet_seeds_2025")
@@ -433,7 +446,7 @@ export default function GauntletSeedsPage() {
     }
   }
 
-  // Sync owners for an existing league (fix 11/12 issue)
+  // Sync owners for an existing league
   async function handleSyncOwners(league) {
     if (!league?.leagueId) return;
 
@@ -459,26 +472,21 @@ export default function GauntletSeedsPage() {
 
       const { division, godName, side, leagueId } = league;
       const baseUrl = `https://api.sleeper.app/v1/league/${leagueId}`;
+
       const [leagueInfo, users, rosters] = await Promise.all([
         fetch(baseUrl).then((r) => {
           if (!r.ok)
-            throw new Error(
-              `Failed to fetch league ${leagueId} from Sleeper (info)`
-            );
+            throw new Error(`Failed to fetch league ${leagueId} from Sleeper (info)`);
           return r.json();
         }),
         fetch(`${baseUrl}/users`).then((r) => {
           if (!r.ok)
-            throw new Error(
-              `Failed to fetch league ${leagueId} users from Sleeper`
-            );
+            throw new Error(`Failed to fetch league ${leagueId} users from Sleeper`);
           return r.json();
         }),
         fetch(`${baseUrl}/rosters`).then((r) => {
           if (!r.ok)
-            throw new Error(
-              `Failed to fetch league ${leagueId} rosters from Sleeper`
-            );
+            throw new Error(`Failed to fetch league ${leagueId} rosters from Sleeper`);
           return r.json();
         }),
       ]);
@@ -488,24 +496,38 @@ export default function GauntletSeedsPage() {
         userMap[u.user_id] = u.display_name;
       });
 
-      const rows = (rosters || []).map((r) => ({
-        year: YEAR,
-        division,
-        god: godName,            // ✅ set both
-        god_name: godName,
-        side,
-        league_id: leagueId,
-        league_name: leagueInfo?.name || null,
-        owner_id: r.owner_id,
-        owner_name: userMap[r.owner_id] || r.owner_id,
-        seed: null, // don't overwrite existing seeds; upsert merges by owner_id
-      }));
+      // IMPORTANT:
+      // Sleeper can return open rosters with owner_id = null.
+      // Your DB has owner_name NOT NULL, and onConflict can't de-dupe NULL owner_id rows.
+      // So ONLY upsert real owners here. Open/manual slots are handled via the UI.
+      const rows = (rosters || [])
+        .filter((r) => !!r?.owner_id)
+        .map((r) => {
+          const oid = String(r.owner_id);
+          const oname = (userMap[oid] || `Owner ${oid}` || "").trim() || `Owner ${oid}`;
+          return {
+            year: YEAR,
+            division,
+            god: godName,
+            god_name: godName,
+            side,
+            league_id: leagueId,
+            league_name: leagueInfo?.name || null,
+            owner_id: oid,
+            owner_name: oname,
+            seed: null, // don't overwrite existing seeds
+          };
+        });
+
+      if (!rows.length) {
+        throw new Error(
+          "No owned rosters returned from Sleeper (all owner_id were null); cannot sync owners."
+        );
+      }
 
       const { error } = await supabase
         .from("gauntlet_seeds_2025")
-        .upsert(rows, {
-          onConflict: "year,league_id,owner_id",
-        });
+        .upsert(rows, { onConflict: "year,league_id,owner_id" });
 
       if (error) {
         console.error(error);
@@ -524,6 +546,7 @@ export default function GauntletSeedsPage() {
       setCreating(false);
     }
   }
+
 
   // ====== RENDER HELPERS ======
 
