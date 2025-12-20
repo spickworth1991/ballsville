@@ -1,7 +1,7 @@
 {
   "season": 2025,
   "hero": {
-    "promoImageKey": "media/mini-leagues/2025-12-20T20-36-03-360Z-nintendo.webp",
+    "promoImageKey": "media/mini-leagues/updates_2025.webp",
     "promoImageUrl": "/photos/minileagues-v2.webp",
     "updatesHtml": "<p>Updates will show here TEST.</p>"
   },
