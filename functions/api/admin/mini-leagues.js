@@ -1,19 +1,9 @@
 // functions/api/admin/mini-leagues.js
 //
-// GET:
-//   /api/admin/mini-leagues?season=2025&type=page|divisions|all
-// PUT:
-//   /api/admin/mini-leagues?season=2025
-//   body: { type: "page"|"divisions", data: any }
-//
-// ENV REQUIRED (Cloudflare Pages -> Settings -> Bindings / Variables):
-// - admin_bucket   (R2 Bucket binding name)
-// - SUPABASE_URL
-// - SUPABASE_ANON_KEY
-// - ADMIN_EMAILS (comma-separated)  OR NEXT_PUBLIC_ADMIN_EMAILS
-//
-// OPTIONAL (recommended so the public site sees updates immediately):
-// - public_bucket (or PUBLIC_BUCKET / r2_bucket / R2_BUCKET) => the bucket backing /r2
+// GET  /api/admin/mini-leagues?season=2025&type=page|divisions
+// PUT  /api/admin/mini-leagues?season=2025   { type, data }
+// - type="page": writes to R2 key: content/mini-leagues/page_2025.json
+// - type="divisions": writes to R2 key: data/mini-leagues/divisions_2025.json
 
 const DEFAULT_SEASON = 2025;
 
@@ -27,56 +17,17 @@ function json(data, status = 200) {
   });
 }
 
-function getBuckets(env) {
-  const admin = env.admin_bucket || env.ADMIN_BUCKET;
-
-  if (!admin) {
-    return { ok: false, status: 500, error: "Missing R2 binding: admin_bucket" };
-  }
-
-  if (typeof admin.get !== "function" || typeof admin.put !== "function") {
+function ensureR2(env) {
+  const b = env.admin_bucket || env.ADMIN_BUCKET;
+  if (!b) return { ok: false, status: 500, error: "Missing R2 binding: admin_bucket" };
+  if (typeof b.get !== "function" || typeof b.put !== "function") {
     return {
       ok: false,
       status: 500,
       error: "admin_bucket binding is not an R2 bucket object (check Pages > Settings > Bindings: admin_bucket).",
     };
   }
-
-  const pub = env.public_bucket || env.PUBLIC_BUCKET || env.r2_bucket || env.R2_BUCKET || null;
-  const publicBucket =
-    pub && typeof pub.get === "function" && typeof pub.put === "function" ? pub : null;
-
-  return { ok: true, adminBucket: admin, publicBucket };
-}
-
-function sanitizePageInput(data) {
-  const hero = data?.hero || {};
-  const winners = data?.winners || {};
-
-  return {
-    season: Number(data?.season || DEFAULT_SEASON),
-
-    hero: {
-      promoImageKey: typeof hero.promoImageKey === "string" ? hero.promoImageKey : "",
-      promoImageUrl: typeof hero.promoImageUrl === "string" ? hero.promoImageUrl : "",
-      updatesHtml: typeof hero.updatesHtml === "string" ? hero.updatesHtml : "",
-    },
-
-    winners: {
-      title: typeof winners.title === "string" ? winners.title : "",
-      caption: typeof winners.caption === "string" ? winners.caption : "",
-      imageKey: typeof winners.imageKey === "string" ? winners.imageKey : "",
-      imageUrl: typeof winners.imageUrl === "string" ? winners.imageUrl : "",
-    },
-  };
-}
-
-function getAdminEmails(env) {
-  const raw = (env.ADMIN_EMAILS || env.NEXT_PUBLIC_ADMIN_EMAILS || "").trim();
-  return raw
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
+  return { ok: true, bucket: b };
 }
 
 async function requireAdmin(context) {
@@ -89,14 +40,16 @@ async function requireAdmin(context) {
   const supabaseUrl = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnon = env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+  const adminsRaw = (env.ADMIN_EMAILS || env.NEXT_PUBLIC_ADMIN_EMAILS || "").trim();
+  const admins = adminsRaw
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+
   if (!supabaseUrl || !supabaseAnon) {
     return { ok: false, status: 500, error: "Missing SUPABASE_URL / SUPABASE_ANON_KEY." };
   }
-
-  const admins = getAdminEmails(env);
-  if (!admins.length) {
-    return { ok: false, status: 500, error: "ADMIN_EMAILS is not set." };
-  }
+  if (!admins.length) return { ok: false, status: 500, error: "ADMIN_EMAILS is not set." };
 
   const res = await fetch(`${supabaseUrl.replace(/\/$/, "")}/auth/v1/user`, {
     headers: { apikey: supabaseAnon, authorization: `Bearer ${token}` },
@@ -108,119 +61,140 @@ async function requireAdmin(context) {
   const email = String(user?.email || "").toLowerCase();
   if (!admins.includes(email)) return { ok: false, status: 403, error: "Not an admin." };
 
-  return { ok: true, email };
+  return { ok: true };
 }
 
-function keyFor(type, season) {
-  const s = Number(season) || DEFAULT_SEASON;
-  if (type === "page") return `content/mini-leagues/page_${s}.json`;
-  if (type === "divisions") return `data/mini-leagues/divisions_${s}.json`;
-  return null;
+function r2KeyFor(type, season) {
+  if (type === "page") return `content/mini-leagues/page_${season}.json`;
+  if (type === "divisions") return `data/mini-leagues/divisions_${season}.json`;
+  return "";
 }
 
-async function readJSON(bucket, key, fallback) {
-  const obj = await bucket.get(key);
-  if (!obj) return fallback;
-  const txt = await obj.text();
-  try {
-    return JSON.parse(txt);
-  } catch {
-    return fallback;
-  }
+// ✅ Updated: supports winners 1 + winners 2, and preserves back-compat
+function sanitizePageInput(data) {
+  const hero = data?.hero || {};
+  const winners = data?.winners || {};
+
+  // Back-compat: older payloads used a single winners image.
+  // If those legacy fields are present, treat them as winners #1.
+  const legacyImageKey = typeof winners.imageKey === "string" ? winners.imageKey : "";
+  const legacyImageUrl = typeof winners.imageUrl === "string" ? winners.imageUrl : "";
+  const legacyCaption = typeof winners.caption === "string" ? winners.caption : "";
+
+  const imageKey1Raw =
+    typeof winners.imageKey1 === "string" ? winners.imageKey1 : legacyImageKey;
+  const imageUrl1Raw =
+    typeof winners.imageUrl1 === "string" ? winners.imageUrl1 : legacyImageUrl;
+  const caption1Raw =
+    typeof winners.caption1 === "string" ? winners.caption1 : legacyCaption;
+
+  return {
+    season: Number(data?.season || DEFAULT_SEASON),
+
+    hero: {
+      promoImageKey: typeof hero.promoImageKey === "string" ? hero.promoImageKey : "",
+      promoImageUrl: typeof hero.promoImageUrl === "string" ? hero.promoImageUrl : "",
+      updatesHtml: typeof hero.updatesHtml === "string" ? hero.updatesHtml : "",
+    },
+
+    winners: {
+      title: typeof winners.title === "string" ? winners.title : "",
+
+      // Winners #1
+      imageKey1: imageKey1Raw || "",
+      imageUrl1: imageUrl1Raw || "",
+      caption1: caption1Raw || "",
+
+      // Winners #2
+      imageKey2: typeof winners.imageKey2 === "string" ? winners.imageKey2 : "",
+      imageUrl2: typeof winners.imageUrl2 === "string" ? winners.imageUrl2 : "",
+      caption2: typeof winners.caption2 === "string" ? winners.caption2 : "",
+    },
+  };
 }
 
-async function writeJSON(buckets, key, payload) {
-  const body = JSON.stringify(payload, null, 2);
+function sanitizeDivisionsInput(data) {
+  const season = Number(data?.season || DEFAULT_SEASON);
+  const divisionsRaw = Array.isArray(data?.divisions) ? data.divisions : [];
 
-  // Always write admin
-  await buckets.adminBucket.put(key, body, {
-    httpMetadata: { contentType: "application/json; charset=utf-8" },
+  const divisions = divisionsRaw.map((d) => {
+    const leaguesRaw = Array.isArray(d?.leagues) ? d.leagues : [];
+    const leagues = leaguesRaw.map((l, idx) => ({
+      name: typeof l?.name === "string" ? l.name : `League ${idx + 1}`,
+      url: typeof l?.url === "string" ? l.url : "",
+      status: ["tbd", "filling", "drafting", "full"].includes(l?.status) ? l.status : "tbd",
+      active: l?.active !== false,
+      order: Number.isFinite(Number(l?.order)) ? Number(l.order) : idx + 1,
+      imageKey: typeof l?.imageKey === "string" ? l.imageKey : "",
+      imageUrl: typeof l?.imageUrl === "string" ? l.imageUrl : "",
+    }));
+
+    return {
+      divisionCode: typeof d?.divisionCode === "string" ? d.divisionCode : "100",
+      title: typeof d?.title === "string" ? d.title : "Division 100",
+      status: ["tbd", "filling", "drafting", "full"].includes(d?.status) ? d.status : "tbd",
+      order: Number.isFinite(Number(d?.order)) ? Number(d.order) : 1,
+      imageKey: typeof d?.imageKey === "string" ? d.imageKey : "",
+      imageUrl: typeof d?.imageUrl === "string" ? d.imageUrl : "",
+      leagues,
+    };
   });
 
-  // Also write public if available
-  if (buckets.publicBucket) {
-    await buckets.publicBucket.put(key, body, {
-      httpMetadata: { contentType: "application/json; charset=utf-8" },
-    });
-  }
+  return { season, divisions };
+}
+
+async function readR2Json(bucket, key) {
+  const obj = await bucket.get(key);
+  if (!obj) return null;
+  const text = await obj.text();
+  return JSON.parse(text);
 }
 
 export async function onRequest(context) {
   try {
-    const { request, env } = context;
-    const url = new URL(request.url);
+    const { request } = context;
 
-    const buckets = getBuckets(env);
-    if (!buckets.ok) return json({ ok: false, error: buckets.error }, buckets.status);
+    const r2 = ensureR2(context.env);
+    if (!r2.ok) return json({ ok: false, error: r2.error }, r2.status);
 
     const gate = await requireAdmin(context);
     if (!gate.ok) return json({ ok: false, error: gate.error }, gate.status);
 
+    const url = new URL(request.url);
     const season = Number(url.searchParams.get("season") || DEFAULT_SEASON);
+    const type = (url.searchParams.get("type") || "").trim();
 
     if (request.method === "GET") {
-      const type = (url.searchParams.get("type") || "all").toLowerCase();
+      if (!type) return json({ ok: false, error: "Missing type" }, 400);
+      const key = r2KeyFor(type, season);
+      if (!key) return json({ ok: false, error: "Invalid type" }, 400);
 
-      const pageKey = keyFor("page", season);
-      const divKey = keyFor("divisions", season);
-
-      const page = await readJSON(buckets.adminBucket, pageKey, null);
-      const divisions = await readJSON(buckets.adminBucket, divKey, null);
-
-      if (type === "page") return json({ ok: true, season, type, key: pageKey, data: page });
-      if (type === "divisions") return json({ ok: true, season, type, key: divKey, data: divisions });
-
-      return json({
-        ok: true,
-        season,
-        type: "all",
-        page: { key: pageKey, data: page },
-        divisions: { key: divKey, data: divisions },
-      });
+      const data = await readR2Json(r2.bucket, key);
+      return json({ ok: true, key, data: data || null });
     }
 
     if (request.method === "PUT") {
-      let body;
-      try {
-        body = await request.json();
-      } catch {
-        return json({ ok: false, error: "Invalid JSON body." }, 400);
-      }
-
-      const type = String(body?.type || "").toLowerCase();
+      const body = await request.json().catch(() => null);
+      const putType = (body?.type || "").trim();
       const data = body?.data;
 
-      if (!type || !["page", "divisions"].includes(type)) {
-        return json({ ok: false, error: "Body must include type: 'page' or 'divisions'." }, 400);
-      }
-      if (data == null) return json({ ok: false, error: "Body must include data." }, 400);
+      const key = r2KeyFor(putType, season);
+      if (!key) return json({ ok: false, error: "Invalid type" }, 400);
 
-      const key = keyFor(type, season);
-      if (!key) return json({ ok: false, error: "Bad type." }, 400);
+      let payload;
+      if (putType === "page") payload = sanitizePageInput(data);
+      else if (putType === "divisions") payload = sanitizeDivisionsInput(data);
+      else return json({ ok: false, error: "Invalid type" }, 400);
 
-      const dataToSave = type === "page" ? sanitizePageInput(data) : data;
-
-      await writeJSON(buckets, key, dataToSave);
-
-      return json({
-        ok: true,
-        saved: true,
-        season,
-        type,
-        key,
-        wrotePublic: !!buckets.publicBucket,
+      await r2.bucket.put(key, JSON.stringify(payload, null, 2), {
+        httpMetadata: { contentType: "application/json; charset=utf-8" },
       });
+
+      return json({ ok: true, key });
     }
 
-    return json({ ok: false, error: "Method not allowed." }, 405);
+    return json({ ok: false, error: "Method not allowed" }, 405);
   } catch (e) {
-    return json(
-      {
-        ok: false,
-        error: "mini-leagues.js crashed",
-        detail: String(e?.message || e),
-      },
-      500
-    );
+    return json({ ok: false, error: "mini-leagues.js crashed", detail: String(e?.message || e) }, 500);
   }
 }
