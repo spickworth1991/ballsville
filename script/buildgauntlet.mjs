@@ -143,6 +143,7 @@ process.on("unhandledRejection", (err) => {
 
 const YEAR = 2025;
 
+
 // Guillotine phase:
 const LEG2_START = 9;
 const LEG2_END = 12; // Weeks 9–12 → 4 eliminations
@@ -393,6 +394,36 @@ function detectBracketWeek(allTeams) {
 
   return { latestScoreWeek, currentBracketWeek };
 }
+function getDetroitWeekday(now = new Date()) {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Detroit",
+    weekday: "short",
+  });
+  const parts = fmt.formatToParts(now);
+  return parts.find((p) => p.type === "weekday")?.value || "";
+}
+
+function computeFinalizedThroughWeek(latestScoreWeek) {
+  // If nothing has scored yet, nothing is finalized.
+  if (!latestScoreWeek) return null;
+
+  const w = Number(latestScoreWeek);
+  if (!Number.isFinite(w)) return null;
+
+  // ✅ Only finalize on Tue/Wed (after games are truly done and corrections usually apply)
+  const weekday = getDetroitWeekday();
+  const isFinalizationDay = weekday === "Tue" || weekday === "Wed";
+
+  if (isFinalizationDay) {
+    return w;
+  }
+
+  // Otherwise, we are still in the "current week in progress" period.
+  // Never allow finalization to go below LEG3_START-1 (so you don’t finalize Week 12 accidentally).
+  return Math.max(LEG3_START - 1, w - 1);
+}
+
+
 
 
 /* ================== BEST BALL ================== */
@@ -1221,8 +1252,9 @@ function buildGodsForDivisionAndChampions(
   divisionName,
   leagueResults,
   godConfigs,
-  currentBracketWeek, // kept in signature for compatibility but no longer used for gating
-  latestScoreWeek
+  currentBracketWeek, // kept for compatibility (UI uses it), not used for deciding winners
+  latestScoreWeek,
+  finalizedThroughWeek // ✅ NEW
 ) {
   const gods = [];
   const champions = [];
@@ -1232,14 +1264,13 @@ function buildGodsForDivisionAndChampions(
     byId[lr.leagueId] = lr;
   });
 
-  // Helper to pull a Leg 3 weekly score for a team
   const getWeekScore = (team, week) => {
     const v = team.leg3Weekly?.[week];
     return typeof v === "number" ? v : 0;
   };
 
-  // This is the last week where *any* Leg 3 team has non-zero BB points
   const lastScoreWeek = latestScoreWeek || null;
+  const finalizedWeek = finalizedThroughWeek || null;
 
   for (let g = 0; g < godConfigs.length; g++) {
     const godCfg = godConfigs[g];
@@ -1250,7 +1281,6 @@ function buildGodsForDivisionAndChampions(
 
     const godIndex = g + 1;
 
-    // If either side is missing, push an empty shell so the UI still shows the God
     if (!light || !dark) {
       gods.push({
         index: godIndex,
@@ -1269,7 +1299,6 @@ function buildGodsForDivisionAndChampions(
       continue;
     }
 
-    // Order seeds 1–8 per league
     const lightTeams = (light.owners || [])
       .map((o) => ({
         ...o,
@@ -1314,13 +1343,10 @@ function buildGodsForDivisionAndChampions(
       continue;
     }
 
-    const allTeams = [...lightTeams, ...darkTeams];
-
-    // Static Round 1 seed pairings (Week 13): 1–8, 2–7, 3–6, 4–5 (Light vs Dark)
     const round1Pairings = [];
     for (let s = 1; s <= maxSeeds; s++) {
       const lightTeam = lightTeams.find((t) => t.seed === s);
-      const darkSeed = maxSeeds - s + 1; // 8→1, 7→2, ...
+      const darkSeed = maxSeeds - s + 1;
       const darkTeam = darkTeams.find((t) => t.seed === darkSeed);
       if (!lightTeam || !darkTeam) continue;
       round1Pairings.push({
@@ -1330,94 +1356,56 @@ function buildGodsForDivisionAndChampions(
       });
     }
 
-    // Decide a winner for a given pair + week
-    const decideWinner = (pair, week) => {
+    const decideWinnerFinalizedOnly = (pair, week) => {
       const scoreA = getWeekScore(pair.teamA, week);
       const scoreB = getWeekScore(pair.teamB, week);
+
       const lineupA = pair.teamA.leg3BestBall?.[week] || null;
       const lineupB = pair.teamB.leg3BestBall?.[week] || null;
 
+      // If the week is NOT finalized yet, we never declare a winner.
+      const weekFinalized =
+        finalizedWeek != null && Number(week) <= Number(finalizedWeek);
+
+      if (!weekFinalized) {
+        return { winner: null, loser: null, scoreA, scoreB, lineupA, lineupB };
+      }
+
+      // Week is finalized → decide winner (including tie-break)
       const hasAnyScore = scoreA !== 0 || scoreB !== 0;
       if (!hasAnyScore) {
         return { winner: null, loser: null, scoreA, scoreB, lineupA, lineupB };
       }
 
       if (scoreA > scoreB) {
-        return {
-          winner: pair.teamA,
-          loser: pair.teamB,
-          scoreA,
-          scoreB,
-          lineupA,
-          lineupB,
-        };
+        return { winner: pair.teamA, loser: pair.teamB, scoreA, scoreB, lineupA, lineupB };
       }
       if (scoreB > scoreA) {
-        return {
-          winner: pair.teamB,
-          loser: pair.teamA,
-          scoreA,
-          scoreB,
-          lineupA,
-          lineupB,
-        };
+        return { winner: pair.teamB, loser: pair.teamA, scoreA, scoreB, lineupA, lineupB };
       }
 
-      // Tie-breaker: better seed (lower number)
       const seedA = pair.teamA.seed ?? 999;
       const seedB = pair.teamB.seed ?? 999;
       if (seedA < seedB) {
-        return {
-          winner: pair.teamA,
-          loser: pair.teamB,
-          scoreA,
-          scoreB,
-          lineupA,
-          lineupB,
-        };
+        return { winner: pair.teamA, loser: pair.teamB, scoreA, scoreB, lineupA, lineupB };
       }
       if (seedB < seedA) {
-        return {
-          winner: pair.teamB,
-          loser: pair.teamA,
-          scoreA,
-          scoreB,
-          lineupA,
-          lineupB,
-        };
+        return { winner: pair.teamB, loser: pair.teamA, scoreA, scoreB, lineupA, lineupB };
       }
 
-      // Final tie-break: owner name
       const nameA = pair.teamA.ownerName || "";
       const nameB = pair.teamB.ownerName || "";
       if (nameA.localeCompare(nameB) <= 0) {
-        return {
-          winner: pair.teamA,
-          loser: pair.teamB,
-          scoreA,
-          scoreB,
-          lineupA,
-          lineupB,
-        };
+        return { winner: pair.teamA, loser: pair.teamB, scoreA, scoreB, lineupA, lineupB };
       }
-      return {
-        winner: pair.teamB,
-        loser: pair.teamA,
-        scoreA,
-        scoreB,
-        lineupA,
-        lineupB,
-      };
+      return { winner: pair.teamB, loser: pair.teamA, scoreA, scoreB, lineupA, lineupB };
     };
 
     let bracketRounds = [];
     let championSummary = null;
 
-    // Start with Round 1 pairings
     let currentPairings = round1Pairings.slice();
 
-    // If we have *no* Leg 3 scores yet at all, treat all rounds as FUTURE
-    // so Round 1 still shows the seeded bracket as 0–0.
     const noScoresAnywhere = !lastScoreWeek;
 
     if (currentPairings.length) {
@@ -1427,14 +1415,13 @@ function buildGodsForDivisionAndChampions(
 
         if (!currentPairings.length) break;
 
-        // FUTURE ROUND condition:
-        //  - Either there are no scores anywhere yet (pre-Leg 3)
-        //  - Or this week is strictly after the last scored week
-        const isFutureRound =
-          noScoresAnywhere || (lastScoreWeek && week > lastScoreWeek);
+        // If we have no scores anywhere OR this week is beyond the last scored week,
+        // show as a future round (0–0, no winner).
+        const isFutureBecauseNoScores = noScoresAnywhere;
+        const isFutureBecauseBeyondLastScore =
+          lastScoreWeek && Number(week) > Number(lastScoreWeek);
 
-        if (isFutureRound) {
-          // Show this round with 0–0 scores and no winner yet (but correct pairings)
+        if (isFutureBecauseNoScores || isFutureBecauseBeyondLastScore) {
           const results = currentPairings.map((pair, idx) => ({
             roundNumber,
             week,
@@ -1449,36 +1436,23 @@ function buildGodsForDivisionAndChampions(
             lineupB: null,
           }));
 
-          bracketRounds.push({
-            roundNumber,
-            week,
-            results,
-            winners: [],
-          });
-
-          // Stop after the first future round – we don't know the true paths beyond this
+          bracketRounds.push({ roundNumber, week, results, winners: [] });
           break;
         }
 
-        // PAST/CURRENT scored round – use real scores
+        // This week has scores available (at least for some teams),
+        // but we still only declare winners if the week is finalized.
         const results = [];
         const winners = [];
         let anyMatchHasScore = false;
 
         for (let idx = 0; idx < currentPairings.length; idx++) {
           const pair = currentPairings[idx];
-          const {
-            winner,
-            loser,
-            scoreA,
-            scoreB,
-            lineupA,
-            lineupB,
-          } = decideWinner(pair, week);
 
-          if (scoreA !== 0 || scoreB !== 0) {
-            anyMatchHasScore = true;
-          }
+          const { winner, loser, scoreA, scoreB, lineupA, lineupB } =
+            decideWinnerFinalizedOnly(pair, week);
+
+          if (scoreA !== 0 || scoreB !== 0) anyMatchHasScore = true;
 
           results.push({
             roundNumber,
@@ -1497,21 +1471,16 @@ function buildGodsForDivisionAndChampions(
           if (winner) winners.push(winner);
         }
 
-        // If there's truly no scoring at all for this week, stop here –
-        // we can't advance anything yet.
-        if (!anyMatchHasScore) {
-          break;
-        }
+        // If there are literally no scores at all yet for this week, stop here.
+        if (!anyMatchHasScore) break;
 
-        bracketRounds.push({
-          roundNumber,
-          week,
-          results,
-          winners,
-        });
+        bracketRounds.push({ roundNumber, week, results, winners });
 
-        // If we’re down to 1 winner in a scored week, that’s the God champion
-        if (winners.length === 1 && lastScoreWeek && week <= lastScoreWeek) {
+        // Only crown a God champion if the week is finalized.
+        const weekFinalized =
+          finalizedWeek != null && Number(week) <= Number(finalizedWeek);
+
+        if (weekFinalized && winners.length === 1) {
           championSummary = {
             godName,
             division: divisionName,
@@ -1521,7 +1490,11 @@ function buildGodsForDivisionAndChampions(
           };
         }
 
-        // Build next-round pairings from winners
+        // If winners aren't decided (midweek), we cannot advance bracket yet.
+        if (winners.length !== currentPairings.length) {
+          break;
+        }
+
         const nextPairings = [];
         for (let i = 0; i < winners.length; i += 2) {
           if (!winners[i + 1]) break;
@@ -1531,11 +1504,9 @@ function buildGodsForDivisionAndChampions(
             teamB: winners[i + 1],
           });
         }
-        currentPairings = nextPairings;
 
-        if (!currentPairings.length) {
-          break;
-        }
+        currentPairings = nextPairings;
+        if (!currentPairings.length) break;
       }
     }
 
@@ -1561,6 +1532,7 @@ function buildGodsForDivisionAndChampions(
 
   return { gods, champions };
 }
+
 
 
 
@@ -1603,17 +1575,20 @@ function buildGrandChampionship(champions) {
     return (b.leg3Total || 0) - (a.leg3Total || 0);
   });
 
-  // Attach rank
+    // Attach rank
   const standings = results.map((p, idx) => ({
     ...p,
     rank: idx + 1,
   }));
 
+  // ✅ Only declare a champion once Week 17 has ANY real points
+  const hasAnyWeek17Score = standings.some((p) => Number(p.week17Score || 0) !== 0);
+
   return {
     week: GRAND_CHAMP_WEEK,
     standings,
     participants: standings, // backwards-compatible name
-    champion: standings[0] || null,
+    champion: hasAnyWeek17Score ? (standings[0] || null) : null,
   };
 }
 
@@ -1643,6 +1618,7 @@ async function writeSplitOutputsToR2({
   year,
   updatedAt,
   currentBracketWeek,
+  finalizedThroughWeek,
   divisionsPayload,
   grandChampionship,
   missingSeedLeagues,
@@ -1653,6 +1629,7 @@ async function writeSplitOutputsToR2({
     updatedAt,
     currentBracketWeek,
     // divisionName -> { key, slug, godsCount, championsCount }
+    finalizedThroughWeek,
     divisions: {},
     // where to find the grand championship JSON
     grand: {
@@ -1686,6 +1663,7 @@ async function writeSplitOutputsToR2({
       year,
       updatedAt,
       currentBracketWeek,
+      finalizedThroughWeek, 
       division: divisionName,
       gods,
       champions,
@@ -1710,6 +1688,8 @@ async function writeSplitOutputsToR2({
   const grandPayload = {
     year,
     updatedAt,
+    currentBracketWeek,
+    finalizedThroughWeek,
     ...grandChampionship,
   };
 
@@ -1802,13 +1782,19 @@ async function main() {
   });
 
     const { latestScoreWeek, currentBracketWeek } = detectBracketWeek(allTeams);
-  cInfo(
-    `\n📅 Bracket weeks → latest score week: ${
-      latestScoreWeek ?? "none"
-    }, current bracket week: ${currentBracketWeek ?? "none"}`
-  );
-  dbgRow("latestScoreWeek", String(latestScoreWeek ?? "none"));
-  dbgRow("currentBracketWeek", String(currentBracketWeek ?? "none"));
+    const finalizedThroughWeek = computeFinalizedThroughWeek(latestScoreWeek);
+
+    cInfo(
+      `\n📅 Bracket weeks → latest score week: ${
+        latestScoreWeek ?? "none"
+      }, current bracket week: ${currentBracketWeek ?? "none"}, finalizedThroughWeek: ${
+        finalizedThroughWeek ?? "none"
+      }`
+    );
+
+    dbgRow("latestScoreWeek", String(latestScoreWeek ?? "none"));
+    dbgRow("currentBracketWeek", String(currentBracketWeek ?? "none"));
+    dbgRow("finalizedThroughWeek", String(finalizedThroughWeek ?? "none"));
 
 
   // 4) Build per-division God brackets + champions
@@ -1825,8 +1811,10 @@ async function main() {
       leaguesForDivision,
       godConfigs,
       currentBracketWeek,
-      latestScoreWeek
+      latestScoreWeek,
+      finalizedThroughWeek // ✅ NEW
     );
+
 
 
     divisionsPayload[division] = {
@@ -1839,6 +1827,7 @@ async function main() {
 
   // 5) Grand Championship (Week 17) among all God champions
   const grandChampionship = buildGrandChampionship(allGodChampions);
+  cInfo(`🏆 God champions count: ${allGodChampions.length}`);
 
   // 6) Timestamp + write split outputs (manifest + per-division + grand) to R2
   const updatedAt = new Date().toISOString();
@@ -1847,6 +1836,7 @@ async function main() {
     year: YEAR,
     updatedAt,
     currentBracketWeek,
+    finalizedThroughWeek,
     divisionsPayload,
     grandChampionship,
     missingSeedLeagues,
