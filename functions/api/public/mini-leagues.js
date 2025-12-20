@@ -1,7 +1,7 @@
 // functions/api/public/mini-leagues.js
 // Public read-only endpoint for Mini-Leagues page content.
 //
-// Expects an R2 bucket binding named R2_BUCKET (Cloudflare Pages > Settings > Functions > R2 bindings).
+// Expects an R2 bucket binding named ADMIN_BUCKET (Cloudflare Pages > Settings > Functions > R2 bindings).
 // Stores JSON at: cms/mini-leagues.json
 
 import { miniLeaguesDefault, normalizeMiniLeaguesPayload } from "../../../app/mini-leagues/content";
@@ -10,9 +10,9 @@ const KEY = "cms/mini-leagues.json";
 
 export async function onRequestGet({ env }) {
   try {
-    const bucket = env.R2_BUCKET;
+    const bucket = env.ADMIN_BUCKET;
     if (!bucket) {
-      return json({ ok: false, error: "Missing R2_BUCKET binding" }, 500);
+      return json({ ok: false, error: "Missing ADMIN_BUCKET binding" }, 500);
     }
 
     const obj = await bucket.get(KEY);

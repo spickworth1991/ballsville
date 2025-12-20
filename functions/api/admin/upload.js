@@ -25,15 +25,15 @@ function safeName(name) {
 }
 
 function ensureR2(env) {
-  const b = env.R2_BUCKET;
+  const b = env.ADMIN_BUCKET;
   // If binding is misconfigured, Cloudflare will still give you "something" but not an R2 object.
-  if (!b) return { ok: false, status: 500, error: "Missing R2 binding: R2_BUCKET" };
+  if (!b) return { ok: false, status: 500, error: "Missing R2 binding: ADMIN_BUCKET" };
   if (typeof b.get !== "function" || typeof b.put !== "function") {
     return {
       ok: false,
       status: 500,
       error:
-        "R2_BUCKET binding is not an R2 bucket object (check Pages > Settings > Bindings: R2_BUCKET).",
+        "ADMIN_BUCKET binding is not an R2 bucket object (check Pages > Settings > Bindings: ADMIN_BUCKET).",
     };
   }
   return { ok: true, bucket: b };
