@@ -23,7 +23,7 @@ export default function GauntletSeedsPage() {
   // draftSeeds: leagueId -> { rowId -> seedString }
   const [draftSeeds, setDraftSeeds] = useState({});
   const [dirtyLeagueId, setDirtyLeagueId] = useState(null);
-
+  const [draftNames, setDraftNames] = useState({});
   // newOwners: leagueId -> [{ name: string, seed: string }]
   const [newOwners, setNewOwners] = useState({});
 
@@ -46,6 +46,7 @@ export default function GauntletSeedsPage() {
     setExpandedLeagueId(null);
     setDirtyLeagueId(null);
     setDraftSeeds({});
+    setDraftNames({});
     setNewOwners({});
     try {
       const supabase = getSupabase();
@@ -126,16 +127,28 @@ export default function GauntletSeedsPage() {
 
     // Initialize seeds map for existing rows by row.id
     const seeds = {};
+    const names = {}; // for owner_id null rows ONLY
+
     for (const row of league.rows) {
       seeds[row.id] = row.seed != null ? String(row.seed) : "";
+      if (!row.ownerId) {
+        names[row.id] = row.ownerName || "";
+      }
     }
 
     // Initialize manual owner slots for this league
     const extraSlots = Math.max(0, MAX_TEAMS_PER_LEAGUE - league.rows.length);
+
     setDraftSeeds((prev) => ({
       ...prev,
       [leagueId]: seeds,
     }));
+
+    setDraftNames((prev) => ({
+      ...prev,
+      [leagueId]: names,
+    }));
+
     setNewOwners((prev) => {
       const existing = prev[leagueId] || [];
       const updated = [...existing];
@@ -147,6 +160,7 @@ export default function GauntletSeedsPage() {
         [leagueId]: updated,
       };
     });
+
   }
 
   function handleToggleLeague(leagueId) {
@@ -190,6 +204,21 @@ export default function GauntletSeedsPage() {
     setDirtyLeagueId(leagueId);
   }
 
+  function handleNameChange(leagueId, rowId, value) {
+    setDraftNames((prev) => {
+      const curr = prev[leagueId] || {};
+      return {
+        ...prev,
+        [leagueId]: {
+          ...curr,
+          [rowId]: value,
+        },
+      };
+    });
+    setDirtyLeagueId(leagueId);
+  }
+
+
   function handleNewOwnerChange(leagueId, index, field, value) {
     setNewOwners((prev) => {
       const curr = prev[leagueId] ? [...prev[leagueId]] : [];
@@ -230,19 +259,32 @@ export default function GauntletSeedsPage() {
       const inserts = [];
 
       // === Existing rows → UPDATE by id ===
+      const namesForLeague = draftNames[leagueId] || {};
+
       for (const row of league.rows) {
         const raw = seedsForLeague[row.id];
         const seed =
           raw === "" || raw == null ? null : Math.max(1, Number(raw) || 1);
 
+        // Only manual DB rows (owner_id null) can rename owner_name
+        let nextName = null;
+        let nameChanged = false;
+
+        if (!row.ownerId) {
+          const proposed = (namesForLeague[row.id] ?? row.ownerName ?? "").trim();
+          // keep NOT NULL constraint safe
+          nextName = proposed || "TBD";
+          nameChanged = nextName !== (row.ownerName || "");
+        }
+
         // Only send update if changed
-        if (row.seed !== seed) {
-          updates.push({
-            id: row.id,
-            seed,
-          });
+        if (row.seed !== seed || nameChanged) {
+          const payload = { id: row.id, seed };
+          if (nameChanged) payload.owner_name = nextName;
+          updates.push(payload);
         }
       }
+
 
       // === Manual extra owners (no owner_id) → INSERT ===
       // We only care about slots with a non-empty name.
@@ -282,10 +324,15 @@ export default function GauntletSeedsPage() {
           updates.map((u) =>
             supabase
               .from("gauntlet_seeds_2025")
-              .update({ seed: u.seed })
+              .update(
+                u.owner_name != null
+                  ? { seed: u.seed, owner_name: u.owner_name }
+                  : { seed: u.seed }
+              )
               .eq("id", u.id)
           )
         );
+
         const firstError = results.find((r) => r.error)?.error;
         if (firstError) {
           console.error("Supabase update error (save seeds):", firstError);
@@ -645,10 +692,25 @@ export default function GauntletSeedsPage() {
                   {owners.map((o) => (
                     <tr key={o.id}>
                       <td className="px-2 py-1">
-                        <div className="truncate max-w-[180px] text-slate-100">
-                          {o.ownerName}
-                        </div>
+                        {!o.ownerId ? (
+                          <input
+                            type="text"
+                            value={
+                              (draftNames[league.leagueId] || {})[o.id] ?? o.ownerName ?? ""
+                            }
+                            onChange={(e) =>
+                              handleNameChange(league.leagueId, o.id, e.target.value)
+                            }
+                            className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                            placeholder="Manual owner name"
+                          />
+                        ) : (
+                          <div className="truncate max-w-[180px] text-slate-100">
+                            {o.ownerName}
+                          </div>
+                        )}
                       </td>
+
                       <td className="px-2 py-1 text-xs text-slate-400">
                         {o.ownerId || "—"}
                       </td>
