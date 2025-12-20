@@ -1,7 +1,7 @@
 // src/app/gauntlet/leg3/page.jsx
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { siteConfig } from "@/app/config/siteConfig";
 
 const LEG3_YEAR = 2025;
@@ -47,6 +47,8 @@ export default function GauntletLeg3PublicPage() {
 }
 
 function GauntletLeg3Inner() {
+  const [forceWeek17Preview, setForceWeek17Preview] = useState(false);
+
   const [payloadMeta, setPayloadMeta] = useState(null);
   const [divisionsData, setDivisionsData] = useState({});
   const [divisionLoading, setDivisionLoading] = useState({});
@@ -115,6 +117,7 @@ function GauntletLeg3Inner() {
         name: json.name || `Ballsville Gauntlet – Leg 3 (${json.year || LEG3_YEAR})`,
         year: json.year || LEG3_YEAR,
         currentBracketWeek: json.currentBracketWeek || null,
+        finalizedThroughWeek: json.finalizedThroughWeek ?? null,
         divisionsMeta: json.divisions || {},
         grandMeta: json.grand || null,
         missingSeedLeaguesSummary: json.missingSeedLeaguesSummary || [],
@@ -137,6 +140,113 @@ function GauntletLeg3Inner() {
       setRefreshing(false);
     }
   }
+
+  const previewGrandStandings = useMemo(() => {
+    // Only build this list when you explicitly want preview behavior.
+    if (!forceWeek17Preview) return [];
+
+    const rows = [];
+
+    // Try to extract "best available" teams from each god.
+    for (const [divisionName, divisionData] of Object.entries(divisionsData || {})) {
+      const gods = Array.isArray(divisionData?.gods) ? divisionData.gods : [];
+
+      for (const god of gods) {
+        const godIndex = god?.index ?? null;
+        const godName = god?.godName ?? (godIndex != null ? `God ${godIndex}` : "God ?");
+        const bracketRounds = Array.isArray(god?.bracketRounds) ? god.bracketRounds : [];
+        const pairings = Array.isArray(god?.pairings) ? god.pairings : [];
+
+        // Collect candidate teams from bracket rounds (best source)
+        const candidates = [];
+
+        for (const r of bracketRounds) {
+          const results = Array.isArray(r?.results) ? r.results : [];
+          for (const m of results) {
+            const a = m?.teamA || null;
+            const b = m?.teamB || null;
+            if (a) candidates.push(a);
+            if (b) candidates.push(b);
+          }
+        }
+
+        // Fallback: if no bracket rounds exist yet, use initial pairings
+        if (candidates.length === 0 && pairings.length) {
+          for (const p of pairings) {
+            const a = p?.teamA || null;
+            const b = p?.teamB || null;
+            if (a) candidates.push(a);
+            if (b) candidates.push(b);
+          }
+        }
+
+        // Pick a "leader" for this god based on the best total we can find.
+        // Prefer leg3Total if present; fallback to sum of leg3Weekly; fallback to 0.
+        function getLeg3Total(t) {
+          const direct = t?.leg3Total;
+          if (typeof direct === "number") return direct;
+
+          const weekly = t?.leg3Weekly;
+          if (weekly && typeof weekly === "object") {
+            // sum numeric week values
+            let sum = 0;
+            for (const v of Object.values(weekly)) {
+              const n = Number(v);
+              if (!Number.isNaN(n)) sum += n;
+            }
+            return sum;
+          }
+
+          return 0;
+        }
+
+        let best = null;
+        let bestTotal = -Infinity;
+
+        for (const t of candidates) {
+          const total = getLeg3Total(t);
+          if (total > bestTotal) {
+            bestTotal = total;
+            best = t;
+          }
+        }
+
+        if (!best) continue;
+
+        rows.push({
+          // match the fields your Week 17 table expects
+          division: divisionName,
+          godIndex,
+          godName,
+
+          ownerName: best.ownerName ?? best.username ?? "Unknown",
+          side: best.side ?? null,
+          leagueName: best.leagueName ?? god?.lightLeagueName ?? god?.darkLeagueName ?? "",
+
+          leagueId: best.leagueId ?? best.league_id ?? `${divisionName}-${godIndex}-L`,
+          rosterId: best.rosterId ?? best.roster_id ?? `${divisionName}-${godIndex}-R`,
+
+          week17Score: 0,
+          leg3Total: Number(bestTotal || 0),
+        });
+      }
+    }
+
+    // De-dupe (in case the same team shows up multiple times)
+    const seen = new Set();
+    const deduped = [];
+    for (const r of rows) {
+      const k = `${r.leagueId}::${r.rosterId}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      deduped.push(r);
+    }
+
+    // Sort by Leg 3 total desc and assign ranks
+    deduped.sort((a, b) => Number(b.leg3Total || 0) - Number(a.leg3Total || 0));
+    return deduped.map((r, idx) => ({ ...r, rank: idx + 1 }));
+  }, [forceWeek17Preview, divisionsData]);
+
 
   function godKey(divisionName, godIndex) {
     return `${divisionName}::${godIndex}`;
@@ -245,6 +355,7 @@ function GauntletLeg3Inner() {
             name: json.name || `Ballsville Gauntlet – Leg 3 (${json.year || LEG3_YEAR})`,
             year: json.year || LEG3_YEAR,
             currentBracketWeek: json.currentBracketWeek || null,
+            finalizedThroughWeek: json.finalizedThroughWeek ?? null,
             divisionsMeta: json.divisions || {},
             grandMeta: json.grand || null,
             missingSeedLeaguesSummary: json.missingSeedLeaguesSummary || [],
@@ -264,16 +375,47 @@ function GauntletLeg3Inner() {
       clearInterval(intervalId);
     };
   }, [payloadMeta, updatedAt]);
+  const finalizedThroughWeek = payloadMeta?.finalizedThroughWeek ?? null;
+  const week16Finalized =
+  forceWeek17Preview || (finalizedThroughWeek != null && Number(finalizedThroughWeek) >= 16);
+
 
   const divisionsMeta = payloadMeta?.divisionsMeta || {};
-  const grandStandings = Array.isArray(grand?.standings) ? grand.standings : [];
-  const grandParticipants = Array.isArray(grand?.participants)
+  const realGrandStandings = Array.isArray(grand?.standings) ? grand.standings : [];
+  const realGrandParticipants = Array.isArray(grand?.participants)
     ? grand.participants
-    : grandStandings;
+    : realGrandStandings;
+
+  // ✅ If preview mode is ON and the real list is empty, fake it from current data.
+  const grandStandings = (forceWeek17Preview && realGrandStandings.length === 0)
+    ? previewGrandStandings
+    : realGrandStandings;
+
+  const grandParticipants = (forceWeek17Preview && realGrandParticipants.length === 0)
+    ? previewGrandStandings
+    : realGrandParticipants;
+
 
   const hasWeek17Scores =
     grandParticipants.length > 0 &&
     grandParticipants.some((p) => typeof p.week17Score === "number" && p.week17Score !== 0);
+  function SideBadge({ side }) {
+    if (!side) return null;
+
+    const label = String(side).toLowerCase();
+    const pretty = label === "light" ? "Light" : label === "dark" ? "Dark" : side;
+
+    const isLight = label === "light";
+    const cls = isLight
+      ? "border-[color:var(--color-primary)]/50 bg-[color:var(--color-primary)]/12 text-[color:var(--color-primary)]"
+      : "border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)]/12 text-[color:var(--color-accent)]";
+
+    return (
+      <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[0.65rem] leading-none ${cls}`}>
+        {pretty}
+      </span>
+    );
+  }
 
   return (
     <section className="section">
@@ -314,6 +456,16 @@ function GauntletLeg3Inner() {
                   {error}
                 </div>
               )}
+
+              {/* <button
+                type="button"
+                onClick={() => setForceWeek17Preview((v) => !v)}
+                className={`btn ${forceWeek17Preview ? "btn-primary" : "btn-outline"}`}
+                title="Preview Week 17 layout even if Week 16 isn't finalized yet"
+              >
+                {forceWeek17Preview ? "Week 17 Preview: ON" : "Week 17 Preview"}
+              </button> */}
+
 
               <button
                 type="button"
@@ -448,6 +600,7 @@ function GauntletLeg3Inner() {
                     isLoading={isDivLoading}
                     viewMode={viewMode}
                     roundFilter={roundFilter}
+                    finalizedThroughWeek={finalizedThroughWeek}
                     isGodOpen={isGodOpen}
                     toggleGodOpen={toggleGodOpen}
                   />
@@ -461,7 +614,7 @@ function GauntletLeg3Inner() {
               )}
             </section>
 
-            {/* GRAND CHAMPIONSHIP */}
+            {/* GRAND CHAMPIONSHIP — Week 17 */}
             <section className="bg-card-surface border border-subtle rounded-2xl p-6 shadow-sm space-y-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -471,7 +624,7 @@ function GauntletLeg3Inner() {
                   </p>
                 </div>
 
-                {grand && (
+                {grand && week16Finalized && (
                   <div className="text-xs text-muted">
                     Week: <span className="font-mono text-primary">{grand.week}</span>
                     <span className="mx-2 text-muted">•</span>
@@ -480,58 +633,86 @@ function GauntletLeg3Inner() {
                 )}
               </div>
 
-              {!grand || grandParticipants.length === 0 ? (
+              {/* ✅ Hide Week 17 standings until Week 16 is finalized */}
+              {!week16Finalized ? (
                 <div className="rounded-xl border border-subtle bg-subtle-surface px-4 py-3 text-sm text-muted">
-                  Grand Championship standings will appear here once at least one God champion has Week 17 scores.
+                  Week 17 will populate once Week 16 is finalized.
                 </div>
-              ) : !hasWeek17Scores ? (
+              ) : !grand || grandParticipants.length === 0 ? (
                 <div className="rounded-xl border border-subtle bg-subtle-surface px-4 py-3 text-sm text-muted">
-                  Week 17 has not posted any scores yet. Once Sleeper shows Week 17 matchups for the God champions and you re-run the Gauntlet build script, standings will update automatically.
+                  {forceWeek17Preview
+                    ? "Preview mode: showing a simulated Week 17 field based on current best Leg 3 totals (not official champions)."
+                    : "Grand Championship standings will appear here once the God champions have been determined."}
                 </div>
+
               ) : (
-                <div className="overflow-x-auto rounded-2xl border border-subtle bg-subtle-surface">
-                  <table className="min-w-full text-left text-xs">
-                    <thead className="border-b border-subtle text-[0.7rem] uppercase tracking-wide text-muted">
-                      <tr>
-                        <th className="px-3 py-2 text-center">Rank</th>
-                        <th className="px-3 py-2">Legion</th>
-                        <th className="px-3 py-2">God</th>
-                        <th className="px-3 py-2">Owner</th>
-                        <th className="px-3 py-2">League</th>
-                        <th className="px-3 py-2 text-right">Wk 17 Score</th>
-                        <th className="px-3 py-2 text-right">Leg 3 Total</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-subtle text-[0.75rem]">
-                      {grandStandings.map((p) => (
-                        <tr key={`${p.leagueId}-${p.rosterId}`}>
-                          <td className="px-3 py-2 text-center font-mono text-primary">
-                            {p.rank}
-                          </td>
-                          <td className="px-3 py-2">{p.division}</td>
-                          <td className="px-3 py-2">{p.godName || `God ${p.godIndex ?? "?"}`}</td>
-                          <td className="px-3 py-2">
-                            <div className="truncate max-w-[160px]">{p.ownerName}</div>
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="truncate max-w-[260px] text-muted">{p.leagueName}</div>
-                          </td>
-                          <td className="px-3 py-2 text-right font-mono">
-                            {Number(p.week17Score || 0).toFixed(2)}
-                          </td>
-                          <td className="px-3 py-2 text-right font-mono">
-                            {Number(p.leg3Total || 0).toFixed(2)}
-                          </td>
+                <>
+                  {!hasWeek17Scores && (
+                    <div className="rounded-xl border border-subtle bg-subtle-surface px-4 py-3 text-sm text-muted">
+                      Week 17 scores haven’t posted yet — showing the qualified God champions (scores pending).
+                    </div>
+                  )}
+
+                  <div className="overflow-x-auto rounded-2xl border border-subtle bg-subtle-surface">
+                    <table className="min-w-full text-left text-xs">
+                      <thead className="border-b border-subtle text-[0.7rem] uppercase tracking-wide text-muted">
+                        <tr>
+                          <th className="px-3 py-2 text-center">Rank</th>
+                          <th className="px-3 py-2">Legion</th>
+                          <th className="px-3 py-2">God</th>
+                          <th className="px-3 py-2">Owner</th>
+                          <th className="px-3 py-2">Side</th>
+                          <th className="px-3 py-2">League</th>
+                          <th className="px-3 py-2 text-right">Wk 17 Score</th>
+                          <th className="px-3 py-2 text-right">Leg 3 Total</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <p className="px-3 py-2 text-[0.65rem] text-muted">
-                    Ties are broken by total Leg 3 score, then by better seed.
-                  </p>
-                </div>
+                      </thead>
+                      <tbody className="divide-y divide-subtle text-[0.75rem]">
+                        {grandStandings.map((p) => {
+                        const side = p?.side ?? p?.bracketSide ?? p?.seedSide ?? null;
+
+                        return (
+                          <tr key={`${p.leagueId}-${p.rosterId}`}>
+                            <td className="px-3 py-2 text-center font-mono text-primary">{p.rank}</td>
+                            <td className="px-3 py-2">{p.division}</td>
+                            <td className="px-3 py-2">{p.godName || `God ${p.godIndex ?? "?"}`}</td>
+
+                            <td className="px-3 py-2">
+                              <div className="truncate max-w-[160px]">{p.ownerName}</div>
+                            </td>
+
+                            <td className="px-3 py-2">
+                              <SideBadge side={side} />
+                            </td>
+
+                            <td className="px-3 py-2">
+                              <div className="truncate max-w-[260px] text-muted">{p.leagueName}</div>
+                            </td>
+
+                            <td className="px-3 py-2 text-right font-mono">
+                              {Number(p.week17Score || 0).toFixed(2)}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono">
+                              {Number(p.leg3Total || 0).toFixed(2)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+
+                      </tbody>
+                    </table>
+
+                    <p className="px-3 py-2 text-[0.65rem] text-muted">
+                      {hasWeek17Scores
+                        ? "Ties are broken by total Leg 3 score, then by better seed."
+                        : "Week 17 sorting will update automatically once scores post."}
+                    </p>
+                  </div>
+                </>
               )}
             </section>
+
+
           </main>
         )}
       </div>
@@ -548,9 +729,11 @@ function DivisionCard({
   isLoading,
   viewMode,
   roundFilter,
+  finalizedThroughWeek,
   isGodOpen,
   toggleGodOpen,
 }) {
+
   const gods = Array.isArray(divisionData?.gods) ? divisionData.gods : [];
 
   return (
@@ -592,6 +775,7 @@ function DivisionCard({
               onToggle={() => toggleGodOpen(divisionName, god.index)}
               viewMode={viewMode}
               roundFilter={roundFilter}
+              finalizedThroughWeek={finalizedThroughWeek}
             />
           ))}
 
@@ -608,7 +792,8 @@ function DivisionCard({
 
 /* ================== Child Components ================== */
 
-function GodCard({ god, divisionName, isOpen, onToggle, viewMode, roundFilter }) {
+function GodCard({ god, divisionName, isOpen, onToggle, viewMode, roundFilter, finalizedThroughWeek }) {
+
   const cardRef = useRef(null);
 
   const pairings = Array.isArray(god?.pairings) ? god.pairings : [];
@@ -643,77 +828,50 @@ function GodCard({ god, divisionName, isOpen, onToggle, viewMode, roundFilter })
       const scoreA = typeof m.scoreA === "number" ? m.scoreA : Number(m.scoreA || 0);
       const scoreB = typeof m.scoreB === "number" ? m.scoreB : Number(m.scoreB || 0);
 
-      const winnerId = m?.winner?.rosterId || null;
+      // ✅ normalize rosterId types (prevents subtle number/string mismatches)
+      const winnerId = m?.winner?.rosterId != null ? Number(m.winner.rosterId) : null;
+      const rosterA = teamA?.rosterId != null ? Number(teamA.rosterId) : null;
+      const rosterB = teamB?.rosterId != null ? Number(teamB.rosterId) : null;
 
-      const aLight = teamA.side === "light";
-      const bLight = teamB.side === "light";
-      const aDark = teamA.side === "dark";
-      const bDark = teamB.side === "dark";
+      const teamAIsWinner = winnerId != null && rosterA != null && winnerId === rosterA;
+      const teamBIsWinner = winnerId != null && rosterB != null && winnerId === rosterB;
 
-      const isLightVsDark = (aLight && bDark) || (aDark && bLight);
-
-      let lightTeam;
-      let darkTeam;
-
-      if (isLightVsDark) {
-        if (aLight && bDark) {
-          lightTeam = teamA;
-          darkTeam = teamB;
-        } else {
-          lightTeam = teamB;
-          darkTeam = teamA;
-        }
-      } else {
-        lightTeam = teamA;
-        darkTeam = teamB;
-      }
-
-      let lightScore;
-      let darkScore;
-      let lightLineup = null;
-      let darkLineup = null;
-
-      if (lightTeam === teamA && darkTeam === teamB) {
-        lightScore = scoreA;
-        darkScore = scoreB;
-        lightLineup = m.lineupA || null;
-        darkLineup = m.lineupB || null;
-      } else if (lightTeam === teamB && darkTeam === teamA) {
-        lightScore = scoreB;
-        darkScore = scoreA;
-        lightLineup = m.lineupB || null;
-        darkLineup = m.lineupA || null;
-      } else {
-        lightScore = scoreA;
-        darkScore = scoreB;
-        lightLineup = m.lineupA || null;
-        darkLineup = m.lineupB || null;
-      }
-
-      const lightIsWinner = winnerId && winnerId === lightTeam.rosterId;
-      const darkIsWinner = winnerId && winnerId === darkTeam.rosterId;
 
       const isPlayed =
-        typeof lightScore === "number" &&
-        typeof darkScore === "number" &&
-        (lightScore !== 0 || darkScore !== 0);
+        typeof scoreA === "number" &&
+        typeof scoreB === "number" &&
+        (scoreA !== 0 || scoreB !== 0);
 
       return {
         match: m.matchIndex,
         round: selectedRound.roundNumber,
         week: selectedRound.week,
-        lightOwnerName: lightTeam.ownerName,
-        darkOwnerName: darkTeam.ownerName,
-        lightSeed: lightTeam.seed,
-        darkSeed: darkTeam.seed,
-        lightScore: Number((lightScore || 0).toFixed(2)),
-        darkScore: Number((darkScore || 0).toFixed(2)),
-        lightIsWinner,
-        darkIsWinner,
+
+        teamAName: teamA.ownerName,
+        teamBName: teamB.ownerName,
+        teamASeed: teamA.seed,
+        teamBSeed: teamB.seed,
+        teamASide: teamA.side || null,
+        teamBSide: teamB.side || null,
+
+        scoreA: Number(scoreA || 0),
+        scoreB: Number(scoreB || 0),
+
+        winnerRosterId: winnerId,
+
+        // ✅ add these so the table can reliably compare winner ids
+        teamARosterId: rosterA,
+        teamBRosterId: rosterB,
+
+        teamAIsWinner,
+        teamBIsWinner,
         isPlayed,
-        lightLineup,
-        darkLineup,
+
+        lineupA: m.lineupA || null,
+        lineupB: m.lineupB || null,
       };
+
+
     });
   } else if (
     viewMode === "matchups" &&
@@ -799,9 +957,13 @@ function GodCard({ god, divisionName, isOpen, onToggle, viewMode, roundFilter })
         <div className="p-4">
           {hasBracketContent ? (
             viewMode === "matchups" ? (
-              <GodMatchupsTable rows={matchupRows} roundFilter={roundFilter} />
+              <GodMatchupsTable
+                rows={matchupRows}
+                roundFilter={roundFilter}
+                finalizedThroughWeek={finalizedThroughWeek}
+              />
             ) : (
-              <GodBracket rounds={bracketRounds} />
+              <GodBracket rounds={bracketRounds} finalizedThroughWeek={finalizedThroughWeek} />
             )
           ) : (
             <div className="text-sm text-muted">No bracket data for this God yet.</div>
@@ -814,7 +976,7 @@ function GodCard({ god, divisionName, isOpen, onToggle, viewMode, roundFilter })
 
 /* ======== Matchups table + breakdown (logic unchanged, restyled) ======== */
 
-function GodMatchupsTable({ rows, roundFilter }) {
+function GodMatchupsTable({ rows, roundFilter, finalizedThroughWeek }) {
   const safeRows = Array.isArray(rows) ? rows : [];
   const meta = safeRows[0] || null;
 
@@ -834,6 +996,28 @@ function GodMatchupsTable({ rows, roundFilter }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [expandedMatch]);
 
+  // Small badge (uses your existing .badge class)
+    // Small badge (uses your existing .badge class)
+  function SideBadge({ side }) {
+    if (!side) return null;
+    const label = String(side).toLowerCase();
+    const pretty = label === "light" ? "Light" : label === "dark" ? "Dark" : side;
+
+    const isLight = label === "light";
+    const cls = isLight
+      ? "border-[color:var(--color-primary)]/50 bg-[color:var(--color-primary)]/12 text-[color:var(--color-primary)]"
+      : "border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)]/12 text-[color:var(--color-accent)]";
+
+    return (
+      <span
+        className={`ml-2 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[0.6rem] leading-none ${cls}`}
+      >
+        {pretty}
+      </span>
+    );
+  }
+
+
   return (
     <div
       ref={containerRef}
@@ -843,6 +1027,7 @@ function GodMatchupsTable({ rows, roundFilter }) {
         <span>
           {meta ? `Round ${meta.round} • Week ${meta.week}` : `Round ${roundFilter || "?"}`}
         </span>
+
         {expandedRow && (
           <button
             type="button"
@@ -854,19 +1039,82 @@ function GodMatchupsTable({ rows, roundFilter }) {
         )}
       </div>
 
+      {/* ✅ Use Team A / Team B labels + side badges */}
       <div className="grid grid-cols-5 border-y border-subtle bg-subtle-surface px-4 py-2 text-[0.7rem] uppercase tracking-wide text-muted">
         <span className="text-center">Match</span>
-        <span className="text-center">Light (Seed)</span>
-        <span className="text-center">Light Score</span>
-        <span className="text-center">Dark Score</span>
-        <span className="text-center">Dark (Seed)</span>
+        <span className="text-center">Team A</span>
+        <span className="text-center">A Score</span>
+        <span className="text-center">B Score</span>
+        <span className="text-center">Team B</span>
       </div>
 
       <div className="divide-y divide-subtle">
         {safeRows.map((m) => {
-          const lightLost = m.isPlayed && !m.lightIsWinner;
-          const darkLost = m.isPlayed && !m.darkIsWinner;
-          const isExpanded = expandedMatch === m.match;
+          const aScore =
+        typeof m.scoreA === "number" ? m.scoreA : typeof m.lightScore === "number" ? m.lightScore : 0;
+      const bScore =
+        typeof m.scoreB === "number" ? m.scoreB : typeof m.darkScore === "number" ? m.darkScore : 0;
+
+      const played = Number(aScore || 0) !== 0 || Number(bScore || 0) !== 0;
+      const tied = played && Number(aScore || 0) === Number(bScore || 0);
+      const isExpanded = expandedMatch === m.match;
+      // ✅ Support both row shapes:
+      const aName = m.teamAName ?? m.lightOwnerName ?? "?";
+      const bName = m.teamBName ?? m.darkOwnerName ?? "?";
+
+      const aSeed = m.teamASeed ?? m.lightSeed;
+      const bSeed = m.teamBSeed ?? m.darkSeed;
+      const aSide = m.teamASide ?? "light"; // fallback rows are always light/dark
+      const bSide = m.teamBSide ?? "dark";
+
+      // ✅ only lock winners/losers when the matchup week is finalized
+const matchupWeek = Number(m.week ?? meta?.week ?? 0);
+const weekFinalized =
+  finalizedThroughWeek != null &&
+  Number(finalizedThroughWeek) >= matchupWeek &&
+  matchupWeek > 0;
+
+// Prefer explicit winnerRosterId if we can compare it to both roster ids
+// Prefer explicit winnerRosterId ONLY if it cleanly matches exactly one side
+const winnerRosterId = m.winnerRosterId != null ? Number(m.winnerRosterId) : null;
+
+// ids we added in matchupRows
+const rosterAId = m.teamARosterId != null ? Number(m.teamARosterId) : null;
+const rosterBId = m.teamBRosterId != null ? Number(m.teamBRosterId) : null;
+
+let aIsWinner = false;
+let bIsWinner = false;
+
+// ✅ Explicit winner is only valid if:
+// - both roster ids exist
+// - roster ids are different
+// - winnerRosterId matches ONE of them (not both, not neither)
+const explicitWinnerValid =
+  winnerRosterId != null &&
+  rosterAId != null &&
+  rosterBId != null &&
+  rosterAId !== rosterBId &&
+  (winnerRosterId === rosterAId || winnerRosterId === rosterBId);
+
+if (explicitWinnerValid) {
+  aIsWinner = winnerRosterId === rosterAId;
+  bIsWinner = winnerRosterId === rosterBId;
+} else if (weekFinalized && played && !tied) {
+  // ✅ score fallback ONLY once the week is finalized
+  aIsWinner = Number(aScore || 0) > Number(bScore || 0);
+  bIsWinner = Number(bScore || 0) > Number(aScore || 0);
+}
+
+// Winner is "decided" only when:
+// - explicit winner is valid OR
+// - finalized + played + not tied (score fallback)
+const winnerDecided =
+  explicitWinnerValid || (weekFinalized && played && !tied);
+
+
+// ✅ eliminate ONLY when decided AND finalized
+const teamALost = winnerDecided && weekFinalized && played && !tied && !aIsWinner;
+const teamBLost = winnerDecided && weekFinalized && played && !tied && !bIsWinner;
 
           return (
             <div key={m.match} className="last:border-b-0">
@@ -881,37 +1129,45 @@ function GodMatchupsTable({ rows, roundFilter }) {
 
                 <div className="text-center">
                   <div
-                    className={`truncate ${
-                      m.lightIsWinner
+                    className={`truncate inline-flex items-center justify-center max-w-full ${
+                      aIsWinner
                         ? "text-[color:var(--color-success)] font-semibold"
-                        : lightLost
+                        : teamALost
                         ? "text-danger line-through"
                         : "text-fg"
                     }`}
                   >
-                    {m.lightOwnerName}
+                    <span className="truncate">{aName}</span>
+                    <SideBadge side={aSide} />
                   </div>
-                  <div className="text-[0.7rem] text-primary">Seed {m.lightSeed}</div>
-                  {lightLost && <div className="text-[0.7rem] text-danger">Eliminated</div>}
+
+                  {typeof aSeed === "number" && (
+                    <div className="text-[0.7rem] text-primary">Seed {aSeed}</div>
+                  )}
+                  {teamALost && <div className="text-[0.7rem] text-danger">Eliminated</div>}
                 </div>
 
-                <div className="text-center font-mono text-fg">{m.lightScore.toFixed(2)}</div>
-                <div className="text-center font-mono text-fg">{m.darkScore.toFixed(2)}</div>
+                <div className="text-center font-mono text-fg">{Number(aScore || 0).toFixed(2)}</div>
+                <div className="text-center font-mono text-fg">{Number(bScore || 0).toFixed(2)}</div>
 
                 <div className="text-center">
                   <div
-                    className={`truncate ${
-                      m.darkIsWinner
+                    className={`truncate inline-flex items-center justify-center max-w-full ${
+                      bIsWinner
                         ? "text-[color:var(--color-success)] font-semibold"
-                        : darkLost
+                        : teamBLost
                         ? "text-danger line-through"
                         : "text-fg"
                     }`}
                   >
-                    {m.darkOwnerName}
+                    <span className="truncate">{bName}</span>
+                    <SideBadge side={bSide} />
                   </div>
-                  <div className="text-[0.7rem] text-accent">Seed {m.darkSeed}</div>
-                  {darkLost && <div className="text-[0.7rem] text-danger">Eliminated</div>}
+
+                  {typeof bSeed === "number" && (
+                    <div className="text-[0.7rem] text-accent">Seed {bSeed}</div>
+                  )}
+                  {teamBLost && <div className="text-[0.7rem] text-danger">Eliminated</div>}
                 </div>
               </button>
 
@@ -929,6 +1185,7 @@ function GodMatchupsTable({ rows, roundFilter }) {
     </div>
   );
 }
+
 
 function InjuryTag({ status, injury_status }) {
   const raw = (injury_status || status || "").toString().toLowerCase();
@@ -1097,7 +1354,7 @@ function MatchupBreakdown({ row }) {
 
 /* ======== Bracket view (kept logic, lightly restyled wrapper) ======== */
 
-function GodBracket({ rounds }) {
+function GodBracket({ rounds, finalizedThroughWeek }) {
   const safeRounds = Array.isArray(rounds) ? rounds : [];
   if (!safeRounds.length) {
     return (
@@ -1142,8 +1399,7 @@ function GodBracket({ rounds }) {
                 className="mb-2 text-center font-semibold"
                 style={{ gridColumn: col, gridRow: 1 }}
               >
-                R{round.roundNumber}{" "}
-                <span className="text-muted">(W{round.week})</span>
+                R{round.roundNumber} <span className="text-muted">(W{round.week})</span>
               </div>
 
               {results.map((match, matchIdx) => {
@@ -1165,7 +1421,11 @@ function GodBracket({ rounds }) {
                       gridRow: `${rowStart} / span ${rowSpan}`,
                     }}
                   >
-                    <BracketMatchCard match={match} />
+                    <BracketMatchCard
+                      match={match}
+                      roundWeek={round.week}
+                      finalizedThroughWeek={finalizedThroughWeek}
+                    />
                   </div>
                 );
               })}
@@ -1177,24 +1437,78 @@ function GodBracket({ rounds }) {
   );
 }
 
-function BracketMatchCard({ match }) {
-  const winnerId = match?.winner?.rosterId;
+function BracketMatchCard({ match, roundWeek, finalizedThroughWeek }) {
   const teamA = match?.teamA || {};
   const teamB = match?.teamB || {};
-  const scoreA = typeof match?.scoreA === "number" ? match.scoreA : 0;
-  const scoreB = typeof match?.scoreB === "number" ? match.scoreB : 0;
 
-  const teamAIsWinner = winnerId && winnerId === teamA.rosterId;
-  const teamBIsWinner = winnerId && winnerId === teamB.rosterId;
+  // normalize ids
+  const rosterA = teamA?.rosterId != null ? Number(teamA.rosterId) : null;
+  const rosterB = teamB?.rosterId != null ? Number(teamB.rosterId) : null;
+
+  const scoreA = Number(match?.scoreA ?? 0);
+  const scoreB = Number(match?.scoreB ?? 0);
 
   const played = scoreA !== 0 || scoreB !== 0;
-  const teamALost = played && !teamAIsWinner && winnerId;
-  const teamBLost = played && !teamBIsWinner && winnerId;
+
+  // ✅ gate elimination/winner-deciding by finalizedThroughWeek
+  const matchupWeek = Number(roundWeek ?? match?.week ?? 0);
+  const weekFinalized =
+    finalizedThroughWeek != null &&
+    matchupWeek > 0 &&
+    Number(finalizedThroughWeek) >= matchupWeek;
+
+  // explicit winner (from JSON) — may be present early, so only honor it once finalized
+  const winnerRosterId =
+    match?.winner?.rosterId != null ? Number(match.winner.rosterId) : null;
+
+  const explicitWinnerValid =
+    winnerRosterId != null &&
+    rosterA != null &&
+    rosterB != null &&
+    rosterA !== rosterB &&
+    (winnerRosterId === rosterA || winnerRosterId === rosterB);
+
+  let teamAIsWinner = false;
+  let teamBIsWinner = false;
+
+  if (weekFinalized) {
+    // ✅ Only decide a winner once the week is finalized
+    if (explicitWinnerValid) {
+      teamAIsWinner = winnerRosterId === rosterA;
+      teamBIsWinner = winnerRosterId === rosterB;
+    } else if (played && scoreA !== scoreB) {
+      teamAIsWinner = scoreA > scoreB;
+      teamBIsWinner = scoreB > scoreA;
+    } else if (played && scoreA === scoreB) {
+      // tiebreak: lower seed wins
+      const seedA = Number(teamA.seed ?? 999);
+      const seedB = Number(teamB.seed ?? 999);
+      if (seedA < seedB) teamAIsWinner = true;
+      else if (seedB < seedA) teamBIsWinner = true;
+      else {
+        // final fallback: name
+        const nameA = String(teamA.ownerName || "");
+        const nameB = String(teamB.ownerName || "");
+        if (nameA.localeCompare(nameB) <= 0) teamAIsWinner = true;
+        else teamBIsWinner = true;
+      }
+    }
+  }
+
+  const winnerDecided = weekFinalized && (teamAIsWinner || teamBIsWinner);
+  const teamALost = winnerDecided && played && !teamAIsWinner;
+  const teamBLost = winnerDecided && played && !teamBIsWinner;
 
   return (
     <div className="relative rounded-2xl border border-subtle bg-card-surface px-3 py-2">
       <div className="mb-1 flex items-center justify-between text-[0.7rem] text-muted">
         <span>Match {match.matchIndex}</span>
+        <span className="font-mono">
+          W{matchupWeek || "?"}
+          {!weekFinalized && matchupWeek ? (
+            <span className="ml-2 text-[0.65rem] text-muted">(not finalized)</span>
+          ) : null}
+        </span>
       </div>
 
       <div className="space-y-1">
@@ -1208,7 +1522,7 @@ function BracketMatchCard({ match }) {
           <span className="truncate max-w-[120px]">{teamA.ownerName ?? "?"}</span>
           <span className="flex items-center gap-2 text-[0.7rem]">
             <span className="text-muted">S{teamA.seed ?? "?"}</span>
-            <span className="font-mono">{scoreA.toFixed(1)}</span>
+            <span className="font-mono">{scoreA.toFixed(2)}</span>
           </span>
         </div>
 
@@ -1222,12 +1536,12 @@ function BracketMatchCard({ match }) {
           <span className="truncate max-w-[120px]">{teamB.ownerName ?? "?"}</span>
           <span className="flex items-center gap-2 text-[0.7rem]">
             <span className="text-muted">S{teamB.seed ?? "?"}</span>
-            <span className="font-mono">{scoreB.toFixed(1)}</span>
+            <span className="font-mono">{scoreB.toFixed(2)}</span>
           </span>
         </div>
       </div>
 
-      {(teamAIsWinner || teamBIsWinner) && (
+      {winnerDecided && (
         <div className="mt-2 text-[0.7rem] text-[color:var(--color-success)]">
           Advances →
         </div>
@@ -1235,3 +1549,4 @@ function BracketMatchCard({ match }) {
     </div>
   );
 }
+
