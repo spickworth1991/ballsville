@@ -3,7 +3,7 @@
   "hero": {
     "promoImageKey": "media/mini-leagues/updates_2025.webp",
     "promoImageUrl": "/photos/minileagues-v2.webp",
-    "updatesHtml": "<p>Updates will show here TEST.</p>"
+    "updatesHtml": "<p>Updates will show here <b><3</b>.</p>"
   },
   "winners": {
     "title": "Last Year’s Winners",
