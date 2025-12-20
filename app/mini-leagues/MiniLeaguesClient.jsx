@@ -34,6 +34,9 @@ const DEFAULT_EDITABLE = {
     title: "Last Year’s Winners",
     imageKey: "",
     imageUrl: "/photos/hall-of-fame/minileageus2024.png",
+    // ✅ new second image slot
+    imageKey2: "",
+    imageUrl2: "",
     caption: "",
   },
 };
@@ -85,15 +88,18 @@ export default function MiniLeaguesClient() {
   const [divisions, setDivisions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const bust = `v=${Date.now()}`;
+
   const updatesSrc = editable?.hero?.promoImageKey
-  ? `/r2/${editable.hero.promoImageKey}?v=${encodeURIComponent(editable.hero.promoImageKey)}`
-  : editable?.hero?.promoImageUrl || DEFAULT_EDITABLE.hero.promoImageUrl;
+    ? `/r2/${editable.hero.promoImageKey}`
+    : editable?.hero?.promoImageUrl || DEFAULT_EDITABLE.hero.promoImageUrl;
 
-const winnersSrc = editable?.winners?.imageKey
-  ? `/r2/${editable.winners.imageKey}?v=${encodeURIComponent(editable.winners.imageKey)}`
-  : editable?.winners?.imageUrl || DEFAULT_EDITABLE.winners.imageUrl;
+  const winnersSrc1 = editable?.winners?.imageKey
+    ? `/r2/${editable.winners.imageKey}`
+    : editable?.winners?.imageUrl || DEFAULT_EDITABLE.winners.imageUrl;
 
+  const winnersSrc2 = editable?.winners?.imageKey2
+    ? `/r2/${editable.winners.imageKey2}`
+    : editable?.winners?.imageUrl2 || DEFAULT_EDITABLE.winners.imageUrl2;
 
   async function loadAll() {
     setErr("");
@@ -101,7 +107,7 @@ const winnersSrc = editable?.winners?.imageKey
 
     try {
       // 1) editable blocks
-      const pageRes = await fetch(`/r2/content/mini-leagues/page_${SEASON}.json?${bust}`, { cache: "no-store" });
+      const pageRes = await fetch(`/r2/content/mini-leagues/page_${SEASON}.json`, { cache: "no-store" });
       if (pageRes.ok) {
         const pageData = await pageRes.json();
 
@@ -123,6 +129,9 @@ const winnersSrc = editable?.winners?.imageKey
             caption: winners.caption ?? DEFAULT_EDITABLE.winners.caption,
             imageKey: winners.imageKey ?? "",
             imageUrl: winners.imageUrl ?? DEFAULT_EDITABLE.winners.imageUrl,
+            // ✅ new
+            imageKey2: winners.imageKey2 ?? "",
+            imageUrl2: winners.imageUrl2 ?? DEFAULT_EDITABLE.winners.imageUrl2,
           },
         });
       } else {
@@ -130,7 +139,7 @@ const winnersSrc = editable?.winners?.imageKey
       }
 
       // 2) divisions
-      const divRes = await fetch(`/r2/data/mini-leagues/divisions_${SEASON}.json?${bust}`, { cache: "no-store" });
+      const divRes = await fetch(`/r2/data/mini-leagues/divisions_${SEASON}.json`, { cache: "no-store" });
       if (divRes.ok) {
         const divData = await divRes.json();
         const list = Array.isArray(divData?.divisions) ? divData.divisions : Array.isArray(divData) ? divData : [];
@@ -208,7 +217,7 @@ const winnersSrc = editable?.winners?.imageKey
                       alt="Mini-Leagues updates"
                       fill
                       sizes="(max-width: 1024px) 100vw, 520px"
-                      className="object-stretch"
+                      className="object-cover"
                       priority
                     />
                   </div>
@@ -312,8 +321,9 @@ const winnersSrc = editable?.winners?.imageKey
                           </span>
                         </div>
 
+                        {/* ✅ Bigger, squarer, rounded */}
                         {divImage ? (
-                          <div className="relative h-12 w-12 rounded-xl overflow-hidden border border-subtle bg-black/20">
+                          <div className="relative h-14 w-14 rounded-2xl overflow-hidden border border-subtle bg-black/20">
                             <Image src={divImage} alt={`${d.title} image`} fill className="object-cover" />
                           </div>
                         ) : null}
@@ -342,8 +352,9 @@ const winnersSrc = editable?.winners?.imageKey
                                   </span>
                                 </div>
 
+                                {/* ✅ Bigger, squarer, rounded */}
                                 {img ? (
-                                  <div className="relative h-10 w-10 rounded-lg overflow-hidden border border-subtle bg-black/20 shrink-0">
+                                  <div className="relative h-12 w-12 rounded-xl overflow-hidden border border-subtle bg-black/20 shrink-0">
                                     <Image src={img} alt={`${l.name} image`} fill className="object-cover" />
                                   </div>
                                 ) : null}
@@ -361,19 +372,39 @@ const winnersSrc = editable?.winners?.imageKey
 
           {/* WINNERS (now editable) */}
           <section className="space-y-4">
-            <h2 className="text-2xl sm:text-3xl font-semibold">{editable?.winners?.title || DEFAULT_EDITABLE.winners.title}</h2>
+            <h2 className="text-2xl sm:text-3xl font-semibold">
+              {editable?.winners?.title || DEFAULT_EDITABLE.winners.title}
+            </h2>
 
             <div className="rounded-3xl border border-subtle bg-card-surface shadow-sm overflow-hidden">
-              {/* Controlled size so it always looks good */}
               <div className="p-4 bg-black/10">
-                <div className="relative w-full max-w-[980px] mx-auto h-[360px] sm:h-[460px]">
-                  <Image
-                    src={winnersSrc}
-                    alt="Last year winners"
-                    fill
-                    sizes="100vw"
-                    className="object-contain"
-                  />
+                {/* ✅ If there are 2 images, show a 2-up grid on desktop */}
+                <div
+                  className={`mx-auto w-full max-w-[1100px] grid gap-4 ${
+                    winnersSrc2 ? "md:grid-cols-2" : "grid-cols-1"
+                  }`}
+                >
+                  <div className="relative w-full h-[320px] sm:h-[420px]">
+                    <Image
+                      src={winnersSrc1}
+                      alt="Last year winners"
+                      fill
+                      sizes="100vw"
+                      className="object-contain"
+                    />
+                  </div>
+
+                  {winnersSrc2 ? (
+                    <div className="relative w-full h-[320px] sm:h-[420px]">
+                      <Image
+                        src={winnersSrc2}
+                        alt="Last year winners (2)"
+                        fill
+                        sizes="100vw"
+                        className="object-contain"
+                      />
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
