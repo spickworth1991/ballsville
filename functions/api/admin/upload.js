@@ -2,14 +2,22 @@
 //
 // POST multipart/form-data:
 // - file: <File> (required)
-// - section: "mini-leagues-updates" | "mini-leagues-winners" | "mini-leagues-division" | "mini-leagues-league" (required)
+// - section:
+//    "mini-leagues-updates"
+//    "mini-leagues-winners"      (legacy single winner image)
+//    "mini-leagues-winners-1"    (NEW winner slot 1)
+//    "mini-leagues-winners-2"    (NEW winner slot 2)
+//    "mini-leagues-division"
+//    "mini-leagues-league"
 // - season: "2025" (required for mini-leagues sections)
 // - divisionCode: "100" (required for division/league uploads)
 // - leagueOrder: "1" (required for league uploads)
 //
 // Behavior:
 // - Always writes to a deterministic R2 key for that section.
-// - Re-upload replaces the existing image (no timestamp keys).
+// - Re-upload replaces the existing image.
+// - ALSO deletes other extensions at the same deterministic base key,
+//   so there is only ever ONE image per section even if you upload a different file type later.
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -75,13 +83,11 @@ function cleanNum(x) {
 }
 
 function cleanId(x) {
-  // allow only digits for divisionCode etc (keeps paths clean)
   const s = String(x || "").trim();
   return /^[0-9]+$/.test(s) ? s : "";
 }
 
 function extFromFile(file) {
-  // Prefer MIME type
   const t = String(file?.type || "").toLowerCase();
   if (t === "image/webp") return "webp";
   if (t === "image/png") return "png";
@@ -89,30 +95,52 @@ function extFromFile(file) {
   if (t === "image/gif") return "gif";
   if (t === "image/avif") return "avif";
 
-  // Fallback to filename extension
   const name = String(file?.name || "");
   const m = name.match(/\.([a-z0-9]+)$/i);
   const ext = (m?.[1] || "bin").toLowerCase();
-  // keep it simple (and safe)
   return /^[a-z0-9]{2,5}$/.test(ext) ? ext : "bin";
 }
 
-function keyForUpload({ section, season, divisionCode, leagueOrder, ext }) {
-  // All mini-leagues images go under media/mini-leagues/...
-  // Deterministic keys = overwrite on every upload.
+/**
+ * Deterministic base key (NO extension) for each section.
+ * We’ll delete all known image extensions for that base before putting the new one.
+ */
+function baseKeyForUpload({ section, season, divisionCode, leagueOrder }) {
   if (section === "mini-leagues-updates") {
-    return `media/mini-leagues/updates_${season}.${ext}`;
+    return `media/mini-leagues/updates_${season}`;
   }
+
+  // legacy single slot (keep supported)
   if (section === "mini-leagues-winners") {
-    return `media/mini-leagues/winners_${season}.${ext}`;
+    return `media/mini-leagues/winners_${season}`;
   }
+
+  // NEW: two fixed winner slots
+  if (section === "mini-leagues-winners-1") {
+    return `media/mini-leagues/winners_1_${season}`;
+  }
+  if (section === "mini-leagues-winners-2") {
+    return `media/mini-leagues/winners_2_${season}`;
+  }
+
   if (section === "mini-leagues-division") {
-    return `media/mini-leagues/divisions/${season}/${divisionCode}.${ext}`;
+    return `media/mini-leagues/divisions/${season}/${divisionCode}`;
   }
   if (section === "mini-leagues-league") {
-    return `media/mini-leagues/leagues/${season}/${divisionCode}/${leagueOrder}.${ext}`;
+    return `media/mini-leagues/leagues/${season}/${divisionCode}/${leagueOrder}`;
   }
   return "";
+}
+
+const IMAGE_EXTS_TO_CLEAN = ["webp", "png", "jpg", "gif", "avif"];
+
+/**
+ * Enforce: "only ever one photo for each section"
+ * If the admin uploads a different file type later, we remove previous extensions first.
+ */
+async function deleteOtherExtVariants(bucket, baseKey) {
+  const deletions = IMAGE_EXTS_TO_CLEAN.map((ext) => bucket.delete(`${baseKey}.${ext}`).catch(() => null));
+  await Promise.all(deletions);
 }
 
 export async function onRequest(context) {
@@ -150,10 +178,14 @@ export async function onRequest(context) {
       return json({ ok: false, error: "Missing divisionCode or leagueOrder" }, 400);
     }
 
-    const ext = extFromFile(file);
-    const key = keyForUpload({ section, season, divisionCode, leagueOrder, ext });
+    const baseKey = baseKeyForUpload({ section, season, divisionCode, leagueOrder });
+    if (!baseKey) return json({ ok: false, error: "Invalid section" }, 400);
 
-    if (!key) return json({ ok: false, error: "Invalid section" }, 400);
+    const ext = extFromFile(file);
+    const key = `${baseKey}.${ext}`;
+
+    // ✅ enforce “only one image per section”
+    await deleteOtherExtVariants(r2.bucket, baseKey);
 
     const buf = await file.arrayBuffer();
 
