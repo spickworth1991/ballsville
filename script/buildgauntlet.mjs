@@ -433,15 +433,25 @@ async function loadLeaguesAndSeeds(year) {
         seededCount: 0,
         ownersCount: 0,
         missingOwners: [], // filled below
+        manualSlots: [], // rows with NULL owner_id (used to seed open / ownerless Sleeper rosters)
       });
     }
     const league = leaguesMap.get(leagueId);
     const ownerId = row.owner_id ? String(row.owner_id) : null;
+
     if (ownerId) {
       league.seedsByOwnerId[ownerId] =
         row.seed != null ? Number(row.seed) : null;
       league.ownerNamesById[ownerId] = row.owner_name || ownerId;
+    } else {
+      // Manual placeholder slot (created in /admin/gauntlet/seeds)
+      league.manualSlots.push({
+        rowId: row.id,
+        ownerName: row.owner_name || "TBD",
+        seed: row.seed != null ? Number(row.seed) : null,
+      });
     }
+
   }
 
   // Auto-fill missing league_name by hitting Sleeper once per league
@@ -451,26 +461,31 @@ async function loadLeaguesAndSeeds(year) {
   const missingSeedLeagues = [];
 
   leaguesMap.forEach((league) => {
-    const ownerIds = Object.keys(league.ownerNamesById);
-    league.ownersCount = ownerIds.length;
+   const ownerIds = Object.keys(league.ownerNamesById);
+    const manualSlots = Array.isArray(league.manualSlots) ? league.manualSlots : [];
+
+    // Owners = real Sleeper owners + manual placeholder slots (owner_id NULL)
+    league.ownersCount = ownerIds.length + manualSlots.length;
 
     const missingOwners = [];
     let seededCount = 0;
 
+    // Real owners
     ownerIds.forEach((ownerId) => {
       const s = league.seedsByOwnerId[ownerId];
-      if (s != null) {
-        seededCount += 1;
-      } else {
-        missingOwners.push({
-          ownerId,
-          ownerName: league.ownerNamesById[ownerId],
-        });
-      }
+      if (s != null) seededCount += 1;
+      else missingOwners.push({ ownerId, ownerName: league.ownerNamesById[ownerId] });
+    });
+
+    // Manual placeholder slots
+    manualSlots.forEach((slot) => {
+      if (slot?.seed != null) seededCount += 1;
+      else missingOwners.push({ ownerId: null, ownerName: slot?.ownerName || "TBD" });
     });
 
     league.seededCount = seededCount;
     league.missingOwners = missingOwners;
+
 
     // A league is "missing seeds" if any owner row has a null seed
     if (seededCount < league.ownersCount) {
@@ -587,14 +602,50 @@ async function processLeague(
 
   const ownersByRoster = new Map();
 
-  rosters.forEach((r) => {
+  const seedConfig = seedsForLeague; // ✅ unify naming
+
+  const seedsByOwnerId = seedConfig?.seedsByOwnerId || seedConfig || {};
+  const manualSlots = Array.isArray(seedConfig?.manualSlots)
+    ? seedConfig.manualSlots
+    : [];
+
+  // If Sleeper has open rosters (owner_id null), we assign them the manual slots
+  // from /admin/gauntlet/seeds in ascending seed order to keep bracket positions stable.
+  const manualSlotsSorted = manualSlots
+    .slice()
+    .sort((a, b) => (a?.seed ?? 999) - (b?.seed ?? 999));
+  let manualSlotPtr = 0;
+
+  rosters
+    .slice()
+    .sort((a, b) => {
+      const ao = a.owner_id ? 0 : 1;
+      const bo = b.owner_id ? 0 : 1;
+      if (ao !== bo) return ao - bo; // owners first, ownerless last
+      return (a.roster_id || 0) - (b.roster_id || 0); // stable ordering
+    })
+    .forEach((r) => {
+
     const rosterId = r.roster_id;
-    const ownerId = r.owner_id;
-    const ownerName = userMap[ownerId] || `Owner ${ownerId}`;
-    const manualSeed =
-      seedsForLeague && seedsForLeague[ownerId] != null
-        ? Number(seedsForLeague[ownerId])
+    const rawOwnerId = r.owner_id ? String(r.owner_id) : null;
+
+    // Default mapping for real owners
+    let ownerId = rawOwnerId;
+    let ownerName = rawOwnerId ? userMap[rawOwnerId] || `Owner ${rawOwnerId}` : null;
+    let manualSeed =
+      rawOwnerId && seedsByOwnerId[rawOwnerId] != null
+        ? Number(seedsByOwnerId[rawOwnerId])
         : null;
+
+    // If this roster has NO owner, use the corresponding manual placeholder slot
+    if (!rawOwnerId) {
+      const slot = manualSlotsSorted[manualSlotPtr] || null;
+      if (slot) manualSlotPtr += 1;
+
+      ownerId = slot?.rowId != null ? `manual:${slot.rowId}` : `manual_roster:${rosterId}`;
+      ownerName = (slot?.ownerName || "TBD").trim() || "TBD";
+      manualSeed = slot?.seed != null ? Number(slot.seed) : null;
+    }
 
     ownersByRoster.set(rosterId, {
       rosterId,
@@ -1407,7 +1458,7 @@ async function main() {
           cfg.division,
           cfg.godName,
           cfg.side,
-          cfg.seedsByOwnerId,
+          cfg,
           playersDB
         );
       })
