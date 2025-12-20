@@ -26,15 +26,18 @@ const UPDATED_LABEL = "Updated: 01/23/2025";
 const DEFAULT_EDITABLE = {
   season: SEASON,
   hero: {
-    promoImageKey: "", // R2 key (preferred)
-    promoImageUrl: "/photos/minileagues-v2.webp", // fallback
+    promoImageKey: "",
+    promoImageUrl: "/photos/minileagues-v2.webp",
     updatesHtml: "<p>Updates will show here.</p>",
   },
   winners: {
     title: "Last Year’s Winners",
-    imageKey: "",
-    imageUrl: "/photos/hall-of-fame/minileageus2024.png",
-    caption: "",
+    imageKey1: "",
+    imageUrl1: "/photos/hall-of-fame/minileageus2024.png",
+    caption1: "",
+    imageKey2: "",
+    imageUrl2: "",
+    caption2: "",
   },
 };
 
@@ -85,15 +88,20 @@ export default function MiniLeaguesClient() {
   const [divisions, setDivisions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+
   const bust = `v=${Date.now()}`;
+
   const updatesSrc = editable?.hero?.promoImageKey
-  ? `/r2/${editable.hero.promoImageKey}?v=${encodeURIComponent(editable.hero.promoImageKey)}`
-  : editable?.hero?.promoImageUrl || DEFAULT_EDITABLE.hero.promoImageUrl;
+    ? `/r2/${editable.hero.promoImageKey}?v=${encodeURIComponent(editable.hero.promoImageKey)}`
+    : editable?.hero?.promoImageUrl || DEFAULT_EDITABLE.hero.promoImageUrl;
 
-const winnersSrc = editable?.winners?.imageKey
-  ? `/r2/${editable.winners.imageKey}?v=${encodeURIComponent(editable.winners.imageKey)}`
-  : editable?.winners?.imageUrl || DEFAULT_EDITABLE.winners.imageUrl;
+  const winners1Src = editable?.winners?.imageKey1
+    ? `/r2/${editable.winners.imageKey1}?v=${encodeURIComponent(editable.winners.imageKey1)}`
+    : editable?.winners?.imageUrl1 || DEFAULT_EDITABLE.winners.imageUrl1;
 
+  const winners2Src = editable?.winners?.imageKey2
+    ? `/r2/${editable.winners.imageKey2}?v=${encodeURIComponent(editable.winners.imageKey2)}`
+    : editable?.winners?.imageUrl2 || DEFAULT_EDITABLE.winners.imageUrl2;
 
   async function loadAll() {
     setErr("");
@@ -108,6 +116,11 @@ const winnersSrc = editable?.winners?.imageKey
         const hero = pageData?.hero || {};
         const winners = pageData?.winners || {};
 
+        // Back-compat with old schema: winners.imageKey/imageUrl/caption
+        const imageKey1 = winners.imageKey1 ?? winners.imageKey ?? "";
+        const imageUrl1 = winners.imageUrl1 ?? winners.imageUrl ?? DEFAULT_EDITABLE.winners.imageUrl1;
+        const caption1 = winners.caption1 ?? winners.caption ?? "";
+
         setEditable({
           ...DEFAULT_EDITABLE,
           ...pageData,
@@ -120,9 +133,12 @@ const winnersSrc = editable?.winners?.imageKey
           winners: {
             ...DEFAULT_EDITABLE.winners,
             title: winners.title ?? DEFAULT_EDITABLE.winners.title,
-            caption: winners.caption ?? DEFAULT_EDITABLE.winners.caption,
-            imageKey: winners.imageKey ?? "",
-            imageUrl: winners.imageUrl ?? DEFAULT_EDITABLE.winners.imageUrl,
+            imageKey1,
+            imageUrl1,
+            caption1,
+            imageKey2: winners.imageKey2 ?? "",
+            imageUrl2: winners.imageUrl2 ?? "",
+            caption2: winners.caption2 ?? "",
           },
         });
       } else {
@@ -359,27 +375,42 @@ const winnersSrc = editable?.winners?.imageKey
             )}
           </section>
 
-          {/* WINNERS (now editable) */}
+          {/* WINNERS */}
           <section className="space-y-4">
-            <h2 className="text-2xl sm:text-3xl font-semibold">{editable?.winners?.title || DEFAULT_EDITABLE.winners.title}</h2>
+            <h2 className="text-2xl sm:text-3xl font-semibold">
+              {editable?.winners?.title || DEFAULT_EDITABLE.winners.title}
+            </h2>
 
             <div className="rounded-3xl border border-subtle bg-card-surface shadow-sm overflow-hidden">
-              {/* Controlled size so it always looks good */}
               <div className="p-4 bg-black/10">
-                <div className="relative w-full max-w-[980px] mx-auto h-[360px] sm:h-[460px]">
-                  <Image
-                    src={winnersSrc}
-                    alt="Last year winners"
-                    fill
-                    sizes="100vw"
-                    className="object-contain"
-                  />
+                <div
+                  className={`mx-auto w-full max-w-[1100px] grid gap-4 ${
+                    winners2Src ? "md:grid-cols-2" : "grid-cols-1"
+                  }`}
+                >
+                  {/* Image 1 */}
+                  <div className="space-y-2">
+                    <div className="relative w-full h-[320px] sm:h-[420px]">
+                      <Image src={winners1Src} alt="Winners (1)" fill sizes="100vw" className="object-contain" />
+                    </div>
+                    {(editable?.winners?.caption1 || "").trim() ? (
+                      <div className="text-sm text-muted">{editable.winners.caption1}</div>
+                    ) : null}
+                  </div>
+
+                  {/* Image 2 (optional) */}
+                  {winners2Src ? (
+                    <div className="space-y-2">
+                      <div className="relative w-full h-[320px] sm:h-[420px]">
+                        <Image src={winners2Src} alt="Winners (2)" fill sizes="100vw" className="object-contain" />
+                      </div>
+                      {(editable?.winners?.caption2 || "").trim() ? (
+                        <div className="text-sm text-muted">{editable.winners.caption2}</div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               </div>
-
-              {(editable?.winners?.caption || "").trim() ? (
-                <div className="p-4 text-sm text-muted border-t border-subtle">{editable.winners.caption}</div>
-              ) : null}
             </div>
           </section>
         </div>

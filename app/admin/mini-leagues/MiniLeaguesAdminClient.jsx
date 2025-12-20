@@ -1,7 +1,7 @@
 // app/admin/mini-leagues/MiniLeaguesAdminClient.jsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { getSupabase } from "@/src/lib/supabaseClient";
@@ -18,6 +18,9 @@ const STATUS_OPTIONS = [
 // ==============================
 // ONLY THESE ARE EDITABLE IN CMS
 // ==============================
+// NOTE: winners now has 2 images, each with its own caption.
+// - caption1 = caption under image 1
+// - caption2 = caption under image 2
 const DEFAULT_PAGE_EDITABLE = {
   season: SEASON,
   hero: {
@@ -27,9 +30,12 @@ const DEFAULT_PAGE_EDITABLE = {
   },
   winners: {
     title: "Last Year’s Winners",
-    imageKey: "",
-    imageUrl: "/photos/hall-of-fame/minileageus2024.png", // fallback
-    caption: "",
+    imageKey1: "",
+    imageUrl1: "/photos/hall-of-fame/minileageus2024.png", // fallback
+    caption1: "",
+    imageKey2: "",
+    imageUrl2: "",
+    caption2: "",
   },
 };
 
@@ -99,6 +105,8 @@ async function apiPUT(type, data) {
   return res.json();
 }
 
+// Upload only happens during Save.
+// Payload fields drive deterministic keys on server, so overwrites stay clean.
 async function uploadImage(file, payload) {
   const token = await getAccessToken();
   const form = new FormData();
@@ -118,9 +126,8 @@ async function uploadImage(file, payload) {
   });
 
   if (!res.ok) throw new Error(await readApiError(res));
-  return res.json();
+  return res.json(); // expects { key: "..." }
 }
-
 
 function StatusPill({ status }) {
   const label = (STATUS_OPTIONS.find((x) => x.value === status)?.label || "TBD").toUpperCase();
@@ -140,6 +147,22 @@ function StatusPill({ status }) {
   );
 }
 
+function useObjectUrl() {
+  const urlsRef = useRef(new Set());
+  useEffect(() => {
+    return () => {
+      for (const url of urlsRef.current) URL.revokeObjectURL(url);
+      urlsRef.current.clear();
+    };
+  }, []);
+  return (file) => {
+    if (!file) return "";
+    const url = URL.createObjectURL(file);
+    urlsRef.current.add(url);
+    return url;
+  };
+}
+
 export default function MiniLeaguesAdminClient() {
   const [tab, setTab] = useState("updates"); // "updates" | "divisions"
   const [loading, setLoading] = useState(true);
@@ -150,12 +173,22 @@ export default function MiniLeaguesAdminClient() {
   const [pageCfg, setPageCfg] = useState(DEFAULT_PAGE_EDITABLE);
   const [divisions, setDivisions] = useState([]);
 
-  // collapsible UI state
+  // Collapsible UI state
   const [openDivs, setOpenDivs] = useState(() => new Set()); // divisionCode set
 
-  const updatesPreview = pageCfg?.hero?.promoImageKey ? `/r2/${pageCfg.hero.promoImageKey}` : pageCfg?.hero?.promoImageUrl;
+  // ============================
+  // PENDING FILES (NO AUTO UPLOAD)
+  // ============================
+  const makeUrl = useObjectUrl();
 
-  const winnersPreview = pageCfg?.winners?.imageKey ? `/r2/${pageCfg.winners.imageKey}` : pageCfg?.winners?.imageUrl;
+  const [pendingUpdatesFile, setPendingUpdatesFile] = useState(null);
+  const [pendingWinners1File, setPendingWinners1File] = useState(null);
+  const [pendingWinners2File, setPendingWinners2File] = useState(null);
+
+  // key: `div:${divisionCode}` -> File
+  const [pendingDivisionFiles, setPendingDivisionFiles] = useState(() => ({}));
+  // key: `lg:${divisionCode}:${leagueOrder}` -> File
+  const [pendingLeagueFiles, setPendingLeagueFiles] = useState(() => ({}));
 
   const divisionCount = divisions.length;
   const leagueCount = useMemo(() => {
@@ -164,14 +197,70 @@ export default function MiniLeaguesAdminClient() {
     return n;
   }, [divisions]);
 
+  // ============================
+  // PREVIEW SOURCES (prefer local pending file, else R2 key, else fallback URL)
+  // ============================
+  const updatesPreview =
+    pendingUpdatesFile
+      ? makeUrl(pendingUpdatesFile)
+      : pageCfg?.hero?.promoImageKey
+      ? `/r2/${pageCfg.hero.promoImageKey}`
+      : pageCfg?.hero?.promoImageUrl;
+
+  const winners1Preview =
+    pendingWinners1File
+      ? makeUrl(pendingWinners1File)
+      : pageCfg?.winners?.imageKey1
+      ? `/r2/${pageCfg.winners.imageKey1}`
+      : pageCfg?.winners?.imageUrl1;
+
+  const winners2Preview =
+    pendingWinners2File
+      ? makeUrl(pendingWinners2File)
+      : pageCfg?.winners?.imageKey2
+      ? `/r2/${pageCfg.winners.imageKey2}`
+      : pageCfg?.winners?.imageUrl2;
+
+  function divisionPreviewSrc(d) {
+    const k = `div:${String(d.divisionCode)}`;
+    const pending = pendingDivisionFiles[k];
+    if (pending) return makeUrl(pending);
+    return d.imageKey ? `/r2/${d.imageKey}` : d.imageUrl || "";
+  }
+
+  function leaguePreviewSrc(divisionCode, league) {
+    const order = league?.order ?? 0;
+    const k = `lg:${String(divisionCode)}:${String(order)}`;
+    const pending = pendingLeagueFiles[k];
+    if (pending) return makeUrl(pending);
+    return league.imageKey ? `/r2/${league.imageKey}` : league.imageUrl || "";
+  }
+
+  // ==================================
+  // LOAD
+  // ==================================
   async function loadAll() {
     setErr("");
     setOk("");
     setLoading(true);
+
+    // clear pending files when reloading so the UI matches actual saved state
+    setPendingUpdatesFile(null);
+    setPendingWinners1File(null);
+    setPendingWinners2File(null);
+    setPendingDivisionFiles({});
+    setPendingLeagueFiles({});
+
     try {
       const page = await apiGET("page");
       const hero = page?.data?.hero || {};
       const winners = page?.data?.winners || {};
+
+      // Back-compat:
+      // - old schema might be winners.imageKey / imageUrl / caption
+      const imageKey1 = winners.imageKey1 ?? winners.imageKey ?? "";
+      const imageUrl1 = winners.imageUrl1 ?? winners.imageUrl ?? DEFAULT_PAGE_EDITABLE.winners.imageUrl1;
+      const caption1 = winners.caption1 ?? winners.caption ?? "";
 
       setPageCfg({
         ...DEFAULT_PAGE_EDITABLE,
@@ -184,9 +273,12 @@ export default function MiniLeaguesAdminClient() {
         winners: {
           ...DEFAULT_PAGE_EDITABLE.winners,
           title: winners.title ?? DEFAULT_PAGE_EDITABLE.winners.title,
-          caption: winners.caption ?? DEFAULT_PAGE_EDITABLE.winners.caption,
-          imageKey: winners.imageKey ?? "",
-          imageUrl: winners.imageUrl ?? DEFAULT_PAGE_EDITABLE.winners.imageUrl,
+          imageKey1,
+          imageUrl1,
+          caption1,
+          imageKey2: winners.imageKey2 ?? "",
+          imageUrl2: winners.imageUrl2 ?? "",
+          caption2: winners.caption2 ?? "",
         },
       });
 
@@ -195,7 +287,6 @@ export default function MiniLeaguesAdminClient() {
       const list = Array.isArray(raw?.divisions) ? raw.divisions : Array.isArray(raw) ? raw : [];
       setDivisions(list.length ? list : [emptyDivision("100"), emptyDivision("200"), emptyDivision("400")]);
 
-      // open first division by default if none open yet
       setOpenDivs((prev) => {
         if (prev.size) return prev;
         const s = new Set();
@@ -214,47 +305,9 @@ export default function MiniLeaguesAdminClient() {
     loadAll();
   }, []);
 
-  async function saveUpdatesAndWinners() {
-    setSaving(true);
-    setErr("");
-    setOk("");
-    try {
-      await apiPUT("page", {
-        season: SEASON,
-        hero: {
-          promoImageKey: pageCfg.hero.promoImageKey,
-          promoImageUrl: pageCfg.hero.promoImageUrl,
-          updatesHtml: pageCfg.hero.updatesHtml,
-        },
-        winners: {
-          title: pageCfg.winners.title,
-          caption: pageCfg.winners.caption,
-          imageKey: pageCfg.winners.imageKey,
-          imageUrl: pageCfg.winners.imageUrl,
-        },
-      });
-      setOk("Saved Updates + Winners to R2.");
-    } catch (e) {
-      setErr(e?.message || "Save failed.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function saveDivisions() {
-    setSaving(true);
-    setErr("");
-    setOk("");
-    try {
-      await apiPUT("divisions", { season: SEASON, divisions });
-      setOk("Saved divisions to R2.");
-    } catch (e) {
-      setErr(e?.message || "Save failed.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
+  // ==================================
+  // MUTATORS
+  // ==================================
   function updateDivision(idx, patch) {
     setDivisions((prev) => prev.map((d, i) => (i === idx ? { ...d, ...patch } : d)));
   }
@@ -291,11 +344,9 @@ export default function MiniLeaguesAdminClient() {
   function addDivision() {
     setDivisions((prev) => {
       const nextCode = String((prev.length + 1) * 100);
-      const next = [...prev, emptyDivision(nextCode)];
-      return next;
+      return [...prev, emptyDivision(nextCode)];
     });
 
-    // open it
     setOpenDivs((prev) => {
       const next = new Set(prev);
       next.add(String((divisions.length + 1) * 100));
@@ -304,6 +355,157 @@ export default function MiniLeaguesAdminClient() {
   }
 
   const canAct = !saving && !loading;
+
+  // ==================================
+  // SAVE HELPERS (UPLOAD THEN PUT)
+  // ==================================
+  async function saveUpdatesAndWinners() {
+    setSaving(true);
+    setErr("");
+    setOk("");
+
+    try {
+      // 1) upload pending files (deterministic keys -> overwrites)
+      let nextHeroKey = pageCfg.hero.promoImageKey;
+      let nextW1Key = pageCfg.winners.imageKey1;
+      let nextW2Key = pageCfg.winners.imageKey2;
+
+      if (pendingUpdatesFile) {
+        const up = await uploadImage(pendingUpdatesFile, {
+          section: "mini-leagues-updates",
+          season: SEASON,
+        });
+        nextHeroKey = up.key;
+      }
+
+      if (pendingWinners1File) {
+        const up = await uploadImage(pendingWinners1File, {
+          section: "mini-leagues-winners-1",
+          season: SEASON,
+        });
+        nextW1Key = up.key;
+      }
+
+      if (pendingWinners2File) {
+        const up = await uploadImage(pendingWinners2File, {
+          section: "mini-leagues-winners-2",
+          season: SEASON,
+        });
+        nextW2Key = up.key;
+      }
+
+      // 2) persist JSON (always the same fields)
+      const payload = {
+        season: SEASON,
+        hero: {
+          promoImageKey: nextHeroKey || "",
+          promoImageUrl: pageCfg.hero.promoImageUrl || "",
+          updatesHtml: pageCfg.hero.updatesHtml || "",
+        },
+        winners: {
+          title: pageCfg.winners.title || "",
+          imageKey1: nextW1Key || "",
+          imageUrl1: pageCfg.winners.imageUrl1 || "",
+          caption1: pageCfg.winners.caption1 || "",
+          imageKey2: nextW2Key || "",
+          imageUrl2: pageCfg.winners.imageUrl2 || "",
+          caption2: pageCfg.winners.caption2 || "",
+        },
+      };
+
+      await apiPUT("page", payload);
+
+      // 3) update state + clear pending
+      setPageCfg((p) => ({
+        ...p,
+        hero: { ...p.hero, promoImageKey: nextHeroKey || "" },
+        winners: {
+          ...p.winners,
+          imageKey1: nextW1Key || "",
+          imageKey2: nextW2Key || "",
+        },
+      }));
+
+      setPendingUpdatesFile(null);
+      setPendingWinners1File(null);
+      setPendingWinners2File(null);
+
+      setOk("Saved Updates + Winners (images uploaded on save).");
+    } catch (e) {
+      setErr(e?.message || "Save failed.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveDivisions() {
+    setSaving(true);
+    setErr("");
+    setOk("");
+
+    try {
+      // Upload pending division images first
+      let nextDivisions = divisions;
+
+      // 1) Divisions
+      const divEntries = Object.entries(pendingDivisionFiles);
+      for (const [key, file] of divEntries) {
+        if (!file) continue;
+        // key: div:CODE
+        const divisionCode = key.split(":")[1];
+        const up = await uploadImage(file, {
+          section: "mini-leagues-division",
+          season: SEASON,
+          divisionCode,
+        });
+
+        nextDivisions = nextDivisions.map((d) =>
+          String(d.divisionCode) === String(divisionCode) ? { ...d, imageKey: up.key } : d
+        );
+      }
+
+      // 2) Leagues
+      const leagueEntries = Object.entries(pendingLeagueFiles);
+      for (const [key, file] of leagueEntries) {
+        if (!file) continue;
+        // key: lg:DIV:ORDER
+        const [, divisionCode, leagueOrder] = key.split(":");
+        const up = await uploadImage(file, {
+          section: "mini-leagues-league",
+          season: SEASON,
+          divisionCode,
+          leagueOrder,
+        });
+
+        nextDivisions = nextDivisions.map((d) => {
+          if (String(d.divisionCode) !== String(divisionCode)) return d;
+          const leagues = Array.isArray(d.leagues) ? d.leagues.map((l) => ({ ...l })) : [];
+          const lo = Number(leagueOrder);
+          for (let i = 0; i < leagues.length; i++) {
+            const curOrder = Number(leagues[i].order ?? i + 1);
+            if (curOrder === lo) {
+              leagues[i].imageKey = up.key;
+              break;
+            }
+          }
+          return { ...d, leagues };
+        });
+      }
+
+      // Persist JSON
+      await apiPUT("divisions", { season: SEASON, divisions: nextDivisions });
+
+      // Update state + clear pending maps
+      setDivisions(nextDivisions);
+      setPendingDivisionFiles({});
+      setPendingLeagueFiles({});
+      setOk("Saved divisions (images uploaded on save).");
+    } catch (e) {
+      setErr(e?.message || "Save failed.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <main className="relative min-h-screen text-fg">
@@ -321,7 +523,7 @@ export default function MiniLeaguesAdminClient() {
                   Mini-Leagues <span className="text-primary">CMS</span>
                 </h1>
                 <p className="text-sm text-muted">
-                  Editable blocks: <strong>Updates</strong> (image + HTML) and <strong>Last Year’s Winners</strong> (image + title/caption), plus <strong>Divisions/Leagues</strong>.
+                  Images do <strong>not</strong> upload on select. They upload only when you click <strong>Save</strong>.
                 </p>
               </div>
 
@@ -353,14 +555,10 @@ export default function MiniLeaguesAdminClient() {
             </div>
 
             {err ? (
-              <div className="mt-4 rounded-2xl border border-subtle bg-card-surface p-3 text-sm text-red-300">
-                {err}
-              </div>
+              <div className="mt-4 rounded-2xl border border-subtle bg-card-surface p-3 text-sm text-red-300">{err}</div>
             ) : null}
             {ok ? (
-              <div className="mt-4 rounded-2xl border border-subtle bg-card-surface p-3 text-sm text-green-300">
-                {ok}
-              </div>
+              <div className="mt-4 rounded-2xl border border-subtle bg-card-surface p-3 text-sm text-green-300">{ok}</div>
             ) : null}
           </header>
 
@@ -382,24 +580,18 @@ export default function MiniLeaguesAdminClient() {
                 />
 
                 <div className="pt-2 flex items-center justify-between gap-3">
-                  <div className="text-sm text-muted">Updates image</div>
+                  <div className="text-sm text-muted">
+                    Updates image{" "}
+                    {pendingUpdatesFile ? <span className="text-amber-200">(pending)</span> : null}
+                  </div>
                   <input
                     type="file"
                     accept="image/*"
-                    onChange={async (e) => {
+                    onChange={(e) => {
                       const f = e.target.files?.[0];
                       if (!f) return;
-                      setErr("");
-                      setOk("");
-                      try {
-                        const up = await uploadImage(f, { section: "mini-leagues-updates", season: SEASON });
-                        setPageCfg((p) => ({ ...p, hero: { ...p.hero, promoImageKey: up.key } }));
-                        setOk("Uploaded updates image.");
-                      } catch (ex) {
-                        setErr(ex?.message || "Upload failed.");
-                      } finally {
-                        e.target.value = "";
-                      }
+                      setPendingUpdatesFile(f);
+                      e.target.value = "";
                     }}
                   />
                 </div>
@@ -408,7 +600,12 @@ export default function MiniLeaguesAdminClient() {
                   <Image src={updatesPreview} alt="Updates preview" fill className="object-cover" />
                 </div>
 
-                <button className="btn btn-primary w-full" type="button" onClick={saveUpdatesAndWinners} disabled={!canAct}>
+                <button
+                  className="btn btn-primary w-full"
+                  type="button"
+                  onClick={saveUpdatesAndWinners}
+                  disabled={!canAct}
+                >
                   {saving ? "Saving…" : "Save Updates + Winners"}
                 </button>
               </div>
@@ -421,47 +618,91 @@ export default function MiniLeaguesAdminClient() {
                 <input
                   className="input w-full"
                   value={pageCfg.winners.title}
-                  onChange={(e) => setPageCfg((p) => ({ ...p, winners: { ...p.winners, title: e.target.value } }))}
+                  onChange={(e) =>
+                    setPageCfg((p) => ({ ...p, winners: { ...p.winners, title: e.target.value } }))
+                  }
                 />
 
-                <label className="block text-sm text-muted">Caption (optional)</label>
-                <input
-                  className="input w-full"
-                  value={pageCfg.winners.caption}
-                  onChange={(e) => setPageCfg((p) => ({ ...p, winners: { ...p.winners, caption: e.target.value } }))}
-                />
-
-                <div className="pt-2 flex items-center justify-between gap-3">
-                  <div className="text-sm text-muted">Winners image</div>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={async (e) => {
-                      const f = e.target.files?.[0];
-                      if (!f) return;
-                      setErr("");
-                      setOk("");
-                      try {
-                        const up = await uploadImage(f, { section: "mini-leagues-winners", season: SEASON });
-                        setPageCfg((p) => ({ ...p, winners: { ...p.winners, imageKey: up.key } }));
-                        setOk("Uploaded winners image.");
-                      } catch (ex) {
-                        setErr(ex?.message || "Upload failed.");
-                      } finally {
+                {/* Image 1 */}
+                <div className="rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm text-muted">
+                      Winners image (1) {pendingWinners1File ? <span className="text-amber-200">(pending)</span> : null}
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (!f) return;
+                        setPendingWinners1File(f);
                         e.target.value = "";
-                      }
-                    }}
-                  />
-                </div>
+                      }}
+                    />
+                  </div>
 
-                {/* Controlled display size: looks good even if image is huge or weird ratio */}
-                <div className="rounded-2xl border border-subtle bg-black/20 overflow-hidden p-4">
-                  <div className="relative w-full max-w-[720px] mx-auto h-[320px] sm:h-[380px]">
-                    <Image src={winnersPreview} alt="Winners preview" fill className="object-contain" />
+                  <label className="block text-sm text-muted">Caption (1) (optional)</label>
+                  <input
+                    className="input w-full"
+                    value={pageCfg.winners.caption1}
+                    onChange={(e) =>
+                      setPageCfg((p) => ({ ...p, winners: { ...p.winners, caption1: e.target.value } }))
+                    }
+                  />
+
+                  <div className="rounded-2xl border border-subtle bg-black/20 overflow-hidden p-4">
+                    <div className="relative w-full max-w-[720px] mx-auto h-[280px] sm:h-[320px]">
+                      <Image src={winners1Preview} alt="Winners preview (1)" fill className="object-contain" />
+                    </div>
                   </div>
                 </div>
 
-                <button className="btn btn-outline w-full" type="button" onClick={saveUpdatesAndWinners} disabled={!canAct}>
+                {/* Image 2 */}
+                <div className="rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm text-muted">
+                      Winners image (2) {pendingWinners2File ? <span className="text-amber-200">(pending)</span> : null}
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (!f) return;
+                        setPendingWinners2File(f);
+                        e.target.value = "";
+                      }}
+                    />
+                  </div>
+
+                  <label className="block text-sm text-muted">Caption (2) (optional)</label>
+                  <input
+                    className="input w-full"
+                    value={pageCfg.winners.caption2}
+                    onChange={(e) =>
+                      setPageCfg((p) => ({ ...p, winners: { ...p.winners, caption2: e.target.value } }))
+                    }
+                  />
+
+                  {winners2Preview ? (
+                    <div className="rounded-2xl border border-subtle bg-black/20 overflow-hidden p-4">
+                      <div className="relative w-full max-w-[720px] mx-auto h-[280px] sm:h-[320px]">
+                        <Image src={winners2Preview} alt="Winners preview (2)" fill className="object-contain" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-subtle bg-black/10 p-4 text-sm text-muted">
+                      (No image selected for slot 2 yet)
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  className="btn btn-outline w-full"
+                  type="button"
+                  onClick={saveUpdatesAndWinners}
+                  disabled={!canAct}
+                >
                   {saving ? "Saving…" : "Save Updates + Winners"}
                 </button>
               </div>
@@ -475,6 +716,9 @@ export default function MiniLeaguesAdminClient() {
                     <h2 className="text-xl font-semibold text-primary">Divisions & Leagues</h2>
                     <p className="text-sm text-muted">
                       {divisionCount} divisions • {leagueCount} leagues • Status: full / filling / tbd / drafting
+                    </p>
+                    <p className="text-xs text-muted">
+                      Images are <strong>pending</strong> until you click <strong>Save Divisions</strong>.
                     </p>
                   </div>
 
@@ -502,10 +746,14 @@ export default function MiniLeaguesAdminClient() {
                   .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
                   .map((d, divIdx) => {
                     const isOpen = openDivs.has(String(d.divisionCode));
-                    const divPreview = d.imageKey ? `/r2/${d.imageKey}` : d.imageUrl || "";
+                    const divPreview = divisionPreviewSrc(d);
+                    const divPending = Boolean(pendingDivisionFiles[`div:${String(d.divisionCode)}`]);
 
                     return (
-                      <div key={d.divisionCode} className="rounded-3xl border border-subtle bg-card-surface shadow-sm overflow-hidden">
+                      <div
+                        key={d.divisionCode}
+                        className="rounded-3xl border border-subtle bg-card-surface shadow-sm overflow-hidden"
+                      >
                         {/* Collapsible header */}
                         <button
                           type="button"
@@ -517,10 +765,14 @@ export default function MiniLeaguesAdminClient() {
                               <div className="flex flex-wrap items-center gap-2">
                                 <h3 className="text-lg font-semibold text-primary truncate">{d.title}</h3>
                                 <StatusPill status={d.status} />
+                                {divPending ? (
+                                  <span className="text-xs text-amber-200">(image pending)</span>
+                                ) : null}
                                 <span className="text-xs text-muted">Order: {d.order ?? "—"}</span>
                               </div>
                               <p className="text-xs text-muted">
-                                {Array.isArray(d.leagues) ? d.leagues.filter((x) => x.active !== false).length : 0} active leagues
+                                {Array.isArray(d.leagues) ? d.leagues.filter((x) => x.active !== false).length : 0} active
+                                leagues
                               </p>
                             </div>
 
@@ -583,30 +835,18 @@ export default function MiniLeaguesAdminClient() {
                               <div className="flex items-center gap-3">
                                 <div>
                                   <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
-                                    Division Image
+                                    Division Image{" "}
+                                    {divPending ? <span className="text-amber-200">(pending)</span> : null}
                                   </div>
                                   <input
                                     type="file"
                                     accept="image/*"
-                                    onChange={async (e) => {
+                                    onChange={(e) => {
                                       const f = e.target.files?.[0];
                                       if (!f) return;
-                                      setErr("");
-                                      setOk("");
-                                      try {
-                                        const up = await uploadImage(f, {
-                                            section: "mini-leagues-division",
-                                            season: SEASON,
-                                            divisionCode: d.divisionCode,
-                                            });
-
-                                        updateDivision(divIdx, { imageKey: up.key });
-                                        setOk(`Uploaded image for ${d.title}.`);
-                                      } catch (ex) {
-                                        setErr(ex?.message || "Upload failed.");
-                                      } finally {
-                                        e.target.value = "";
-                                      }
+                                      const key = `div:${String(d.divisionCode)}`;
+                                      setPendingDivisionFiles((prev) => ({ ...prev, [key]: f }));
+                                      e.target.value = "";
                                     }}
                                   />
                                 </div>
@@ -624,7 +864,11 @@ export default function MiniLeaguesAdminClient() {
 
                               <div className="space-y-3">
                                 {(Array.isArray(d.leagues) ? d.leagues : []).map((l, leagueIdx) => {
-                                  const leaguePreview = l.imageKey ? `/r2/${l.imageKey}` : l.imageUrl || "";
+                                  const order = Number(l.order ?? leagueIdx + 1);
+                                  const pendingKey = `lg:${String(d.divisionCode)}:${String(order)}`;
+                                  const leaguePending = Boolean(pendingLeagueFiles[pendingKey]);
+                                  const leaguePreview = leaguePreviewSrc(d.divisionCode, { ...l, order });
+
                                   return (
                                     <div
                                       key={`${d.divisionCode}-${leagueIdx}`}
@@ -638,7 +882,9 @@ export default function MiniLeaguesAdminClient() {
                                           <input
                                             className="input w-full"
                                             value={l.name || ""}
-                                            onChange={(e) => updateLeague(divIdx, leagueIdx, { name: e.target.value })}
+                                            onChange={(e) =>
+                                              updateLeague(divIdx, leagueIdx, { name: e.target.value })
+                                            }
                                           />
                                         </div>
 
@@ -649,7 +895,9 @@ export default function MiniLeaguesAdminClient() {
                                           <input
                                             className="input w-full"
                                             value={l.url || ""}
-                                            onChange={(e) => updateLeague(divIdx, leagueIdx, { url: e.target.value })}
+                                            onChange={(e) =>
+                                              updateLeague(divIdx, leagueIdx, { url: e.target.value })
+                                            }
                                           />
                                         </div>
 
@@ -660,7 +908,9 @@ export default function MiniLeaguesAdminClient() {
                                           <select
                                             className="input w-full"
                                             value={l.status || "tbd"}
-                                            onChange={(e) => updateLeague(divIdx, leagueIdx, { status: e.target.value })}
+                                            onChange={(e) =>
+                                              updateLeague(divIdx, leagueIdx, { status: e.target.value })
+                                            }
                                           >
                                             {STATUS_OPTIONS.map((o) => (
                                               <option key={o.value} value={o.value}>
@@ -677,41 +927,40 @@ export default function MiniLeaguesAdminClient() {
                                           <input
                                             className="input w-full"
                                             inputMode="numeric"
-                                            value={l.order ?? ""}
-                                            onChange={(e) =>
-                                              updateLeague(divIdx, leagueIdx, { order: Number(e.target.value || 0) })
-                                            }
+                                            value={order}
+                                            onChange={(e) => {
+                                              const nextOrder = Number(e.target.value || 0);
+
+                                              // move any pending file key with it so it stays aligned to the league
+                                              const oldKey = `lg:${String(d.divisionCode)}:${String(order)}`;
+                                              const newKey = `lg:${String(d.divisionCode)}:${String(nextOrder)}`;
+                                              setPendingLeagueFiles((prev) => {
+                                                if (!prev[oldKey]) return prev;
+                                                const copy = { ...prev };
+                                                copy[newKey] = copy[oldKey];
+                                                delete copy[oldKey];
+                                                return copy;
+                                              });
+
+                                              updateLeague(divIdx, leagueIdx, { order: nextOrder });
+                                            }}
                                           />
                                         </div>
 
                                         <div className="flex items-center gap-3">
                                           <div>
                                             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
-                                              Image
+                                              Image{" "}
+                                              {leaguePending ? <span className="text-amber-200">(pending)</span> : null}
                                             </div>
                                             <input
                                               type="file"
                                               accept="image/*"
-                                              onChange={async (e) => {
+                                              onChange={(e) => {
                                                 const f = e.target.files?.[0];
                                                 if (!f) return;
-                                                setErr("");
-                                                setOk("");
-                                                try {
-                                                  const up = await uploadImage(f, {
-                                                    section: "mini-leagues-league",
-                                                    season: SEASON,
-                                                    divisionCode: d.divisionCode,
-                                                    leagueOrder: l.order ?? (leagueIdx + 1),
-                                                    });
-
-                                                  updateLeague(divIdx, leagueIdx, { imageKey: up.key });
-                                                  setOk(`Uploaded image for ${l.name || `League ${leagueIdx + 1}`}.`);
-                                                } catch (ex) {
-                                                  setErr(ex?.message || "Upload failed.");
-                                                } finally {
-                                                  e.target.value = "";
-                                                }
+                                                setPendingLeagueFiles((prev) => ({ ...prev, [pendingKey]: f }));
+                                                e.target.value = "";
                                               }}
                                             />
                                           </div>
@@ -728,7 +977,9 @@ export default function MiniLeaguesAdminClient() {
                                         <input
                                           type="checkbox"
                                           checked={l.active !== false}
-                                          onChange={(e) => updateLeague(divIdx, leagueIdx, { active: e.target.checked })}
+                                          onChange={(e) =>
+                                            updateLeague(divIdx, leagueIdx, { active: e.target.checked })
+                                          }
                                         />
                                         Active
                                       </label>
