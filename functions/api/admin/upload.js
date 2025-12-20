@@ -25,19 +25,30 @@ function safeName(name) {
 }
 
 function ensureR2(env) {
-  const b = env.ADMIN_BUCKET;
-  // If binding is misconfigured, Cloudflare will still give you "something" but not an R2 object.
-  if (!b) return { ok: false, status: 500, error: "Missing R2 binding: ADMIN_BUCKET" };
+  // Respect your current binding name: admin_bucket
+  // Also allow ADMIN_BUCKET as a future optional rename (NO behavior change required now)
+  const b = env.admin_bucket || env.ADMIN_BUCKET;
+
+  if (!b) {
+    return {
+      ok: false,
+      status: 500,
+      error: "Missing R2 binding: admin_bucket",
+    };
+  }
+
   if (typeof b.get !== "function" || typeof b.put !== "function") {
     return {
       ok: false,
       status: 500,
       error:
-        "ADMIN_BUCKET binding is not an R2 bucket object (check Pages > Settings > Bindings: ADMIN_BUCKET).",
+        "admin_bucket binding is not an R2 bucket object (check Pages > Settings > Bindings: admin_bucket).",
     };
   }
+
   return { ok: true, bucket: b };
 }
+
 
 async function requireAdmin(context) {
   const { request, env } = context;
@@ -100,7 +111,6 @@ export async function onRequest(context) {
       httpMetadata: { contentType: file.type || "application/octet-stream" },
     });
 
-    // Served publicly by your /r2 proxy:
     const url = `/r2/${key}`;
 
     return json({ ok: true, key, url });

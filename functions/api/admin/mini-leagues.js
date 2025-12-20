@@ -7,7 +7,7 @@
 //   body: { type: "page"|"divisions", data: any }
 //
 // ENV REQUIRED (Cloudflare Pages -> Settings -> Bindings / Variables):
-// - ADMIN_BUCKET   (R2 Bucket binding name)
+// - R2_BUCKET (preferred) OR ADMIN_BUCKET (fallback)
 // - SUPABASE_URL
 // - SUPABASE_ANON_KEY
 // - ADMIN_EMAILS (comma-separated)  OR NEXT_PUBLIC_ADMIN_EMAILS
@@ -25,17 +25,42 @@ function json(data, status = 200) {
 }
 
 function ensureR2(env) {
-  const b = env.ADMIN_BUCKET;
-  if (!b) return { ok: false, status: 500, error: "Missing R2 binding: ADMIN_BUCKET" };
+  // Respect your current binding name: admin_bucket
+  // Also allow ADMIN_BUCKET as a future optional rename (NO behavior change required now)
+  const b = env.admin_bucket || env.ADMIN_BUCKET;
+
+  if (!b) {
+    return {
+      ok: false,
+      status: 500,
+      error: "Missing R2 binding: admin_bucket",
+    };
+  }
+
   if (typeof b.get !== "function" || typeof b.put !== "function") {
     return {
       ok: false,
       status: 500,
       error:
-        "ADMIN_BUCKET binding is not an R2 bucket object (check Pages > Settings > Bindings: ADMIN_BUCKET).",
+        "admin_bucket binding is not an R2 bucket object (check Pages > Settings > Bindings: admin_bucket).",
     };
   }
+
   return { ok: true, bucket: b };
+}
+
+
+function sanitizePagePayload(data, season) {
+  // Only allow the *editable* Mini-Leagues fields to be persisted.
+  const heroIn = data?.hero && typeof data.hero === "object" ? data.hero : {};
+  return {
+    season,
+    hero: {
+      updatedText: String(heroIn.updatedText || "").slice(0, 200),
+      promoImageKey: String(heroIn.promoImageKey || ""),
+      updatesHtml: String(heroIn.updatesHtml || ""),
+    },
+  };
 }
 
 function getAdminEmails(env) {
@@ -149,7 +174,9 @@ export async function onRequest(context) {
       const key = keyFor(type, season);
       if (!key) return json({ ok: false, error: "Bad type." }, 400);
 
-      await r2.bucket.put(key, JSON.stringify(data, null, 2), {
+      const payloadToSave = type === "page" ? sanitizePagePayload(data, season) : data;
+
+      await r2.bucket.put(key, JSON.stringify(payloadToSave, null, 2), {
         httpMetadata: { contentType: "application/json; charset=utf-8" },
       });
 
@@ -158,7 +185,6 @@ export async function onRequest(context) {
 
     return json({ ok: false, error: "Method not allowed." }, 405);
   } catch (e) {
-    // IMPORTANT: this prevents Cloudflare from returning HTML error pages
     return json(
       {
         ok: false,

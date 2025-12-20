@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { getSupabase } from "@/src/lib/supabaseClient";
@@ -14,23 +14,16 @@ const STATUS_OPTIONS = [
   { value: "full", label: "FULL" },
 ];
 
+// NOTE: Mini-Leagues is intentionally mostly hard-coded.
+// Only the Hero "Updated" pill + the Updates HTML + Promo image should be editable.
+// (Divisions/Leagues remain editable in the other tab.)
 const DEFAULT_PAGE = {
   season: SEASON,
   hero: {
-    eyebrow: "WELCOME TO",
-    title: "the Mini-Leagues game",
-    subtitle:
-      "Way-too-early, rookie-inclusive, budget Best Ball redraft leagues. Most points wins. Optional wagering. Bonuses stack.",
     updatedText: "Updated: 01/23/2025",
-    promoImageKey: "",
-    promoImageUrl: "/photos/minileagues-v2.webp",
+    promoImageKey: "", // R2 key (preferred)
+    promoImageUrl: "/photos/minileagues-v2.webp", // fallback
     updatesHtml: "<p>Updates will show here.</p>",
-  },
-  winners: {
-    title: "Last Year’s Winners",
-    imageKey: "",
-    imageUrl: "/photos/hall-of-fame/minileageus2024.png",
-    caption: "",
   },
 };
 
@@ -73,7 +66,6 @@ async function readApiError(res) {
   }
   const text = await res.text();
   if (!text) return `Request failed (${res.status})`;
-  // If it looks like HTML, show a short, human message.
   if (text.trim().startsWith("<"))
     return `Request failed (${res.status}). See Cloudflare Pages function logs for details.`;
   return text;
@@ -119,7 +111,6 @@ async function uploadImage(file, folder = "mini-leagues") {
   return res.json(); // { ok, key, url }
 }
 
-
 export default function MiniLeaguesAdminClient() {
   const [tab, setTab] = useState("page"); // "page" | "divisions"
   const [loading, setLoading] = useState(true);
@@ -134,10 +125,6 @@ export default function MiniLeaguesAdminClient() {
     ? `/r2/${pageCfg.hero.promoImageKey}`
     : pageCfg?.hero?.promoImageUrl;
 
-  const winnersPreview = pageCfg?.winners?.imageKey
-    ? `/r2/${pageCfg.winners.imageKey}`
-    : pageCfg?.winners?.imageUrl;
-
   async function loadAll() {
     setErr("");
     setOk("");
@@ -145,11 +132,16 @@ export default function MiniLeaguesAdminClient() {
     try {
       const page = await apiGET("page");
       const pageData = page?.data || null;
+
+      // Only merge the editable hero fields.
       setPageCfg({
         ...DEFAULT_PAGE,
-        ...pageData,
-        hero: { ...DEFAULT_PAGE.hero, ...(pageData?.hero || {}) },
-        winners: { ...DEFAULT_PAGE.winners, ...(pageData?.winners || {}) },
+        hero: {
+          ...DEFAULT_PAGE.hero,
+          updatedText: pageData?.hero?.updatedText ?? DEFAULT_PAGE.hero.updatedText,
+          promoImageKey: pageData?.hero?.promoImageKey ?? "",
+          updatesHtml: pageData?.hero?.updatesHtml ?? DEFAULT_PAGE.hero.updatesHtml,
+        },
       });
 
       const div = await apiGET("divisions");
@@ -172,8 +164,18 @@ export default function MiniLeaguesAdminClient() {
     setErr("");
     setOk("");
     try {
-      await apiPUT("page", pageCfg);
-      setOk("Saved page sections to R2.");
+      // Only persist what is supposed to be editable.
+      const payload = {
+        season: SEASON,
+        hero: {
+          updatedText: String(pageCfg?.hero?.updatedText || "").slice(0, 200),
+          promoImageKey: String(pageCfg?.hero?.promoImageKey || ""),
+          updatesHtml: String(pageCfg?.hero?.updatesHtml || ""),
+        },
+      };
+
+      await apiPUT("page", payload);
+      setOk("Saved Mini-Leagues Hero updates.");
     } catch (e) {
       setErr(e?.message || "Save failed.");
     } finally {
@@ -228,7 +230,7 @@ export default function MiniLeaguesAdminClient() {
                   Mini-Leagues <span className="text-primary">Editor</span>
                 </h1>
                 <p className="text-sm text-muted">
-                  Edit only what should be editable: Hero, Winners, and Divisions/Leagues (with direct R2 image uploads).
+                  Mini-Leagues is mostly hard-coded. This admin page only edits the Hero updates + promo image, and the Divisions/Leagues grid.
                 </p>
               </div>
 
@@ -246,7 +248,7 @@ export default function MiniLeaguesAdminClient() {
                 onClick={() => setTab("page")}
                 className={`btn ${tab === "page" ? "btn-primary" : "btn-outline"}`}
               >
-                Page Sections
+                Hero Updates
               </button>
               <button
                 type="button"
@@ -276,28 +278,16 @@ export default function MiniLeaguesAdminClient() {
           ) : tab === "page" ? (
             <section className="grid gap-6 lg:grid-cols-2">
               <div className="rounded-3xl border border-subtle bg-card-surface p-6 shadow-sm space-y-4">
-                <h2 className="text-xl font-semibold text-primary">Hero</h2>
+                <h2 className="text-xl font-semibold text-primary">Hero Updates</h2>
 
-                <label className="block text-sm text-muted">Eyebrow</label>
-                <input
-                  className="input w-full"
-                  value={pageCfg.hero.eyebrow}
-                  onChange={(e) => setPageCfg((p) => ({ ...p, hero: { ...p.hero, eyebrow: e.target.value } }))}
-                />
-
-                <label className="block text-sm text-muted">Title</label>
-                <input
-                  className="input w-full"
-                  value={pageCfg.hero.title}
-                  onChange={(e) => setPageCfg((p) => ({ ...p, hero: { ...p.hero, title: e.target.value } }))}
-                />
-
-                <label className="block text-sm text-muted">Subtitle</label>
-                <textarea
-                  className="input w-full min-h-[96px]"
-                  value={pageCfg.hero.subtitle}
-                  onChange={(e) => setPageCfg((p) => ({ ...p, hero: { ...p.hero, subtitle: e.target.value } }))}
-                />
+                <div className="rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm p-4 text-sm text-muted">
+                  <p className="font-semibold text-fg">This editor is intentionally limited.</p>
+                  <p className="mt-1">
+                    You can only update the <span className="text-fg">Updated</span> pill text, the{" "}
+                    <span className="text-fg">Updates HTML</span> block, and the{" "}
+                    <span className="text-fg">Promo image</span>.
+                  </p>
+                </div>
 
                 <label className="block text-sm text-muted">Updated text</label>
                 <input
@@ -308,7 +298,7 @@ export default function MiniLeaguesAdminClient() {
 
                 <label className="block text-sm text-muted">Updates (HTML allowed)</label>
                 <textarea
-                  className="input w-full min-h-[140px]"
+                  className="input w-full min-h-[160px]"
                   value={pageCfg.hero.updatesHtml}
                   onChange={(e) => setPageCfg((p) => ({ ...p, hero: { ...p.hero, updatesHtml: e.target.value } }))}
                 />
@@ -341,53 +331,8 @@ export default function MiniLeaguesAdminClient() {
                 </div>
 
                 <button className="btn btn-primary w-full" type="button" onClick={savePage} disabled={!canSave}>
-                  {saving ? "Saving…" : "Save Hero + Winners"}
+                  {saving ? "Saving…" : "Save Hero Updates"}
                 </button>
-              </div>
-
-              <div className="rounded-3xl border border-subtle bg-card-surface p-6 shadow-sm space-y-4">
-                <h2 className="text-xl font-semibold text-primary">Last Year’s Winners</h2>
-
-                <label className="block text-sm text-muted">Section title</label>
-                <input
-                  className="input w-full"
-                  value={pageCfg.winners.title}
-                  onChange={(e) => setPageCfg((p) => ({ ...p, winners: { ...p.winners, title: e.target.value } }))}
-                />
-
-                <label className="block text-sm text-muted">Caption (optional)</label>
-                <input
-                  className="input w-full"
-                  value={pageCfg.winners.caption}
-                  onChange={(e) => setPageCfg((p) => ({ ...p, winners: { ...p.winners, caption: e.target.value } }))}
-                />
-
-                <div className="pt-2 flex items-center justify-between gap-3">
-                  <div className="text-sm text-muted">Winners image</div>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={async (e) => {
-                      const f = e.target.files?.[0];
-                      if (!f) return;
-                      setErr("");
-                      setOk("");
-                      try {
-                        const up = await uploadImage(f, "mini-leagues");
-                        setPageCfg((p) => ({ ...p, winners: { ...p.winners, imageKey: up.key } }));
-                        setOk("Uploaded winners image.");
-                      } catch (ex) {
-                        setErr(ex?.message || "Upload failed.");
-                      } finally {
-                        e.target.value = "";
-                      }
-                    }}
-                  />
-                </div>
-
-                <div className="relative w-full aspect-[16/9] rounded-2xl overflow-hidden border border-subtle bg-black/20">
-                  <Image src={winnersPreview} alt="Winners preview" fill className="object-contain" />
-                </div>
               </div>
             </section>
           ) : (
