@@ -7,10 +7,13 @@
 //   body: { type: "page"|"divisions", data: any }
 //
 // ENV REQUIRED (Cloudflare Pages -> Settings -> Bindings / Variables):
-// - R2_BUCKET (preferred) OR ADMIN_BUCKET (fallback)
+// - admin_bucket   (R2 Bucket binding name)
 // - SUPABASE_URL
 // - SUPABASE_ANON_KEY
 // - ADMIN_EMAILS (comma-separated)  OR NEXT_PUBLIC_ADMIN_EMAILS
+//
+// OPTIONAL (recommended so the public site sees updates immediately):
+// - public_bucket (or PUBLIC_BUCKET / r2_bucket / R2_BUCKET) => the bucket backing /r2
 
 const DEFAULT_SEASON = 2025;
 
@@ -24,41 +27,46 @@ function json(data, status = 200) {
   });
 }
 
-function ensureR2(env) {
-  // Respect your current binding name: admin_bucket
-  // Also allow ADMIN_BUCKET as a future optional rename (NO behavior change required now)
-  const b = env.admin_bucket || env.ADMIN_BUCKET;
+function getBuckets(env) {
+  const admin = env.admin_bucket || env.ADMIN_BUCKET;
 
-  if (!b) {
+  if (!admin) {
+    return { ok: false, status: 500, error: "Missing R2 binding: admin_bucket" };
+  }
+
+  if (typeof admin.get !== "function" || typeof admin.put !== "function") {
     return {
       ok: false,
       status: 500,
-      error: "Missing R2 binding: admin_bucket",
+      error: "admin_bucket binding is not an R2 bucket object (check Pages > Settings > Bindings: admin_bucket).",
     };
   }
 
-  if (typeof b.get !== "function" || typeof b.put !== "function") {
-    return {
-      ok: false,
-      status: 500,
-      error:
-        "admin_bucket binding is not an R2 bucket object (check Pages > Settings > Bindings: admin_bucket).",
-    };
-  }
+  const pub = env.public_bucket || env.PUBLIC_BUCKET || env.r2_bucket || env.R2_BUCKET || null;
+  const publicBucket =
+    pub && typeof pub.get === "function" && typeof pub.put === "function" ? pub : null;
 
-  return { ok: true, bucket: b };
+  return { ok: true, adminBucket: admin, publicBucket };
 }
 
+function sanitizePageInput(data) {
+  const hero = data?.hero || {};
+  const winners = data?.winners || {};
 
-function sanitizePagePayload(data, season) {
-  // Only allow the *editable* Mini-Leagues fields to be persisted.
-  const heroIn = data?.hero && typeof data.hero === "object" ? data.hero : {};
   return {
-    season,
+    season: Number(data?.season || DEFAULT_SEASON),
+
     hero: {
-      updatedText: String(heroIn.updatedText || "").slice(0, 200),
-      promoImageKey: String(heroIn.promoImageKey || ""),
-      updatesHtml: String(heroIn.updatesHtml || ""),
+      promoImageKey: typeof hero.promoImageKey === "string" ? hero.promoImageKey : "",
+      promoImageUrl: typeof hero.promoImageUrl === "string" ? hero.promoImageUrl : "",
+      updatesHtml: typeof hero.updatesHtml === "string" ? hero.updatesHtml : "",
+    },
+
+    winners: {
+      title: typeof winners.title === "string" ? winners.title : "",
+      caption: typeof winners.caption === "string" ? winners.caption : "",
+      imageKey: typeof winners.imageKey === "string" ? winners.imageKey : "",
+      imageUrl: typeof winners.imageUrl === "string" ? winners.imageUrl : "",
     },
   };
 }
@@ -121,13 +129,29 @@ async function readJSON(bucket, key, fallback) {
   }
 }
 
+async function writeJSON(buckets, key, payload) {
+  const body = JSON.stringify(payload, null, 2);
+
+  // Always write admin
+  await buckets.adminBucket.put(key, body, {
+    httpMetadata: { contentType: "application/json; charset=utf-8" },
+  });
+
+  // Also write public if available
+  if (buckets.publicBucket) {
+    await buckets.publicBucket.put(key, body, {
+      httpMetadata: { contentType: "application/json; charset=utf-8" },
+    });
+  }
+}
+
 export async function onRequest(context) {
   try {
     const { request, env } = context;
     const url = new URL(request.url);
 
-    const r2 = ensureR2(env);
-    if (!r2.ok) return json({ ok: false, error: r2.error }, r2.status);
+    const buckets = getBuckets(env);
+    if (!buckets.ok) return json({ ok: false, error: buckets.error }, buckets.status);
 
     const gate = await requireAdmin(context);
     if (!gate.ok) return json({ ok: false, error: gate.error }, gate.status);
@@ -140,8 +164,8 @@ export async function onRequest(context) {
       const pageKey = keyFor("page", season);
       const divKey = keyFor("divisions", season);
 
-      const page = await readJSON(r2.bucket, pageKey, null);
-      const divisions = await readJSON(r2.bucket, divKey, null);
+      const page = await readJSON(buckets.adminBucket, pageKey, null);
+      const divisions = await readJSON(buckets.adminBucket, divKey, null);
 
       if (type === "page") return json({ ok: true, season, type, key: pageKey, data: page });
       if (type === "divisions") return json({ ok: true, season, type, key: divKey, data: divisions });
@@ -174,13 +198,18 @@ export async function onRequest(context) {
       const key = keyFor(type, season);
       if (!key) return json({ ok: false, error: "Bad type." }, 400);
 
-      const payloadToSave = type === "page" ? sanitizePagePayload(data, season) : data;
+      const dataToSave = type === "page" ? sanitizePageInput(data) : data;
 
-      await r2.bucket.put(key, JSON.stringify(payloadToSave, null, 2), {
-        httpMetadata: { contentType: "application/json; charset=utf-8" },
+      await writeJSON(buckets, key, dataToSave);
+
+      return json({
+        ok: true,
+        saved: true,
+        season,
+        type,
+        key,
+        wrotePublic: !!buckets.publicBucket,
       });
-
-      return json({ ok: true, saved: true, season, type, key });
     }
 
     return json({ ok: false, error: "Method not allowed." }, 405);

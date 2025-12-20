@@ -1,0 +1,305 @@
+{
+  "season": 2025,
+  "divisions": [
+    {
+      "divisionCode": "100",
+      "title": "Division 100",
+      "status": "full",
+      "order": 1,
+      "imageKey": "media/mini-leagues/2025-12-20T19-15-10-536Z-nintendo.webp.webp",
+      "imageUrl": "",
+      "leagues": [
+        {
+          "name": "League 1",
+          "url": "",
+          "status": "full",
+          "active": true,
+          "order": 1,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 2",
+          "url": "",
+          "status": "full",
+          "active": true,
+          "order": 2,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 3",
+          "url": "",
+          "status": "full",
+          "active": true,
+          "order": 3,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 4",
+          "url": "",
+          "status": "full",
+          "active": true,
+          "order": 4,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 5",
+          "url": "",
+          "status": "full",
+          "active": true,
+          "order": 5,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 6",
+          "url": "",
+          "status": "full",
+          "active": true,
+          "order": 6,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 7",
+          "url": "",
+          "status": "full",
+          "active": true,
+          "order": 7,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 8",
+          "url": "",
+          "status": "full",
+          "active": true,
+          "order": 8,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 9",
+          "url": "",
+          "status": "tbd",
+          "active": true,
+          "order": 9,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 10",
+          "url": "",
+          "status": "full",
+          "active": true,
+          "order": 10,
+          "imageKey": "",
+          "imageUrl": ""
+        }
+      ]
+    },
+    {
+      "divisionCode": "200",
+      "title": "Division 200",
+      "status": "tbd",
+      "order": 2,
+      "imageKey": "",
+      "imageUrl": "",
+      "leagues": [
+        {
+          "name": "League 1",
+          "url": "",
+          "status": "tbd",
+          "active": true,
+          "order": 1,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 2",
+          "url": "",
+          "status": "tbd",
+          "active": true,
+          "order": 2,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 3",
+          "url": "",
+          "status": "tbd",
+          "active": true,
+          "order": 3,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 4",
+          "url": "",
+          "status": "tbd",
+          "active": true,
+          "order": 4,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 5",
+          "url": "",
+          "status": "tbd",
+          "active": true,
+          "order": 5,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 6",
+          "url": "",
+          "status": "tbd",
+          "active": true,
+          "order": 6,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 7",
+          "url": "",
+          "status": "tbd",
+          "active": true,
+          "order": 7,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 8",
+          "url": "",
+          "status": "tbd",
+          "active": true,
+          "order": 8,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 9",
+          "url": "",
+          "status": "tbd",
+          "active": true,
+          "order": 9,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 10",
+          "url": "",
+          "status": "tbd",
+          "active": true,
+          "order": 10,
+          "imageKey": "",
+          "imageUrl": ""
+        }
+      ]
+    },
+    {
+      "divisionCode": "400",
+      "title": "Division 400",
+      "status": "tbd",
+      "order": 4,
+      "imageKey": "",
+      "imageUrl": "",
+      "leagues": [
+        {
+          "name": "League 1",
+          "url": "",
+          "status": "tbd",
+          "active": true,
+          "order": 1,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 2",
+          "url": "",
+          "status": "tbd",
+          "active": true,
+          "order": 2,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 3",
+          "url": "",
+          "status": "tbd",
+          "active": true,
+          "order": 3,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 4",
+          "url": "",
+          "status": "tbd",
+          "active": true,
+          "order": 4,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 5",
+          "url": "",
+          "status": "tbd",
+          "active": true,
+          "order": 5,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 6",
+          "url": "",
+          "status": "tbd",
+          "active": true,
+          "order": 6,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 7",
+          "url": "",
+          "status": "tbd",
+          "active": true,
+          "order": 7,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 8",
+          "url": "",
+          "status": "tbd",
+          "active": true,
+          "order": 8,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 9",
+          "url": "",
+          "status": "tbd",
+          "active": true,
+          "order": 9,
+          "imageKey": "",
+          "imageUrl": ""
+        },
+        {
+          "name": "League 10",
+          "url": "",
+          "status": "tbd",
+          "active": true,
+          "order": 10,
+          "imageKey": "",
+          "imageUrl": ""
+        }
+      ]
+    }
+  ]
+}

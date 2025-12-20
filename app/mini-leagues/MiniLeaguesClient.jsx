@@ -1,10 +1,42 @@
+// app/mini-leagues/MiniLeaguesClient.jsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
 const SEASON = 2025;
+
+// ==============================
+// HARD-CODED (non-editable) copy
+// ==============================
+const HERO_STATIC = {
+  eyebrow: "WELCOME TO",
+  title: "the Mini-Leagues game",
+  subtitle:
+    "Way-too-early, rookie-inclusive, budget Best Ball redraft leagues. Most points wins. Optional wagering. Bonuses stack.",
+};
+
+// This is hard-coded on purpose (you asked to NOT make it editable)
+const UPDATED_LABEL = "Updated: 01/23/2025";
+
+// ==============================
+// ONLY THESE ARE EDITABLE IN CMS
+// ==============================
+const DEFAULT_EDITABLE = {
+  season: SEASON,
+  hero: {
+    promoImageKey: "", // R2 key (preferred)
+    promoImageUrl: "/photos/minileagues-v2.webp", // fallback
+    updatesHtml: "<p>Updates will show here.</p>",
+  },
+  winners: {
+    title: "Last Year’s Winners",
+    imageKey: "",
+    imageUrl: "/photos/hall-of-fame/minileageus2024.png",
+    caption: "",
+  },
+};
 
 const STATUS_LABEL = {
   full: "FULL",
@@ -18,26 +50,6 @@ const STATUS_BADGE = {
   filling: "bg-amber-500/15 text-amber-200 border-amber-400/20",
   drafting: "bg-sky-500/15 text-sky-200 border-sky-400/20",
   tbd: "bg-zinc-500/15 text-zinc-200 border-zinc-400/20",
-};
-
-const DEFAULT_PAGE = {
-  season: SEASON,
-  hero: {
-    eyebrow: "WELCOME TO",
-    title: "the Mini-Leagues game",
-    subtitle:
-      "Way-too-early, rookie-inclusive, budget Best Ball redraft leagues. Most points wins. Optional wagering. Bonuses stack.",
-    updatedText: "Updated: 01/23/2025",
-    promoImageKey: "", // R2 key (preferred)
-    promoImageUrl: "/photos/minileagues-v2.webp", // fallback
-    updatesHtml: "<p>Updates will show here.</p>",
-  },
-  winners: {
-    title: "Last Year’s Winners",
-    imageKey: "",
-    imageUrl: "/photos/hall-of-fame/minileageus2024.png",
-    caption: "",
-  },
 };
 
 function normLeague(l, idx) {
@@ -55,7 +67,6 @@ function normLeague(l, idx) {
 function normDivision(d, idx) {
   const leaguesRaw = Array.isArray(d?.leagues) ? d.leagues : [];
   const leagues = leaguesRaw.map(normLeague).filter((x) => x.active !== false);
-
   leagues.sort((a, b) => a.order - b.order);
 
   return {
@@ -70,35 +81,56 @@ function normDivision(d, idx) {
 }
 
 export default function MiniLeaguesClient() {
-  const [pageCfg, setPageCfg] = useState(DEFAULT_PAGE);
+  const [editable, setEditable] = useState(DEFAULT_EDITABLE);
   const [divisions, setDivisions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const bust = `v=${Date.now()}`;
+  const updatesSrc = editable?.hero?.promoImageKey
+  ? `/r2/${editable.hero.promoImageKey}?v=${encodeURIComponent(editable.hero.promoImageKey)}`
+  : editable?.hero?.promoImageUrl || DEFAULT_EDITABLE.hero.promoImageUrl;
 
-  const promoSrc = pageCfg?.hero?.promoImageKey ? `/r2/${pageCfg.hero.promoImageKey}` : pageCfg?.hero?.promoImageUrl;
-  const winnersSrc = pageCfg?.winners?.imageKey ? `/r2/${pageCfg.winners.imageKey}` : pageCfg?.winners?.imageUrl;
+const winnersSrc = editable?.winners?.imageKey
+  ? `/r2/${editable.winners.imageKey}?v=${encodeURIComponent(editable.winners.imageKey)}`
+  : editable?.winners?.imageUrl || DEFAULT_EDITABLE.winners.imageUrl;
+
 
   async function loadAll() {
     setErr("");
     setLoading(true);
 
     try {
-      // 1) page sections
-      const pageRes = await fetch(`/r2/content/mini-leagues/page_${SEASON}.json`, { cache: "no-store" });
+      // 1) editable blocks
+      const pageRes = await fetch(`/r2/content/mini-leagues/page_${SEASON}.json?${bust}`, { cache: "no-store" });
       if (pageRes.ok) {
         const pageData = await pageRes.json();
-        setPageCfg({
-          ...DEFAULT_PAGE,
+
+        const hero = pageData?.hero || {};
+        const winners = pageData?.winners || {};
+
+        setEditable({
+          ...DEFAULT_EDITABLE,
           ...pageData,
-          hero: { ...DEFAULT_PAGE.hero, ...(pageData?.hero || {}) },
-          winners: { ...DEFAULT_PAGE.winners, ...(pageData?.winners || {}) },
+          hero: {
+            ...DEFAULT_EDITABLE.hero,
+            promoImageKey: hero.promoImageKey ?? "",
+            promoImageUrl: hero.promoImageUrl ?? DEFAULT_EDITABLE.hero.promoImageUrl,
+            updatesHtml: hero.updatesHtml ?? DEFAULT_EDITABLE.hero.updatesHtml,
+          },
+          winners: {
+            ...DEFAULT_EDITABLE.winners,
+            title: winners.title ?? DEFAULT_EDITABLE.winners.title,
+            caption: winners.caption ?? DEFAULT_EDITABLE.winners.caption,
+            imageKey: winners.imageKey ?? "",
+            imageUrl: winners.imageUrl ?? DEFAULT_EDITABLE.winners.imageUrl,
+          },
         });
       } else {
-        setPageCfg(DEFAULT_PAGE);
+        setEditable(DEFAULT_EDITABLE);
       }
 
       // 2) divisions
-      const divRes = await fetch(`/r2/data/mini-leagues/divisions_${SEASON}.json`, { cache: "no-store" });
+      const divRes = await fetch(`/r2/data/mini-leagues/divisions_${SEASON}.json?${bust}`, { cache: "no-store" });
       if (divRes.ok) {
         const divData = await divRes.json();
         const list = Array.isArray(divData?.divisions) ? divData.divisions : Array.isArray(divData) ? divData : [];
@@ -127,7 +159,7 @@ export default function MiniLeaguesClient() {
 
       <section className="section">
         <div className="container-site space-y-10">
-          {/* HERO (editable) */}
+          {/* HERO */}
           <header className="relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-10">
             <div className="pointer-events-none absolute inset-0 opacity-55 mix-blend-screen">
               <div className="absolute -top-24 -left-16 h-64 w-64 rounded-full bg-[color:var(--color-accent)]/18 blur-3xl" />
@@ -136,43 +168,44 @@ export default function MiniLeaguesClient() {
 
             <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,.9fr)] lg:items-start">
               <div className="space-y-4">
-                <p className="text-xs uppercase tracking-[0.35em] text-accent">
-                  {pageCfg?.hero?.eyebrow || "WELCOME TO"}
-                </p>
+                <p className="text-xs uppercase tracking-[0.35em] text-accent">{HERO_STATIC.eyebrow}</p>
 
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold leading-tight text-primary">
-                  {pageCfg?.hero?.title || "the Mini-Leagues game"}
+                  {HERO_STATIC.title}
                 </h1>
 
-                <p className="text-sm sm:text-base text-muted max-w-prose">
-                  {pageCfg?.hero?.subtitle || DEFAULT_PAGE.hero.subtitle}
-                </p>
+                <p className="text-sm sm:text-base text-muted max-w-prose">{HERO_STATIC.subtitle}</p>
 
                 <div className="flex flex-wrap gap-3 pt-2">
-                  <Link href="/dynasty" className="btn btn-outline">Dynasty</Link>
-                  <Link href="/big-game" className="btn btn-outline">Big Game</Link>
-                  <Link href="/hall-of-fame" className="btn btn-outline">Hall of Fame</Link>
+                  <Link href="/dynasty" className="btn btn-outline">
+                    Dynasty
+                  </Link>
+                  <Link href="/big-game" className="btn btn-outline">
+                    Big Game
+                  </Link>
+                  <Link href="/hall-of-fame" className="btn btn-outline">
+                    Hall of Fame
+                  </Link>
                 </div>
 
                 <div className="mt-4 inline-flex flex-wrap gap-2 text-xs sm:text-sm">
                   <span className="rounded-full border border-subtle bg-card-trans px-3 py-1 backdrop-blur-sm">
-                    {pageCfg?.hero?.updatedText || DEFAULT_PAGE.hero.updatedText}
+                    {UPDATED_LABEL}
                   </span>
                 </div>
               </div>
 
+              {/* UPDATES CARD */}
               <div className="rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm overflow-hidden shadow-lg">
                 <div className="px-4 py-3 border-b border-subtle flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
-                    PROMO
-                  </span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">UPDATES</span>
                 </div>
 
                 <div className="p-4 space-y-3">
                   <div className="relative w-full aspect-[16/9] rounded-xl overflow-hidden border border-subtle bg-black/20">
                     <Image
-                      src={promoSrc}
-                      alt="Mini-Leagues promo"
+                      src={updatesSrc}
+                      alt="Mini-Leagues updates"
                       fill
                       sizes="(max-width: 1024px) 100vw, 520px"
                       className="object-cover"
@@ -182,14 +215,16 @@ export default function MiniLeaguesClient() {
 
                   <div
                     className="prose prose-invert max-w-none text-sm text-muted"
-                    dangerouslySetInnerHTML={{ __html: pageCfg?.hero?.updatesHtml || DEFAULT_PAGE.hero.updatesHtml }}
+                    dangerouslySetInnerHTML={{
+                      __html: editable?.hero?.updatesHtml || DEFAULT_EDITABLE.hero.updatesHtml,
+                    }}
                   />
                 </div>
               </div>
             </div>
           </header>
 
-          {/* HARD-CODED CONTENT (not editable) */}
+          {/* HARD-CODED CONTENT */}
           <section className="grid gap-6 lg:grid-cols-3">
             <div className="rounded-2xl border border-subtle bg-card-surface p-6 shadow-sm space-y-2">
               <h2 className="text-lg font-semibold text-primary">BALLSVILLE SETTINGS</h2>
@@ -208,11 +243,12 @@ export default function MiniLeaguesClient() {
             <div className="rounded-2xl border border-subtle bg-card-surface p-6 shadow-sm space-y-2">
               <h2 className="text-lg font-semibold text-primary">How the game works</h2>
               <p className="text-sm text-muted">
-                Win your league (most points through Week 14) → earn $30 (🪙). After Week 14, a game manager
-                will ask if you’d like to <strong>wager</strong> your 🪙 or keep it.
+                Win your league (most points through Week 14) → earn $30 (🪙). After Week 14, a game manager will ask if
+                you’d like to <strong>wager</strong> your 🪙 or keep it.
               </p>
               <p className="text-sm text-muted">
-                Without a wager: eligible for Division Bonus (+$30) and Championship Bonus (+$100).<br />
+                Without a wager: eligible for Division Bonus (+$30) and Championship Bonus (+$100).
+                <br />
                 With a wager: eligible for <strong>all wagers</strong>, both bonuses, and Wager Bonus (+$60).
               </p>
               <p className="text-sm text-muted font-semibold">Bonuses stack.</p>
@@ -231,7 +267,7 @@ export default function MiniLeaguesClient() {
             </div>
           </section>
 
-          {/* DIVISIONS (editable via R2 like Big Game) */}
+          {/* DIVISIONS */}
           <section className="space-y-4">
             <div className="flex items-end justify-between gap-4">
               <div>
@@ -246,15 +282,11 @@ export default function MiniLeaguesClient() {
             </div>
 
             {err ? (
-              <div className="rounded-2xl border border-subtle bg-card-surface p-4 text-sm text-red-300">
-                {err}
-              </div>
+              <div className="rounded-2xl border border-subtle bg-card-surface p-4 text-sm text-red-300">{err}</div>
             ) : null}
 
             {loading ? (
-              <div className="rounded-2xl border border-subtle bg-card-surface p-4 text-sm text-muted">
-                Loading…
-              </div>
+              <div className="rounded-2xl border border-subtle bg-card-surface p-4 text-sm text-muted">Loading…</div>
             ) : divisions.length === 0 ? (
               <div className="rounded-2xl border border-subtle bg-card-surface p-4 text-sm text-muted">
                 No divisions loaded yet.
@@ -264,11 +296,18 @@ export default function MiniLeaguesClient() {
                 {divisions.map((d) => {
                   const divImage = d.imageKey ? `/r2/${d.imageKey}` : d.imageUrl || "";
                   return (
-                    <div key={d.divisionCode} className="rounded-3xl border border-subtle bg-card-surface shadow-sm overflow-hidden">
+                    <div
+                      key={d.divisionCode}
+                      className="rounded-3xl border border-subtle bg-card-surface shadow-sm overflow-hidden"
+                    >
                       <div className="p-5 border-b border-subtle flex items-center justify-between gap-3">
                         <div className="space-y-1">
                           <h3 className="text-xl font-semibold text-primary">{d.title}</h3>
-                          <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${STATUS_BADGE[d.status] || STATUS_BADGE.tbd}`}>
+                          <span
+                            className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${
+                              STATUS_BADGE[d.status] || STATUS_BADGE.tbd
+                            }`}
+                          >
                             {STATUS_LABEL[d.status] || "TBD"}
                           </span>
                         </div>
@@ -296,7 +335,9 @@ export default function MiniLeaguesClient() {
                               <div className="flex items-start justify-between gap-3">
                                 <div className="space-y-1 min-w-0">
                                   <div className="font-semibold text-fg truncate">{l.name}</div>
-                                  <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badge}`}>
+                                  <span
+                                    className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badge}`}
+                                  >
                                     {label}
                                   </span>
                                 </div>
@@ -318,22 +359,26 @@ export default function MiniLeaguesClient() {
             )}
           </section>
 
-          {/* WINNERS (editable) */}
+          {/* WINNERS (now editable) */}
           <section className="space-y-4">
-            <h2 className="text-2xl sm:text-3xl font-semibold">{pageCfg?.winners?.title || "Last Year’s Winners"}</h2>
+            <h2 className="text-2xl sm:text-3xl font-semibold">{editable?.winners?.title || DEFAULT_EDITABLE.winners.title}</h2>
 
             <div className="rounded-3xl border border-subtle bg-card-surface shadow-sm overflow-hidden">
-              <div className="relative w-full aspect-[16/9] bg-black/20">
-                <Image
-                  src={winnersSrc}
-                  alt="Last year winners"
-                  fill
-                  sizes="100vw"
-                  className="object-contain"
-                />
+              {/* Controlled size so it always looks good */}
+              <div className="p-4 bg-black/10">
+                <div className="relative w-full max-w-[980px] mx-auto h-[360px] sm:h-[460px]">
+                  <Image
+                    src={winnersSrc}
+                    alt="Last year winners"
+                    fill
+                    sizes="100vw"
+                    className="object-contain"
+                  />
+                </div>
               </div>
-              {pageCfg?.winners?.caption ? (
-                <div className="p-4 text-sm text-muted border-t border-subtle">{pageCfg.winners.caption}</div>
+
+              {(editable?.winners?.caption || "").trim() ? (
+                <div className="p-4 text-sm text-muted border-t border-subtle">{editable.winners.caption}</div>
               ) : null}
             </div>
           </section>
