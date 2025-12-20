@@ -1,5 +1,6 @@
 // app/redraft/page.jsx
 import { siteConfig } from "@/app/config/siteConfig";
+import RedraftUpdatesClient from "./RedraftUpdatesClient";
 import RedraftLeaguesClient from "./RedraftLeaguesClient";
 
 const pageTitle = `The Redraft Game | ${siteConfig.shortName}`;
@@ -121,12 +122,13 @@ export default function RedraftPage() {
             </div>
           </section>
 
-        {/* Admin-managed updates + league list (R2) */}
+        {/* Admin-managed updates (R2) */}
+        <RedraftUpdatesClient />
+
+        {/* Live leagues (R2) */}
         <RedraftLeaguesClient />
 
-
-
-        {/* League description */}
+          {/* League description */}
         <article id="how-it-works" className="bg-card-surface rounded-3xl border border-subtle p-6 md:p-8 grid gap-6 md:grid-cols-2 items-center">
           <div className="space-y-3">
             <h2 className="h3">League description</h2>
