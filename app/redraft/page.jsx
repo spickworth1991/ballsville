@@ -23,113 +23,115 @@ export default function RedraftPage() {
   return (
     <section className="section">
       <div className="container-site space-y-10">
-        {/* Hero */}
-          <section className="relative overflow-hidden rounded-3xl border border-border/70 bg-card-surface shadow-2xl shadow-black/40 px-6 py-8 sm:px-10 sm:py-10">
-            {/* glow accents */}
-            <div className="pointer-events-none absolute inset-0 opacity-60 mix-blend-screen">
-              <div className="absolute -top-24 -left-10 h-56 w-56 rounded-full bg-rose-500/18 blur-3xl" />
-              <div className="absolute -bottom-24 -right-10 h-56 w-56 rounded-full bg-sky-500/16 blur-3xl" />
-              <div className="absolute top-10 right-20 h-40 w-40 rounded-full bg-purple-500/10 blur-3xl" />
-            </div>
-
-            <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,0.9fr)] lg:items-start">
-              {/* left */}
-              <div className="space-y-4">
-                <p className="text-xs uppercase tracking-[0.35em] text-accent">
-                  THE REDRAFT GAME
-                </p>
-
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold leading-tight">
-                  How the <span className="text-primary">BALLSVILLE</span> Redraft Game Works
-                </h1>
-
-                <p className="text-sm sm:text-base text-muted max-w-prose">
-                  A 12-team Superflex redraft format with custom ADP, mini games, and our
-                  wagering system that turns league wins into Week 17 championship upside.
-                </p>
-
-                <div className="mt-4 inline-flex flex-wrap gap-2 text-xs sm:text-sm">
-                  <span className="rounded-full border border-subtle bg-card-surface px-3 py-1">
-                    12-team · SF · 3WR · 2 FLEX
-                  </span>
-                  <span className="rounded-full border border-subtle bg-card-surface px-3 py-1">
-                    League Median · 6-team playoffs
-                  </span>
-                  <span className="rounded-full border border-subtle bg-card-surface px-3 py-1">
-                    Derby startup (no draft trades)
-                  </span>
-                </div>
-
-              
-                <div className="grid gap-4 md:grid-cols-2 pt-2">
-                  <div className="rounded-2xl border border-subtle bg-subtle-surface p-4 text-sm">
-                    <p className="font-semibold text-accent mb-1">Core idea</p>
-                    <p className="text-muted">
-                      Win in your league, then choose:{" "}
-                      <span className="text-fg font-semibold">bank</span> your winnings or{" "}
-                      <span className="text-fg font-semibold">wager</span> for higher Week 17 upside.
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl border border-subtle bg-subtle-surface p-4 text-sm">
-                    <p className="font-semibold text-accent mb-1">What you get</p>
-                    <p className="text-muted">
-                      Custom ADP, mini games, Discord community, pod coverage, and clean cash flow tracking.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="pt-2 flex flex-wrap gap-3">
-                  <a href="#how-it-works" className="btn btn-primary">
-                    🔥 Start Here
-                  </a>
-                  <a href="#wagering" className="btn btn-outline">
-                    🪙 Wagering Formula
-                  </a>
-                </div>
-              </div>
-
-              {/* right: quick facts panel */}
-              <aside className="w-full">
-                <div className="rounded-2xl border border-border/60 bg-card-trans backdrop-blur-sm overflow-hidden shadow-xl shadow-black/40">
-                  <div className="px-4 py-3 border-b border-border/60 flex items-center justify-between">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
-                      Quick Facts
-                    </span>
-                    <span className="text-[11px] text-muted">Redraft</span>
-                  </div>
-
-                  <div className="p-4 space-y-3 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted">Buy-in</span>
-                      <span className="font-semibold text-primary">$50</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted">Finals bonus</span>
-                      <span className="font-semibold text-fg">+$75</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted">League winner</span>
-                      <span className="font-semibold text-fg">$300 🏆</span>
-                    </div>
-                    <div className="h-px bg-border/60" />
-                    <p className="text-[11px] text-muted">
-                      Wagering is optional. You can keep your guaranteed winnings or push it into the Week 17 pots for upside.
-                    </p>
-                  </div>
-                </div>
-              </aside>
-            </div>
-          </section>
-
         {/* Admin-managed updates (R2) */}
         <RedraftUpdatesClient />
 
         {/* Live leagues (R2) */}
         <RedraftLeaguesClient />
 
-          {/* League description */}
-        <article id="how-it-works" className="bg-card-surface rounded-3xl border border-subtle p-6 md:p-8 grid gap-6 md:grid-cols-2 items-center">
+        {/* Hero (hardcoded) — moved BELOW updates + live leagues */}
+        <section className="relative overflow-hidden rounded-3xl border border-border/70 bg-card-surface shadow-2xl shadow-black/40 px-6 py-8 sm:px-10 sm:py-10">
+          {/* glow accents */}
+          <div className="pointer-events-none absolute inset-0 opacity-60 mix-blend-screen">
+            <div className="absolute -top-24 -left-10 h-56 w-56 rounded-full bg-rose-500/18 blur-3xl" />
+            <div className="absolute -bottom-24 -right-10 h-56 w-56 rounded-full bg-sky-500/16 blur-3xl" />
+            <div className="absolute top-10 right-20 h-40 w-40 rounded-full bg-purple-500/10 blur-3xl" />
+          </div>
+
+          <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,0.9fr)] lg:items-start">
+            {/* left */}
+            <div className="space-y-4">
+              <p className="text-xs uppercase tracking-[0.35em] text-accent">
+                THE REDRAFT GAME
+              </p>
+
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold leading-tight">
+                How the <span className="text-primary">BALLSVILLE</span> Redraft Game Works
+              </h1>
+
+              <p className="text-sm sm:text-base text-muted max-w-prose">
+                A 12-team Superflex redraft format with custom ADP, mini games, and our
+                wagering system that turns league wins into Week 17 championship upside.
+              </p>
+
+              <div className="mt-4 inline-flex flex-wrap gap-2 text-xs sm:text-sm">
+                <span className="rounded-full border border-subtle bg-card-surface px-3 py-1">
+                  12-team · SF · 3WR · 2 FLEX
+                </span>
+                <span className="rounded-full border border-subtle bg-card-surface px-3 py-1">
+                  League Median · 6-team playoffs
+                </span>
+                <span className="rounded-full border border-subtle bg-card-surface px-3 py-1">
+                  Derby startup (no draft trades)
+                </span>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2 pt-2">
+                <div className="rounded-2xl border border-subtle bg-subtle-surface p-4 text-sm">
+                  <p className="font-semibold text-accent mb-1">Core idea</p>
+                  <p className="text-muted">
+                    Win in your league, then choose:{" "}
+                    <span className="text-fg font-semibold">bank</span> your winnings or{" "}
+                    <span className="text-fg font-semibold">wager</span> for higher Week 17 upside.
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-subtle bg-subtle-surface p-4 text-sm">
+                  <p className="font-semibold text-accent mb-1">What you get</p>
+                  <p className="text-muted">
+                    Custom ADP, mini games, Discord community, pod coverage, and clean cash flow tracking.
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-2 flex flex-wrap gap-3">
+                <a href="#how-it-works" className="btn btn-primary">
+                  🔥 Start Here
+                </a>
+                <a href="#wagering" className="btn btn-outline">
+                  🪙 Wagering Formula
+                </a>
+              </div>
+            </div>
+
+            {/* right: quick facts panel */}
+            <aside className="w-full">
+              <div className="rounded-2xl border border-border/60 bg-card-trans backdrop-blur-sm overflow-hidden shadow-xl shadow-black/40">
+                <div className="px-4 py-3 border-b border-border/60 flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                    Quick Facts
+                  </span>
+                  <span className="text-[11px] text-muted">Redraft</span>
+                </div>
+
+                <div className="p-4 space-y-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">Buy-in</span>
+                    <span className="font-semibold text-primary">$50</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">Finals bonus</span>
+                    <span className="font-semibold text-fg">+$75</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">League winner</span>
+                    <span className="font-semibold text-fg">$300 🏆</span>
+                  </div>
+                  <div className="h-px bg-border/60" />
+                  <p className="text-[11px] text-muted">
+                    Wagering is optional. You can keep your guaranteed winnings or push it into the Week 17 pots for upside.
+                  </p>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        {/* League description */}
+        <article
+          id="how-it-works"
+          className="bg-card-surface rounded-3xl border border-subtle p-6 md:p-8 grid gap-6 md:grid-cols-2 items-center"
+        >
           <div className="space-y-3">
             <h2 className="h3">League description</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
