@@ -1,5 +1,6 @@
 // app/redraft/page.jsx
 import { siteConfig } from "@/app/config/siteConfig";
+import RedraftLeaguesClient from "./RedraftLeaguesClient";
 
 const pageTitle = `The Redraft Game | ${siteConfig.shortName}`;
 
@@ -119,6 +120,9 @@ export default function RedraftPage() {
               </aside>
             </div>
           </section>
+
+        {/* Admin-managed updates + league list (R2) */}
+        <RedraftLeaguesClient />
 
 
 
