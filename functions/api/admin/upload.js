@@ -3,6 +3,7 @@
 // POST multipart/form-data:
 // - file: <File>
 // - folder: (optional) e.g. "mini-leagues"
+// - key: (optional) exact R2 object key to overwrite, e.g. "media/mini-leagues/hero_2025.webp"
 //
 // Returns: { ok, key, url }
 
@@ -24,18 +25,23 @@ function safeName(name) {
     .replace(/^-|-$/g, "");
 }
 
-// Admin bucket is required.
-// Public bucket is optional, but if present we'll also write there (so /r2 can serve it).
-function getBuckets(env) {
-  const admin = env.admin_bucket || env.ADMIN_BUCKET;
-  if (!admin) {
-    return {
-      ok: false,
-      status: 500,
-      error: "Missing R2 binding: admin_bucket",
-    };
+function safeKey(key) {
+  // allow only safe key characters and folders
+  const k = String(key || "").trim();
+  if (!k) return "";
+  if (k.includes("..")) return "";
+  if (!/^[a-z0-9/_\-.]+$/i.test(k)) return "";
+  return k.replace(/^\/+/, "");
+}
+
+function ensureR2(env) {
+  const b = env.admin_bucket || env.ADMIN_BUCKET;
+
+  if (!b) {
+    return { ok: false, status: 500, error: "Missing R2 binding: admin_bucket" };
   }
-  if (typeof admin.get !== "function" || typeof admin.put !== "function") {
+
+  if (typeof b.get !== "function" || typeof b.put !== "function") {
     return {
       ok: false,
       status: 500,
@@ -43,12 +49,7 @@ function getBuckets(env) {
     };
   }
 
-  // Optional: bucket that backs /r2 on the public site
-  const pub = env.public_bucket || env.PUBLIC_BUCKET || env.r2_bucket || env.R2_BUCKET || null;
-  const publicBucket =
-    pub && typeof pub.get === "function" && typeof pub.put === "function" ? pub : null;
-
-  return { ok: true, adminBucket: admin, publicBucket };
+  return { ok: true, bucket: b };
 }
 
 async function requireAdmin(context) {
@@ -85,24 +86,19 @@ async function requireAdmin(context) {
   return { ok: true };
 }
 
-function splitNameAndExt(filename) {
-  const safe = safeName(filename || "upload");
-  const lastDot = safe.lastIndexOf(".");
-  if (lastDot <= 0 || lastDot === safe.length - 1) {
-    return { base: safe || "upload", ext: "" };
-  }
-  return {
-    base: safe.slice(0, lastDot),
-    ext: safe.slice(lastDot + 1),
-  };
+function getExtFromName(filename) {
+  const n = String(filename || "");
+  const last = n.lastIndexOf(".");
+  if (last === -1) return "";
+  return n.slice(last + 1).toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 export async function onRequest(context) {
   try {
     const { request, env } = context;
 
-    const buckets = getBuckets(env);
-    if (!buckets.ok) return json({ ok: false, error: buckets.error }, buckets.status);
+    const r2 = ensureR2(env);
+    if (!r2.ok) return json({ ok: false, error: r2.error }, r2.status);
 
     const gate = await requireAdmin(context);
     if (!gate.ok) return json({ ok: false, error: gate.error }, gate.status);
@@ -112,46 +108,36 @@ export async function onRequest(context) {
     const form = await request.formData();
     const file = form.get("file");
     const folder = safeName(form.get("folder") || "misc");
+    const desiredKeyRaw = form.get("key");
 
     if (!file || typeof file === "string") return json({ ok: false, error: "Missing file" }, 400);
 
-    const { base, ext } = splitNameAndExt(file.name);
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const originalName = safeName(file.name || "upload");
+    const ext = getExtFromName(originalName) || "bin";
 
-    // Prefer the real extension; fallback to mime-derived extension; fallback to "bin"
-    const mime = file.type || "application/octet-stream";
-    const mimeExt =
-      mime === "image/webp"
-        ? "webp"
-        : mime === "image/png"
-        ? "png"
-        : mime === "image/jpeg"
-        ? "jpg"
-        : mime === "image/gif"
-        ? "gif"
-        : "";
+    // Optional fixed overwrite key
+    const desiredKey = typeof desiredKeyRaw === "string" ? safeKey(desiredKeyRaw) : "";
 
-    const finalExt = (ext || mimeExt || "bin").toLowerCase();
-
-    // ✅ key is now "...-filename.webp" (NOT webp.webp)
-    const key = `media/${folder}/${stamp}-${base || "image"}.${finalExt}`.replace(/\.+/g, ".");
+    let key;
+    if (desiredKey) {
+      key = desiredKey;
+    } else {
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      // IMPORTANT: do NOT append ext twice
+      key = `media/${folder}/${stamp}-${originalName}`;
+      if (!key.toLowerCase().endsWith(`.${ext}`)) key = `${key}.${ext}`;
+      key = key.replace(/\.+/g, ".");
+    }
 
     const buf = await file.arrayBuffer();
 
-    // Write to admin bucket
-    await buckets.adminBucket.put(key, buf, {
-      httpMetadata: { contentType: mime },
+    await r2.bucket.put(key, buf, {
+      httpMetadata: { contentType: file.type || "application/octet-stream" },
     });
 
-    // Also write to public bucket if present (so /r2 can serve it)
-    if (buckets.publicBucket) {
-      await buckets.publicBucket.put(key, buf, {
-        httpMetadata: { contentType: mime },
-      });
-    }
-
     const url = `/r2/${key}`;
-    return json({ ok: true, key, url, wrotePublic: !!buckets.publicBucket });
+
+    return json({ ok: true, key, url });
   } catch (e) {
     return json(
       {

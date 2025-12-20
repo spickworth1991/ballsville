@@ -1,9 +1,7 @@
-export async function onRequest(context) {
-  const { request, params, env } = context;
-
-  // Join the splat path
-  const parts = Array.isArray(params.path) ? params.path : [params.path];
-  const key = parts.filter(Boolean).join("/");
+export async function onRequest({ params, env }) {
+  // params.path will be an array like ["content","mini-leagues","page_2025.json"]
+  const parts = Array.isArray(params.path) ? params.path : [params.path].filter(Boolean);
+  const key = parts.join("/");
 
   // Where your public bucket is reachable
   const base =

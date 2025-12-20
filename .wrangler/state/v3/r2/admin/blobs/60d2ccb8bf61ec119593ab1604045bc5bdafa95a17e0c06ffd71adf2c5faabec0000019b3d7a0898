@@ -1,0 +1,14 @@
+{
+  "season": 2025,
+  "hero": {
+    "promoImageKey": "media/mini-leagues/2025-12-20T20-36-03-360Z-nintendo.webp",
+    "promoImageUrl": "/photos/minileagues-v2.webp",
+    "updatesHtml": "<p>Updates will show here TEST.</p>"
+  },
+  "winners": {
+    "title": "Last Year’s Winners",
+    "caption": "",
+    "imageKey": "",
+    "imageUrl": "/photos/hall-of-fame/minileageus2024.png"
+  }
+}
