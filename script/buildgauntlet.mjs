@@ -18,6 +18,126 @@ import axios from "axios";
 import pLimit from "p-limit";
 import { createClient } from "@supabase/supabase-js";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import fs from "fs";
+import path from "path";
+/* ================== LOGGING (OPTIONAL FILE + QUIET CONSOLE) ================== */
+
+// Toggle: set GAUNTLET_DEBUG_LOG=1 to enable file logging, 0/empty to disable.
+const DEBUG_LOG_ENABLED =
+  String(process.env.GAUNTLET_DEBUG_LOG ?? "0").trim() === "1";
+
+let RUN_LOG_FILE = null;
+let debugStream = null;
+
+// Counters for summary
+let DEBUG_WARN_COUNT = 0;
+
+function tsForFile(d = new Date()) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}_${hh}-${mi}-${ss}`;
+}
+
+function tsForLine(d = new Date()) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+}
+
+function safeMkdir(dir) {
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch {}
+}
+
+function initDebugLogIfEnabled() {
+  if (!DEBUG_LOG_ENABLED) return;
+
+  const LOG_DIR = path.join(process.cwd(), "logs");
+  safeMkdir(LOG_DIR);
+
+  RUN_LOG_FILE = path.join(
+    LOG_DIR,
+    `gauntlet_leg3_${YEAR}_${tsForFile()}.log`
+  );
+
+  debugStream = fs.createWriteStream(RUN_LOG_FILE, { flags: "a" });
+
+  // header
+  debugStream.write(`${tsForLine()} DEBUG_LOG_ENABLED=1\n`);
+}
+
+// File log writers (NO-OP when disabled)
+function dbg(line = "") {
+  if (!debugStream) return;
+  debugStream.write(`${tsForLine()} ${line}\n`);
+}
+
+function dbgWarn(line = "") {
+  DEBUG_WARN_COUNT += 1;
+  if (!debugStream) return;
+  debugStream.write(`${tsForLine()} ⚠️ ${line}\n`);
+}
+
+function dbgSection(title, context = "") {
+  if (!debugStream) return;
+  dbg("");
+  dbg("============================================================");
+  dbg(`SECTION: ${title}`);
+  if (context) dbg(`CONTEXT: ${context}`);
+  dbg("============================================================");
+}
+
+function dbgRow(label, value, context = "") {
+  if (!debugStream) return;
+  const ctx = context ? ` ${context}` : "";
+  dbg(`${String(label).padEnd(24, " ")} ${value}${ctx}`);
+}
+
+// Console helpers (keep console clean)
+function cInfo(msg) {
+  console.log(msg);
+}
+function cWarn(msg) {
+  console.warn(msg);
+}
+function cErr(msg) {
+  console.error(msg);
+}
+
+function closeDebugStream() {
+  try {
+    if (debugStream) debugStream.end();
+  } catch {}
+}
+
+// Hook exits (safe even if debug disabled)
+process.on("exit", closeDebugStream);
+process.on("SIGINT", () => {
+  closeDebugStream();
+  process.exit(130);
+});
+process.on("SIGTERM", () => {
+  closeDebugStream();
+  process.exit(143);
+});
+process.on("uncaughtException", (err) => {
+  dbgWarn(`UNCAUGHT_EXCEPTION: ${err?.stack || err}`);
+  closeDebugStream();
+  throw err;
+});
+process.on("unhandledRejection", (err) => {
+  dbgWarn(`UNHANDLED_REJECTION: ${err?.stack || err}`);
+});
+
 
 /* ================== CONFIG ================== */
 
@@ -97,14 +217,56 @@ async function uploadJsonToR2(key, payload) {
     Body: body,
     ContentType: "application/json",
   });
+
   await r2Client.send(cmd);
-  console.log(`✅ Uploaded Gauntlet Leg 3 JSON to R2: s3://${R2_BUCKET_GAUNTLET}/${key}`);
+
+  // Console = important
+  cInfo(`✅ Uploaded to R2: s3://${R2_BUCKET_GAUNTLET}/${key}`);
+
+  // File = full
+  dbg(`R2_UPLOAD bucket=${R2_BUCKET_GAUNTLET} key=${key} bytes=${Buffer.byteLength(body)}`);
 }
+
 
 /* ================== BASIC HELPERS ================== */
 
 const limit = pLimit(CONCURRENCY);
 const axiosInstance = axios.create();
+
+/** Only seeds 1–12 are considered "real"/controllable */
+function clampSeed12(seed) {
+  const n = Number(seed);
+  if (!Number.isFinite(n)) return null;
+  if (n < 1 || n > 12) return null;
+  return n;
+}
+
+function isTrulyEmptyRoster(r) {
+  const playersLen = Array.isArray(r?.players) ? r.players.length : 0;
+  const startersLen = Array.isArray(r?.starters) ? r.starters.length : 0;
+  // some leagues keep starters populated; treat either as "has team"
+  return playersLen === 0 && startersLen === 0;
+}
+/** League-scoped logger: writes details to file (no console spam) */
+function makeLeagueLogger(leagueTag) {
+  return {
+    section(title) {
+      dbgSection(title, leagueTag);
+    },
+    info(msg) {
+      dbg(`${leagueTag} ${msg}`);
+    },
+    warn(msg) {
+      dbgWarn(`${leagueTag} ${msg}`);
+    },
+    row(label, value) {
+      dbgRow(label, value, leagueTag);
+    },
+  };
+}
+
+
+
 
 // ================== GAME WINDOW CHECK ==================
 // Rough "NFL game time" window in Eastern Time (America/Detroit):
@@ -145,16 +307,27 @@ async function fetchWithRetry(url, retries = RETRIES) {
       const res = await axiosInstance.get(url);
       return res.data;
     } catch (err) {
-      if (i === retries - 1) throw err;
-      const delay = 500 * (i + 1);
-      console.warn(`⚠️ Retry ${i + 1} for ${url} after ${delay}ms`);
-      await new Promise((res) => setTimeout(res, delay));
+      const msg = err?.response?.status
+        ? `${err.response.status} ${err.response.statusText || ""}`.trim()
+        : (err?.message || String(err));
+
+      if (i < retries - 1) {
+        const delay = 500 * (i + 1);
+        dbgWarn(`Retry ${i + 1}/${retries} for ${url} after ${delay}ms — ${msg}`);
+        await new Promise((res) => setTimeout(res, delay));
+        continue;
+      }
+
+      // final failure
+      dbgWarn(`FAILED after ${retries} tries: ${url} — ${msg}`);
+      throw err;
     }
   }
 }
 
+
 async function getSleeperPlayers() {
-  console.log("⬇️ Fetching Sleeper players DB…");
+  cInfo("⬇️ Fetching Sleeper players DB…");
   const url = "https://api.sleeper.app/v1/players/nfl";
   return fetchWithRetry(url);
 }
@@ -548,14 +721,21 @@ async function loadLeaguesAndSeeds(year) {
   });
 
   console.log("\nDiscovered divisions & gods from gauntlet_seeds_2025:");
+  cInfo("\nDiscovered divisions & gods from gauntlet_seeds_2025:");
+
   Object.entries(divisionGodConfig).forEach(([division, godsArr]) => {
-    console.log(` • ${division}:`);
+    // console.log(` • ${division}:`);
+    cInfo(` • ${division}:`);
     godsArr.forEach((g) => {
-      console.log(
-        `   - ${g.godName} (light: ${g.lightLeagueId || "NONE"}, dark: ${
+      cInfo(`   - ${g.godName} (light: ${g.lightLeagueId || "NONE"}, dark: ${
           g.darkLeagueId || "NONE"
-        })`
-      );
+        })`);
+
+      // console.log(
+      //   `   - ${g.godName} (light: ${g.lightLeagueId || "NONE"}, dark: ${
+      //     g.darkLeagueId || "NONE"
+      //   })`
+      // );
     });
   });
 
@@ -590,7 +770,9 @@ async function processLeague(
   const leagueName = leagueInfo.name;
 
   const leagueTag = `[${divisionName} – ${godName} – ${side}] ${leagueName} (${leagueId})`;
-  console.log(`\n${leagueTag}`);
+  // console.log(`\n${leagueTag}`);
+  cInfo(`\n${leagueTag}`);
+
 
   const users = await fetchWithRetry(`${baseUrl}/users`);
   const rosters = await fetchWithRetry(`${baseUrl}/rosters`);
@@ -600,111 +782,250 @@ async function processLeague(
     userMap[u.user_id] = u.display_name;
   });
 
-  const ownersByRoster = new Map();
+    const ownersByRoster = new Map();
 
   const seedConfig = seedsForLeague; // ✅ unify naming
+  const rawSeedsByOwnerId = seedConfig?.seedsByOwnerId || seedConfig || {};
+  const manualSlots = Array.isArray(seedConfig?.manualSlots) ? seedConfig.manualSlots : [];
+  const ownerNamesByIdFromSeeds = seedConfig?.ownerNamesById || {};
 
-  const seedsByOwnerId = seedConfig?.seedsByOwnerId || seedConfig || {};
-  const manualSlots = Array.isArray(seedConfig?.manualSlots)
-    ? seedConfig.manualSlots
-    : [];
+  const log = makeLeagueLogger(leagueTag);
 
-  // If Sleeper has open rosters (owner_id null), we assign them the manual slots
+  // If Sleeper has open rosters (owner_id null) OR "empty" rosters, we assign them manual slots
   // from /admin/gauntlet/seeds in ascending seed order to keep bracket positions stable.
-  const manualSlotsSorted = manualSlots
+    // ✅ STABLE manual slot ordering:
+  // Do NOT sort by seed — changing seed would reshuffle slot identity.
+  // Use rowId (Supabase PK) so manual slots remain anchored run-to-run.
+  const manualSlotsStable = manualSlots
     .slice()
-    .sort((a, b) => (a?.seed ?? 999) - (b?.seed ?? 999));
-  let manualSlotPtr = 0;
+    .sort((a, b) => {
+      const ar = Number(a?.rowId ?? 0);
+      const br = Number(b?.rowId ?? 0);
+      return ar - br;
+    });
 
+  // Build a stable mapping: rosterId -> manual slot
+  // (roster ordering is stable, and manual slot ordering is stable)
+  const sortedRosters = rosters
+    .slice()
+    .sort((a, b) => (a.roster_id || 0) - (b.roster_id || 0));
+
+  const rostersNeedingManual = sortedRosters.filter((r) => {
+    const emptyRoster = isTrulyEmptyRoster(r);
+    const rawOwnerId = r?.owner_id ? String(r.owner_id) : null;
+    return !rawOwnerId || emptyRoster;
+  });
+
+  const manualSlotByRosterId = new Map();
+  for (let i = 0; i < rostersNeedingManual.length; i++) {
+    const r = rostersNeedingManual[i];
+    const slot = manualSlotsStable[i] || null;
+    manualSlotByRosterId.set(r.roster_id, slot);
+  }
+
+    log.section("MANUAL SLOT ANCHOR MAP (STABLE)");
+    rostersNeedingManual.forEach((r) => {
+      const slot = manualSlotByRosterId.get(r.roster_id);
+      log.info(
+        `roster_id=${r.roster_id} -> manualRow=${slot?.rowId ?? "NONE"} (${slot?.ownerName ?? "NONE"}, seed=${slot?.seed ?? "null"})`
+      );
+    });
+
+
+  // Build a set of "real roster owners" (owners actually attached to rosters)
+  const rosterOwnerIds = new Set();
+  rosters.forEach((r) => {
+    if (r?.owner_id) rosterOwnerIds.add(String(r.owner_id));
+    if (Array.isArray(r?.co_owners)) {
+      r.co_owners.forEach((id) => {
+        if (id) rosterOwnerIds.add(String(id));
+      });
+    }
+  });
+
+  // Filter seeds so:
+  //  - ONLY seeds 1–12 matter
+  //  - ONLY owners who are actually on a roster can influence anything
+  // (Owners in the league/users list but NOT on a roster cannot hijack an empty team.)
+  const seedsByOwnerId = {};
+  const ignoredSeeds = []; // for logging
+  Object.entries(rawSeedsByOwnerId || {}).forEach(([oid, s]) => {
+    const ownerId = oid ? String(oid) : null;
+    const seed = clampSeed12(s);
+    if (!ownerId) return;
+
+    if (!rosterOwnerIds.has(ownerId)) {
+      ignoredSeeds.push({ ownerId, seed: s, reason: "owner_not_on_any_roster" });
+      return;
+    }
+    if (seed == null) {
+      ignoredSeeds.push({ ownerId, seed: s, reason: "seed_outside_1_12_or_invalid" });
+      return;
+    }
+    seedsByOwnerId[ownerId] = seed;
+  });
+
+  // Stable roster ordering (owners first, then ownerless), so manual slot assignment is deterministic
   rosters
     .slice()
     .sort((a, b) => {
       const ao = a.owner_id ? 0 : 1;
       const bo = b.owner_id ? 0 : 1;
-      if (ao !== bo) return ao - bo; // owners first, ownerless last
-      return (a.roster_id || 0) - (b.roster_id || 0); // stable ordering
+      if (ao !== bo) return ao - bo;
+      return (a.roster_id || 0) - (b.roster_id || 0);
     })
     .forEach((r) => {
+      const rosterId = r.roster_id;
 
-    const rosterId = r.roster_id;
-    const rawOwnerId = r.owner_id ? String(r.owner_id) : null;
+      // IMPORTANT FIX:
+      // If a roster is "empty" (no players/starters), treat it like an open slot and use a manual slot.
+      const emptyRoster = isTrulyEmptyRoster(r);
 
-    // Default mapping for real owners
-    let ownerId = rawOwnerId;
-    let ownerName = rawOwnerId ? userMap[rawOwnerId] || `Owner ${rawOwnerId}` : null;
-    let manualSeed =
-      rawOwnerId && seedsByOwnerId[rawOwnerId] != null
-        ? Number(seedsByOwnerId[rawOwnerId])
+      const rawOwnerId = r.owner_id ? String(r.owner_id) : null;
+      const forceManual = !rawOwnerId || emptyRoster;
+
+      // Default mapping for real owners
+      let ownerId = rawOwnerId;
+      let ownerName = rawOwnerId
+        ? (userMap[rawOwnerId] || ownerNamesByIdFromSeeds[rawOwnerId] || `Owner ${rawOwnerId}`)
         : null;
 
-    // If this roster has NO owner, use the corresponding manual placeholder slot
-    if (!rawOwnerId) {
-      const slot = manualSlotsSorted[manualSlotPtr] || null;
-      if (slot) manualSlotPtr += 1;
+      let manualSeed =
+        rawOwnerId && seedsByOwnerId[rawOwnerId] != null
+          ? Number(seedsByOwnerId[rawOwnerId])
+          : null;
 
-      ownerId = slot?.rowId != null ? `manual:${slot.rowId}` : `manual_roster:${rosterId}`;
-      ownerName = (slot?.ownerName || "TBD").trim() || "TBD";
-      manualSeed = slot?.seed != null ? Number(slot.seed) : null;
-    }
+      let mappingNote = "";
 
-    ownersByRoster.set(rosterId, {
-      rosterId,
-      ownerId,
-      ownerName,
-      leagueId,
-      leagueName,
-      division: divisionName,
-      godName,
-      side,
-      record: { wins: 0, losses: 0, ties: 0 },
-      seedPointsWeekly: {},
-      seedPointsTotal: 0,
-      initialSeed: manualSeed,
-      leg2Weekly: {},
-      leg2ElimWeek: null,
-      leg3Weekly: {},
-      leg3Total: 0,
-      leg3BestBall: {},
-      lastWeekWithData: null,
-      lastWeekRoster: null,
-      finalSeed: null,
+      // If roster has NO owner OR is EMPTY, use the corresponding manual placeholder slot
+      if (forceManual) {
+        const slot = manualSlotByRosterId.get(rosterId) || null;
+
+        ownerId = slot?.rowId != null ? `manual:${slot.rowId}` : `manual_roster:${rosterId}`;
+        ownerName = (slot?.ownerName || (emptyRoster ? "EMPTY" : "TBD")).trim() || "TBD";
+        manualSeed = slot?.seed != null ? clampSeed12(slot.seed) : null;
+
+        mappingNote = !rawOwnerId
+          ? "manual_slot(ownerless_roster)"
+          : "manual_slot(empty_roster_override)";
+      } else {
+        mappingNote = "sleeper_owner";
+      }
+
+      ownersByRoster.set(rosterId, {
+        rosterId,
+        ownerId,
+        ownerName,
+        leagueId,
+        leagueName,
+        division: divisionName,
+        godName,
+        side,
+        record: { wins: 0, losses: 0, ties: 0 },
+        seedPointsWeekly: {},
+        seedPointsTotal: 0,
+        initialSeed: manualSeed, // already clamped to 1–12 (or null)
+        leg2Weekly: {},
+        leg2ElimWeek: null,
+        leg3Weekly: {},
+        leg3Total: 0,
+        leg3BestBall: {},
+        lastWeekWithData: null,
+        lastWeekRoster: null,
+        finalSeed: null,
+        _mappingNote: mappingNote,
+        _emptyRoster: emptyRoster ? true : false,
+        _rawOwnerId: rawOwnerId,
+      });
     });
-  });
 
-  // ====== Phase 1: MANUAL SEEDS ONLY (no Week 1–8 computation) ======
-  console.log(`${leagueTag} Manual seeds from gauntlet_seeds_2025:`);
-  Array.from(ownersByRoster.values())
-    .sort((a, b) => {
-      const sa = a.initialSeed ?? 999;
-      const sb = b.initialSeed ?? 999;
-      if (sa !== sb) return sa - sb;
-      return (a.ownerName || "").localeCompare(b.ownerName || "");
-    })
-    .forEach((o) => {
-      console.log(
-        `${leagueTag} Seed ${
-          o.initialSeed != null ? String(o.initialSeed).padStart(2, " ") : "??"
-        } – ${o.ownerName} (owner_id=${o.ownerId})`
+  // ====== LOGGING (clear + actionable) ======
+  log.section("SEEDING + ROSTER MAPPING");
+
+  if (ignoredSeeds.length) {
+    log.warn(
+      `Ignored ${ignoredSeeds.length} seed rows for seeding (invalid seed or owner not on a roster). ` +
+      `Those owners may still exist as rosters, but will be UNSEEDED (seed ??).`
+    );
+
+    ignoredSeeds.slice(0, 50).forEach((x) => {
+      log.row(
+        "ignored_seed",
+        `${x.ownerId} seed=${x.seed} (${x.reason})`
       );
     });
+    if (ignoredSeeds.length > 50) {
+      log.row("ignored_seed", `... +${ignoredSeeds.length - 50} more`);
+    }
+  } else {
+    log.info("No ignored seed rows.");
+  }
+
+  const mapped = Array.from(ownersByRoster.values());
+  const manualMapped = mapped.filter((o) => String(o.ownerId || "").startsWith("manual:") || String(o.ownerId || "").startsWith("manual_roster:"));
+  const emptyOverrides = mapped.filter((o) => o._mappingNote === "manual_slot(empty_roster_override)");
+
+  log.row("rosters_total", String(mapped.length));
+  log.row("manual_slots_used", String(manualMapped.length));
+  log.row("empty_roster_overrides", String(emptyOverrides.length));
+
+    // ====== Phase 1: MANUAL SEEDS ONLY (no Week 1–8 computation) ======
+  log.section("MANUAL SEEDS (1–12 ONLY)");
+
+  const seeded = mapped
+    .filter((o) => Number.isFinite(o.initialSeed) && o.initialSeed >= 1 && o.initialSeed <= 12)
+    .slice()
+    .sort((a, b) => (a.initialSeed - b.initialSeed));
+
+  const unseeded = mapped
+    .filter((o) => !(Number.isFinite(o.initialSeed) && o.initialSeed >= 1 && o.initialSeed <= 12))
+    .slice()
+    .sort((a, b) => (a.ownerName || "").localeCompare(b.ownerName || ""));
+
+  // 1) Only show true seeded 1–12 here
+  if (!seeded.length) {
+    log.warn("No valid seeds 1–12 found in Supabase for this league.");
+  } else {
+    seeded.forEach((o) => {
+      const seedStr = String(o.initialSeed).padStart(2, " ");
+      const note = o._mappingNote || "";
+      const extra = o._emptyRoster ? " [EMPTY]" : "";
+      log.info(`Seed ${seedStr} – ${o.ownerName} (owner_id=${o.ownerId}) ${note}${extra}`);
+    });
+  }
+
+  // 2) Put unseeded owners in their own clearly labeled section
+  if (unseeded.length) {
+    log.section("UNSEEDED OWNERS (NO VALID 1–12 SEED)");
+    unseeded.forEach((o) => {
+      const note = o._mappingNote || "";
+      const extra = o._emptyRoster ? " [EMPTY]" : "";
+      const rawSeed = rawSeedsByOwnerId?.[String(o._rawOwnerId || "")];
+      const rawSeedNote =
+        rawSeed != null ? ` (raw_seed=${rawSeed})` : "";
+      log.info(`UNSEEDED – ${o.ownerName} (owner_id=${o.ownerId})${rawSeedNote} ${note}${extra}`);
+    });
+  }
+
 
   const allOwners = Array.from(ownersByRoster.values());
 
-  /* ---------- Phase 2: Leg 2 Guillotine (Weeks 9–12) ---------- */
+
+    /* ---------- Phase 2: Leg 2 Guillotine (Weeks 9–12) ---------- */
+
+  log.section("GUILLOTINE ELIMINATIONS (WEEKS 9–12)");
 
   const alive = new Set(allOwners.map((o) => o.rosterId));
 
   for (let week = LEG2_START; week <= LEG2_END; week++) {
     if (alive.size <= 8) {
-      console.log(
-        `${leagueTag} ✅ Alive rosters already <= 8 (${alive.size}) before Week ${week}, no more eliminations.`
-      );
+      log.info(`Week ${week}: alive<=8 (${alive.size}) — stop Guillotine early.`);
       break;
     }
 
     const matchups = await fetchWithRetry(`${baseUrl}/matchups/${week}`);
     if (!matchups || !matchups.length) {
-      console.log(`${leagueTag} • Week ${week}: no matchups → stop Guillotine early`);
+      log.info(`Week ${week}: no matchups — stop Guillotine early.`);
       break;
     }
 
@@ -750,10 +1071,11 @@ async function processLeague(
         eliminated = zeroCandidates.reduce((worst, o) =>
           (o.initialSeed || 999) > (worst.initialSeed || 999) ? o : worst
         );
-        console.log(
-          `${leagueTag} Week ${week} Guillotine via week ${nextWeek} ZERO pts: ` +
-            `${eliminated.ownerName} (seed ${eliminated.initialSeed ?? "??"})`
+        log.info(
+          `Week ${week}: eliminated via Week ${nextWeek} ZERO pts — ${eliminated.ownerName} ` +
+          `(seed ${eliminated.initialSeed ?? "??"}, roster_id=${eliminated.rosterId})`
         );
+
       } else {
         const nextWeekRosterIds = new Set(
           nextMatchups
@@ -773,19 +1095,18 @@ async function processLeague(
           eliminated = disappeared.reduce((worst, o) =>
             (o.initialSeed || 999) > (worst.initialSeed || 999) ? o : worst
           );
-          console.log(
-            `${leagueTag} Week ${week} Guillotine via week ${nextWeek} DISAPPEARED roster: ` +
-              `${eliminated.ownerName} (seed ${eliminated.initialSeed ?? "??"})`
+          log.info(
+            `Week ${week}: eliminated via Week ${nextWeek} DISAPPEARED roster — ${eliminated.ownerName} ` +
+            `(seed ${eliminated.initialSeed ?? "??"}, roster_id=${eliminated.rosterId})`
           );
+
         }
       }
     }
 
     if (!eliminated) {
       if (!weekPoints.size) {
-        console.log(
-          `${leagueTag} • Week ${week}: no weekPoints for alive rosters; cannot eliminate`
-        );
+        log.info(`${leagueTag} • Week ${week}: no weekPoints for alive rosters; cannot eliminate`);
         break;
       }
 
@@ -803,28 +1124,24 @@ async function processLeague(
       });
 
       if (!candidates.length) {
-        console.log(
-          `${leagueTag} • Week ${week}: could not determine elimination candidate (fallback)`
-        );
+        log.info(`${leagueTag} • Week ${week}: could not determine elimination candidate (fallback)`);
         break;
       }
 
       eliminated = candidates.reduce((worst, o) =>
         (o.initialSeed || 999) > (worst.initialSeed || 999) ? o : worst
       );
-      console.log(
-        `${leagueTag} Week ${week} Guillotine FALLBACK (lowest pts this week): ` +
-          `${eliminated.ownerName} – ${minPts.toFixed(2)} pts (seed ${
-            eliminated.initialSeed ?? "??"
-          })`
+      log.info(
+        `Week ${week}: eliminated FALLBACK lowest pts — ${eliminated.ownerName} ` +
+        `(${minPts.toFixed(2)} pts, seed ${eliminated.initialSeed ?? "??"}, roster_id=${eliminated.rosterId})`
       );
+
     }
 
     eliminated.leg2ElimWeek = week;
     alive.delete(eliminated.rosterId);
-    console.log(
-      `${leagueTag} → Eliminated ${eliminated.ownerName}, ${alive.size} alive`
-    );
+    log.info(`Week ${week}: eliminated ${eliminated.ownerName} → alive=${alive.size}`);
+
   }
 
   const survivors = allOwners.filter((o) => o.leg2ElimWeek == null);
@@ -1415,7 +1732,16 @@ async function writeSplitOutputsToR2({
 /* ================== MAIN ================== */
 
 async function main() {
-  console.log("🏟️ Building Gauntlet Leg 3 payload…");
+  // Init debug log file (only if GAUNTLET_DEBUG_LOG=1)
+  initDebugLogIfEnabled();
+
+  cInfo("🏟️ Building Gauntlet Leg 3 payload…");
+  if (DEBUG_LOG_ENABLED && RUN_LOG_FILE) {
+    cInfo(`📝 Debug log file: ${RUN_LOG_FILE}`);
+  }
+
+  dbgSection("RUN START", `YEAR=${YEAR}`);
+
 
   if (!isGameWindow()) {
     console.log(
@@ -1447,7 +1773,8 @@ async function main() {
 
   // 3) Process each league (Guillotine + Leg 3 BB) with concurrency limit
   const leagueIds = Object.keys(leaguesConfig);
-  console.log(`\nProcessing ${leagueIds.length} Gauntlet leagues…`);
+  cInfo(`\nProcessing ${leagueIds.length} Gauntlet leagues…`);
+  dbgRow("leagues_count", String(leagueIds.length));
 
   const leagueResults = await Promise.all(
     leagueIds.map((leagueId) =>
@@ -1475,11 +1802,14 @@ async function main() {
   });
 
     const { latestScoreWeek, currentBracketWeek } = detectBracketWeek(allTeams);
-  console.log(
+  cInfo(
     `\n📅 Bracket weeks → latest score week: ${
       latestScoreWeek ?? "none"
     }, current bracket week: ${currentBracketWeek ?? "none"}`
   );
+  dbgRow("latestScoreWeek", String(latestScoreWeek ?? "none"));
+  dbgRow("currentBracketWeek", String(currentBracketWeek ?? "none"));
+
 
   // 4) Build per-division God brackets + champions
   const divisionsPayload = {};
@@ -1521,8 +1851,17 @@ async function main() {
     grandChampionship,
     missingSeedLeagues,
   });
+cInfo("🎉 Gauntlet Leg 3 build complete (split JSONs + manifest).");
 
-  console.log("🎉 Gauntlet Leg 3 build complete (split JSONs + manifest).");
+if (DEBUG_LOG_ENABLED && RUN_LOG_FILE) {
+  cInfo(`🧾 Debug warnings written: ${DEBUG_WARN_COUNT}`);
+  cInfo(`📝 Debug log saved: ${RUN_LOG_FILE}`);
+}
+
+dbgSection("RUN COMPLETE");
+dbgRow("debugWarnings", String(DEBUG_WARN_COUNT));
+
+
 }
 
 main().catch((err) => {
