@@ -23,13 +23,8 @@ export default function RedraftPage() {
   return (
     <section className="section">
       <div className="container-site space-y-10">
-        {/* Admin-managed updates (R2) */}
-        <RedraftUpdatesClient />
 
-        {/* Live leagues (R2) */}
-        <RedraftLeaguesClient />
-
-        {/* Hero (hardcoded) — moved BELOW updates + live leagues */}
+         {/* Hero (hardcoded) — moved BELOW updates + live leagues */}
         <section className="relative overflow-hidden rounded-3xl border border-border/70 bg-card-surface shadow-2xl shadow-black/40 px-6 py-8 sm:px-10 sm:py-10">
           {/* glow accents */}
           <div className="pointer-events-none absolute inset-0 opacity-60 mix-blend-screen">
@@ -126,6 +121,14 @@ export default function RedraftPage() {
             </aside>
           </div>
         </section>
+        
+        {/* Admin-managed updates (R2) */}
+        <RedraftUpdatesClient />
+
+        {/* Live leagues (R2) */}
+        <RedraftLeaguesClient />
+
+       
 
         {/* League description */}
         <article
