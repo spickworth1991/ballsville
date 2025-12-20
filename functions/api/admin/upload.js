@@ -1,11 +1,15 @@
 // functions/api/admin/upload.js
 //
 // POST multipart/form-data:
-// - file: <File>
-// - folder: (optional) e.g. "mini-leagues"
-// - key: (optional) exact R2 object key to overwrite, e.g. "media/mini-leagues/hero_2025.webp"
+// - file: <File> (required)
+// - section: "mini-leagues-updates" | "mini-leagues-winners" | "mini-leagues-division" | "mini-leagues-league" (required)
+// - season: "2025" (required for mini-leagues sections)
+// - divisionCode: "100" (required for division/league uploads)
+// - leagueOrder: "1" (required for league uploads)
 //
-// Returns: { ok, key, url }
+// Behavior:
+// - Always writes to a deterministic R2 key for that section.
+// - Re-upload replaces the existing image (no timestamp keys).
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -17,30 +21,10 @@ function json(data, status = 200) {
   });
 }
 
-function safeName(name) {
-  return String(name || "upload")
-    .toLowerCase()
-    .replace(/[^a-z0-9.\-_]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-function safeKey(key) {
-  // allow only safe key characters and folders
-  const k = String(key || "").trim();
-  if (!k) return "";
-  if (k.includes("..")) return "";
-  if (!/^[a-z0-9/_\-.]+$/i.test(k)) return "";
-  return k.replace(/^\/+/, "");
-}
-
 function ensureR2(env) {
   const b = env.admin_bucket || env.ADMIN_BUCKET;
 
-  if (!b) {
-    return { ok: false, status: 500, error: "Missing R2 binding: admin_bucket" };
-  }
-
+  if (!b) return { ok: false, status: 500, error: "Missing R2 binding: admin_bucket" };
   if (typeof b.get !== "function" || typeof b.put !== "function") {
     return {
       ok: false,
@@ -48,7 +32,6 @@ function ensureR2(env) {
       error: "admin_bucket binding is not an R2 bucket object (check Pages > Settings > Bindings: admin_bucket).",
     };
   }
-
   return { ok: true, bucket: b };
 }
 
@@ -86,18 +69,57 @@ async function requireAdmin(context) {
   return { ok: true };
 }
 
-function getExtFromName(filename) {
-  const n = String(filename || "");
-  const last = n.lastIndexOf(".");
-  if (last === -1) return "";
-  return n.slice(last + 1).toLowerCase().replace(/[^a-z0-9]/g, "");
+function cleanNum(x) {
+  const n = Number(String(x || "").trim());
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function cleanId(x) {
+  // allow only digits for divisionCode etc (keeps paths clean)
+  const s = String(x || "").trim();
+  return /^[0-9]+$/.test(s) ? s : "";
+}
+
+function extFromFile(file) {
+  // Prefer MIME type
+  const t = String(file?.type || "").toLowerCase();
+  if (t === "image/webp") return "webp";
+  if (t === "image/png") return "png";
+  if (t === "image/jpeg") return "jpg";
+  if (t === "image/gif") return "gif";
+  if (t === "image/avif") return "avif";
+
+  // Fallback to filename extension
+  const name = String(file?.name || "");
+  const m = name.match(/\.([a-z0-9]+)$/i);
+  const ext = (m?.[1] || "bin").toLowerCase();
+  // keep it simple (and safe)
+  return /^[a-z0-9]{2,5}$/.test(ext) ? ext : "bin";
+}
+
+function keyForUpload({ section, season, divisionCode, leagueOrder, ext }) {
+  // All mini-leagues images go under media/mini-leagues/...
+  // Deterministic keys = overwrite on every upload.
+  if (section === "mini-leagues-updates") {
+    return `media/mini-leagues/updates_${season}.${ext}`;
+  }
+  if (section === "mini-leagues-winners") {
+    return `media/mini-leagues/winners_${season}.${ext}`;
+  }
+  if (section === "mini-leagues-division") {
+    return `media/mini-leagues/divisions/${season}/${divisionCode}.${ext}`;
+  }
+  if (section === "mini-leagues-league") {
+    return `media/mini-leagues/leagues/${season}/${divisionCode}/${leagueOrder}.${ext}`;
+  }
+  return "";
 }
 
 export async function onRequest(context) {
   try {
-    const { request, env } = context;
+    const { request } = context;
 
-    const r2 = ensureR2(env);
+    const r2 = ensureR2(context.env);
     if (!r2.ok) return json({ ok: false, error: r2.error }, r2.status);
 
     const gate = await requireAdmin(context);
@@ -107,27 +129,31 @@ export async function onRequest(context) {
 
     const form = await request.formData();
     const file = form.get("file");
-    const folder = safeName(form.get("folder") || "misc");
-    const desiredKeyRaw = form.get("key");
-
     if (!file || typeof file === "string") return json({ ok: false, error: "Missing file" }, 400);
 
-    const originalName = safeName(file.name || "upload");
-    const ext = getExtFromName(originalName) || "bin";
+    const section = String(form.get("section") || "").trim();
+    const seasonNum = cleanNum(form.get("season"));
+    const season = Number.isFinite(seasonNum) ? String(seasonNum) : "";
 
-    // Optional fixed overwrite key
-    const desiredKey = typeof desiredKeyRaw === "string" ? safeKey(desiredKeyRaw) : "";
+    const divisionCode = cleanId(form.get("divisionCode"));
+    const leagueOrderNum = cleanNum(form.get("leagueOrder"));
+    const leagueOrder = Number.isFinite(leagueOrderNum) ? String(leagueOrderNum) : "";
 
-    let key;
-    if (desiredKey) {
-      key = desiredKey;
-    } else {
-      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-      // IMPORTANT: do NOT append ext twice
-      key = `media/${folder}/${stamp}-${originalName}`;
-      if (!key.toLowerCase().endsWith(`.${ext}`)) key = `${key}.${ext}`;
-      key = key.replace(/\.+/g, ".");
+    if (!section) return json({ ok: false, error: "Missing section" }, 400);
+    if (!season) return json({ ok: false, error: "Missing season" }, 400);
+
+    // Validate required identifiers for section type
+    if (section === "mini-leagues-division" && !divisionCode) {
+      return json({ ok: false, error: "Missing divisionCode" }, 400);
     }
+    if (section === "mini-leagues-league" && (!divisionCode || !leagueOrder)) {
+      return json({ ok: false, error: "Missing divisionCode or leagueOrder" }, 400);
+    }
+
+    const ext = extFromFile(file);
+    const key = keyForUpload({ section, season, divisionCode, leagueOrder, ext });
+
+    if (!key) return json({ ok: false, error: "Invalid section" }, 400);
 
     const buf = await file.arrayBuffer();
 
@@ -135,7 +161,8 @@ export async function onRequest(context) {
       httpMetadata: { contentType: file.type || "application/octet-stream" },
     });
 
-    const url = `/r2/${key}`;
+    // cache-bust for immediate preview
+    const url = `/r2/${key}?v=${Date.now()}`;
 
     return json({ ok: true, key, url });
   } catch (e) {

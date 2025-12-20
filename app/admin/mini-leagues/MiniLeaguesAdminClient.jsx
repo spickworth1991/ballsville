@@ -99,11 +99,17 @@ async function apiPUT(type, data) {
   return res.json();
 }
 
-async function uploadImage(file, folder = "mini-leagues") {
+async function uploadImage(file, payload) {
   const token = await getAccessToken();
   const form = new FormData();
   form.append("file", file);
-  form.append("folder", folder);
+
+  // required routing info (no UI option)
+  form.append("section", payload.section);
+  form.append("season", String(payload.season));
+
+  if (payload.divisionCode) form.append("divisionCode", String(payload.divisionCode));
+  if (payload.leagueOrder) form.append("leagueOrder", String(payload.leagueOrder));
 
   const res = await fetch("/api/admin/upload", {
     method: "POST",
@@ -114,6 +120,7 @@ async function uploadImage(file, folder = "mini-leagues") {
   if (!res.ok) throw new Error(await readApiError(res));
   return res.json();
 }
+
 
 function StatusPill({ status }) {
   const label = (STATUS_OPTIONS.find((x) => x.value === status)?.label || "TBD").toUpperCase();
@@ -385,7 +392,7 @@ export default function MiniLeaguesAdminClient() {
                       setErr("");
                       setOk("");
                       try {
-                        const up = await uploadImage(f, "mini-leagues");
+                        const up = await uploadImage(f, { section: "mini-leagues-updates", season: SEASON });
                         setPageCfg((p) => ({ ...p, hero: { ...p.hero, promoImageKey: up.key } }));
                         setOk("Uploaded updates image.");
                       } catch (ex) {
@@ -435,7 +442,7 @@ export default function MiniLeaguesAdminClient() {
                       setErr("");
                       setOk("");
                       try {
-                        const up = await uploadImage(f, "mini-leagues");
+                        const up = await uploadImage(f, { section: "mini-leagues-winners", season: SEASON });
                         setPageCfg((p) => ({ ...p, winners: { ...p.winners, imageKey: up.key } }));
                         setOk("Uploaded winners image.");
                       } catch (ex) {
@@ -587,7 +594,12 @@ export default function MiniLeaguesAdminClient() {
                                       setErr("");
                                       setOk("");
                                       try {
-                                        const up = await uploadImage(f, "mini-leagues");
+                                        const up = await uploadImage(f, {
+                                            section: "mini-leagues-division",
+                                            season: SEASON,
+                                            divisionCode: d.divisionCode,
+                                            });
+
                                         updateDivision(divIdx, { imageKey: up.key });
                                         setOk(`Uploaded image for ${d.title}.`);
                                       } catch (ex) {
@@ -686,7 +698,13 @@ export default function MiniLeaguesAdminClient() {
                                                 setErr("");
                                                 setOk("");
                                                 try {
-                                                  const up = await uploadImage(f, "mini-leagues");
+                                                  const up = await uploadImage(f, {
+                                                    section: "mini-leagues-league",
+                                                    season: SEASON,
+                                                    divisionCode: d.divisionCode,
+                                                    leagueOrder: l.order ?? (leagueIdx + 1),
+                                                    });
+
                                                   updateLeague(divIdx, leagueIdx, { imageKey: up.key });
                                                   setOk(`Uploaded image for ${l.name || `League ${leagueIdx + 1}`}.`);
                                                 } catch (ex) {
