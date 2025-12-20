@@ -208,7 +208,7 @@ const winnersSrc = editable?.winners?.imageKey
                       alt="Mini-Leagues updates"
                       fill
                       sizes="(max-width: 1024px) 100vw, 520px"
-                      className="object-cover"
+                      className="object-stretch"
                       priority
                     />
                   </div>

@@ -10,57 +10,57 @@
       "imageUrl": "",
       "leagues": [
         {
-          "name": "League 1",
+          "name": "Marios Misfits",
           "url": "",
           "status": "full",
           "active": true,
           "order": 1,
-          "imageKey": "",
+          "imageKey": "media/mini-leagues/leagues/2025/100/1.webp",
           "imageUrl": ""
         },
         {
-          "name": "League 2",
+          "name": "Luigis Lunatics",
           "url": "",
           "status": "full",
           "active": true,
           "order": 2,
-          "imageKey": "",
+          "imageKey": "media/mini-leagues/leagues/2025/100/2.webp",
           "imageUrl": ""
         },
         {
-          "name": "League 3",
+          "name": "Samus' Slayers",
           "url": "",
           "status": "full",
           "active": true,
           "order": 3,
-          "imageKey": "",
+          "imageKey": "media/mini-leagues/leagues/2025/100/3.webp",
           "imageUrl": ""
         },
         {
-          "name": "League 4",
+          "name": "Mega Mad-Men",
           "url": "",
           "status": "full",
           "active": true,
           "order": 4,
-          "imageKey": "",
+          "imageKey": "media/mini-leagues/leagues/2025/100/4.webp",
           "imageUrl": ""
         },
         {
-          "name": "League 5",
+          "name": "Bowsers Brood",
           "url": "",
           "status": "full",
           "active": true,
           "order": 5,
-          "imageKey": "",
+          "imageKey": "media/mini-leagues/leagues/2025/100/5.webp",
           "imageUrl": ""
         },
         {
-          "name": "League 6",
+          "name": "Links League",
           "url": "",
           "status": "full",
           "active": true,
           "order": 6,
-          "imageKey": "",
+          "imageKey": "media/mini-leagues/leagues/2025/100/6.webp",
           "imageUrl": ""
         },
         {
