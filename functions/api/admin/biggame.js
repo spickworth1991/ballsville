@@ -93,38 +93,49 @@ function slugify(input) {
 
 function normalizeRow(r, idx, season) {
   const year = asNum(r?.year, asNum(season, DEFAULT_SEASON)) || DEFAULT_SEASON;
+
+  // Division
   const division_name = asStr(r?.division_name || r?.theme_name || "Division").trim() || "Division";
-  const division_slug = asStr(r?.division_slug || r?.divisionSlug || slugify(division_name)).trim() || slugify(division_name);
+  const division_slug = asStr(r?.division_slug || r?.divisionSlug || slugify(division_name)).trim() || slugify(division_name) || `division-${idx + 1}`;
+  const division_status = asStr(r?.division_status || r?.divisionStatus || r?.status || "TBD").trim() || "TBD";
+  const division_order = asNum(r?.division_order, null);
+  const division_blurb = asStr(r?.division_blurb || "").trim() || null;
 
-  const status = asStr(r?.status || "TBD").trim() || "TBD";
+  const division_image_key = asStr(r?.division_image_key || r?.divisionImageKey || "").trim() || null;
+  const division_image_path = asStr(r?.division_image_path || r?.divisionImagePath || "").trim() || null;
 
-  // Image fields: support both old "*_image_path" and new "*_image_key" shapes.
-  const division_image_key = asStr(r?.division_image_key || r?.divisionImageKey || "").trim();
-  const division_image_path = asStr(r?.division_image_path || r?.divisionImagePath || "").trim();
-  const league_image_key = asStr(r?.league_image_key || r?.leagueImageKey || "").trim();
-  const league_image_path = asStr(r?.league_image_path || r?.leagueImagePath || "").trim();
+  // League
+  const is_division_header = asBool(r?.is_division_header, false);
+  const display_order = asNum(r?.display_order, idx + 1);
+  const league_name = asStr(r?.league_name || r?.name || "").trim() || `League ${idx + 1}`;
+  const league_url = asStr(r?.league_url || r?.sleeper_url || r?.sleeperUrl || "").trim() || null;
+  const league_status = asStr(r?.league_status || r?.status || "TBD").trim() || "TBD";
+  const spots_available = asNum(r?.spots_available, null);
+
+  const league_image_key = asStr(r?.league_image_key || r?.leagueImageKey || "").trim() || null;
+  const league_image_path = asStr(r?.league_image_path || r?.leagueImagePath || "").trim() || null;
 
   return {
     id: asStr(r?.id || `bg_${year}_${division_slug}_${idx}`).trim() || `bg_${year}_${division_slug}_${idx}`,
     year,
+
     division_name,
     division_slug,
-    theme: asStr(r?.theme || "").trim() || null,
-    division_status: asStr(r?.division_status || r?.divisionStatus || "").trim() || null,
-    division_image_key: division_image_key || null,
-    division_image_path: division_image_path || null,
+    division_status,
+    division_order,
+    division_blurb,
+    division_image_key,
+    division_image_path,
 
-    display_order: asNum(r?.display_order, idx + 1),
-    league_name: asStr(r?.league_name || r?.name || "").trim() || `League ${idx + 1}`,
-    sleeper_league_id: asStr(r?.sleeper_league_id || "").trim() || null,
-    sleeper_url: asStr(r?.sleeper_url || r?.sleeperUrl || "").trim() || null,
+    league_name,
+    league_url,
+    league_status,
+    league_image_key,
+    league_image_path,
+    display_order,
+    spots_available,
 
-    status,
-    fill_note: asStr(r?.fill_note || "").trim() || null,
-
-    league_image_key: league_image_key || null,
-    league_image_path: league_image_path || null,
-
+    is_division_header,
     is_active: asBool(r?.is_active, true),
   };
 }
@@ -160,10 +171,21 @@ export async function onRequest(context) {
       const rowsRaw = Array.isArray(body?.rows) ? body.rows : [];
       const rows = rowsRaw.map((r, idx) => normalizeRow(r, idx, season));
 
-      // stable sort
+      // stable sort (header first within each division)
       rows.sort((a, b) => {
         if (a.year !== b.year) return b.year - a.year;
-        if (a.division_name !== b.division_name) return a.division_name.localeCompare(b.division_name);
+
+        const ao = a.division_order;
+        const bo = b.division_order;
+        if (Number.isFinite(ao) && Number.isFinite(bo) && ao !== bo) return ao - bo;
+        if (Number.isFinite(ao) && !Number.isFinite(bo)) return -1;
+        if (!Number.isFinite(ao) && Number.isFinite(bo)) return 1;
+
+        const an = asStr(a.division_name).toLowerCase();
+        const bn = asStr(b.division_name).toLowerCase();
+        if (an !== bn) return an.localeCompare(bn);
+
+        if (!!a.is_division_header !== !!b.is_division_header) return a.is_division_header ? -1 : 1;
         return (a.display_order ?? 9999) - (b.display_order ?? 9999);
       });
 

@@ -448,6 +448,14 @@ export default function BigGameAdminClient() {
     setInfoMsg(`Division "${group.division_name}" removed locally. Click "Save to R2" to publish.`);
   }
 
+  function deleteLeague(leagueRow) {
+    if (!leagueRow?.id) return;
+    if (!window.confirm("Delete this league row?")) return;
+    // revoke local preview blob if present
+    safeRevoke(leagueRow._pending_league_preview);
+    setRows((prev) => prev.filter((r) => r.id !== leagueRow.id));
+  }
+
   if (loading) {
     return <p className="text-sm text-muted">Loading Big Game divisions…</p>;
   }
@@ -657,6 +665,7 @@ export default function BigGameAdminClient() {
                             <th className="px-3 py-2 w-[220px]">Image</th>
                             <th className="px-3 py-2 w-[140px]">Spots</th>
                             <th className="px-3 py-2 w-[70px]">Active</th>
+                            <th className="px-3 py-2 w-[90px]"></th>
                           </tr>
                         </thead>
                         <tbody>
@@ -751,6 +760,15 @@ export default function BigGameAdminClient() {
                                   </td>
                                   <td className="px-3 py-2">
                                     <input type="checkbox" checked={lg.is_active !== false} onChange={(e) => upsertRow(lg.id, { is_active: e.target.checked })} />
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <button
+                                      className="btn btn-outline text-xs"
+                                      type="button"
+                                      onClick={() => deleteLeague(lg)}
+                                    >
+                                      Delete
+                                    </button>
                                   </td>
                                 </tr>
                               );

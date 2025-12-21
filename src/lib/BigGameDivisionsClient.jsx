@@ -29,13 +29,23 @@ function normalizeRow(r, idx = 0) {
   const division_name = safeStr(r?.division_name || r?.theme_name || "Division").trim();
   const division_slug = safeStr(r?.division_slug || slugify(division_name));
 
+  // R2-admin schema:
+  // - header rows: is_division_header=true, division_* fields, division_status
+  // - league rows: is_division_header=false, league_* fields, league_status
+  // Legacy/supabase rows may still provide generic `status` and `name/url`.
+  const is_division_header = !!r?.is_division_header || !!r?.is_division_header;
+  const division_status = safeStr(r?.division_status || r?.status || "TBD").trim() || "TBD";
+  const league_status = safeStr(r?.league_status || r?.status || "TBD").trim() || "TBD";
+
   return {
     id: safeStr(r?.id || `${year}_${division_slug}_${idx}`),
     year,
     division_name,
     division_slug,
+    is_division_header,
+    division_status,
+    league_status,
     theme: safeStr(r?.theme || ""),
-    status: safeStr(r?.status || "TBD"),
     is_active: r?.is_active !== false,
 
     // images
@@ -45,8 +55,8 @@ function normalizeRow(r, idx = 0) {
     league_image_path: safeStr(r?.league_image_path || r?.league_image_url || ""),
 
     // league
-    name: safeStr(r?.name || r?.league_name || "").trim(),
-    sleeper_url: safeStr(r?.sleeper_url || r?.url || "").trim(),
+    name: safeStr(r?.league_name || r?.name || "").trim(),
+    sleeper_url: safeStr(r?.league_url || r?.sleeper_url || r?.url || "").trim(),
     display_order: safeNum(r?.display_order, idx + 1),
     fill_note: safeStr(r?.fill_note || "").trim(),
   };
@@ -71,18 +81,29 @@ function transformDivisions(rows, season) {
         id: divKey,
         division_slug: divKey,
         division_name: row.division_name,
-        status: row.status,
-        theme: row.theme,
+        status: row.division_status || "TBD",
         division_image: r2ImgSrc(row.division_image_key, row.division_image_path),
         leagues: [],
       });
     }
 
-    divisionsMap.get(divKey).leagues.push({
-      name: row.name,
-      sleeper_url: row.sleeper_url,
-      display_order: row.display_order,
-      fill_note: row.fill_note,
+    const div = divisionsMap.get(divKey);
+
+    // Prefer header row as the source of division meta
+    if (row.is_division_header) {
+      div.division_name = row.division_name || div.division_name;
+      div.status = row.division_status || div.status || "TBD";
+      div.division_image = r2ImgSrc(row.division_image_key, row.division_image_path) || div.division_image;
+      continue;
+    }
+
+    div.leagues.push({
+      name: safeStr(row.name).trim(),
+      sleeper_url: safeStr(row.sleeper_url).trim(),
+      status: safeStr(row.league_status || row.division_status || "TBD").trim(),
+      display_order: safeNum(row.display_order, null),
+      spots_available: safeNum(row.spots_available, null),
+      fill_note: safeStr(row.fill_note).trim(),
       league_image: r2ImgSrc(row.league_image_key, row.league_image_path),
     });
   }
@@ -92,7 +113,14 @@ function transformDivisions(rows, season) {
     d.leagues.sort((a, b) => (a.display_order ?? 9999) - (b.display_order ?? 9999));
   }
 
-  divisions.sort((a, b) => a.division_name.localeCompare(b.division_name));
+  divisions.sort((a, b) => {
+    const ao = a.division_order;
+    const bo = b.division_order;
+    if (Number.isFinite(ao) && Number.isFinite(bo) && ao !== bo) return ao - bo;
+    if (Number.isFinite(ao) && !Number.isFinite(bo)) return -1;
+    if (!Number.isFinite(ao) && Number.isFinite(bo)) return 1;
+    return safeStr(a.division_name).localeCompare(safeStr(b.division_name));
+  });
   return divisions;
 }
 
