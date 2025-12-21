@@ -5,15 +5,17 @@
 // - section:
 //    "mini-leagues-updates"
 //    "mini-leagues-winners"      (legacy single winner image)
-//    "mini-leagues-winners-1"    (NEW winner slot 1)
-//    "mini-leagues-winners-2"    (NEW winner slot 2)
+//    "mini-leagues-winners-1"    (winner slot 1)
+//    "mini-leagues-winners-2"    (winner slot 2)
 //    "mini-leagues-division"
 //    "mini-leagues-league"
 //    "redraft-updates"
 //    "redraft-league"
-// - season: "2025" (required for mini-leagues sections)
-// - divisionCode: "100" (required for division/league uploads)
-// - leagueOrder: "1" (required for league uploads)
+//    "dynasty-league"
+// - season: "2025" (required for all sections in this endpoint)
+// - divisionCode: "100" (required for mini-leagues-division and mini-leagues-league)
+// - leagueOrder: "1" (required for mini-leagues-league and redraft-league)
+// - leagueId: "<string>" (required for dynasty-league)
 //
 // Behavior:
 // - Always writes to a deterministic R2 key for that section.
@@ -89,6 +91,11 @@ function cleanId(x) {
   return /^[0-9]+$/.test(s) ? s : "";
 }
 
+function cleanLooseId(x) {
+  // for dynasty league IDs (uuid-ish or any stable string)
+  return String(x || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
+}
+
 function extFromFile(file) {
   const t = String(file?.type || "").toLowerCase();
   if (t === "image/webp") return "webp";
@@ -107,40 +114,31 @@ function extFromFile(file) {
  * Deterministic base key (NO extension) for each section.
  * We’ll delete all known image extensions for that base before putting the new one.
  */
-function baseKeyForUpload({ section, season, divisionCode, leagueOrder }) {
-  if (section === "mini-leagues-updates") {
-    return `media/mini-leagues/updates_${season}`;
-  }
+function baseKeyForUpload({ section, season, divisionCode, leagueOrder, leagueId }) {
+  // ============
+  // MINI-LEAGUES
+  // ============
+  if (section === "mini-leagues-updates") return `media/mini-leagues/updates_${season}`;
 
-  // legacy single slot (keep supported)
-  if (section === "mini-leagues-winners") {
-    return `media/mini-leagues/winners_${season}`;
-  }
+  // legacy single slot (kept supported)
+  if (section === "mini-leagues-winners") return `media/mini-leagues/winners_${season}`;
+  if (section === "mini-leagues-winners-1") return `media/mini-leagues/winners_1_${season}`;
+  if (section === "mini-leagues-winners-2") return `media/mini-leagues/winners_2_${season}`;
 
-  // NEW: two fixed winner slots
-  if (section === "mini-leagues-winners-1") {
-    return `media/mini-leagues/winners_1_${season}`;
-  }
-  if (section === "mini-leagues-winners-2") {
-    return `media/mini-leagues/winners_2_${season}`;
-  }
+  if (section === "mini-leagues-division") return `media/mini-leagues/divisions/${season}/${divisionCode}`;
+  if (section === "mini-leagues-league") return `media/mini-leagues/leagues/${season}/${divisionCode}/${leagueOrder}`;
 
-  if (section === "mini-leagues-division") {
-    return `media/mini-leagues/divisions/${season}/${divisionCode}`;
-  }
-  if (section === "mini-leagues-league") {
-    return `media/mini-leagues/leagues/${season}/${divisionCode}/${leagueOrder}`;
-  }
+  // =======
+  // REDRAFT
+  // =======
+  if (section === "redraft-updates") return `media/redraft/updates_${season}`;
+  if (section === "redraft-league") return `media/redraft/leagues/${season}/${leagueOrder}`;
 
-  // =====================
-  // REDRAFT (no divisions)
-  // =====================
-  if (section === "redraft-updates") {
-    return `media/redraft/updates_${season}`;
-  }
-  if (section === "redraft-league") {
-    return `media/redraft/leagues/${season}/${leagueOrder}`;
-  }
+  // =======
+  // DYNASTY
+  // =======
+  if (section === "dynasty-league") return `media/dynasty/leagues/${season}/${leagueId}`;
+
   return "";
 }
 
@@ -179,6 +177,8 @@ export async function onRequest(context) {
     const leagueOrderNum = cleanNum(form.get("leagueOrder"));
     const leagueOrder = Number.isFinite(leagueOrderNum) ? String(leagueOrderNum) : "";
 
+    const leagueId = cleanLooseId(form.get("leagueId"));
+
     if (!section) return json({ ok: false, error: "Missing section" }, 400);
     if (!season) return json({ ok: false, error: "Missing season" }, 400);
 
@@ -189,12 +189,14 @@ export async function onRequest(context) {
     if (section === "mini-leagues-league" && (!divisionCode || !leagueOrder)) {
       return json({ ok: false, error: "Missing divisionCode or leagueOrder" }, 400);
     }
-
     if (section === "redraft-league" && !leagueOrder) {
       return json({ ok: false, error: "Missing leagueOrder" }, 400);
     }
+    if (section === "dynasty-league" && !leagueId) {
+      return json({ ok: false, error: "Missing leagueId" }, 400);
+    }
 
-    const baseKey = baseKeyForUpload({ section, season, divisionCode, leagueOrder });
+    const baseKey = baseKeyForUpload({ section, season, divisionCode, leagueOrder, leagueId });
     if (!baseKey) return json({ ok: false, error: "Invalid section" }, 400);
 
     const ext = extFromFile(file);
