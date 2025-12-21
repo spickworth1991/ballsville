@@ -195,8 +195,6 @@ export default function BigGameAdminClient() {
   const [infoMsg, setInfoMsg] = useState("");
   const [open, setOpen] = useState(() => new Set());
 
-  const [pageCfg, setPageCfg] = useState(DEFAULT_PAGE_EDITABLE);
-  const [pageSaving, setPageSaving] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
 
   const groups = useMemo(() => groupByDivision(rows.filter((r) => Number(r.year) === Number(season))), [rows, season]);
