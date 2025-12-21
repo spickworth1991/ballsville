@@ -3,8 +3,9 @@
 
 import { useEffect, useState, useRef, useMemo } from "react";
 import { siteConfig } from "@/app/config/siteConfig";
+import { CURRENT_SEASON } from "@/src/lib/season";
 
-const LEG3_YEAR = 2025;
+const LEG3_YEAR = CURRENT_SEASON;
 
 function formatDateTime(dt) {
   if (!dt) return "Never";

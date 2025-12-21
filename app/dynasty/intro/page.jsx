@@ -18,7 +18,7 @@ export const metadata = {
   },
 };
 
-const UPDATED = "01/26/2025";
+// No hard-coded "Updated:" dates on-page (they go stale and create yearly work).
 
 const DRAGONS_ORIGINAL = [
   { name: "Shenron", img: "/photos/dynasty/shenron.webp" },
@@ -143,9 +143,7 @@ export default function DynastyIntroPage() {
 
                 <div className="mt-4 inline-flex flex-wrap gap-2 text-xs sm:text-sm">
                   
-                  <span className="rounded-full border border-subtle bg-card-trans px-3 py-1 backdrop-blur-sm">
-                    Updated: {UPDATED}
-                  </span>
+                  {/* intentionally no hard-coded "Updated" badge */}
                 </div>
               </div>
 

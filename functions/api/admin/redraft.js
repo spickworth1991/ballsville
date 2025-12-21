@@ -7,7 +7,9 @@
 // - content/redraft/page_<season>.json
 // - data/redraft/leagues_<season>.json
 
-const DEFAULT_SEASON = 2025;
+import { getCurrentNflSeason } from "../../_lib/season";
+
+const DEFAULT_SEASON = getCurrentNflSeason();
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {

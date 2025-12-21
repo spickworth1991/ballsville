@@ -9,7 +9,9 @@
 // - content/dynasty/page_<season>.json
 // - data/dynasty/leagues.json
 
-const DEFAULT_SEASON = 2025;
+import { getCurrentNflSeason } from "../../_lib/season";
+
+const DEFAULT_SEASON = getCurrentNflSeason();
 const R2_LEAGUES_KEY = "data/dynasty/leagues.json";
 
 function r2KeyFor(type, season) {

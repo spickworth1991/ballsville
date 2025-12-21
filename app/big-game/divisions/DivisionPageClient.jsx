@@ -3,12 +3,13 @@
 import { useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import BigGameDivisionClient from "@/lib/BigGameDivisionClient";
+import { CURRENT_SEASON } from "@/src/lib/season";
 
 export default function DivisionPageClient() {
   const sp = useSearchParams();
 
   const { year, divisionSlug, backHref } = useMemo(() => {
-    const y = Number(sp?.get("year") || 2025) || 2025;
+    const y = Number(sp?.get("year") || CURRENT_SEASON) || CURRENT_SEASON;
     const d = String(sp?.get("division") || "").trim();
     return {
       year: y,

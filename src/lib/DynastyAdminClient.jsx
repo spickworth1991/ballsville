@@ -3,10 +3,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabaseClient";
+import { CURRENT_SEASON } from "@/src/lib/season";
 
 const R2_KEY = "data/dynasty/leagues.json";
 
-const DEFAULT_PAGE_SEASON = 2025;
+const DEFAULT_PAGE_SEASON = CURRENT_SEASON;
 const DEFAULT_PAGE_EDITABLE = {
   hero: {
     promoImageKey: "",

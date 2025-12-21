@@ -7,7 +7,6 @@ export async function onRequest({ env, request }) {
     if (!obj) {
       // Default skeleton so the page never breaks
       const fallback = {
-        updated: "2025-01-23",
         hero: {
           title: "Welcome to the Mini-Leagues Game",
           subtitle:
@@ -66,7 +65,8 @@ export async function onRequest({ env, request }) {
         ],
         lastYear: {
           title: "Last Year’s Winners",
-          image: "/photos/hall-of-fame/minileageus2024.png",
+          // No year-specific default. Admins can upload winners when ready.
+          image: "",
         },
       };
 

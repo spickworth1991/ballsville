@@ -3,8 +3,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import { CURRENT_SEASON } from "@/src/lib/season";
 
-const SEASON = 2025;
+const SEASON = CURRENT_SEASON;
 
 const STATUS_LABEL = {
   full: "FULL",

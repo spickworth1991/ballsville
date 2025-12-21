@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import DynastyLeaguesClient from "@/lib/DynastyLeaguesClient";
 import OwnerHeroBlock from "@/src/components/OwnerHeroBlock";
+import { CURRENT_SEASON } from "@/src/lib/season";
 
 export const metadata = {
   title: "The Dynasty Game | Ballsville",
@@ -94,7 +95,7 @@ export default function DynastyPage() {
 
               <div className="mt-6 rounded-2xl border border-subtle bg-subtle-surface p-4 text-sm text-muted space-y-3">
                 <p>
-                  <span className="font-semibold text-fg">Welcome to 2025.</span>{" "}
+                  <span className="font-semibold text-fg">Welcome to {CURRENT_SEASON}.</span>{" "}
                   Our Dynasty game is in high demand, which lets us hand-select
                   managers we want with us long-term.
                 </p>
@@ -144,7 +145,7 @@ export default function DynastyPage() {
               </div>
             </div>
           </div>
-          <OwnerHeroBlock mode="dynasty" season={2025} title="Owner Updates" />
+          <OwnerHeroBlock mode="dynasty" season={CURRENT_SEASON} title="Owner Updates" />
         </section>
 
         {/* DOCS / CORE DOCUMENTS */}

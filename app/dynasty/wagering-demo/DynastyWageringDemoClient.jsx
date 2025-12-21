@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { getSupabase } from "@/src/lib/supabaseClient";
+import { CURRENT_SEASON } from "@/src/lib/season";
 
-const UPDATED = "01/23/2025";
-const SEASON = 2025;
+const SEASON = CURRENT_SEASON;
 
 const DRAGONS_LEAGUES = [
   "Shenron","Alduin","Smaug","Bahamut","Charizard","Toothless","Deathwing","Skithryx",
@@ -170,7 +170,7 @@ export default function DynastyWageringDemoClient() {
               </h1>
 
               <p className="text-sm sm:text-base text-muted max-w-prose">
-                Updated {UPDATED}. The Heroes of Dynasty expansion mirrors these settings for the Dragons of Dynasty.
+                The Heroes of Dynasty expansion mirrors these settings for the Dragons of Dynasty.
                 This page explains how the $50 credit works — and tracks wagers, banking, and scores.
               </p>
 

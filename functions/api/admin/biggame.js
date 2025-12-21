@@ -9,7 +9,9 @@
 // - content/biggame/page_<season>.json
 // - data/biggame/leagues_<season>.json
 
-const DEFAULT_SEASON = 2025;
+import { getCurrentNflSeason } from "../../_lib/season";
+
+const DEFAULT_SEASON = getCurrentNflSeason();
 
 function r2KeyFor(type, season) {
   if (type === "page") return `content/biggame/page_${season}.json`;

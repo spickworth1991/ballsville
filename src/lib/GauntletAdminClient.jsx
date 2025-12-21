@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { FiUpload, FiTrash2, FiPlus, FiSave, FiRefreshCw } from "react-icons/fi";
+import { CURRENT_SEASON } from "@/src/lib/season";
 
 // GAUNTLET admin (R2-backed) — modeled after BigGameAdminClient.
 // Stores to /api/admin/gauntlet (R2 JSON) and uploads images via /api/admin/upload.
 
-const DEFAULT_SEASON = 2025;
+const DEFAULT_SEASON = CURRENT_SEASON;
 
 const DEFAULT_PAGE_EDITABLE = {
   hero: {

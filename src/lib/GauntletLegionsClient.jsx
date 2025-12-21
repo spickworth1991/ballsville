@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { CURRENT_SEASON } from "@/src/lib/season";
 
 function slugify(s) {
   return String(s || "")
@@ -30,7 +31,7 @@ function fmtSpots(openSpots) {
   return n;
 }
 
-export default function GauntletLegionsClient({ season = 2025, embedded = false }) {
+export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedded = false }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

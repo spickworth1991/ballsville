@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import { CURRENT_SEASON } from "@/src/lib/season";
 
 function safeMode(mode) {
   const m = String(mode || "").trim().toLowerCase();
@@ -12,7 +13,7 @@ function safeMode(mode) {
 }
 
 const DEFAULT = {
-  season: 2025,
+  season: CURRENT_SEASON,
   hero: {
     promoImageKey: "",
     promoImageUrl: "",
@@ -22,7 +23,7 @@ const DEFAULT = {
 
 export default function OwnerHeroBlock({
   mode,
-  season = 2025, // still used for which JSON we fetch
+  season = CURRENT_SEASON, // used only to determine which JSON we fetch
   title = "Owner Updates",
   subtitle,
 }) {

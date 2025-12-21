@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { getSupabase } from "@/src/lib/supabaseClient";
+import { CURRENT_SEASON } from "@/src/lib/season";
 
-const SEASON = 2025;
+const SEASON = CURRENT_SEASON;
 
 const DRAGONS_LEAGUES = [
   "Shenron","Alduin","Smaug","Bahamut","Charizard","Toothless","Deathwing","Skithryx",

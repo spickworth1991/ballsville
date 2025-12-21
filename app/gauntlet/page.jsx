@@ -2,6 +2,7 @@
 import Link from "next/link";
 import GauntletLegionsClient from "@/lib/GauntletLegionsClient";
 import OwnerHeroBlock from "@/src/components/OwnerHeroBlock";
+import { CURRENT_SEASON } from "@/src/lib/season";
 
 const DOC_EMBED_SRC =
   "https://docs.google.com/document/d/e/2PACX-1vT1-uDhonEEjWlgg4nT1Ix5HHcgwIKCWRuVTUCK9P2HH19bp_MwER8R_BCxM2EQ4mNMe6nSyJaxpfpC/pub?embedded=true";
@@ -108,7 +109,7 @@ export default function GauntletPage() {
               </div>
               
             </div>
-            <OwnerHeroBlock mode="gauntlet" season={2025} title="Owner Updates" />
+            <OwnerHeroBlock mode="gauntlet" season={CURRENT_SEASON} title="Owner Updates" />
           </div>
 
           {/* right: owner block + rules doc */}
@@ -280,7 +281,7 @@ export default function GauntletPage() {
             </p>
           </header>
 
-          <GauntletLegionsClient embedded season={2025} />
+          <GauntletLegionsClient embedded season={CURRENT_SEASON} />
         </section>
       </div>
     </main>

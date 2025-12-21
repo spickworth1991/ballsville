@@ -2,6 +2,7 @@
 import Link from "next/link";
 import BigGameDivisionsClient from "@/lib/BigGameDivisionsClient";
 import OwnerHeroBlock from "@/src/components/OwnerHeroBlock";
+import { CURRENT_SEASON } from "@/src/lib/season";
 
 export const metadata = {
   title: "The BIG Game | Ballsville",
@@ -99,7 +100,7 @@ export default function BigGamePage() {
                   <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
                     Quick Facts
                   </span>
-                  <span className="text-[11px] text-muted">2025</span>
+                  <span className="text-[11px] text-muted">{CURRENT_SEASON}</span>
                 </div>
 
                 <div className="p-4 space-y-3 text-sm">
@@ -124,7 +125,7 @@ export default function BigGamePage() {
               </div>
             </aside>
           </div>
-          <OwnerHeroBlock mode="biggame" season={2025} title="Owner Updates" />
+          <OwnerHeroBlock mode="biggame" season={CURRENT_SEASON} title="Owner Updates" />
         </section>
 
         {/* ESSENTIALLY / ODDS */}

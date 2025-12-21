@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { CURRENT_SEASON } from "@/src/lib/season";
 
-const DEFAULT_SEASON = 2025;
+const DEFAULT_SEASON = CURRENT_SEASON;
 const R2_KEY_FOR = (season) => `data/biggame/leagues_${season}.json`;
 
 function safeStr(v) {

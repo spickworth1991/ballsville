@@ -141,7 +141,15 @@ process.on("unhandledRejection", (err) => {
 
 /* ================== CONFIG ================== */
 
-const YEAR = 2025;
+function getCurrentNflSeason(date = new Date()) {
+  const d = date instanceof Date ? date : new Date(date);
+  const year = d.getFullYear();
+  const month = d.getMonth(); // 0=Jan
+  return month <= 1 ? year - 1 : year;
+}
+
+const YEAR = getCurrentNflSeason();
+const SEEDS_TABLE = `gauntlet_seeds_${YEAR}`;
 
 
 // Guillotine phase:
@@ -546,7 +554,7 @@ async function ensureLeagueNames(leaguesMap) {
   // Write back to Supabase (one UPDATE per league; small n)
   for (const u of toUpdate) {
     const { error } = await supabase
-      .from("gauntlet_seeds_2025")
+      .from(SEEDS_TABLE)
       .update({ league_name: u.name })
       .eq("year", YEAR)
       .eq("league_id", u.leagueId);
@@ -557,7 +565,7 @@ async function ensureLeagueNames(leaguesMap) {
       );
     } else {
       console.log(
-        ` ✅ Updated league_name for ${u.leagueId} → ${u.name} in gauntlet_seeds_2025`
+        ` ✅ Updated league_name for ${u.leagueId} → ${u.name} in ${SEEDS_TABLE}`
       );
     }
   }
@@ -567,20 +575,20 @@ async function loadLeaguesAndSeeds(year) {
   console.log("⬇️ Loading gauntlet seeds from Supabase…");
 
   const { data, error } = await supabase
-    .from("gauntlet_seeds_2025")
+    .from(SEEDS_TABLE)
     .select(
       "id, year, division, god_name, god, side, league_id, league_name, owner_id, owner_name, seed"
     )
     .eq("year", String(year));
 
   if (error) {
-    console.error("❌ Error loading gauntlet_seeds_2025:", error);
+    console.error(`❌ Error loading ${SEEDS_TABLE}:`, error);
     throw error;
   }
 
   if (!data || !data.length) {
     throw new Error(
-      "No rows found in gauntlet_seeds_2025 for this year. Populate seeds via /admin/gauntlet/seeds first."
+      `No rows found in ${SEEDS_TABLE} for this year. Populate seeds via /admin/gauntlet/seeds first.`
     );
   }
 
@@ -719,8 +727,8 @@ async function loadLeaguesAndSeeds(year) {
     divisionGodConfig[division] = arr;
   });
 
-  console.log("\nDiscovered divisions & gods from gauntlet_seeds_2025:");
-  cInfo("\nDiscovered divisions & gods from gauntlet_seeds_2025:");
+  console.log(`\nDiscovered divisions & gods from ${SEEDS_TABLE}:`);
+  cInfo(`\nDiscovered divisions & gods from ${SEEDS_TABLE}:`);
 
   Object.entries(divisionGodConfig).forEach(([division, godsArr]) => {
     // console.log(` • ${division}:`);
