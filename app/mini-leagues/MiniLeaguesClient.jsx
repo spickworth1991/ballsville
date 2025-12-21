@@ -270,7 +270,7 @@ export default function MiniLeaguesClient() {
                 </div>
               </div> */}
             </div>
-            <OwnerHeroBlock mode="minileagues" season={2025} title="Owner Updates" />
+            <OwnerHeroBlock mode="mini-leagues" season={2025} title="Owner Updates" />
           </header>
 
           {/* CONTENT */}
