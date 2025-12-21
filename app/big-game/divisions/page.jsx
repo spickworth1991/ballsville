@@ -1,25 +1,16 @@
-import BigGameDivisionClient from "@/lib/BigGameDivisionClient";
+import DivisionPageClient from "./DivisionPageClient";
+
+export const metadata = {
+  title: "Big Game Division | BALLSVILLE",
+  description: "View leagues inside a single BALLSVILLE Big Game division.",
+};
 
 /**
- * Public division drill-down page.
- *
- * This project is deployed as a static export, so we use query params instead of
- * a dynamic route like /big-game/divisions/[division].
- *
- * Example:
- *   /big-game/divisions?division=star-wars&year=2025
+ * IMPORTANT:
+ * This site is built with `output: "export"` (static export).
+ * That means query params (searchParams) are NOT available at build time.
+ * We must read `?division=` and `?year=` on the client.
  */
-export default function BigGameDivisionPage({ searchParams }) {
-  const yearRaw = searchParams?.year;
-  const year = Number(yearRaw) || 2025;
-
-  const divisionSlug = String(searchParams?.division || "").trim();
-
-  return (
-    <BigGameDivisionClient
-      year={year}
-      divisionSlug={divisionSlug}
-      backHref={`/big-game?year=${encodeURIComponent(String(year))}`}
-    />
-  );
+export default function BigGameDivisionPage() {
+  return <DivisionPageClient />;
 }
