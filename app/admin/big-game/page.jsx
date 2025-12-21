@@ -1,10 +1,10 @@
-// app/admin/dynasty/page.jsx
+// app/admin/biggame/page.jsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
-import DynastyAdminClient from "@/lib/DynastyAdminClient";
+import BigGameAdminClient from "@/lib/BigGameAdminClient";
 
 function parseAdmins() {
   return (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")
@@ -13,7 +13,7 @@ function parseAdmins() {
     .filter(Boolean);
 }
 
-export default function AdminDynastyPage() {
+export default function BigGameAdminPage() {
   const [user, setUser] = useState(null);
   const [userChecked, setUserChecked] = useState(false);
 
@@ -97,24 +97,23 @@ export default function AdminDynastyPage() {
           <div>
             <span className="badge">Admins</span>
             <p className="text-xs uppercase tracking-[0.3em] text-accent mt-2">
-              Admin · Dynasty
+              Admin · Big Game
             </p>
             <h1 className="text-3xl sm:text-4xl font-semibold mt-1">
-              Dynasty Themes &amp; Leagues
+              Big Game Divisions &amp; Leagues
             </h1>
-            <p className="text-sm text-muted mt-1 max-w-prose">
-              Manage Dynasty Empire themes (per year) and all leagues under each
-              theme. Each theme gets an expandable section with editable league
-              rows and a per-theme save button.
+            <p className="text-sm text-muted mt-1">
+              Manage Big Game divisions (themes) and the 8 leagues under each
+              for the current season.
             </p>
           </div>
           <div className="flex flex-col items-end gap-2">
-            <Link href="/dynasty" className="btn btn-outline text-sm">
-              ← View Public Dynasty Page
+            <Link href="/big-game" className="btn btn-outline text-sm">
+              ← View Public Big Game Page
             </Link>
-            <Link href="/admin" className="btn btn-outline text-xs">
-              Admin Home
-            </Link>
+            <a href="/admin" className="btn btn-outline">
+            ← Admin Home
+          </a>
             <button
               className="btn btn-outline text-xs"
               onClick={async () => {
@@ -128,7 +127,7 @@ export default function AdminDynastyPage() {
           </div>
         </header>
 
-        <DynastyAdminClient />
+        <BigGameAdminClient />
       </div>
     </section>
   );
