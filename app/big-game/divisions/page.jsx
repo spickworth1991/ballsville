@@ -1,4 +1,5 @@
 import DivisionPageClient from "./DivisionPageClient";
+import { Suspense } from "react";
 
 export const metadata = {
   title: "Big Game Division | BALLSVILLE",
