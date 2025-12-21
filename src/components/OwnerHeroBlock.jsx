@@ -119,26 +119,38 @@ export default function OwnerHeroBlock({
 
       <div className="p-4 grid gap-4">
         {imgSrc ? (
-          <div className="relative w-full overflow-hidden rounded-xl border border-subtle bg-black/20">
-            <div className="relative mx-auto flex items-center justify-center h-48 sm:h-56 lg:h-60">
-              {/* background polish */}
-              <div className="pointer-events-none absolute inset-0">
-                <div className="absolute -top-16 -left-16 h-44 w-44 rounded-full bg-cyan-400/10 blur-3xl" />
-                <div className="absolute -bottom-16 -right-16 h-44 w-44 rounded-full bg-purple-500/10 blur-3xl" />
-                <div className="absolute inset-0 bg-gradient-to-b from-white/5 via-transparent to-black/20" />
-              </div>
-
-              <Image
-                src={imgSrc}
-                alt={`${title} image`}
-                width={1200}
-                height={675}
-                sizes="(max-width: 1024px) 100vw, 520px"
-                className="relative z-10 max-h-full max-w-full w-auto object-contain p-2"
-              />
+        <div className="relative w-full overflow-hidden rounded-xl border border-subtle bg-black/20">
+          <div
+            className="relative mx-auto flex items-center justify-center w-full"
+            style={{
+              height: "clamp(180px, 22vw, 240px)", // never taller than 240px
+              maxWidth: "560px",                  // keeps it from becoming a full-width billboard
+            }}
+          >
+            {/* background polish */}
+            <div className="pointer-events-none absolute inset-0">
+              <div className="absolute -top-16 -left-16 h-44 w-44 rounded-full bg-cyan-400/10 blur-3xl" />
+              <div className="absolute -bottom-16 -right-16 h-44 w-44 rounded-full bg-purple-500/10 blur-3xl" />
+              <div className="absolute inset-0 bg-gradient-to-b from-white/5 via-transparent to-black/20" />
             </div>
+
+            <Image
+              src={imgSrc}
+              alt={`${title} image`}
+              width={1600}
+              height={900}
+              sizes="(max-width: 1024px) 100vw, 560px"
+              className="relative z-10 object-contain p-2"
+              style={{
+                maxHeight: "100%",  // cannot exceed the frame height
+                maxWidth: "100%",   // cannot exceed the frame width
+                width: "auto",
+                height: "auto",
+              }}
+            />
           </div>
-        ) : null}
+        </div>
+      ) : null}
 
         <div
           className="prose prose-invert max-w-none text-sm text-muted"
