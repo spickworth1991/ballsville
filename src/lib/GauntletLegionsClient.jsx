@@ -30,7 +30,7 @@ function fmtSpots(openSpots) {
   return n;
 }
 
-export default function GauntletLegionsClient({ season = 2025 }) {
+export default function GauntletLegionsClient({ season = 2025, embedded = false }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -82,6 +82,84 @@ export default function GauntletLegionsClient({ season = 2025 }) {
       .sort((a, b) => Number(a?.legion_order ?? 0) - Number(b?.legion_order ?? 0));
   }, [rows]);
 
+  const grid = (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      {legions.map((l) => {
+        const status = String(l?.legion_status || "TBD").toUpperCase();
+        const badge = statusBadge(status);
+        const href = `/gauntlet/legions?legion=${encodeURIComponent(l.legion_slug)}&year=${encodeURIComponent(
+          String(season)
+        )}`;
+
+        return (
+          <Link key={l.legion_slug} href={href} className="group">
+            <div className="card bg-card-surface border border-subtle overflow-hidden hover:shadow-lg hover:-translate-y-[1px] transition">
+              <div className="relative h-40 w-full bg-subtle-surface">
+                {l.legion_image_url ? (
+                  <Image
+                    src={l.legion_image_url}
+                    alt={l.legion_name || "Legion"}
+                    fill
+                    sizes="(max-width: 1024px) 100vw, 33vw"
+                    className="object-cover"
+                  />
+                ) : null}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-black/0" />
+
+                <div className="absolute top-3 left-3 flex gap-2">
+                  <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${badge}`}>
+                    {status}
+                  </span>
+                  {l.activeCount ? (
+                    <span className="inline-flex items-center rounded-full border border-subtle bg-black/25 px-2.5 py-1 text-xs font-semibold text-fg">
+                      {l.activeCount} leagues
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <h2 className="text-xl font-semibold text-fg group-hover:text-primary transition">
+                    {l.legion_name || "Unnamed Legion"}
+                  </h2>
+                  <span className="text-accent group-hover:text-primary transition">→</span>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {typeof l.openSpots === "number" ? (
+                    <span className="inline-flex items-center rounded-full border border-subtle bg-card-subtle px-2.5 py-1 text-xs text-muted">
+                      {l.openSpots} spots open
+                    </span>
+                  ) : null}
+                  {l.legion_blurb ? (
+                    <span className="inline-flex items-center rounded-full border border-subtle bg-card-subtle px-2.5 py-1 text-xs text-muted">
+                      {l.legion_blurb}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </Link>
+        );
+      })}
+    </div>
+  );
+
+  if (embedded) {
+    if (loading) return <p className="text-muted">Loading…</p>;
+    return (
+      <>
+        {error ? (
+          <div className="card bg-card-surface border border-subtle p-5">
+            <p className="text-red-300">{error}</p>
+          </div>
+        ) : null}
+        {grid}
+      </>
+    );
+  }
+
   if (loading) {
     return (
       <main className="section">
@@ -111,67 +189,7 @@ export default function GauntletLegionsClient({ season = 2025 }) {
           </div>
         ) : null}
 
-        <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {legions.map((l) => {
-            const status = String(l?.legion_status || "TBD").toUpperCase();
-            const badge = statusBadge(status);
-            const href = `/gauntlet/legions?legion=${encodeURIComponent(l.legion_slug)}&year=${encodeURIComponent(
-              String(season)
-            )}`;
-
-            return (
-              <Link key={l.legion_slug} href={href} className="group">
-                <div className="card bg-card-surface border border-subtle overflow-hidden hover:shadow-lg hover:-translate-y-[1px] transition">
-                  <div className="relative h-40 w-full bg-subtle-surface">
-                    {l.legion_image_url ? (
-                      <Image
-                        src={l.legion_image_url}
-                        alt={l.legion_name || "Legion"}
-                        fill
-                        sizes="(max-width: 1024px) 100vw, 33vw"
-                        className="object-cover"
-                      />
-                    ) : null}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-black/0" />
-
-                    <div className="absolute top-3 left-3 flex gap-2">
-                      <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${badge}`}>
-                        {status}
-                      </span>
-                      {l.activeCount ? (
-                        <span className="inline-flex items-center rounded-full border border-subtle bg-black/25 px-2.5 py-1 text-xs font-semibold text-fg">
-                          {l.activeCount} leagues
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <h2 className="text-xl font-semibold text-fg group-hover:text-primary transition">
-                        {l.legion_name || "Unnamed Legion"}
-                      </h2>
-                      <span className="text-accent group-hover:text-primary transition">→</span>
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {typeof l.openSpots === "number" ? (
-                        <span className="inline-flex items-center rounded-full border border-subtle bg-card-subtle px-2.5 py-1 text-xs text-muted">
-                          {l.openSpots} spots open
-                        </span>
-                      ) : null}
-                      {l.legion_blurb ? (
-                        <span className="inline-flex items-center rounded-full border border-subtle bg-card-subtle px-2.5 py-1 text-xs text-muted">
-                          {l.legion_blurb}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
+        <div className="mt-8">{grid}</div>
       </div>
     </main>
   );

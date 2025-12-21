@@ -274,7 +274,7 @@ export default function RedraftAdminClient() {
               View Page
             </Link>
             <Link href="/admin" className="btn btn-outline">
-              Back
+              Admin Home
             </Link>
           </div>
         </div>

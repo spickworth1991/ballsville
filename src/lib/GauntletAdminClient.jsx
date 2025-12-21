@@ -9,6 +9,14 @@ import { FiUpload, FiTrash2, FiPlus, FiSave, FiRefreshCw } from "react-icons/fi"
 
 const DEFAULT_SEASON = 2025;
 
+const DEFAULT_PAGE_EDITABLE = {
+  hero: {
+    promoImageKey: "",
+    promoImageUrl: "",
+    updatesHtml: "<p>Updates will show here.</p>",
+  },
+};
+
 function slugify(s) {
   return String(s || "")
     .trim()
@@ -47,6 +55,10 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  const [pageCfg, setPageCfg] = useState(DEFAULT_PAGE_EDITABLE);
+  const [pageLoading, setPageLoading] = useState(true);
+  const [pageSaving, setPageSaving] = useState(false);
   const fileInputRef = useRef(null);
   const [uploadCtx, setUploadCtx] = useState(null); // { type: 'legion'|'league', legionSlug, leagueOrder }
 
@@ -69,8 +81,71 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
     }
   }
 
+  async function loadPageConfig(nextSeason = season) {
+    setPageLoading(true);
+    try {
+      const res = await fetch(`/api/admin/gauntlet?season=${encodeURIComponent(String(nextSeason))}&type=page`, {
+        cache: "no-store",
+      });
+      const data = await safeJson(res);
+      if (!res.ok || data?.ok === false) {
+        setPageCfg(DEFAULT_PAGE_EDITABLE);
+        return;
+      }
+      const hero = data?.data?.hero || {};
+      setPageCfg({
+        hero: {
+          promoImageKey: String(hero.promoImageKey || ""),
+          promoImageUrl: String(hero.promoImageUrl || ""),
+          updatesHtml: hero.updatesHtml ?? DEFAULT_PAGE_EDITABLE.hero.updatesHtml,
+        },
+      });
+    } catch {
+      setPageCfg(DEFAULT_PAGE_EDITABLE);
+    } finally {
+      setPageLoading(false);
+    }
+  }
+
+  async function savePageConfig(nextSeason = season) {
+    setError("");
+    setNotice("");
+    setPageSaving(true);
+    try {
+      const res = await fetch(`/api/admin/gauntlet?season=${encodeURIComponent(String(nextSeason))}&type=page`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "page", data: pageCfg }),
+      });
+      const out = await safeJson(res);
+      if (!res.ok || out?.ok === false) throw new Error(out?.error || `Save failed (${res.status})`);
+      setNotice("Owner Updates saved.");
+    } catch (e) {
+      setError(e?.message || "Failed to save Owner Updates.");
+    } finally {
+      setPageSaving(false);
+    }
+  }
+
+  async function uploadOwnerUpdatesImage(file) {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("section", "gauntlet-updates");
+    fd.append("season", String(season));
+    const res = await fetch(`/api/admin/upload`, { method: "POST", body: fd });
+    const out = await safeJson(res);
+    if (!res.ok || out?.ok === false) throw new Error(out?.error || "Upload failed");
+
+    setPageCfg((p) => ({
+      ...p,
+      hero: { ...p.hero, promoImageKey: String(out.key || ""), promoImageUrl: String(out.publicUrl || "") },
+    }));
+    setNotice("Image uploaded. Click Save Owner Updates to publish.");
+  }
+
   useEffect(() => {
     load();
+    loadPageConfig(season);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [season]);
 
@@ -290,6 +365,63 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
         {notice ? (
           <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-emerald-200">{notice}</div>
         ) : null}
+
+        <div className="mt-6 rounded-2xl border border-subtle bg-card-surface p-6 space-y-4">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-sm font-semibold">Owner Updates (Hero)</p>
+              <p className="text-xs text-muted">This image + text renders in the hero section on the public Gauntlet page.</p>
+            </div>
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={() => savePageConfig(season)}
+              disabled={pageSaving || pageLoading}
+            >
+              {pageSaving ? "Saving…" : "Save Owner Updates"}
+            </button>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <p className="text-xs text-muted">Promo image</p>
+              <div className="rounded-xl border border-subtle bg-black/20 overflow-hidden">
+                {pageCfg.hero.promoImageKey ? (
+                  <img src={`/r2/${pageCfg.hero.promoImageKey}`} alt="Owner promo" className="w-full h-auto block" loading="lazy" />
+                ) : (
+                  <div className="p-6 text-sm text-muted">No image uploaded.</div>
+                )}
+              </div>
+              <input
+                type="file"
+                accept="image/*"
+                className="input"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    await uploadOwnerUpdatesImage(file);
+                  } catch (err) {
+                    setError(err?.message || "Upload failed.");
+                  } finally {
+                    e.target.value = "";
+                  }
+                }}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs text-muted">Updates HTML</p>
+              <textarea
+                className="input min-h-[180px]"
+                value={pageCfg.hero.updatesHtml}
+                onChange={(e) => setPageCfg((p) => ({ ...p, hero: { ...p.hero, updatesHtml: e.target.value } }))}
+                placeholder="<p>Type your updates here…</p>"
+              />
+              <p className="text-xs text-muted">Tip: keep it short (1–4 lines) so the hero stays clean.</p>
+            </div>
+          </div>
+        </div>
 
         <div className="mt-6 flex items-center justify-between">
           <h2 className="h2">Legions</h2>

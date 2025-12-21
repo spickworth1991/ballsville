@@ -6,6 +6,15 @@ import { getSupabase } from "@/lib/supabaseClient";
 
 const R2_KEY = "data/dynasty/leagues.json";
 
+const DEFAULT_PAGE_SEASON = 2025;
+const DEFAULT_PAGE_EDITABLE = {
+  hero: {
+    promoImageKey: "",
+    promoImageUrl: "",
+    updatesHtml: "<p>Updates will show here.</p>",
+  },
+};
+
 const STATUS_OPTIONS = [
   "FULL & ACTIVE",
   "CURRENTLY FILLING",
@@ -125,6 +134,11 @@ export default function DynastyAdminClient() {
   const [errorMsg, setErrorMsg] = useState("");
   const [infoMsg, setInfoMsg] = useState("");
 
+  const [pageSeason, setPageSeason] = useState(DEFAULT_PAGE_SEASON);
+  const [pageCfg, setPageCfg] = useState(DEFAULT_PAGE_EDITABLE);
+  const [pageSaving, setPageSaving] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
+
   // accordion open/closed
   const [openThemes, setOpenThemes] = useState(() => new Set());
 
@@ -162,10 +176,89 @@ export default function DynastyAdminClient() {
     }
   }
 
+  async function loadPageConfig(season = pageSeason) {
+    setPageLoading(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        setPageCfg(DEFAULT_PAGE_EDITABLE);
+        return;
+      }
+      const res = await fetch(`/api/admin/dynasty?season=${encodeURIComponent(String(season))}&type=page`, {
+        headers: { authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok || !out?.ok) {
+        setPageCfg(DEFAULT_PAGE_EDITABLE);
+        return;
+      }
+      const hero = out?.data?.hero || {};
+      setPageCfg({
+        hero: {
+          promoImageKey: safeStr(hero.promoImageKey || ""),
+          promoImageUrl: safeStr(hero.promoImageUrl || ""),
+          updatesHtml: hero.updatesHtml ?? DEFAULT_PAGE_EDITABLE.hero.updatesHtml,
+        },
+      });
+    } catch {
+      setPageCfg(DEFAULT_PAGE_EDITABLE);
+    } finally {
+      setPageLoading(false);
+    }
+  }
+
+  async function savePageConfig(season = pageSeason) {
+    setErrorMsg("");
+    setInfoMsg("");
+    setPageSaving(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error("Not logged in.");
+      const res = await fetch(`/api/admin/dynasty?season=${encodeURIComponent(String(season))}&type=page`, {
+        method: "PUT",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({ type: "page", data: pageCfg }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok || !out?.ok) throw new Error(out?.error || `Save failed (${res.status})`);
+      setInfoMsg("Owner Updates saved.");
+    } catch (e) {
+      setErrorMsg(e?.message || "Failed to save Owner Updates.");
+    } finally {
+      setPageSaving(false);
+    }
+  }
+
+  async function uploadOwnerUpdatesImage(file) {
+    const token = await getAccessToken();
+    if (!token) throw new Error("Not logged in.");
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("section", "dynasty-updates");
+    fd.append("season", String(pageSeason));
+    const res = await fetch(`/api/admin/upload`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: fd,
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok || !out?.ok) throw new Error(out?.error || "Upload failed");
+    setPageCfg((p) => ({
+      ...p,
+      hero: { ...p.hero, promoImageKey: safeStr(out.key || ""), promoImageUrl: safeStr(out.publicUrl || "") },
+    }));
+  }
+
   useEffect(() => {
     loadFromR2();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    loadPageConfig(pageSeason);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageSeason]);
 
   async function uploadDynastyImage({ year, id, file, token }) {
     const fd = new FormData();
@@ -438,6 +531,78 @@ export default function DynastyAdminClient() {
           <button className="btn btn-primary text-sm" type="button" onClick={() => saveAllToR2()} disabled={saving}>
             {saving ? "Saving…" : "Save to R2"}
           </button>
+        </div>
+      </div>
+
+      {/* Owner Updates (Hero) */}
+      <div className="rounded-2xl border border-subtle bg-card-surface p-6 space-y-4">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-lg font-semibold text-primary">Owner Updates (Hero)</h2>
+            <p className="text-xs text-muted max-w-prose">
+              This image + text renders in the hero section on the public Dynasty page.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="text-xs text-muted flex items-center gap-2">
+              Season
+              <input
+                className="input w-24"
+                value={pageSeason}
+                onChange={(e) => setPageSeason(safeNum(e.target.value, pageSeason) || pageSeason)}
+              />
+            </label>
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={() => savePageConfig(pageSeason)}
+              disabled={pageSaving || pageLoading}
+            >
+              {pageSaving ? "Saving…" : "Save Owner Updates"}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <p className="text-xs text-muted">Promo image</p>
+            <div className="rounded-xl border border-subtle bg-black/20 overflow-hidden">
+              {pageCfg.hero.promoImageKey ? (
+                <img src={`/r2/${pageCfg.hero.promoImageKey}`} alt="Owner promo" className="w-full h-auto block" loading="lazy" />
+              ) : (
+                <div className="p-6 text-sm text-muted">No image uploaded.</div>
+              )}
+            </div>
+            <input
+              type="file"
+              accept="image/*"
+              className="input"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try {
+                  await uploadOwnerUpdatesImage(file);
+                  setInfoMsg("Image uploaded. Click Save Owner Updates to publish.");
+                } catch (err) {
+                  setErrorMsg(err?.message || "Upload failed.");
+                } finally {
+                  e.target.value = "";
+                }
+              }}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs text-muted">Updates HTML</p>
+            <textarea
+              className="input min-h-[180px]"
+              value={pageCfg.hero.updatesHtml}
+              onChange={(e) => setPageCfg((p) => ({ ...p, hero: { ...p.hero, updatesHtml: e.target.value } }))}
+              placeholder="<p>Type your updates here…</p>"
+            />
+            <p className="text-xs text-muted">Tip: keep it short (1–4 lines) so the hero stays clean.</p>
+          </div>
         </div>
       </div>
 

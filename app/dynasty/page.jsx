@@ -2,6 +2,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import DynastyLeaguesClient from "@/lib/DynastyLeaguesClient";
+import OwnerHeroBlock from "@/src/components/OwnerHeroBlock";
 
 export const metadata = {
   title: "The Dynasty Game | Ballsville",
@@ -114,8 +115,8 @@ export default function DynastyPage() {
               </div>
             </div>
 
-            {/* right hero art */}
-            <div className="space-y-3">
+            {/* right hero art + owner block */}
+            <div className="space-y-4">
               <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-card-trans shadow-xl shadow-black/40">
                 <div className="relative h-56 sm:h-64 md:h-72">
                   <Image
@@ -140,6 +141,8 @@ export default function DynastyPage() {
                   </p>
                 </div>
               </div>
+
+              <OwnerHeroBlock mode="dynasty" season={2025} title="Owner Updates" />
             </div>
           </div>
         </section>

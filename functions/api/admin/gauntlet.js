@@ -1,9 +1,9 @@
 // functions/api/admin/gauntlet.js
 //
-// JSON storage for GAUNTLET legions + leagues (R2-backed, deterministic key)
+// JSON storage for GAUNTLET (R2-backed, deterministic key)
 //
-// GET  /api/admin/gauntlet?season=2025  -> { season, rows }
-// POST /api/admin/gauntlet            -> body { season, rows } (writes to R2)
+// GET  /api/admin/gauntlet?season=2025&type=page|leagues  -> { season, ... }
+// POST /api/admin/gauntlet            -> body { season, type, rows|data } (writes to R2)
 //
 // Schema (similar to biggame):
 // - Header row per legion: is_legion_header=true
@@ -27,9 +27,26 @@ function ensureR2(env) {
   return b;
 }
 
-function keyForSeason(season) {
+function leaguesKeyForSeason(season) {
   const s = String(season || "").trim() || "2025";
   return `data/gauntlet/leagues_${s}.json`;
+}
+
+function pageKeyForSeason(season) {
+  const s = String(season || "").trim() || "2025";
+  return `content/gauntlet/page_${s}.json`;
+}
+
+function sanitizePageInput(data, season) {
+  const hero = data?.hero || {};
+  return {
+    season: Number(season) || season,
+    hero: {
+      promoImageKey: typeof hero.promoImageKey === "string" ? hero.promoImageKey : "",
+      promoImageUrl: typeof hero.promoImageUrl === "string" ? hero.promoImageUrl : "",
+      updatesHtml: typeof hero.updatesHtml === "string" ? hero.updatesHtml : "",
+    },
+  };
 }
 
 async function readJSON(env, key) {
@@ -56,29 +73,53 @@ export async function onRequest(context) {
   const { request, env } = context;
   const url = new URL(request.url);
   const season = url.searchParams.get("season") || url.searchParams.get("year") || "2025";
-  const key = keyForSeason(season);
+  const type = (url.searchParams.get("type") || "leagues").toLowerCase();
+
+  const key = type === "page" ? pageKeyForSeason(season) : leaguesKeyForSeason(season);
 
   try {
     if (request.method === "GET") {
       const existing = await readJSON(env, key);
-      if (!existing) return json({ season: Number(season) || season, rows: [] });
+      if (!existing) {
+        return json(type === "page" ? sanitizePageInput({}, season) : { season: Number(season) || season, rows: [] });
+      }
+
+      if (type === "page") {
+        return json(sanitizePageInput(existing, season));
+      }
+
       const rows = Array.isArray(existing?.rows) ? existing.rows : Array.isArray(existing) ? existing : [];
       return json({ season: Number(season) || season, rows });
     }
 
-    if (request.method === "POST") {
+    if (request.method === "POST" || request.method === "PUT") {
       const body = await request.json().catch(() => ({}));
       const s = body?.season || season;
-      const rows = Array.isArray(body?.rows) ? body.rows : [];
+      const bodyType = String(body?.type || type || "leagues").toLowerCase();
 
       const now = new Date().toISOString();
+
+      if (bodyType === "page") {
+        const payload = sanitizePageInput(body?.data || body, s);
+        await writeJSON(env, pageKeyForSeason(s), payload);
+        return json({ ok: true, season: Number(s) || s, key: pageKeyForSeason(s), type: "page", updated_at: now });
+      }
+
+      const rows = Array.isArray(body?.rows)
+        ? body.rows
+        : Array.isArray(body?.data?.rows)
+          ? body.data.rows
+          : Array.isArray(body?.data)
+            ? body.data
+            : [];
+
       const payload = {
         season: Number(s) || s,
         updated_at: now,
         rows,
       };
-      await writeJSON(env, keyForSeason(s), payload);
-      return json({ ok: true, season: Number(s) || s, key: keyForSeason(s), updated_at: now });
+      await writeJSON(env, leaguesKeyForSeason(s), payload);
+      return json({ ok: true, season: Number(s) || s, key: leaguesKeyForSeason(s), type: "leagues", updated_at: now });
     }
 
     return json({ error: "Method Not Allowed" }, 405);

@@ -1,6 +1,7 @@
 // src/app/gauntlet/page.jsx
 import Link from "next/link";
 import GauntletLegionsClient from "@/lib/GauntletLegionsClient";
+import OwnerHeroBlock from "@/src/components/OwnerHeroBlock";
 
 const DOC_EMBED_SRC =
   "https://docs.google.com/document/d/e/2PACX-1vT1-uDhonEEjWlgg4nT1Ix5HHcgwIKCWRuVTUCK9P2HH19bp_MwER8R_BCxM2EQ4mNMe6nSyJaxpfpC/pub?embedded=true";
@@ -23,8 +24,13 @@ function SubCard({ children }) {
 
 export default function GauntletPage() {
   return (
-    <section className="section">
-      <div className="container-site space-y-10">
+    <main className="relative min-h-screen text-fg">
+      {/* cosmic glow overlay (match Big Game layout) */}
+      <div className="pointer-events-none absolute inset-0 -z-10">
+        <div className="hero-glow" />
+      </div>
+
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-12 space-y-12">
        {/* HERO */}
       <header className="relative overflow-hidden rounded-3xl border border-border/70 bg-card-surface shadow-2xl shadow-black/40 p-6 md:p-10">
         {/* premium glow */}
@@ -103,47 +109,48 @@ export default function GauntletPage() {
             </div>
           </div>
 
-          {/* right: framed doc embed like a “panel” */}
-          <div className="rounded-2xl border border-border/60 bg-card-trans backdrop-blur-sm overflow-hidden shadow-xl shadow-black/40">
-            <div className="px-4 py-3 border-b border-border/60 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
-                  GAME RULES (LIVE DOC)
-                </span>
-                <span className="block text-[11px] text-muted truncate">
-                  Google Docs Embed
-                </span>
+          {/* right: owner block + rules doc */}
+          <div className="space-y-4">
+            <OwnerHeroBlock mode="gauntlet" season={2025} title="Owner Updates" />
+
+            {/* framed doc embed like a “panel” */}
+            <div className="rounded-2xl border border-border/60 bg-card-trans backdrop-blur-sm overflow-hidden shadow-xl shadow-black/40">
+              <div className="px-4 py-3 border-b border-border/60 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                    GAME RULES (LIVE DOC)
+                  </span>
+                  <span className="block text-[11px] text-muted truncate">
+                    Google Docs Embed
+                  </span>
+                </div>
+
+                {/* Full screen button */}
+                <a
+                  href={DOC_EMBED_SRC.replace("?embedded=true", "")}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="shrink-0 rounded-full border border-subtle bg-card-surface px-3 py-1 text-[11px] font-semibold text-fg hover:border-accent hover:text-accent transition"
+                  aria-label="Open Gauntlet Rules Doc in a new tab"
+                >
+                  ⤢ Full Screen
+                </a>
               </div>
 
-              {/* Full screen button */}
-              <a
-                href={DOC_EMBED_SRC.replace("?embedded=true", "")}
-                target="_blank"
-                rel="noreferrer"
-                className="shrink-0 rounded-full border border-subtle bg-card-surface px-3 py-1 text-[11px] font-semibold text-fg hover:border-accent hover:text-accent transition"
-                aria-label="Open Gauntlet Rules Doc in a new tab"
-              >
-                ⤢ Full Screen
-              </a>
-            </div>
+              {/* shorter embed */}
+              <div className="h-[360px] sm:h-[420px] lg:h-[460px]">
+                <iframe
+                  src={DOC_EMBED_SRC}
+                  title="Gauntlet Rules Doc"
+                  className="h-full w-full border-0"
+                />
+              </div>
 
-            {/* shorter embed */}
-            <div className="h-[420px] sm:h-[460px] lg:h-[520px]">
-              <iframe
-                src={DOC_EMBED_SRC}
-                title="Gauntlet Rules Doc"
-                className="h-full w-full border-0"
-              />
-            </div>
-
-            {/* footer tip */}
-            <div className="px-4 py-3 border-t border-border/60 text-[11px] text-muted flex items-center justify-between gap-3">
-              <span className="truncate">
-                Tip: On mobile, use “Full Screen” for easier reading.
-              </span>
-              <span className="hidden sm:inline text-[11px] text-muted">
-                (opens new tab)
-              </span>
+              {/* footer tip */}
+              <div className="px-4 py-3 border-t border-border/60 text-[11px] text-muted flex items-center justify-between gap-3">
+                <span className="truncate">Tip: On mobile, use “Full Screen” for easier reading.</span>
+                <span className="hidden sm:inline text-[11px] text-muted">(opens new tab)</span>
+              </div>
             </div>
           </div>
 
@@ -264,9 +271,9 @@ export default function GauntletPage() {
             </p>
           </header>
 
-          <GauntletLegionsClient />
+          <GauntletLegionsClient embedded season={2025} />
         </section>
       </div>
-    </section>
+    </main>
   );
 }

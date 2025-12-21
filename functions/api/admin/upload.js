@@ -151,17 +151,20 @@ function baseKeyForUpload({
   // =======
   // DYNASTY
   // =======
+  if (section === "dynasty-updates") return `media/dynasty/updates_${season}`;
   if (section === "dynasty-league") return `media/dynasty/leagues/${season}/${leagueId}`;
 
   // =======
   // BIG GAME
   // =======
+  if (section === "biggame-updates") return `media/biggame/updates_${season}`;
   if (section === "biggame-division") return `media/biggame/divisions/${season}/${divisionSlug}`;
   if (section === "biggame-league") return `media/biggame/leagues/${season}/${divisionSlug}/${leagueOrder}`;
 
   // =======
   // GAUNTLET
   // =======
+  if (section === "gauntlet-updates") return `media/gauntlet/updates_${season}`;
   // legionCode is a stable slug-ish identifier for the legion
   if (section === "gauntlet-legion") return `media/gauntlet/legions/${season}/${legionCode}`;
   if (section === "gauntlet-league") return `media/gauntlet/leagues/${season}/${legionCode}/${leagueOrder}`;

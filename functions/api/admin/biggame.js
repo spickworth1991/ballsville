@@ -1,14 +1,33 @@
 // functions/api/admin/biggame.js
 //
-// Big Game divisions/leagues CMS stored in R2 (admin_bucket).
+// Big Game CMS stored in R2 (admin_bucket).
 //
-// GET  /api/admin/biggame?season=2025
-// PUT  /api/admin/biggame?season=2025   { rows: [...] }
+// GET  /api/admin/biggame?season=2025&type=page|leagues
+// PUT  /api/admin/biggame?season=2025   { type, data }
 //
-// R2 key:
+// R2 keys:
+// - content/biggame/page_<season>.json
 // - data/biggame/leagues_<season>.json
 
 const DEFAULT_SEASON = 2025;
+
+function r2KeyFor(type, season) {
+  if (type === "page") return `content/biggame/page_${season}.json`;
+  // default
+  return `data/biggame/leagues_${season}.json`;
+}
+
+function sanitizePageInput(data, season) {
+  const hero = data?.hero || {};
+  return {
+    season: Number(season || DEFAULT_SEASON),
+    hero: {
+      promoImageKey: typeof hero.promoImageKey === "string" ? hero.promoImageKey : "",
+      promoImageUrl: typeof hero.promoImageUrl === "string" ? hero.promoImageUrl : "",
+      updatesHtml: typeof hero.updatesHtml === "string" ? hero.updatesHtml : "",
+    },
+  };
+}
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -159,16 +178,36 @@ export async function onRequest(context) {
 
     const url = new URL(request.url);
     const season = Number(url.searchParams.get("season") || DEFAULT_SEASON);
-    const key = `data/biggame/leagues_${season}.json`;
+    const type = (url.searchParams.get("type") || "leagues").toLowerCase();
+    const key = r2KeyFor(type, season);
 
     if (request.method === "GET") {
       const data = await readR2Json(r2.bucket, key);
-      return json({ ok: true, key, data: data || null });
+      return json({ ok: true, key, type, data: data || null });
     }
 
     if (request.method === "PUT") {
       const body = await request.json().catch(() => null);
-      const rowsRaw = Array.isArray(body?.rows) ? body.rows : [];
+      const bodyType = String(body?.type || type || "leagues").toLowerCase();
+
+      // PAGE (owner hero block)
+      if (bodyType === "page") {
+        const payload = sanitizePageInput(body?.data || body, season);
+        await r2.bucket.put(r2KeyFor("page", season), JSON.stringify(payload, null, 2), {
+          httpMetadata: { contentType: "application/json; charset=utf-8" },
+        });
+        return json({ ok: true, key: r2KeyFor("page", season), type: "page" });
+      }
+
+      // LEAGUES (divisions/leagues table)
+      const rowsRaw = Array.isArray(body?.rows)
+        ? body.rows
+        : Array.isArray(body?.data?.rows)
+          ? body.data.rows
+          : Array.isArray(body?.data)
+            ? body.data
+            : [];
+
       const rows = rowsRaw.map((r, idx) => normalizeRow(r, idx, season));
 
       // stable sort (header first within each division)
@@ -195,11 +234,11 @@ export async function onRequest(context) {
         rows,
       };
 
-      await r2.bucket.put(key, JSON.stringify(payload, null, 2), {
+      await r2.bucket.put(r2KeyFor("leagues", season), JSON.stringify(payload, null, 2), {
         httpMetadata: { contentType: "application/json; charset=utf-8" },
       });
 
-      return json({ ok: true, key, count: rows.length });
+      return json({ ok: true, key: r2KeyFor("leagues", season), type: "leagues", count: rows.length });
     }
 
     return json({ ok: false, error: "Method not allowed" }, 405);

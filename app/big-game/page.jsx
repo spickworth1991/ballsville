@@ -1,6 +1,7 @@
 // app/big-game/page.jsx
 import Link from "next/link";
 import BigGameDivisionsClient from "@/lib/BigGameDivisionsClient";
+import OwnerHeroBlock from "@/src/components/OwnerHeroBlock";
 
 export const metadata = {
   title: "The BIG Game | Ballsville",
@@ -89,8 +90,10 @@ export default function BigGamePage() {
               </div>
             </div>
 
-            {/* Quick facts panel (matches the premium hero vibe) */}
-            <aside className="w-full lg:w-[360px]">
+            {/* Right column: owner block + quick facts (matches the premium hero vibe) */}
+            <aside className="w-full lg:w-[360px] space-y-4">
+              <OwnerHeroBlock mode="biggame" season={2025} title="Owner Updates" />
+
               <div className="rounded-2xl border border-border/60 bg-card-trans backdrop-blur-sm overflow-hidden shadow-xl shadow-black/50">
                 <div className="px-4 py-3 border-b border-border/60 flex items-center justify-between">
                   <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">

@@ -6,6 +6,14 @@ import { getSupabase } from "@/lib/supabaseClient";
 const DEFAULT_SEASON = 2025;
 const R2_KEY_FOR = (season) => `data/biggame/leagues_${season}.json`;
 
+const DEFAULT_PAGE_EDITABLE = {
+  hero: {
+    promoImageKey: "",
+    promoImageUrl: "",
+    updatesHtml: "<p>Updates will show here.</p>",
+  },
+};
+
 const DIVISION_STATUS_OPTIONS = ["FULL", "FILLING", "TBD", "DRAFTING"];
 const LEAGUE_STATUS_OPTIONS = ["FULL", "FILLING", "TBD", "DRAFTING"];
 
@@ -181,9 +189,15 @@ export default function BigGameAdminClient() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [pageCfg, setPageCfg] = useState(DEFAULT_PAGE_EDITABLE);
+  const [pageSaving, setPageSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [infoMsg, setInfoMsg] = useState("");
   const [open, setOpen] = useState(() => new Set());
+
+  const [pageCfg, setPageCfg] = useState(DEFAULT_PAGE_EDITABLE);
+  const [pageSaving, setPageSaving] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
 
   const groups = useMemo(() => groupByDivision(rows.filter((r) => Number(r.year) === Number(season))), [rows, season]);
 
@@ -208,10 +222,84 @@ export default function BigGameAdminClient() {
     }
   }
 
+  async function loadPageConfig(nextSeason = season) {
+    setPageLoading(true);
+    setErrorMsg("");
+    try {
+      const token = await getAccessToken();
+      const res = await fetch(`/api/admin/biggame?season=${nextSeason}&type=page`, {
+        headers: { authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok || !out?.ok) {
+        setPageCfg(DEFAULT_PAGE_EDITABLE);
+        return;
+      }
+      const hero = out?.data?.hero || {};
+      setPageCfg({
+        hero: {
+          promoImageKey: hero.promoImageKey || "",
+          promoImageUrl: hero.promoImageUrl || "",
+          updatesHtml: hero.updatesHtml ?? DEFAULT_PAGE_EDITABLE.hero.updatesHtml,
+        },
+      });
+    } catch (e) {
+      setPageCfg(DEFAULT_PAGE_EDITABLE);
+    } finally {
+      setPageLoading(false);
+    }
+  }
+
+  async function savePageConfig(nextSeason = season) {
+    setErrorMsg("");
+    setInfoMsg("");
+    setPageSaving(true);
+    try {
+      const token = await getAccessToken();
+      const payload = { type: "page", data: pageCfg };
+      const res = await fetch(`/api/admin/biggame?season=${nextSeason}&type=page`, {
+        method: "PUT",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok || !out?.ok) throw new Error(out?.error || `Save failed (${res.status})`);
+      setInfoMsg("Owner Updates saved.");
+    } catch (e) {
+      setErrorMsg(e?.message || "Failed to save Owner Updates.");
+    } finally {
+      setPageSaving(false);
+    }
+  }
+
   useEffect(() => {
     loadFromR2(season);
+    loadPageConfig(season);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [season]);
+
+  async function uploadOwnerUpdatesImage(file) {
+    const token = await getAccessToken();
+    if (!token) throw new Error("Not logged in.");
+
+    const out = await uploadBigGameImage({
+      file,
+      section: "biggame-updates",
+      season,
+      divisionSlug: "updates",
+      token,
+    });
+
+    setPageCfg((p) => ({
+      ...p,
+      hero: {
+        ...p.hero,
+        promoImageKey: safeStr(out.key || ""),
+        promoImageUrl: safeStr(out.publicUrl || ""),
+      },
+    }));
+  }
 
   async function saveAllToR2(nextRows = rows, nextSeason = season) {
     setErrorMsg("");
@@ -496,6 +584,69 @@ export default function BigGameAdminClient() {
           <button className="btn btn-primary text-sm" type="button" onClick={addDivision} disabled={saving}>
             + Add division
           </button>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-subtle bg-card-surface p-5 space-y-4">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-sm font-semibold">Owner Updates (Hero)</p>
+            <p className="text-xs text-muted">This image + text renders in the hero section on the public Big Game page.</p>
+          </div>
+          <button
+            className="btn btn-primary text-sm"
+            type="button"
+            onClick={() => savePageConfig(season)}
+            disabled={pageSaving || pageLoading}
+          >
+            {pageSaving ? "Saving…" : "Save Owner Updates"}
+          </button>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <p className="text-xs text-muted">Promo image</p>
+            <div className="rounded-xl border border-subtle bg-black/20 overflow-hidden">
+              {pageCfg.hero.promoImageKey ? (
+                <img
+                  src={`/r2/${pageCfg.hero.promoImageKey}`}
+                  alt="Owner promo"
+                  className="w-full h-auto block"
+                  loading="lazy"
+                />
+              ) : (
+                <div className="p-6 text-sm text-muted">No image uploaded.</div>
+              )}
+            </div>
+            <input
+              type="file"
+              accept="image/*"
+              className="input"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try {
+                  await uploadOwnerUpdatesImage(file);
+                  setInfoMsg("Image uploaded. Click Save Owner Updates to publish.");
+                } catch (err) {
+                  setErrorMsg(err?.message || "Upload failed.");
+                } finally {
+                  e.target.value = "";
+                }
+              }}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs text-muted">Updates HTML</p>
+            <textarea
+              className="input min-h-[180px]"
+              value={pageCfg.hero.updatesHtml}
+              onChange={(e) => setPageCfg((p) => ({ ...p, hero: { ...p.hero, updatesHtml: e.target.value } }))}
+              placeholder="<p>Type your updates here…</p>"
+            />
+            <p className="text-xs text-muted">Tip: keep it short (1–4 lines) so the hero stays clean.</p>
+          </div>
         </div>
       </div>
 
