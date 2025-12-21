@@ -31,6 +31,19 @@ function safeNum(v, fallback = null) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function setRow(rows, idx, patch) {
+  const next = [...rows];
+  next[idx] = { ...next[idx], ...patch };
+  return next;
+}
+
+function safeRevoke(url) {
+  try {
+    if (url && url.startsWith("blob:")) URL.revokeObjectURL(url);
+  } catch {}
+}
+
+
 function slugify(input) {
   return safeStr(input)
     .trim()
@@ -62,8 +75,9 @@ function normalizeRow(r, idx = 0) {
     sleeper_url: safeStr(r?.sleeper_url).trim(),
     imageKey: safeStr(r?.imageKey).trim(),
     image_url: safeStr(r?.image_url).trim(),
+    pendingImageFile: null,
+    pendingImagePreviewUrl: "",
     fill_note: safeStr(r?.fill_note).trim(),
-    note: safeStr(r?.note).trim(),
     display_order,
     is_active: r?.is_active !== false,
     is_orphan: !!r?.is_orphan || status === "ORPHAN OPEN",
@@ -153,16 +167,59 @@ export default function DynastyAdminClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  async function uploadDynastyImage({ year, id, file, token }) {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("section", "dynasty-league");
+    fd.append("season", String(year));
+    fd.append("leagueId", String(id)); // deterministic key
+
+    const res = await fetch(`/api/admin/upload`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: fd,
+    });
+
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok || !out?.ok) throw new Error(out?.error || "Upload failed");
+    return out.key;
+  }
+
   async function saveAllToR2(nextRows = rows) {
     setErrorMsg("");
     setInfoMsg("");
     setSaving(true);
     try {
-      const token = await getAccessToken();
-      if (!token) throw new Error("Missing admin session token. Please sign in again.");
+            const token = await getAccessToken();
+            if (!token) throw new Error("Missing admin session token. Please sign in again.");
 
-      // normalize + stable sort for diffs
-      const clean = nextRows.map(normalizeRow);
+            // ✅ 1) Upload any staged images first
+            const staged = nextRows.map((r) => ({ ...r }));
+
+            for (let i = 0; i < staged.length; i++) {
+              const r = staged[i];
+              if (!r?.pendingImageFile) continue;
+
+              const key = await uploadDynastyImage({
+                year: r.year,
+                id: r.id,
+                file: r.pendingImageFile,
+                token,
+              });
+
+              safeRevoke(r.pendingImagePreviewUrl);
+
+              staged[i] = {
+                ...r,
+                imageKey: key,
+                pendingImageFile: null,
+                pendingImagePreviewUrl: "",
+              };
+            }
+
+            // ✅ 2) Normalize + stable sort for diffs
+            const clean = staged.map(normalizeRow);
+
       clean.sort((a, b) => {
         if (a.year !== b.year) return b.year - a.year;
         if (a.theme_name !== b.theme_name) return a.theme_name.localeCompare(b.theme_name);
@@ -295,32 +352,6 @@ export default function DynastyAdminClient() {
     setRows((prev) => [...prev, next]);
   }
 
-  async function uploadLeagueImage(file, row) {
-    try {
-      const token = await getAccessToken();
-      if (!token) throw new Error("Missing admin session token. Please sign in again.");
-
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("section", "dynasty-league");
-      fd.append("season", String(row.year));
-      fd.append("leagueId", String(row.id));
-
-      const res = await fetch(`/api/admin/upload`, {
-        method: "POST",
-        headers: { authorization: `Bearer ${token}` },
-        body: fd,
-      });
-
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok || !out?.ok) throw new Error(out?.error || "Upload failed");
-
-      updateLeague(row.id, { imageKey: out.key });
-      setInfoMsg("Image uploaded. Click \"Save to R2\" to publish the updated row.");
-    } catch (e) {
-      setErrorMsg(e?.message || "Failed to upload image.");
-    }
-  }
 
   async function handleQuickCreate(e) {
     e.preventDefault();
@@ -401,9 +432,9 @@ export default function DynastyAdminClient() {
           <button className="btn btn-outline text-sm" type="button" onClick={loadFromR2} disabled={saving}>
             Reload from R2
           </button>
-          <button className="btn btn-outline text-sm" type="button" onClick={importFromSupabase} disabled={saving}>
+          {/* <button className="btn btn-outline text-sm" type="button" onClick={importFromSupabase} disabled={saving}>
             Import from Supabase
-          </button>
+          </button> */}
           <button className="btn btn-primary text-sm" type="button" onClick={() => saveAllToR2()} disabled={saving}>
             {saving ? "Saving…" : "Save to R2"}
           </button>
@@ -479,7 +510,7 @@ export default function DynastyAdminClient() {
         <h2 className="text-lg font-semibold">Existing themes &amp; leagues</h2>
 
         {groups.length === 0 ? (
-          <p className="text-sm text-muted">No Dynasty rows in R2 yet. Use "Import from Supabase" or "New Year / Theme".</p>
+          <p className="text-sm text-muted">No Dynasty rows in R2 yet. "New Year / Theme".</p>
         ) : (
           groups.map((group) => {
             const open = openThemes.has(group.key);
@@ -543,7 +574,6 @@ export default function DynastyAdminClient() {
                             <th className="px-3 py-2">Sleeper URL</th>
                             <th className="px-3 py-2">Image</th>
                             <th className="px-3 py-2">Fill note</th>
-                            <th className="px-3 py-2">Note</th>
                             <th className="px-3 py-2">Active</th>
                             <th className="px-3 py-2">Orphan</th>
                             <th className="px-3 py-2"></th>
@@ -557,13 +587,13 @@ export default function DynastyAdminClient() {
                               <tr key={lg.id} className="border-t border-subtle">
                                 <td className="px-3 py-2">
                                   <input
-                                    className="input w-20"
+                                    className="input w-[68px]"
                                     value={lg.display_order ?? ""}
                                     onChange={(e) => updateLeague(lg.id, { display_order: safeNum(e.target.value, null) })}
                                   />
                                 </td>
                                 <td className="px-3 py-2">
-                                  <input className="input w-64" value={lg.name} onChange={(e) => updateLeague(lg.id, { name: e.target.value })} />
+                                  <input className="input w-[180px] max-w-[180px]" value={lg.name} onChange={(e) => updateLeague(lg.id, { name: e.target.value })} />
                                 </td>
                                 <td className="px-3 py-2">
                                   <select className="input" value={lg.status} onChange={(e) => updateLeague(lg.id, { status: e.target.value, is_orphan: e.target.value === "ORPHAN OPEN" })}>
@@ -575,12 +605,13 @@ export default function DynastyAdminClient() {
                                   </select>
                                 </td>
                                 <td className="px-3 py-2">
-                                  <input className="input w-[360px]" value={lg.sleeper_url} onChange={(e) => updateLeague(lg.id, { sleeper_url: e.target.value })} />
+                                  <input className="input w-[220px] max-w-[220px]" value={lg.sleeper_url} onChange={(e) => updateLeague(lg.id, { sleeper_url: e.target.value })} />
                                 </td>
                                 <td className="px-3 py-2">
+                                <div className="flex flex-col gap-2">
                                   <div className="flex items-center gap-2">
                                     <label className="btn btn-outline text-xs cursor-pointer">
-                                      Upload
+                                      Choose
                                       <input
                                         type="file"
                                         accept="image/*"
@@ -588,21 +619,62 @@ export default function DynastyAdminClient() {
                                         onChange={(e) => {
                                           const file = e.target.files?.[0];
                                           if (!file) return;
-                                          uploadLeagueImage(file, lg);
+
+                                          const previewUrl = URL.createObjectURL(file);
+
+                                          // revoke old preview for THIS row
+                                          safeRevoke(lg.pendingImagePreviewUrl);
+
+                                          updateLeague(lg.id, {
+                                            pendingImageFile: file,
+                                            pendingImagePreviewUrl: previewUrl,
+                                          });
+
                                           e.target.value = "";
                                         }}
                                       />
                                     </label>
-                                    <span className="text-[11px] text-muted truncate max-w-[180px]">
-                                      {lg.imageKey ? "R2: " + lg.imageKey.split("/").slice(-1)[0] : lg.image_url ? "URL" : "—"}
+
+                                    <button
+                                      type="button"
+                                      className="text-xs text-muted hover:text-fg underline"
+                                      onClick={() => {
+                                        safeRevoke(lg.pendingImagePreviewUrl);
+                                        updateLeague(lg.id, { pendingImageFile: null, pendingImagePreviewUrl: "" });
+                                      }}
+                                    >
+                                      clear
+                                    </button>
+
+                                    <span className="text-[11px] text-muted truncate max-w-[160px]">
+                                      {lg.pendingImageFile
+                                        ? "Staged"
+                                        : lg.imageKey
+                                        ? "R2: " + lg.imageKey.split("/").slice(-1)[0]
+                                        : lg.image_url
+                                        ? "URL"
+                                        : "—"}
                                     </span>
                                   </div>
-                                </td>
+
+                                  {(() => {
+                                    const previewSrc =
+                                      lg.pendingImagePreviewUrl ||
+                                      (lg.imageKey ? `/r2/${lg.imageKey}` : lg.image_url || "");
+
+                                    if (!previewSrc) return null;
+
+                                    return (
+                                      <div className="relative w-[140px] aspect-[16/9] rounded-xl overflow-hidden border border-subtle bg-black/20">
+                                        <img src={previewSrc} alt="Preview" className="w-full h-full object-cover" />
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                              </td>
+
                                 <td className="px-3 py-2">
-                                  <input className="input w-56" value={lg.fill_note} onChange={(e) => updateLeague(lg.id, { fill_note: e.target.value })} />
-                                </td>
-                                <td className="px-3 py-2">
-                                  <input className="input w-56" value={lg.note} onChange={(e) => updateLeague(lg.id, { note: e.target.value })} />
+                                  <input className="input w-[260px] max-w-[260px]" value={lg.fill_note} onChange={(e) => updateLeague(lg.id, { fill_note: e.target.value })} />
                                 </td>
                                 <td className="px-3 py-2">
                                   <input type="checkbox" checked={lg.is_active !== false} onChange={(e) => updateLeague(lg.id, { is_active: e.target.checked })} />
