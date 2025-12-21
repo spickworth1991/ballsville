@@ -120,7 +120,15 @@ function extFromFile(file) {
  * Deterministic base key (NO extension) for each section.
  * We’ll delete all known image extensions for that base before putting the new one.
  */
-function baseKeyForUpload({ section, season, divisionCode, leagueOrder, leagueId, divisionSlug }) {
+function baseKeyForUpload({
+  section,
+  season,
+  divisionCode,
+  leagueOrder,
+  leagueId,
+  divisionSlug,
+  legionCode,
+}) {
   // ============
   // MINI-LEAGUES
   // ============
@@ -150,6 +158,13 @@ function baseKeyForUpload({ section, season, divisionCode, leagueOrder, leagueId
   // =======
   if (section === "biggame-division") return `media/biggame/divisions/${season}/${divisionSlug}`;
   if (section === "biggame-league") return `media/biggame/leagues/${season}/${divisionSlug}/${leagueOrder}`;
+
+  // =======
+  // GAUNTLET
+  // =======
+  // legionCode is a stable slug-ish identifier for the legion
+  if (section === "gauntlet-legion") return `media/gauntlet/legions/${season}/${legionCode}`;
+  if (section === "gauntlet-league") return `media/gauntlet/leagues/${season}/${legionCode}/${leagueOrder}`;
 
   return "";
 }
@@ -191,6 +206,7 @@ export async function onRequest(context) {
 
     const leagueId = cleanLooseId(form.get("leagueId"));
     const divisionSlug = cleanLooseId(form.get("divisionSlug"));
+    const legionCode = cleanLooseId(form.get("legionCode"));
 
     if (!section) return json({ ok: false, error: "Missing section" }, 400);
     if (!season) return json({ ok: false, error: "Missing season" }, 400);
@@ -218,7 +234,14 @@ export async function onRequest(context) {
       return json({ ok: false, error: "Missing divisionSlug or leagueOrder" }, 400);
     }
 
-    const baseKey = baseKeyForUpload({ section, season, divisionCode, leagueOrder, leagueId, divisionSlug });
+    if (section === "gauntlet-legion" && !legionCode) {
+      return json({ ok: false, error: "Missing legionCode" }, 400);
+    }
+    if (section === "gauntlet-league" && (!legionCode || !leagueOrder)) {
+      return json({ ok: false, error: "Missing legionCode or leagueOrder" }, 400);
+    }
+
+    const baseKey = baseKeyForUpload({ section, season, divisionCode, leagueOrder, leagueId, divisionSlug, legionCode });
     if (!baseKey) return json({ ok: false, error: "Invalid section" }, 400);
 
     const ext = extFromFile(file);

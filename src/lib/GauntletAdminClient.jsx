@@ -1,396 +1,500 @@
-// src/lib/GauntletAdminClient.jsx
 "use client";
 
-import { useEffect, useState } from "react";
-import { getSupabase } from "@/lib/supabaseClient";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
+import { FiUpload, FiTrash2, FiPlus, FiSave, FiRefreshCw } from "react-icons/fi";
 
-const STATUS_OPTIONS = ["filling", "full", "tbd", "drafting"];
-const THEME_OPTIONS = ["EGYPTIANS", "GREEKS", "ROMANS"];
+// GAUNTLET admin (R2-backed) — modeled after BigGameAdminClient.
+// Stores to /api/admin/gauntlet (R2 JSON) and uploads images via /api/admin/upload.
 
-const emptyLegion = {
-  id: null,
-  name: "",
-  code: "",
-  theme: "EGYPTIANS",
-  status: "filling",
-  tagline: "",
-  description: "",
-  display_order: 0,
-  is_active: true,
-};
+const DEFAULT_SEASON = 2025;
 
-export default function GauntletAdminClient() {
-  const [legions, setLegions] = useState([]);
+function slugify(s) {
+  return String(s || "")
+    .trim()
+    .toLowerCase()
+    .replace(/['"]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function uid() {
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+function statusBadge(status) {
+  const s = (status || "TBD").toUpperCase();
+  const base = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold border";
+  if (s === "FULL") return `${base} border-emerald-500/30 bg-emerald-500/10 text-emerald-300`;
+  if (s === "FILLING") return `${base} border-amber-500/30 bg-amber-500/10 text-amber-300`;
+  if (s === "DRAFTING") return `${base} border-sky-500/30 bg-sky-500/10 text-sky-300`;
+  return `${base} border-subtle bg-subtle-surface text-muted`;
+}
+
+async function safeJson(res) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { ok: false, error: text?.slice(0, 300) || "Non-JSON response" };
+  }
+}
+
+export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) {
+  const [season, setSeason] = useState(defaultSeason);
+  const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [selected, setSelected] = useState(null); // id or "new"
-  const [form, setForm] = useState(emptyLegion);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const fileInputRef = useRef(null);
+  const [uploadCtx, setUploadCtx] = useState(null); // { type: 'legion'|'league', legionSlug, leagueOrder }
+
+  async function load() {
+    setError("");
+    setNotice("");
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/gauntlet?season=${encodeURIComponent(season)}`, {
+        cache: "no-store",
+      });
+      const data = await safeJson(res);
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || "Failed to load");
+      setRows(Array.isArray(data.rows) ? data.rows : []);
+    } catch (e) {
+      setError(e?.message || String(e));
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    loadLegions();
-  }, []);
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [season]);
 
-  async function loadLegions() {
-    setLoading(true);
-    setError("");
-    const supabase = getSupabase();
-    if (!supabase) {
-      setError("Supabase client not available in this environment.");
-      setLoading(false);
-      return;
+  const legions = useMemo(() => {
+    const headers = rows
+      .filter((r) => r?.is_legion_header)
+      .map((r) => ({
+        ...r,
+        __key: r.__key || r.legion_slug || uid(),
+      }))
+      .sort((a, b) => (Number(a.legion_order || 0) - Number(b.legion_order || 0)) || String(a.legion_name || "").localeCompare(String(b.legion_name || "")));
+
+    const bySlug = new Map();
+    for (const r of rows) {
+      if (r?.is_legion_header) continue;
+      const slug = r.legion_slug;
+      if (!slug) continue;
+      if (!bySlug.has(slug)) bySlug.set(slug, []);
+      bySlug.get(slug).push({ ...r, __key: r.__key || uid() });
+    }
+    for (const [slug, list] of bySlug.entries()) {
+      list.sort((a, b) => Number(a.league_order || 0) - Number(b.league_order || 0));
+      bySlug.set(slug, list);
     }
 
-    const { data, error } = await supabase
-      .from("gauntlet_legions")
-      .select("*")
-      .order("display_order", { ascending: true });
+    return { headers, bySlug };
+  }, [rows]);
 
-    if (error) {
-      console.error(error);
-      setError("Failed to load legions.");
-    } else {
-      setLegions(data || []);
-    }
-    setLoading(false);
+  function setRow(patchFn) {
+    setRows((prev) => patchFn([...prev]));
   }
 
-  function startNew() {
-    setSelected("new");
-    setForm({ ...emptyLegion });
+  function updateLegion(slug, patch) {
+    setRow((next) =>
+      next.map((r) => {
+        if (!r?.is_legion_header) return r;
+        if (r.legion_slug !== slug) return r;
+        return { ...r, ...patch };
+      })
+    );
   }
 
-  function startEdit(legion) {
-    setSelected(legion.id);
-    setForm({
-      ...emptyLegion,
-      ...legion,
-    });
+  function updateLeague(legionSlug, leagueOrder, patch) {
+    setRow((next) =>
+      next.map((r) => {
+        if (r?.is_legion_header) return r;
+        if (r.legion_slug !== legionSlug) return r;
+        if (Number(r.league_order || 0) !== Number(leagueOrder || 0)) return r;
+        return { ...r, ...patch };
+      })
+    );
   }
 
-  function cancelEdit() {
-    setSelected(null);
-    setForm(emptyLegion);
-    setError("");
+  function addLegion() {
+    const name = "New Legion";
+    const slug = slugify(name) || uid();
+    const maxOrder = Math.max(0, ...legions.headers.map((h) => Number(h.legion_order || 0)));
+    setRows((prev) => [
+      ...prev,
+      {
+        __key: uid(),
+        season,
+        is_legion_header: true,
+        legion_name: name,
+        legion_slug: slug,
+        legion_status: "TBD",
+        legion_spots: 0,
+        legion_order: maxOrder + 1,
+        legion_image_path: "",
+        is_active: true,
+      },
+    ]);
   }
 
-  function updateField(key, value) {
-    setForm((prev) => ({ ...prev, [key]: value }));
+  function deleteLegion(legionSlug) {
+    if (!confirm("Delete this legion AND all of its leagues?")) return;
+    setRows((prev) => prev.filter((r) => r.legion_slug !== legionSlug));
   }
 
-  async function saveLegion(e) {
-    e?.preventDefault();
+  function addLeague(legionSlug) {
+    const list = legions.bySlug.get(legionSlug) || [];
+    const nextOrder = Math.max(0, ...list.map((l) => Number(l.league_order || 0))) + 1;
+    setRows((prev) => [
+      ...prev,
+      {
+        __key: uid(),
+        season,
+        is_legion_header: false,
+        legion_slug: legionSlug,
+        league_order: nextOrder,
+        league_name: "",
+        league_url: "",
+        league_status: "FULL",
+        is_active: true,
+        league_image_path: "",
+      },
+    ]);
+  }
+
+  function deleteLeague(legionSlug, leagueOrder) {
+    if (!confirm("Delete this league?")) return;
+    setRows((prev) =>
+      prev.filter((r) => {
+        if (r?.is_legion_header) return true;
+        if (r.legion_slug !== legionSlug) return true;
+        return Number(r.league_order || 0) !== Number(leagueOrder || 0);
+      })
+    );
+  }
+
+  async function save() {
     setSaving(true);
     setError("");
+    setNotice("");
+    try {
+      // sanitize rows: ensure season set and stable keys removed
+      const cleaned = rows.map((r) => {
+        const out = { ...r };
+        delete out.__key;
+        out.season = season;
+        return out;
+      });
 
-    const supabase = getSupabase();
-    if (!supabase) {
-      setError("Supabase client not available.");
+      const res = await fetch("/api/admin/gauntlet", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ season, rows: cleaned }),
+      });
+      const data = await safeJson(res);
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || "Save failed");
+      setNotice("Published ✓");
+      await load();
+    } catch (e) {
+      setError(e?.message || String(e));
+    } finally {
       setSaving(false);
-      return;
     }
-
-    if (!form.name.trim() || !form.code.trim()) {
-      setError("Name and code are required.");
-      setSaving(false);
-      return;
-    }
-
-    const payload = {
-      name: form.name.trim(),
-      code: form.code.trim(),
-      theme: form.theme,
-      status: form.status,
-      tagline: form.tagline || null,
-      description: form.description || null,
-      is_active: !!form.is_active,
-      display_order: Number(form.display_order) || 0,
-    };
-
-    let error;
-    if (form.id) {
-      const res = await supabase
-        .from("gauntlet_legions")
-        .update(payload)
-        .eq("id", form.id)
-        .select()
-        .single();
-      error = res.error;
-    } else {
-      const res = await supabase
-        .from("gauntlet_legions")
-        .insert(payload)
-        .select()
-        .single();
-      error = res.error;
-    }
-
-    if (error) {
-      console.error(error);
-      setError(error.message || "Failed to save Legion.");
-    } else {
-      await loadLegions();
-      cancelEdit();
-    }
-
-    setSaving(false);
   }
 
-  async function deleteLegion(id) {
-    if (!confirm("Delete this Legion? This cannot be undone.")) return;
-    const supabase = getSupabase();
-    if (!supabase) {
-      setError("Supabase client not available.");
-      return;
-    }
+  function openUpload(ctx) {
+    setUploadCtx(ctx);
+    if (fileInputRef.current) fileInputRef.current.click();
+  }
 
-    const { error } = await supabase
-      .from("gauntlet_legions")
-      .delete()
-      .eq("id", id);
+  async function onPickFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !uploadCtx) return;
+    setError("");
+    setNotice("");
+    try {
+      const form = new FormData();
 
-    if (error) {
-      console.error(error);
-      setError("Failed to delete Legion.");
-    } else {
-      if (selected === id) cancelEdit();
-      loadLegions();
+      if (uploadCtx.type === "legion") {
+        form.set("section", "gauntlet-legion");
+        form.set("season", String(season));
+        form.set("legionCode", uploadCtx.legionSlug);
+      } else {
+        form.set("section", "gauntlet-league");
+        form.set("season", String(season));
+        form.set("legionCode", uploadCtx.legionSlug);
+        form.set("leagueOrder", String(uploadCtx.leagueOrder));
+      }
+
+      form.set("file", file);
+
+      const res = await fetch("/api/admin/upload", { method: "POST", body: form });
+      const data = await safeJson(res);
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || "Upload failed");
+
+      if (uploadCtx.type === "legion") {
+        updateLegion(uploadCtx.legionSlug, { legion_image_path: data.publicPath || "" });
+      } else {
+        updateLeague(uploadCtx.legionSlug, uploadCtx.leagueOrder, { league_image_path: data.publicPath || "" });
+      }
+      setNotice("Image uploaded ✓ (remember to Publish)");
+    } catch (e2) {
+      setError(e2?.message || String(e2));
+    } finally {
+      setUploadCtx(null);
     }
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-      {/* Left: list */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-muted">
-            LEGIONS
-          </h2>
-          <button
-            type="button"
-            onClick={startNew}
-            className="inline-flex items-center gap-2 rounded-full border border-accent/70 bg-surface/80 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-accent hover:bg-accent/10 transition-colors"
-          >
-            <span className="text-base leading-none">＋</span>
-            New Legion
+    <main className="section">
+      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onPickFile} />
+
+      <div className="container-site">
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+          <div>
+            <h1 className="h1">Gauntlet Admin</h1>
+            <p className="text-muted mt-1">Manage legions + their leagues. Upload images to R2 and publish to the public site.</p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-muted">Season</label>
+            <input
+              className="input w-28"
+              value={season}
+              onChange={(e) => setSeason(Number(e.target.value || DEFAULT_SEASON))}
+              inputMode="numeric"
+            />
+            <button className="btn btn-subtle" onClick={load} disabled={loading || saving}>
+              <FiRefreshCw />
+              Refresh
+            </button>
+            <button className="btn btn-primary" onClick={save} disabled={loading || saving}>
+              <FiSave />
+              {saving ? "Publishing…" : "Publish"}
+            </button>
+          </div>
+        </div>
+
+        {error ? (
+          <div className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-rose-200">{error}</div>
+        ) : null}
+        {notice ? (
+          <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-emerald-200">{notice}</div>
+        ) : null}
+
+        <div className="mt-6 flex items-center justify-between">
+          <h2 className="h2">Legions</h2>
+          <button className="btn btn-subtle" onClick={addLegion} disabled={loading || saving}>
+            <FiPlus />
+            Add Legion
           </button>
         </div>
 
-        <div className="space-y-3">
-          {loading && (
-            <div className="text-sm text-muted">Loading Legions…</div>
-          )}
+        {loading ? <p className="text-muted mt-4">Loading…</p> : null}
 
-          {!loading && !legions.length && (
-            <div className="text-sm text-muted">
-              No Legions yet. Create the Egyptians, Greeks, and Romans to get
-              started.
-            </div>
-          )}
+        <div className="mt-4 grid grid-cols-1 gap-4">
+          {legions.headers.map((h) => {
+            const list = legions.bySlug.get(h.legion_slug) || [];
+            return (
+              <section key={h.__key} className="card bg-card-surface border border-subtle p-5 md:p-6">
+                <div className="flex flex-col lg:flex-row gap-4 lg:items-start lg:justify-between">
+                  <div className="flex gap-4 items-start">
+                    <div className="relative h-20 w-20 rounded-xl overflow-hidden border border-subtle bg-subtle-surface flex-shrink-0">
+                      {h.legion_image_path ? (
+                        <Image src={h.legion_image_path} alt={h.legion_name || "Legion"} fill sizes="80px" className="object-cover" />
+                      ) : (
+                        <div className="h-full w-full grid place-items-center text-xs text-muted">No Image</div>
+                      )}
+                    </div>
 
-          {legions.map((legion) => (
-            <button
-              key={legion.id}
-              type="button"
-              onClick={() => startEdit(legion)}
-              className={`w-full text-left rounded-2xl border px-4 py-3 text-sm transition-colors ${
-                selected === legion.id
-                  ? "border-accent/80 bg-surface/90"
-                  : "border-border/70 bg-surface/70 hover:border-accent/60"
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <div className="font-semibold">{legion.name}</div>
-                  <div className="text-xs text-muted">
-                    {legion.theme} • {legion.status} • code: {legion.code}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <input
+                          className="input w-[min(420px,80vw)]"
+                          value={h.legion_name || ""}
+                          onChange={(e) => {
+                            const nextName = e.target.value;
+                            const nextSlug = slugify(nextName) || h.legion_slug;
+                            // update header
+                            updateLegion(h.legion_slug, { legion_name: nextName, legion_slug: nextSlug });
+                            // also migrate league rows to new slug
+                            if (nextSlug !== h.legion_slug) {
+                              setRows((prev) =>
+                                prev.map((r) => {
+                                  if (r.legion_slug !== h.legion_slug) return r;
+                                  return { ...r, legion_slug: nextSlug };
+                                })
+                              );
+                            }
+                          }}
+                        />
+                        <span className={statusBadge(h.legion_status)}>{(h.legion_status || "TBD").toUpperCase()}</span>
+                        <span className="text-xs text-muted">slug: {h.legion_slug}</span>
+                      </div>
+
+                      <div className="mt-2 flex items-center gap-3 flex-wrap">
+                        <label className="text-sm text-muted">Order</label>
+                        <input
+                          className="input w-24"
+                          value={h.legion_order ?? 0}
+                          onChange={(e) => updateLegion(h.legion_slug, { legion_order: Number(e.target.value || 0) })}
+                          inputMode="numeric"
+                        />
+                        <label className="text-sm text-muted">Status</label>
+                        <select
+                          className="input"
+                          value={h.legion_status || "TBD"}
+                          onChange={(e) => updateLegion(h.legion_slug, { legion_status: e.target.value })}
+                        >
+                          <option value="TBD">TBD</option>
+                          <option value="FILLING">FILLING</option>
+                          <option value="DRAFTING">DRAFTING</option>
+                          <option value="FULL">FULL</option>
+                        </select>
+                        <label className="text-sm text-muted">Spots</label>
+                        <input
+                          className="input w-24"
+                          value={h.legion_spots ?? 0}
+                          onChange={(e) => updateLegion(h.legion_slug, { legion_spots: Number(e.target.value || 0) })}
+                          inputMode="numeric"
+                        />
+                        <label className="inline-flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={!!h.is_active}
+                            onChange={(e) => updateLegion(h.legion_slug, { is_active: e.target.checked })}
+                          />
+                          Active
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button className="btn btn-subtle" onClick={() => openUpload({ type: "legion", legionSlug: h.legion_slug })}>
+                      <FiUpload />
+                      Upload Image
+                    </button>
+                    <button className="btn btn-subtle" onClick={() => addLeague(h.legion_slug)}>
+                      <FiPlus />
+                      Add League
+                    </button>
+                    <button className="btn btn-danger" onClick={() => deleteLegion(h.legion_slug)}>
+                      <FiTrash2 />
+                      Delete Legion
+                    </button>
                   </div>
                 </div>
-                <div className="flex flex-col items-end gap-1">
-                  <span className="text-[11px] text-muted">
-                    Order: {legion.display_order ?? 0}
-                  </span>
-                  <span className="text-[11px] text-muted">
-                    {legion.is_active ? "Active" : "Hidden"}
-                  </span>
+
+                <div className="mt-5">
+                  {list.length === 0 ? (
+                    <p className="text-sm text-muted">No leagues yet. Add a league.</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-muted">
+                            <th className="text-left py-2 pr-3">#</th>
+                            <th className="text-left py-2 pr-3">League</th>
+                            <th className="text-left py-2 pr-3">Sleeper URL</th>
+                            <th className="text-left py-2 pr-3">Status</th>
+                            <th className="text-left py-2 pr-3">Active</th>
+                            <th className="text-left py-2 pr-3">Image</th>
+                            <th className="text-right py-2">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {list.map((l) => (
+                            <tr key={l.__key} className="border-t border-subtle">
+                              <td className="py-2 pr-3 align-top">
+                                <input
+                                  className="input w-20"
+                                  value={l.league_order ?? 0}
+                                  onChange={(e) => updateLeague(h.legion_slug, l.league_order, { league_order: Number(e.target.value || 0) })}
+                                  inputMode="numeric"
+                                />
+                              </td>
+                              <td className="py-2 pr-3 align-top">
+                                <input
+                                  className="input w-[260px]"
+                                  value={l.league_name || ""}
+                                  onChange={(e) => updateLeague(h.legion_slug, l.league_order, { league_name: e.target.value })}
+                                  placeholder="League name"
+                                />
+                              </td>
+                              <td className="py-2 pr-3 align-top">
+                                <input
+                                  className="input w-[420px]"
+                                  value={l.league_url || ""}
+                                  onChange={(e) => updateLeague(h.legion_slug, l.league_order, { league_url: e.target.value })}
+                                  placeholder="https://sleeper.com/leagues/..."
+                                />
+                              </td>
+                              <td className="py-2 pr-3 align-top">
+                                <select
+                                  className="input"
+                                  value={l.league_status || "FULL"}
+                                  onChange={(e) => updateLeague(h.legion_slug, l.league_order, { league_status: e.target.value })}
+                                >
+                                  <option value="FULL">FULL</option>
+                                  <option value="FILLING">FILLING</option>
+                                  <option value="DRAFTING">DRAFTING</option>
+                                  <option value="TBD">TBD</option>
+                                </select>
+                              </td>
+                              <td className="py-2 pr-3 align-top">
+                                <input
+                                  type="checkbox"
+                                  checked={!!l.is_active}
+                                  onChange={(e) => updateLeague(h.legion_slug, l.league_order, { is_active: e.target.checked })}
+                                />
+                              </td>
+                              <td className="py-2 pr-3 align-top">
+                                <div className="flex items-center gap-2">
+                                  <div className="relative h-10 w-10 rounded-lg overflow-hidden border border-subtle bg-subtle-surface">
+                                    {l.league_image_path ? (
+                                      <Image src={l.league_image_path} alt={l.league_name || "League"} fill sizes="40px" className="object-cover" />
+                                    ) : (
+                                      <div className="h-full w-full grid place-items-center text-[10px] text-muted">—</div>
+                                    )}
+                                  </div>
+                                  <button
+                                    className="btn btn-subtle"
+                                    onClick={() => openUpload({ type: "league", legionSlug: h.legion_slug, leagueOrder: l.league_order })}
+                                  >
+                                    <FiUpload />
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="py-2 text-right align-top">
+                                <button className="btn btn-danger" onClick={() => deleteLeague(h.legion_slug, l.league_order)}>
+                                  <FiTrash2 />
+                                  Delete
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
-              </div>
-            </button>
-          ))}
+
+                <p className="mt-4 text-xs text-muted">Uploads replace existing images. Publish to push changes live.</p>
+              </section>
+            );
+          })}
         </div>
       </div>
-
-      {/* Right: editor */}
-      <div className="rounded-2xl border border-border/70 bg-surface/80 px-4 py-4 sm:px-6 sm:py-5 shadow-lg shadow-black/30">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-muted">
-            {selected === "new"
-              ? "CREATE LEGION"
-              : selected
-              ? "EDIT LEGION"
-              : "LEGION DETAILS"}
-          </h2>
-          {selected && (
-            <button
-              type="button"
-              onClick={cancelEdit}
-              className="text-xs text-muted hover:text-foreground transition-colors"
-            >
-              ✕ Cancel
-            </button>
-          )}
-        </div>
-
-        {!selected && (
-          <p className="mt-4 text-sm text-muted">
-            Select a Legion on the left or create a new one. These settings
-            control what appears on the public Gauntlet page.
-          </p>
-        )}
-
-        {selected && (
-          <form onSubmit={saveLegion} className="mt-4 space-y-4">
-            {error && (
-              <div className="rounded-lg border border-red-500/60 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-                {error}
-              </div>
-            )}
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="text-xs font-medium space-y-1">
-                <span>Name</span>
-                <input
-                  type="text"
-                  className="w-full rounded-md border border-border/70 bg-black/40 px-2.5 py-1.5 text-sm"
-                  value={form.name}
-                  onChange={(e) => updateField("name", e.target.value)}
-                  placeholder="Egyptian Legion"
-                  required
-                />
-              </label>
-
-              <label className="text-xs font-medium space-y-1">
-                <span>Code (slug)</span>
-                <input
-                  type="text"
-                  className="w-full rounded-md border border-border/70 bg-black/40 px-2.5 py-1.5 text-sm"
-                  value={form.code}
-                  onChange={(e) =>
-                    updateField("code", e.target.value.toLowerCase())
-                  }
-                  placeholder="egyptians"
-                  required
-                />
-              </label>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              <label className="text-xs font-medium space-y-1">
-                <span>Theme</span>
-                <select
-                  className="w-full rounded-md border border-border/70 bg-black/40 px-2.5 py-1.5 text-sm"
-                  value={form.theme}
-                  onChange={(e) => updateField("theme", e.target.value)}
-                >
-                  {THEME_OPTIONS.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="text-xs font-medium space-y-1">
-                <span>Status</span>
-                <select
-                  className="w-full rounded-md border border-border/70 bg-black/40 px-2.5 py-1.5 text-sm"
-                  value={form.status}
-                  onChange={(e) => updateField("status", e.target.value)}
-                >
-                  {STATUS_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="text-xs font-medium space-y-1">
-                <span>Display Order</span>
-                <input
-                  type="number"
-                  className="w-full rounded-md border border-border/70 bg-black/40 px-2.5 py-1.5 text-sm"
-                  value={form.display_order ?? 0}
-                  onChange={(e) =>
-                    updateField("display_order", e.target.value)
-                  }
-                />
-              </label>
-            </div>
-
-            <label className="text-xs font-medium space-y-1 block">
-              <span>Tagline</span>
-              <input
-                type="text"
-                className="w-full rounded-md border border-border/70 bg-black/40 px-2.5 py-1.5 text-sm"
-                value={form.tagline || ""}
-                onChange={(e) => updateField("tagline", e.target.value)}
-                placeholder="Amun-Rah, Osiris, Horus, Anubis."
-              />
-            </label>
-
-            <label className="text-xs font-medium space-y-1 block">
-              <span>Description (admin note)</span>
-              <textarea
-                rows={4}
-                className="w-full rounded-md border border-border/70 bg-black/40 px-2.5 py-1.5 text-sm"
-                value={form.description || ""}
-                onChange={(e) => updateField("description", e.target.value)}
-                placeholder="Notes about this Legion, draft dates, commissioner, etc."
-              />
-            </label>
-
-            <label className="inline-flex items-center gap-2 text-xs font-medium">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-border/70 bg-black/60"
-                checked={!!form.is_active}
-                onChange={(e) => updateField("is_active", e.target.checked)}
-              />
-              <span>Show this Legion on the public Gauntlet page</span>
-            </label>
-
-            <div className="flex items-center justify-between gap-3 pt-2">
-              {form.id && (
-                <button
-                  type="button"
-                  onClick={() => deleteLegion(form.id)}
-                  className="text-xs text-red-300 hover:text-red-100"
-                >
-                  Delete Legion
-                </button>
-              )}
-
-              <div className="ml-auto flex gap-2">
-                <button
-                  type="button"
-                  onClick={cancelEdit}
-                  className="rounded-full border border-border/70 px-3 py-1.5 text-xs text-muted hover:text-foreground hover:border-foreground/60"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="rounded-full bg-accent px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-black hover:bg-accent/90 disabled:opacity-60"
-                >
-                  {saving ? "Saving…" : "Save Legion"}
-                </button>
-              </div>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>
+    </main>
   );
 }

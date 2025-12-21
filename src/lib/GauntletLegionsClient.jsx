@@ -1,136 +1,178 @@
-// src/lib/GauntletLegionsClient.jsx
 "use client";
 
-import { useEffect, useState } from "react";
-import { getSupabase } from "@/lib/supabaseClient";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import Image from "next/image";
 
-const GODS_BY_THEME = {
-  EGYPTIANS: ["AMUN-RAH", "OSIRIS", "Horus", "Anubis"],
-  GREEKS: ["ZEUS", "ARES", "Apollo", "Poseidon"],
-  ROMANS: ["SATURN", "MARS", "Minerva", "Saturn"],
-};
+function slugify(s) {
+  return String(s || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
 
-// Map DB statuses -> your global badge classes
-const STATUS_CLASS = {
-  filling: "badge-status badge-status-private", // amber-ish
-  full: "badge-status badge-status-full",       // green
-  tbd: "badge-status badge-status-default",     // slate
-  drafting: "badge-status badge-status-default",// keep neutral unless you add a "drafting" theme var
-};
+function statusBadge(status) {
+  const s = String(status || "TBD").toUpperCase();
+  const map = {
+    FULL: "bg-emerald-500/20 text-emerald-200 border-emerald-400/30",
+    FILLING: "bg-amber-500/20 text-amber-200 border-amber-400/30",
+    DRAFTING: "bg-cyan-500/20 text-cyan-200 border-cyan-400/30",
+    TBD: "bg-zinc-500/20 text-zinc-200 border-zinc-400/30",
+  };
+  return map[s] || map.TBD;
+}
 
-export default function GauntletLegionsClient() {
-  const [legions, setLegions] = useState([]);
+function fmtSpots(openSpots) {
+  if (openSpots == null) return null;
+  const n = Number(openSpots);
+  if (!Number.isFinite(n)) return null;
+  return n;
+}
+
+export default function GauntletLegionsClient({ season = 2025 }) {
+  const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    let alive = true;
-
-    async function load() {
-      const supabase = getSupabase();
-      if (!supabase) {
-        if (alive) setLoading(false);
-        return;
+    let cancelled = false;
+    async function run() {
+      setError("");
+      setLoading(true);
+      try {
+        const r2Base = process.env.NEXT_PUBLIC_ADMIN_R2_PROXY_BASE || "/r2";
+        const url = `${r2Base}/data/gauntlet/leagues_${season}.json`;
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) throw new Error(`Failed to load gauntlet data (${res.status})`);
+        const json = await res.json();
+        if (!cancelled) setRows(Array.isArray(json?.rows) ? json.rows : []);
+      } catch (e) {
+        if (!cancelled) setError(e?.message || "Failed to load gauntlet legions");
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-
-      const { data, error } = await supabase
-        .from("gauntlet_legions")
-        .select("*")
-        .eq("is_active", true)
-        .order("display_order", { ascending: true });
-
-      if (!alive) return;
-
-      if (!error && data) setLegions(data);
-      setLoading(false);
     }
-
-    load();
+    run();
     return () => {
-      alive = false;
+      cancelled = true;
     };
-  }, []);
+  }, [season]);
+
+  const legions = useMemo(() => {
+    const headers = rows.filter((r) => r?.is_legion_header);
+    return headers
+      .map((r) => {
+        const legion_slug = r.legion_slug || slugify(r.legion_name);
+        const legionLeagues = rows
+          .filter((x) => !x?.is_legion_header && (x?.legion_slug || slugify(x?.legion_name)) === legion_slug)
+          .sort((a, b) => Number(a?.league_order ?? 0) - Number(b?.league_order ?? 0));
+
+        const activeCount = legionLeagues.filter((x) => x?.is_active !== false).length;
+        const openSpots = fmtSpots(r?.open_spots);
+
+        return {
+          ...r,
+          legion_slug,
+          leagues: legionLeagues,
+          activeCount,
+          openSpots,
+        };
+      })
+      .sort((a, b) => Number(a?.legion_order ?? 0) - Number(b?.legion_order ?? 0));
+  }, [rows]);
 
   if (loading) {
-    return <div className="mt-6 text-sm text-muted">Loading Legions…</div>;
-  }
-
-  if (!legions.length) {
     return (
-      <div className="mt-6 text-sm text-muted">
-        No Legions configured yet. Check back soon or ask your Game Manager.
-      </div>
+      <main className="section">
+        <div className="container-site">
+          <p className="text-muted">Loading…</p>
+        </div>
+      </main>
     );
   }
 
   return (
-    <div className="mt-8 grid gap-6 lg:grid-cols-3">
-      {legions.map((legion) => {
-        const themeKey = legion.theme?.toUpperCase?.();
-        const gods = GODS_BY_THEME[themeKey] || [];
+    <main className="section">
+      <div className="container-site">
+        <div className="flex items-end justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="h1">The Gauntlet</h1>
+            <p className="text-muted mt-2">Choose a legion to view its leagues.</p>
+          </div>
+          <div className="text-sm text-muted">
+            Season: <span className="font-semibold text-fg">{season}</span>
+          </div>
+        </div>
 
-        const statusKey = (legion.status || "tbd").toLowerCase();
-        const badgeClass =
-          STATUS_CLASS[statusKey] || "badge-status badge-status-default";
+        {error ? (
+          <div className="mt-6 card bg-card-surface border border-subtle p-5">
+            <p className="text-red-300">{error}</p>
+          </div>
+        ) : null}
 
-        return (
-          <article
-            key={legion.id}
-            className="relative overflow-hidden rounded-2xl border border-subtle bg-card-surface shadow-md"
-          >
-            {/* subtle glow (uses your theme colors so it matches light/dark) */}
-            <div
-              className="pointer-events-none absolute inset-0 opacity-60"
-              style={{
-                background:
-                  "radial-gradient(circle at top left, color-mix(in oklab, var(--color-accent) 18%, transparent), transparent 55%)," +
-                  "radial-gradient(circle at bottom right, color-mix(in oklab, var(--color-primary) 14%, transparent), transparent 55%)",
-              }}
-            />
+        <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {legions.map((l) => {
+            const status = String(l?.legion_status || "TBD").toUpperCase();
+            const badge = statusBadge(status);
+            const href = `/gauntlet/legions?legion=${encodeURIComponent(l.legion_slug)}&year=${encodeURIComponent(
+              String(season)
+            )}`;
 
-            <div className="relative p-5 flex flex-col gap-4">
-              <header className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-semibold tracking-wide text-fg">
-                    {legion.name}
-                  </h3>
-                  <p className="text-xs uppercase tracking-[0.25em] text-accent/80 mt-1">
-                    {legion.theme} LEGION
-                  </p>
-                  {legion.tagline && (
-                    <p className="mt-2 text-sm text-muted">{legion.tagline}</p>
-                  )}
-                </div>
+            return (
+              <Link key={l.legion_slug} href={href} className="group">
+                <div className="card bg-card-surface border border-subtle overflow-hidden hover:shadow-lg hover:-translate-y-[1px] transition">
+                  <div className="relative h-40 w-full bg-subtle-surface">
+                    {l.legion_image_url ? (
+                      <Image
+                        src={l.legion_image_url}
+                        alt={l.legion_name || "Legion"}
+                        fill
+                        sizes="(max-width: 1024px) 100vw, 33vw"
+                        className="object-cover"
+                      />
+                    ) : null}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-black/0" />
 
-                <span className={badgeClass}>{statusKey}</span>
-              </header>
-
-              <div className="divider-subtle" />
-
-              <section>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-muted">
-                  THE GODS
-                </p>
-
-                <ul className="mt-3 space-y-2 text-sm">
-                  {gods.map((god) => (
-                    <li
-                      key={god}
-                      className="bg-subtle-surface border border-subtle rounded-xl px-3 py-2 flex items-center justify-between gap-2"
-                    >
-                      <span className="font-medium text-fg">{god}</span>
-                      <span className="text-[11px] text-muted uppercase tracking-[0.2em]">
-                        24 Teams · Light / Dark
+                    <div className="absolute top-3 left-3 flex gap-2">
+                      <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${badge}`}>
+                        {status}
                       </span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
+                      {l.activeCount ? (
+                        <span className="inline-flex items-center rounded-full border border-subtle bg-black/25 px-2.5 py-1 text-xs font-semibold text-fg">
+                          {l.activeCount} leagues
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
 
-            
-            </div>
-          </article>
-        );
-      })}
-    </div>
+                  <div className="p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <h2 className="text-xl font-semibold text-fg group-hover:text-primary transition">
+                        {l.legion_name || "Unnamed Legion"}
+                      </h2>
+                      <span className="text-accent group-hover:text-primary transition">→</span>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {typeof l.openSpots === "number" ? (
+                        <span className="inline-flex items-center rounded-full border border-subtle bg-card-subtle px-2.5 py-1 text-xs text-muted">
+                          {l.openSpots} spots open
+                        </span>
+                      ) : null}
+                      {l.legion_blurb ? (
+                        <span className="inline-flex items-center rounded-full border border-subtle bg-card-subtle px-2.5 py-1 text-xs text-muted">
+                          {l.legion_blurb}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    </main>
   );
 }
