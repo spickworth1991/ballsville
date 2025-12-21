@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import OwnerHeroBlock from "@/src/components/OwnerHeroBlock";
 
 const SEASON = 2025;
 
@@ -176,7 +177,7 @@ export default function MiniLeaguesClient() {
       <section className="section">
         <div className="container-site space-y-10">
           {/* HERO */}
-          <header className="relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-10">
+          <header className="relative py-2 overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-10">
             <div className="pointer-events-none absolute inset-0 opacity-55 mix-blend-screen">
               <div className="absolute -top-24 -left-16 h-64 w-64 rounded-full bg-[color:var(--color-accent)]/18 blur-3xl" />
               <div className="absolute -bottom-24 -right-16 h-64 w-64 rounded-full bg-[color:var(--color-primary)]/14 blur-3xl" />
@@ -204,15 +205,46 @@ export default function MiniLeaguesClient() {
                   </Link>
                 </div>
 
-                <div className="mt-4 inline-flex flex-wrap gap-2 text-xs sm:text-sm">
+                <div className="mt-4 py-2 inline-flex flex-wrap gap-2 text-xs sm:text-sm">
                   <span className="rounded-full border border-subtle bg-card-trans px-3 py-1 backdrop-blur-sm">
                     {UPDATED_LABEL}
                   </span>
                 </div>
               </div>
+              <aside className="w-full space-y-4">
+        
 
+              <div className="rounded-2xl py-2 border border-border/60 bg-card-trans backdrop-blur-sm overflow-hidden shadow-xl shadow-black/50">
+                <div className="px-4 py-3 border-b border-border/60 flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                    Quick Facts
+                  </span>
+                  <span className="text-[11px] text-muted">2025</span>
+                </div>
+
+                <div className="p-4 space-y-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">Buy-in</span>
+                    <span className="font-semibold text-primary">$4</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">League size</span>
+                    <span className="font-semibold">12 teams</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">Format</span>
+                    <span className="font-semibold">Bestball · SF</span>
+                  </div>
+                  <div className="h-px bg-border/60" />
+                  <p className="text-xs text-muted">
+                    Most points after Week 14 wins the league. League winners
+                    can cash out or roll into Division + Championship weeks.
+                  </p>
+                </div>
+              </div>
+            </aside>
               {/* UPDATES CARD */}
-              <div className="rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm overflow-hidden shadow-lg">
+              {/* <div className="rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm overflow-hidden shadow-lg">
                 <div className="px-4 py-3 border-b border-subtle flex items-center justify-between">
                   <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">UPDATES</span>
                 </div>
@@ -236,11 +268,12 @@ export default function MiniLeaguesClient() {
                     }}
                   />
                 </div>
-              </div>
+              </div> */}
             </div>
+            <OwnerHeroBlock mode="minileagues" season={2025} title="Owner Updates" />
           </header>
 
-          {/* HARD-CODED CONTENT */}
+          {/* CONTENT */}
           <section className="grid gap-6 lg:grid-cols-3">
             <div className="rounded-2xl border border-subtle bg-card-surface p-6 shadow-sm space-y-2">
               <h2 className="text-lg font-semibold text-primary">BALLSVILLE SETTINGS</h2>
