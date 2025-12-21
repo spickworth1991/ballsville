@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabaseClient";
+import Link from "next/link";
 
 const CATEGORY_OPTIONS = [
   { value: "dynasty", label: "Dynasty" },
@@ -155,6 +156,24 @@ export default function HallOfFameAdmin() {
   return (
     <section className="section">
       <div className="container-site space-y-8">
+        <div className="flex flex-col items-end gap-2">
+            <Link href="/hall-of-fame" className="btn btn-primary text-sm">
+              ← View Public Hall of Fame
+            </Link>
+            <a href="/admin" className="btn btn-primary">
+            ← Admin Home
+          </a>
+            <button
+              className="btn btn-primary text-xs"
+              onClick={async () => {
+                const supabase = getSupabase();
+                if (supabase) await supabase.auth.signOut();
+                location.href = "/admin/login";
+              }}
+            >
+              Sign out
+            </button>
+          </div>
         <header className="bg-card-surface p-6 md:p-8">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>

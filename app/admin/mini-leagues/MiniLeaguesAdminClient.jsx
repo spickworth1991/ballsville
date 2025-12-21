@@ -528,10 +528,14 @@ export default function MiniLeaguesAdminClient() {
               </div>
 
               <div className="flex flex-wrap gap-2">
-                <Link className="btn btn-outline" href="/mini-leagues">
+                
+                <Link href="/admin" className="btn btn-primary text-sm">
+                    Admin Home
+                </Link>
+                <Link className="btn btn-primary" href="/mini-leagues">
                   View Page
                 </Link>
-                <button className="btn btn-outline" type="button" onClick={loadAll} disabled={!canAct}>
+                <button className="btn btn-primary" type="button" onClick={loadAll} disabled={!canAct}>
                   Refresh
                 </button>
               </div>

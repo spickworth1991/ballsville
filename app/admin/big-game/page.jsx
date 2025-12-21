@@ -108,14 +108,14 @@ export default function BigGameAdminPage() {
             </p>
           </div>
           <div className="flex flex-col items-end gap-2">
-            <Link href="/big-game" className="btn btn-outline text-sm">
+            <Link href="/big-game" className="btn btn-primary text-sm">
               ← View Public Big Game Page
             </Link>
-            <a href="/admin" className="btn btn-outline">
+            <a href="/admin" className="btn btn-primary">
             ← Admin Home
           </a>
             <button
-              className="btn btn-outline text-xs"
+              className="btn btn-primary text-xs"
               onClick={async () => {
                 const supabase = getSupabase();
                 if (supabase) await supabase.auth.signOut();

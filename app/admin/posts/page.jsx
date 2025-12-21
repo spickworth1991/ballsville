@@ -428,11 +428,11 @@ export default function AdminPostsPage() {
             </h1>
           </div>
           <div className="flex gap-2 flex-wrap">
-            <a href="/admin" className="btn btn-outline text-xs sm:text-sm">
+            <a href="/admin" className="btn btn-primary text-xs sm:text-sm">
               ← Admin Home
             </a>
             <button
-              className="btn btn-outline text-xs sm:text-sm"
+              className="btn btn-primary text-xs sm:text-sm"
               onClick={async () => {
                 const supabase = getSupabase();
                 if (supabase) await supabase.auth.signOut();

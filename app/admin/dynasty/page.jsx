@@ -109,14 +109,14 @@ export default function AdminDynastyPage() {
             </p>
           </div>
           <div className="flex flex-col items-end gap-2">
-            <Link href="/dynasty" className="btn btn-outline text-sm">
+            <Link href="/dynasty" className="btn btn-primary text-sm">
               ← View Public Dynasty Page
             </Link>
-            <Link href="/admin" className="btn btn-outline text-xs">
+            <Link href="/admin" className="btn btn-primary text-xs">
               Admin Home
             </Link>
             <button
-              className="btn btn-outline text-xs"
+              className="btn btn-primary text-xs"
               onClick={async () => {
                 const supabase = getSupabase();
                 if (supabase) await supabase.auth.signOut();

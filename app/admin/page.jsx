@@ -94,7 +94,7 @@ export default function AdminHomePage() {
             </p>
           </div>
           <button
-            className="btn btn-outline"
+            className="btn btn-primary"
             onClick={async () => {
               const supabase = getSupabase();
               if (supabase) await supabase.auth.signOut();

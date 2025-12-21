@@ -19,10 +19,10 @@ export default function GauntletAdminPage() {
         </p>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <Link href="/gauntlet" className="btn btn-outline text-sm">
+          <Link href="/gauntlet" className="btn btn-primary text-sm">
             ← View Public Gauntlet Page
           </Link>
-          <Link href="/admin" className="btn btn-outline text-sm">
+          <Link href="/admin" className="btn btn-primary text-sm">
             Admin Home
           </Link>
         </div>

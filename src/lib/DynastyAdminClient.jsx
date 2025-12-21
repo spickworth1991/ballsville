@@ -522,9 +522,9 @@ export default function DynastyAdminClient() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button className="btn btn-outline text-sm" type="button" onClick={loadFromR2} disabled={saving}>
+          {/* <button className="btn btn-outline text-sm" type="button" onClick={loadFromR2} disabled={saving}>
             Reload from R2
-          </button>
+          </button> */}
           {/* <button className="btn btn-outline text-sm" type="button" onClick={importFromSupabase} disabled={saving}>
             Import from Supabase
           </button> */}

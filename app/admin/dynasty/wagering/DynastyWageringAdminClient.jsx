@@ -142,13 +142,33 @@ export default function DynastyWageringAdminClient() {
 
   return (
     <main className="relative min-h-screen text-fg">
+        
       <div className="pointer-events-none absolute inset-0 -z-10">
         <div className="hero-glow" />
       </div>
 
       <section className="section">
         <div className="container-site space-y-6">
+             <div className="flex gap-2 items-end ">
+            <Link href="/dynasty/wagering-demo" className="btn btn-primary text-sm">
+              ← View Public Dyno Wager Page
+            </Link>
+            <a href="/admin" className="btn btn-primary">
+            ← Admin Home
+          </a>
+            <button
+              className="btn btn-primary text-xs"
+              onClick={async () => {
+                const supabase = getSupabase();
+                if (supabase) await supabase.auth.signOut();
+                location.href = "/admin/login";
+              }}
+            >
+              Sign out
+            </button>
+          </div>
           <header className="relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-10">
+           
             <div className="pointer-events-none absolute inset-0 opacity-55 mix-blend-screen">
               <div className="absolute -top-24 -left-16 h-64 w-64 rounded-full bg-[color:var(--color-accent)]/18 blur-3xl" />
               <div className="absolute -bottom-24 -right-16 h-64 w-64 rounded-full bg-[color:var(--color-primary)]/14 blur-3xl" />
