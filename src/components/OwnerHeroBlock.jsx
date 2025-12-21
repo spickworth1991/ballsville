@@ -120,18 +120,7 @@ export default function OwnerHeroBlock({
       <div className="p-4 grid gap-4">
         {imgSrc ? (
           <div className="relative w-full overflow-hidden rounded-xl border border-subtle bg-black/20">
-            <div
-              className="
-                relative
-                mx-auto
-                flex
-                items-center
-                justify-center
-                h-[200px]
-                sm:h-[220px]
-                lg:h-[240px]
-              "
-            >
+            <div className="relative mx-auto flex items-center justify-center h-48 sm:h-56 lg:h-60">
               {/* background polish */}
               <div className="pointer-events-none absolute inset-0">
                 <div className="absolute -top-16 -left-16 h-44 w-44 rounded-full bg-cyan-400/10 blur-3xl" />
@@ -145,18 +134,10 @@ export default function OwnerHeroBlock({
                 width={1200}
                 height={675}
                 sizes="(max-width: 1024px) 100vw, 520px"
-                className="
-                  relative
-                  z-10
-                  max-h-full
-                  max-w-full
-                  object-contain
-                  p-2
-                "
+                className="relative z-10 max-h-full max-w-full w-auto object-contain p-2"
               />
             </div>
           </div>
-
         ) : null}
 
         <div
