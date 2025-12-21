@@ -12,5 +12,9 @@ export const metadata = {
  * We must read `?division=` and `?year=` on the client.
  */
 export default function BigGameDivisionPage() {
-  return <DivisionPageClient />;
+  return (
+    <Suspense fallback={<p className="text-muted">Loading…</p>}>
+      <DivisionPageClient />
+    </Suspense>
+  );
 }
