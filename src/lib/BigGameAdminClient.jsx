@@ -1,512 +1,459 @@
-// src/lib/BigGameAdminClient.jsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabaseClient";
 
-const DIVISION_STATUS_OPTIONS = ["FULL", "FILLING", "DRAFTING", "TBD", "PRIVATE"];
-const LEAGUE_STATUS_OPTIONS = ["FULL", "FILLING", "DRAFTING", "TBD"];
+const DEFAULT_SEASON = 2025;
+const R2_KEY_FOR = (season) => `data/biggame/leagues_${season}.json`;
+
+const DIVISION_STATUS_OPTIONS = ["FULL", "FILLING", "TBD", "DRAFTING"];
+const LEAGUE_STATUS_OPTIONS = ["FULL", "FILLING", "TBD", "DRAFTING"];
+
+function nowIso() {
+  try {
+    return new Date().toISOString();
+  } catch {
+    return "";
+  }
+}
+
+function safeStr(v) {
+  return typeof v === "string" ? v : v == null ? "" : String(v);
+}
+
+function safeNum(v, fallback = null) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function slugify(input) {
+  return safeStr(input)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+function newId(prefix = "bg") {
+  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+}
+
+function safeRevoke(url) {
+  try {
+    if (url && url.startsWith("blob:")) URL.revokeObjectURL(url);
+  } catch {}
+}
+
+async function getAccessToken() {
+  const supabase = getSupabase();
+  if (!supabase) return "";
+  const { data } = await supabase.auth.getSession();
+  return data?.session?.access_token || "";
+}
+
+function normalizeRow(r, idx = 0, season = DEFAULT_SEASON) {
+  const year = safeNum(r?.year, season);
+  const isHeader = !!r?.is_division_header;
+
+  // Division
+  const division_name = safeStr(r?.division_name).trim();
+  const division_slug = safeStr(r?.division_slug).trim() || slugify(division_name) || `division-${idx + 1}`;
+  const division_status = DIVISION_STATUS_OPTIONS.includes(safeStr(r?.division_status)) ? safeStr(r?.division_status) : "FULL";
+  const division_order = safeNum(r?.division_order, null);
+
+  const division_image_key = safeStr(r?.division_image_key || "").trim();
+  const division_image_path = safeStr(r?.division_image_path || "").trim();
+
+  // League
+  const display_order = safeNum(r?.display_order, null);
+  const league_name = safeStr(r?.league_name || "").trim();
+  const league_url = safeStr(r?.league_url || "").trim();
+  const league_status = LEAGUE_STATUS_OPTIONS.includes(safeStr(r?.league_status)) ? safeStr(r?.league_status) : "FULL";
+  const spots_available = safeNum(r?.spots_available, null);
+
+  const league_image_key = safeStr(r?.league_image_key || "").trim();
+  const league_image_path = safeStr(r?.league_image_path || "").trim();
+
+  return {
+    id: safeStr(r?.id) || newId("bg"),
+    year,
+
+    division_name,
+    division_slug,
+    division_status,
+    division_order,
+    division_blurb: safeStr(r?.division_blurb || "").trim(),
+
+    division_image_key: division_image_key || "",
+    division_image_path: division_image_path || "",
+
+    league_name,
+    league_url,
+    league_status,
+    league_image_key: league_image_key || "",
+    league_image_path: league_image_path || "",
+
+    display_order,
+    spots_available,
+
+    is_active: r?.is_active !== false,
+    is_division_header: isHeader,
+
+    // local-only
+    _pending_division_file: null,
+    _pending_division_preview: "",
+    _pending_league_file: null,
+    _pending_league_preview: "",
+  };
+}
 
 function groupByDivision(rows) {
   const map = new Map();
 
-  for (const row of rows) {
-    const name = row.division_name || "Untitled Division";
-    if (!map.has(name)) {
-      map.set(name, {
-        header: null,
-        leagues: [],
-      });
-    }
-    const bucket = map.get(name);
-    if (row.is_division_header) {
-      bucket.header = row;
-    } else {
-      bucket.leagues.push(row);
-    }
+  for (const r of rows) {
+    const year = Number(r.year) || DEFAULT_SEASON;
+    const div = safeStr(r.division_slug || slugify(r.division_name) || "").trim();
+    if (!div) continue;
+    const key = `${year}::${div}`;
+    if (!map.has(key)) map.set(key, { key, year, division_slug: div, rows: [] });
+    map.get(key).rows.push(r);
   }
 
-  // Sort leagues by display_order then league_name
-  for (const [, bucket] of map.entries()) {
-    bucket.leagues.sort((a, b) => {
-      const da = a.display_order ?? 999;
-      const db = b.display_order ?? 999;
-      if (da !== db) return da - db;
-      return (a.league_name || "").localeCompare(b.league_name || "");
+  const groups = Array.from(map.values());
+  for (const g of groups) {
+    // ensure header first
+    g.rows.sort((a, b) => {
+      if (!!a.is_division_header !== !!b.is_division_header) return a.is_division_header ? -1 : 1;
+      const ao = a.display_order ?? 999;
+      const bo = b.display_order ?? 999;
+      if (ao !== bo) return ao - bo;
+      return safeStr(a.league_name).localeCompare(safeStr(b.league_name));
     });
+
+    const header = g.rows.find((x) => x.is_division_header) || null;
+    g.header = header;
+    g.leagues = g.rows.filter((x) => !x.is_division_header);
+
+    // division order/name for sorting
+    g.division_name = safeStr(header?.division_name || g.rows[0]?.division_name || g.division_slug);
+    g.division_order = safeNum(header?.division_order, null);
   }
 
-  return Array.from(map.entries())
-    .map(([division_name, bucket]) => ({
-      division_name,
-      header: bucket.header,
-      leagues: bucket.leagues,
-    }))
-    .sort((a, b) => a.division_name.localeCompare(b.division_name));
+  groups.sort((a, b) => {
+    // year desc
+    if (a.year !== b.year) return b.year - a.year;
+
+    // division_order asc if present
+    const ao = a.division_order;
+    const bo = b.division_order;
+    if (Number.isFinite(ao) && Number.isFinite(bo) && ao !== bo) return ao - bo;
+    if (Number.isFinite(ao) && !Number.isFinite(bo)) return -1;
+    if (!Number.isFinite(ao) && Number.isFinite(bo)) return 1;
+
+    return safeStr(a.division_name).localeCompare(safeStr(b.division_name));
+  });
+
+  return groups;
+}
+
+async function uploadBigGameImage({ file, section, season, divisionSlug, leagueOrder, token }) {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("section", section);
+  fd.append("season", String(season));
+  fd.append("divisionSlug", String(divisionSlug));
+  if (leagueOrder != null) fd.append("leagueOrder", String(leagueOrder));
+
+  const res = await fetch(`/api/admin/upload`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}` },
+    body: fd,
+  });
+
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok || !out?.ok) throw new Error(out?.error || `Upload failed (${res.status})`);
+  return out;
 }
 
 export default function BigGameAdminClient() {
-  const currentYear = new Date().getFullYear(); // used only as a filter
-
+  const [season, setSeason] = useState(DEFAULT_SEASON);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [infoMsg, setInfoMsg] = useState("");
+  const [open, setOpen] = useState(() => new Set());
 
-  // Accordion open/closed
-  const [openDivisions, setOpenDivisions] = useState(() => new Set());
+  const groups = useMemo(() => groupByDivision(rows.filter((r) => Number(r.year) === Number(season))), [rows, season]);
 
-  // Draft edits (unsaved)
-  const [divisionDrafts, setDivisionDrafts] = useState({});
-  const [leagueDrafts, setLeagueDrafts] = useState({});
-  const [dirtyDivisions, setDirtyDivisions] = useState(() => new Set());
+  async function loadFromR2(nextSeason = season) {
+    setErrorMsg("");
+    setInfoMsg("");
+    setLoading(true);
+    try {
+      const bust = `v=${Date.now()}`;
+      const res = await fetch(`/r2/${R2_KEY_FOR(nextSeason)}?${bust}`, { cache: "no-store" });
+      if (!res.ok) {
+        setRows([]);
+        return;
+      }
+      const data = await res.json();
+      const list = Array.isArray(data?.rows) ? data.rows : Array.isArray(data) ? data : [];
+      setRows(list.map((r, idx) => normalizeRow(r, idx, nextSeason)));
+    } catch (e) {
+      setErrorMsg(e?.message || "Failed to load Big Game data from R2.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
-  // Quick-create modal for divisions
-  const [quickOpen, setQuickOpen] = useState(false);
-
-  // Division create form (used inside modal)
-  const [creatingDivision, setCreatingDivision] = useState(false);
-  const [newDivision, setNewDivision] = useState({
-    division_name: "",
-    division_status: "TBD",
-    division_image_path: "",
-    division_blurb: "",
-    division_order: "",
-  });
-
-  // Division delete confirmation
-  const [divisionToDelete, setDivisionToDelete] = useState(null);
-  const [divisionDeleteInput, setDivisionDeleteInput] = useState("");
-  const [deletingDivisionName, setDeletingDivisionName] = useState(null);
-
-  // Saving state per-division
-  const [savingDivisionName, setSavingDivisionName] = useState(null);
-
-  // Load rows for current season
   useEffect(() => {
-    let cancelled = false;
+    loadFromR2(season);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [season]);
 
-    async function run() {
-      setLoading(true);
-      setErrorMsg("");
-      setInfoMsg("");
-
-      try {
-        const supabase = getSupabase();
-        if (!supabase) throw new Error("Supabase client not available");
-
-        const { data, error } = await supabase
-          .from("biggame_leagues")
-          .select("*")
-          .eq("year", currentYear)
-          .order("division_name", { ascending: true })
-          .order("is_division_header", { ascending: false })
-          .order("display_order", { ascending: true });
-
-        if (error) throw error;
-
-        if (!cancelled) {
-          setRows(data || []);
-        }
-      } catch (err) {
-        console.error("Failed to load biggame_leagues:", err);
-        if (!cancelled) {
-          setErrorMsg("Unable to load Big Game leagues from Supabase.");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [currentYear]);
-
-  const divisions = useMemo(() => groupByDivision(rows), [rows]);
-
-  function markDivisionDirty(divisionName) {
-    setDirtyDivisions((prev) => {
-      const next = new Set(prev);
-      next.add(divisionName);
-      return next;
-    });
-  }
-
-  function handleNewDivisionField(field, value) {
-    setNewDivision((prev) => ({ ...prev, [field]: value }));
-  }
-
-  async function handleCreateDivision(e) {
-    e.preventDefault();
+  async function saveAllToR2(nextRows = rows, nextSeason = season) {
     setErrorMsg("");
     setInfoMsg("");
-    setCreatingDivision(true);
-
+    setSaving(true);
     try {
-      const supabase = getSupabase();
-      if (!supabase) throw new Error("Supabase client not available");
+      const token = await getAccessToken();
+      if (!token) throw new Error("Missing admin session token. Please sign in again.");
 
-      const division_name = newDivision.division_name.trim();
-      if (!division_name) {
-        setErrorMsg("Division name is required.");
-        setCreatingDivision(false);
-        return;
+      // Upload pending images first
+      const updated = [];
+      for (const r of nextRows) {
+        if (Number(r.year) !== Number(nextSeason)) {
+          updated.push(r);
+          continue;
+        }
+
+        const divSlug = safeStr(r.division_slug || slugify(r.division_name) || "").trim();
+        let next = { ...r, division_slug: divSlug };
+
+        if (r.is_division_header && r._pending_division_file && divSlug) {
+          const out = await uploadBigGameImage({
+            file: r._pending_division_file,
+            section: "biggame-division",
+            season: nextSeason,
+            divisionSlug: divSlug,
+            token,
+          });
+          safeRevoke(next._pending_division_preview);
+          next = {
+            ...next,
+            division_image_key: out.key,
+            _pending_division_file: null,
+            _pending_division_preview: "",
+          };
+        }
+
+        if (!r.is_division_header && r._pending_league_file && divSlug && Number.isFinite(Number(r.display_order))) {
+          const out = await uploadBigGameImage({
+            file: r._pending_league_file,
+            section: "biggame-league",
+            season: nextSeason,
+            divisionSlug: divSlug,
+            leagueOrder: Number(r.display_order),
+            token,
+          });
+          safeRevoke(next._pending_league_preview);
+          next = {
+            ...next,
+            league_image_key: out.key,
+            _pending_league_file: null,
+            _pending_league_preview: "",
+          };
+        }
+
+        updated.push(next);
       }
 
-      const division_status = newDivision.division_status || "FILLING";
-      const division_image_path =
-        newDivision.division_image_path.trim() || null;
-      const division_blurb = newDivision.division_blurb.trim() || null;
-      const division_order =
-        newDivision.division_order === "" ||
-        newDivision.division_order == null
-          ? null
-          : Number(newDivision.division_order) || null;
+      // Normalize & stable sort
+      const clean = updated
+        .map((r, idx) => normalizeRow(r, idx, nextSeason))
+        .filter((r) => Number(r.year) === Number(nextSeason));
 
-      // Header row
-      const payloads = [
-        {
-          year: currentYear,
-          division_name,
-          division_status,
-          division_image_path,
-          division_blurb,
-          division_order,
-          league_name: null,
-          league_url: null,
-          league_image_path: null,
-          display_order: null,
-          is_active: true,
-          is_division_header: true,
-          spots_available: null,
-          league_status: null,
+      clean.sort((a, b) => {
+        // division order/name
+        const ao = a.division_order ?? 9999;
+        const bo = b.division_order ?? 9999;
+        if (ao !== bo) return ao - bo;
+        const an = safeStr(a.division_name).toLowerCase();
+        const bn = safeStr(b.division_name).toLowerCase();
+        if (an !== bn) return an.localeCompare(bn);
+        if (!!a.is_division_header !== !!b.is_division_header) return a.is_division_header ? -1 : 1;
+        return (a.display_order ?? 999) - (b.display_order ?? 999);
+      });
+
+      const payload = { updatedAt: nowIso(), rows: clean };
+
+      const res = await fetch(`/api/admin/biggame?season=${encodeURIComponent(String(nextSeason))}`, {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
         },
-      ];
+        body: JSON.stringify(payload),
+      });
 
-      // Eight empty league slots
-      for (let i = 1; i <= 8; i++) {
-        payloads.push({
-          year: currentYear,
-          division_name,
-          division_status,
-          division_image_path,
-          division_blurb,
-          division_order: null, // division_order lives on the header only
-          league_name: "",
-          league_url: "",
-          league_image_path: null,
-          display_order: i,
-          is_active: false,
-          is_division_header: false,
-          spots_available: null,
-          league_status: division_status,
-        });
-      }
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok || !out?.ok) throw new Error(out?.error || `Save failed (${res.status})`);
+
+      setRows(clean);
+      setInfoMsg(`Saved Big Game divisions to R2 (season ${nextSeason}).`);
+    } catch (e) {
+      setErrorMsg(e?.message || "Failed to save Big Game data.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function importFromSupabase() {
+    setErrorMsg("");
+    setInfoMsg("");
+    try {
+      const supabase = getSupabase();
+      if (!supabase) throw new Error("Supabase client not available.");
 
       const { data, error } = await supabase
         .from("biggame_leagues")
-        .insert(payloads)
-        .select("*");
+        .select("*")
+        .eq("year", season)
+        .order("division_order", { ascending: true })
+        .order("is_division_header", { ascending: false })
+        .order("display_order", { ascending: true });
 
       if (error) throw error;
 
-      setRows((prev) => [...prev, ...(data || [])]);
-      setInfoMsg(`Division "${division_name}" created with 8 league slots.`);
-
-      setNewDivision({
-        division_name: "",
-        division_status: "FILLING",
-        division_image_path: "",
-        division_blurb: "",
-        division_order: "",
-      });
-
-      setOpenDivisions((prev) => {
-        const next = new Set(prev);
-        next.add(division_name);
-        return next;
-      });
-
-      // Close the modal after successful creation
-      setQuickOpen(false);
-    } catch (err) {
-      console.error("Failed to create division:", err);
-      setErrorMsg("Failed to create division. Check console for details.");
-    } finally {
-      setCreatingDivision(false);
-    }
-  }
-
-  function handleResetDivisionDraft(divisionName, leagues) {
-    setDivisionDrafts((prev) => {
-      const copy = { ...prev };
-      delete copy[divisionName];
-      return copy;
-    });
-    setLeagueDrafts((prev) => {
-      const copy = { ...prev };
-      for (const lg of leagues) {
-        delete copy[lg.id];
-      }
-      return copy;
-    });
-    setDirtyDivisions((prev) => {
-      const next = new Set(prev);
-      next.delete(divisionName);
-      return next;
-    });
-  }
-
-  function toggleDivision(divisionName, leagues = []) {
-    setOpenDivisions((prev) => {
-      const isOpen = prev.has(divisionName);
-      const next = new Set(prev);
-
-      if (isOpen && dirtyDivisions.has(divisionName)) {
-        const discard = window.confirm(
-          "You have unsaved changes in this division.\n\nOK = Discard changes and collapse.\nCancel = Keep editing."
-        );
-        if (!discard) {
-          return prev; // keep open, keep drafts
-        }
-        // discard drafts for this division
-        handleResetDivisionDraft(divisionName, leagues);
-      }
-
-      if (isOpen) {
-        next.delete(divisionName);
-      } else {
-        next.add(divisionName);
-      }
-      return next;
-    });
-  }
-
-  async function handleSaveDivision(divisionName, headerRow, leagues) {
-    setErrorMsg("");
-    setInfoMsg("");
-    setSavingDivisionName(divisionName);
-
-    try {
-      const supabase = getSupabase();
-      if (!supabase) throw new Error("Supabase client not available");
-
-      const headerDraft = divisionDrafts[divisionName];
-
-      // Build updated header row (if it exists)
-      let newHeader = null;
-      if (headerRow) {
-        const currentStatus =
-          headerRow.division_status || headerRow.status || "TBD";
-        const currentImagePath =
-          headerRow.division_image_path || headerRow.image_url || "";
-        const currentBlurb = headerRow.division_blurb || "";
-        const currentName = headerRow.division_name || divisionName;
-        const currentOrder =
-          headerRow.division_order === null ||
-          headerRow.division_order === undefined
-            ? null
-            : Number(headerRow.division_order) || null;
-
-        // Name
-        const division_name =
-          (headerDraft &&
-            "division_name" in headerDraft &&
-            headerDraft.division_name.trim()) ||
-          currentName;
-
-        // Status
-        const division_status =
-          (headerDraft && headerDraft.division_status) ||
-          currentStatus;
-
-        // Artwork path – only overwrite if explicitly present in draft
-        const draftImageRaw =
-          headerDraft && "division_image_path" in headerDraft
-            ? headerDraft.division_image_path
-            : currentImagePath;
-        const division_image_path = draftImageRaw
-          ? draftImageRaw.trim()
-          : null;
-
-        // Blurb – same “only if present” logic
-        const draftBlurbRaw =
-          headerDraft && "division_blurb" in headerDraft
-            ? headerDraft.division_blurb
-            : currentBlurb;
-        const division_blurb =
-          draftBlurbRaw && draftBlurbRaw.trim()
-            ? draftBlurbRaw.trim()
-            : null;
-
-        // Order – only overwrite if present in draft
-        const draftOrderRaw =
-          headerDraft && "division_order" in headerDraft
-            ? headerDraft.division_order
-            : currentOrder;
-        const division_order =
-          draftOrderRaw === "" || draftOrderRaw == null
-            ? null
-            : Number(draftOrderRaw) || null;
-
-        newHeader = {
-          ...headerRow,
-          division_name,
-          division_status,
-          division_image_path,
-          division_blurb,
-          division_order,
-        };
-      }
-
-      const rowsToUpsert = [];
-      if (newHeader) rowsToUpsert.push(newHeader);
-
-      // Build updated league rows
-      for (const lg of leagues) {
-        const draft = leagueDrafts[lg.id];
-
-        const baseStatus = lg.league_status || "TBD";
-        const league_status = draft?.league_status || baseStatus;
-        const leagueIsFilling = league_status === "FILLING";
-
-        const updated = {
-          ...lg,
-          // Keep division_order NULL for league rows; header owns the order
-          division_name: newHeader?.division_name || lg.division_name,
-          display_order:
-            draft && "display_order" in draft
-              ? draft.display_order === "" || draft.display_order == null
-                ? null
-                : Number(draft.display_order) || null
-              : lg.display_order,
-          league_name:
-            draft && "league_name" in draft
-              ? draft.league_name
-              : lg.league_name,
-          league_status,
-          league_url:
-            draft && "league_url" in draft
-              ? draft.league_url
-              : lg.league_url,
-          league_image_path:
-            draft && "league_image_path" in draft
-              ? draft.league_image_path || null
-              : lg.league_image_path,
-          spots_available: leagueIsFilling
-            ? draft && "spots_available" in draft
-              ? draft.spots_available === "" || draft.spots_available == null
-                ? null
-                : Number(draft.spots_available) || null
-              : lg.spots_available ?? null
-            : null,
-          is_active:
-            draft && "is_active" in draft
-              ? draft.is_active
-              : lg.is_active,
-        };
-
-        rowsToUpsert.push(updated);
-      }
-
-      if (rowsToUpsert.length === 0) {
-        setSavingDivisionName(null);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("biggame_leagues")
-        .upsert(rowsToUpsert)
-        .select("*");
-
-      if (error) throw error;
-
-      const updatedMap = new Map(data.map((r) => [r.id, r]));
-      setRows((prev) => prev.map((r) => updatedMap.get(r.id) || r));
-
-      // Clear drafts + dirty state for this division
-      handleResetDivisionDraft(divisionName, leagues);
-
-      const newName =
-        (newHeader && newHeader.division_name) || divisionName;
-      setInfoMsg(`Saved changes for "${newName}".`);
-    } catch (err) {
-      console.error("Failed to save division:", err);
-      setErrorMsg("Failed to save division. Check console for details.");
-    } finally {
-      setSavingDivisionName(null);
-    }
-  }
-
-  async function handleDeleteDivision(divisionName) {
-    setErrorMsg("");
-    setInfoMsg("");
-
-    if (divisionDeleteInput.trim().toLowerCase() !== "ballsville") {
-      setErrorMsg('To delete a division, type "ballsville" exactly.');
-      return;
-    }
-
-    setDeletingDivisionName(divisionName);
-
-    try {
-      const supabase = getSupabase();
-      if (!supabase) throw new Error("Supabase client not available");
-
-      const { error } = await supabase
-        .from("biggame_leagues")
-        .delete()
-        .eq("year", currentYear)
-        .eq("division_name", divisionName);
-
-      if (error) throw error;
-
-      setRows((prev) =>
-        prev.filter(
-          (r) => !(r.year === currentYear && r.division_name === divisionName)
+      const imported = (data || []).map((r, idx) =>
+        normalizeRow(
+          {
+            ...r,
+            division_slug: slugify(r?.division_name || ""),
+            // keep existing supabase image paths as fallback
+            division_image_key: "",
+            league_image_key: "",
+          },
+          idx,
+          season
         )
       );
 
-      // Clean up local state for that division
-      setDivisionDrafts((prev) => {
-        const copy = { ...prev };
-        delete copy[divisionName];
-        return copy;
-      });
-      setLeagueDrafts((prev) => {
-        const copy = { ...prev };
-        return copy; // leagues already removed via setRows
-      });
-      setDirtyDivisions((prev) => {
-        const next = new Set(prev);
-        next.delete(divisionName);
-        return next;
-      });
-      setOpenDivisions((prev) => {
-        const next = new Set(prev);
-        next.delete(divisionName);
-        return next;
-      });
-
-      setInfoMsg(`Division "${divisionName}" deleted.`);
-      setDivisionToDelete(null);
-      setDivisionDeleteInput("");
-    } catch (err) {
-      console.error("Failed to delete division:", err);
-      setErrorMsg("Failed to delete division. Check console for details.");
-    } finally {
-      setDeletingDivisionName(null);
+      setRows(imported);
+      setInfoMsg(`Imported ${imported.length} rows from Supabase. Review, then click "Save to R2".`);
+    } catch (e) {
+      setErrorMsg(e?.message || "Failed to import from Supabase.");
     }
   }
 
+  function toggleGroup(k) {
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  }
+
+  function upsertRow(rowId, patch) {
+    setRows((prev) => prev.map((r) => (r.id === rowId ? { ...r, ...patch } : r)));
+  }
+
+  function setDivisionHeader(group, patch) {
+    if (group.header?.id) {
+      upsertRow(group.header.id, patch);
+      return;
+    }
+
+    // create missing header row
+    const header = normalizeRow(
+      {
+        id: newId("bg"),
+        year: group.year,
+        division_name: group.division_name,
+        division_slug: group.division_slug,
+        division_status: "FULL",
+        division_order: group.division_order,
+        division_blurb: "",
+        is_division_header: true,
+        is_active: true,
+      },
+      0,
+      season
+    );
+
+    setRows((prev) => [...prev, { ...header, ...patch }]);
+  }
+
+  function addDivision() {
+    const baseName = window.prompt("Division name?") || "";
+    const name = baseName.trim();
+    if (!name) return;
+    const divSlug = slugify(name);
+
+    // header
+    const header = normalizeRow(
+      {
+        id: newId("bg"),
+        year: season,
+        division_name: name,
+        division_slug: divSlug,
+        division_status: "FILLING",
+        division_order: null,
+        is_division_header: true,
+        is_active: true,
+      },
+      0,
+      season
+    );
+
+    // 8 leagues
+    const leagues = Array.from({ length: 8 }).map((_, i) =>
+      normalizeRow(
+        {
+          id: newId("bg"),
+          year: season,
+          division_name: name,
+          division_slug: divSlug,
+          division_status: header.division_status,
+          league_name: "",
+          league_url: "",
+          league_status: header.division_status,
+          display_order: i + 1,
+          is_division_header: false,
+          is_active: true,
+        },
+        i,
+        season
+      )
+    );
+
+    setRows((prev) => [...prev, header, ...leagues]);
+    setInfoMsg(`Added division "${name}" locally. Click "Save to R2" to publish.`);
+  }
+
+  function deleteDivision(group) {
+    const ok = window.prompt('Type BALLSVILLE to delete this entire division (header + leagues):');
+    if ((ok || "").trim().toLowerCase() !== "ballsville") return;
+
+    setRows((prev) => prev.filter((r) => !(Number(r.year) === Number(group.year) && safeStr(r.division_slug) === safeStr(group.division_slug))));
+    setOpen((prev) => {
+      const next = new Set(prev);
+      next.delete(group.key);
+      return next;
+    });
+
+    setInfoMsg(`Division "${group.division_name}" removed locally. Click "Save to R2" to publish.`);
+  }
+
   if (loading) {
-    return <p className="text-sm text-muted">Loading leagues…</p>;
+    return <p className="text-sm text-muted">Loading Big Game divisions…</p>;
   }
 
   return (
-    <section className="space-y-8">
+    <section className="space-y-6">
       {(errorMsg || infoMsg) && (
         <div className="space-y-1 text-sm">
           {errorMsg && <p className="text-danger">{errorMsg}</p>}
@@ -514,184 +461,120 @@ export default function BigGameAdminClient() {
         </div>
       )}
 
-      {/* QUICK CREATE CARD (modal trigger) */}
-      <div className="rounded-2xl border border-subtle bg-card-surface p-6 space-y-4">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h2 className="text-lg font-semibold text-primary">
-              Quick create Big Game division
-            </h2>
-            <p className="text-xs text-muted max-w-prose">
-              Create a new Big Game division for {currentYear}. This will create
-              the division header and{" "}
-              <span className="font-semibold">8 blank league slots</span>. You
-              can edit league names and details in the accordion below.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn btn-primary text-sm"
-            onClick={() => setQuickOpen(true)}
-          >
-            New Division
+      <div className="rounded-2xl border border-subtle bg-card-surface p-5 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold">Big Game data source: R2</p>
+          <p className="text-xs text-muted">Reads/writes: /r2/{R2_KEY_FOR(season)}</p>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <label className="text-xs text-muted flex items-center gap-2">
+            Season
+            <input className="input w-24" value={season} onChange={(e) => setSeason(safeNum(e.target.value, season) || season)} />
+          </label>
+
+          <button className="btn btn-outline text-sm" type="button" onClick={() => loadFromR2(season)} disabled={saving}>
+            Reload from R2
+          </button>
+
+          <button className="btn btn-outline text-sm" type="button" onClick={importFromSupabase} disabled={saving}>
+            Import from Supabase
+          </button>
+
+          <button className="btn btn-primary text-sm" type="button" onClick={() => saveAllToR2(rows, season)} disabled={saving}>
+            {saving ? "Saving…" : "Save to R2"}
+          </button>
+
+          <button className="btn btn-primary text-sm" type="button" onClick={addDivision} disabled={saving}>
+            + Add division
           </button>
         </div>
       </div>
 
-      {/* EXISTING DIVISIONS */}
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold">Existing divisions</h2>
+        <h2 className="text-lg font-semibold">Divisions</h2>
 
-        {divisions.length === 0 ? (
-          <p className="text-sm text-muted">
-            No rows found in <code>biggame_leagues</code> for the current
-            season.
-          </p>
+        {groups.length === 0 ? (
+          <p className="text-sm text-muted">No Big Game rows in R2 yet. Use “Import from Supabase” or “Add division”.</p>
         ) : (
-          divisions.map(({ division_name, header, leagues }) => {
-            const count = leagues.length;
-            const needs = 8 - count;
-            const open = openDivisions.has(division_name);
+          groups.map((g) => {
+            const isOpen = open.has(g.key);
+            const header = g.header;
 
-            const currentStatus =
-              header?.division_status || header?.status || "TBD";
-            const currentImagePath =
-              header?.division_image_path || header?.image_url || "";
-            const currentBlurb = header?.division_blurb || "";
-            const currentName = header?.division_name || division_name;
-            const currentOrderRaw =
-              header?.division_order === null ||
-              header?.division_order === undefined
-                ? ""
-                : String(header.division_order);
-
-            const draft = divisionDrafts[division_name];
-            const draftName = draft?.division_name ?? currentName;
-            const draftStatus = draft?.division_status ?? currentStatus;
-            const draftImagePath =
-              draft?.division_image_path ?? currentImagePath;
-            const draftBlurb = draft?.division_blurb ?? currentBlurb;
-            const draftOrder = draft?.division_order ?? currentOrderRaw;
-
-            const isDirty = dirtyDivisions.has(division_name);
-
-            // Aggregate league status counts (respecting unsaved drafts)
-            const statusCounts = {
-              DRAFTING: 0,
-              TBD: 0,
-              FULL: 0,
-              FILLING: 0,
-            };
-
-            for (const lg of leagues) {
-              const draftLg = leagueDrafts[lg.id] || {};
-              const st = (draftLg.league_status || lg.league_status || "TBD").toUpperCase();
-              if (statusCounts[st] !== undefined) {
-                statusCounts[st] += 1;
-              } else {
-                statusCounts.TBD += 1;
-              }
-            }
+            const divisionImageSrc = header?._pending_division_preview
+              ? header._pending_division_preview
+              : header?.division_image_key
+              ? `/r2/${header.division_image_key}`
+              : header?.division_image_path
+              ? header.division_image_path
+              : "";
 
             return (
-              <div
-                key={division_name}
-                className="rounded-2xl border border-subtle bg-card-surface"
-              >
-                {/* Accordion header */}
+              <div key={g.key} className="rounded-2xl border border-subtle bg-card-surface overflow-hidden">
                 <button
                   type="button"
-                  onClick={() => toggleDivision(division_name, leagues)}
-                  className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-panel/70 transition"
+                  onClick={() => toggleGroup(g.key)}
+                  className="w-full flex items-center justify-between gap-3 px-5 py-4 border-b border-subtle"
                 >
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.25em] text-accent">
-                      {draftName}
+                  <div className="min-w-0 text-left">
+                    <p className="text-sm font-semibold truncate">
+                      {g.division_name} · {g.year}
                     </p>
-                    <p className="text-[11px] text-muted">
-                      {count}/8 leagues configured{" "}
-                      {needs > 0 && (
-                        <span className="text-warning">
-                          · {needs} more needed
-                        </span>
-                      )}
-                      {isDirty && (
-                        <span className="ml-2 text-[10px] text-warning">
-                          (Unsaved changes)
-                        </span>
-                      )}
-                    </p>
+                    <p className="text-xs text-muted truncate">{g.leagues.length} leagues</p>
                   </div>
-                  <div className="flex flex-col items-end gap-5 sm:gap-1 sm:flex-row sm:items-center sm:justify-end sm:space-x-3">
-                    <span className="text-[11px] text-muted text-right">
-                      Drafting: {statusCounts.DRAFTING} · TBD:{" "}
-                      {statusCounts.TBD} · Full: {statusCounts.FULL} · Filling:{" "}
-                      {statusCounts.FILLING}
-                    </span>
-
-                    <span className="text-[11px] text-muted hidden sm:inline">
-                      Artwork:{" "}
-                      <span className="font-mono">
-                        {draftImagePath || "—"}
-                      </span>
-                    </span>
-
-                    <span className="text-xs text-muted">
-                      {open ? "Collapse ▲" : "Expand ▼"}
-                    </span>
-                  </div>
+                  <span className="text-xs text-muted">{isOpen ? "Hide" : "Edit"} →</span>
                 </button>
 
-                {open && (
-                  <div className="border-t border-subtle px-4 py-4 space-y-5">
-                    {/* Division-level fields */}
-                    <div className="grid gap-3 md:grid-cols-[2fr_1fr_0.9fr] text-xs">
-                      <label className="flex flex-col gap-1 md:col-span-3">
-                        <span className="label">Division name</span>
+                {isOpen && (
+                  <div className="p-5 space-y-4">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <label className="space-y-1">
+                        <span className="text-xs text-muted">Division name</span>
                         <input
-                          className="input !h-8 !py-1 text-[11px]"
-                          value={draftName}
+                          className="input"
+                          value={safeStr(header?.division_name || g.division_name)}
                           onChange={(e) => {
-                            const value = e.target.value;
-                            setDivisionDrafts((prev) => ({
-                              ...prev,
-                              [division_name]: {
-                                ...(prev[division_name] || {
-                                  division_name: currentName,
-                                  division_status: currentStatus,
-                                  division_image_path: currentImagePath,
-                                  division_blurb: currentBlurb,
-                                  division_order: currentOrderRaw,
-                                }),
-                                division_name: value,
-                              },
-                            }));
-                            markDivisionDirty(division_name);
+                            const nextName = e.target.value;
+                            // update all rows in division
+                            setRows((prev) =>
+                              prev.map((r) => {
+                                if (Number(r.year) !== Number(g.year)) return r;
+                                if (safeStr(r.division_slug) !== safeStr(g.division_slug)) return r;
+                                return {
+                                  ...r,
+                                  division_name: nextName,
+                                  division_slug: slugify(nextName) || r.division_slug,
+                                };
+                              })
+                            );
                           }}
                         />
                       </label>
 
-                      <label className="flex flex-col gap-1">
-                        <span className="label">Division status</span>
+                      <label className="space-y-1">
+                        <span className="text-xs text-muted">Division order (small numbers show first)</span>
+                        <input
+                          className="input w-28"
+                          value={safeStr(header?.division_order ?? "")}
+                          onChange={(e) => setDivisionHeader(g, { division_order: safeNum(e.target.value, null) })}
+                        />
+                      </label>
+
+                      <label className="space-y-1">
+                        <span className="text-xs text-muted">Division status</span>
                         <select
-                          className="input !h-8 !py-1"
-                          value={draftStatus}
+                          className="input"
+                          value={safeStr(header?.division_status || "FULL")}
                           onChange={(e) => {
-                            const value = e.target.value;
-                            setDivisionDrafts((prev) => ({
-                              ...prev,
-                              [division_name]: {
-                                ...(prev[division_name] || {
-                                  division_name: currentName,
-                                  division_status: currentStatus,
-                                  division_image_path: currentImagePath,
-                                  division_blurb: currentBlurb,
-                                  division_order: currentOrderRaw,
-                                }),
-                                division_status: value,
-                              },
-                            }));
-                            markDivisionDirty(division_name);
+                            const v = e.target.value;
+                            setRows((prev) =>
+                              prev.map((r) => {
+                                if (Number(r.year) !== Number(g.year)) return r;
+                                if (safeStr(r.division_slug) !== safeStr(g.division_slug)) return r;
+                                // keep division_status mirrored in all rows (matches current schema)
+                                return { ...r, division_status: v };
+                              })
+                            );
                           }}
                         >
                           {DIVISION_STATUS_OPTIONS.map((s) => (
@@ -702,379 +585,184 @@ export default function BigGameAdminClient() {
                         </select>
                       </label>
 
-                      <label className="flex flex-col gap-1">
-                        <span className="label">Division # (order)</span>
+                      <label className="space-y-1">
+                        <span className="text-xs text-muted">Division blurb (optional)</span>
                         <input
-                          className="input !h-8 !py-1 text-[11px]"
-                          type="number"
-                          min={1}
-                          placeholder="1"
-                          value={draftOrder}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setDivisionDrafts((prev) => ({
-                              ...prev,
-                              [division_name]: {
-                                ...(prev[division_name] || {
-                                  division_name: currentName,
-                                  division_status: currentStatus,
-                                  division_image_path: currentImagePath,
-                                  division_blurb: currentBlurb,
-                                  division_order: currentOrderRaw,
-                                }),
-                                division_order: value,
-                              },
-                            }));
-                            markDivisionDirty(division_name);
-                          }}
-                        />
-                      </label>
-
-                      <label className="flex flex-col gap-1">
-                        <span className="label">Artwork path</span>
-                        <input
-                          className="input !h-8 !py-1 text-[11px] font-mono"
-                          value={draftImagePath}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setDivisionDrafts((prev) => ({
-                              ...prev,
-                              [division_name]: {
-                                ...(prev[division_name] || {
-                                  division_name: currentName,
-                                  division_status: currentStatus,
-                                  division_image_path: currentImagePath,
-                                  division_blurb: currentBlurb,
-                                  division_order: currentOrderRaw,
-                                }),
-                                division_image_path: value,
-                              },
-                            }));
-                            markDivisionDirty(division_name);
-                          }}
-                        />
-                      </label>
-
-                      <label className="flex flex-col gap-1 md:col-span-2">
-                        <span className="label">Division blurb</span>
-                        <textarea
-                          className="input min-h-[48px]"
-                          value={draftBlurb}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setDivisionDrafts((prev) => ({
-                              ...prev,
-                              [division_name]: {
-                                ...(prev[division_name] || {
-                                  division_name: currentName,
-                                  division_status: currentStatus,
-                                  division_image_path: currentImagePath,
-                                  division_blurb: currentBlurb,
-                                  division_order: currentOrderRaw,
-                                }),
-                                division_blurb: value,
-                              },
-                            }));
-                            markDivisionDirty(division_name);
-                          }}
+                          className="input"
+                          value={safeStr(header?.division_blurb || "")}
+                          onChange={(e) => setDivisionHeader(g, { division_blurb: e.target.value })}
                         />
                       </label>
                     </div>
 
-                    {/* League table */}
-                    <div className="overflow-x-auto text-xs">
-                      <table className="min-w-full border-separate border-spacing-y-1">
-                        <thead className="text-[11px] text-muted">
-                          <tr>
-                            <th className="text-left px-2 py-1">#</th>
-                            <th className="text-left px-2 py-1">League</th>
-                            <th className="text-left px-2 py-1">Status</th>
-                            <th className="text-left px-2 py-1">Link</th>
-                            <th className="text-left px-2 py-1">
-                              Image path
-                            </th>
-                            <th className="text-left px-2 py-1">
-                              Spots avail.
-                            </th>
-                            <th className="text-left px-2 py-1">Active</th>
+                    <div className="flex flex-wrap items-center gap-4">
+                      <div className="flex items-center gap-3">
+                        <label className="btn btn-outline text-xs cursor-pointer">
+                          Upload division image
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              const preview = URL.createObjectURL(file);
+
+                              // store on header row
+                              const headerId = header?.id;
+                              if (!headerId) {
+                                setDivisionHeader(g, { _pending_division_file: file, _pending_division_preview: preview });
+                              } else {
+                                setRows((prev) =>
+                                  prev.map((r) => {
+                                    if (r.id !== headerId) return r;
+                                    safeRevoke(r._pending_division_preview);
+                                    return { ...r, _pending_division_file: file, _pending_division_preview: preview };
+                                  })
+                                );
+                              }
+
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+
+                        {divisionImageSrc ? (
+                          <img
+                            src={divisionImageSrc}
+                            alt="Division preview"
+                            className="h-12 w-20 object-cover rounded-lg border border-subtle"
+                          />
+                        ) : (
+                          <span className="text-xs text-muted">No image</span>
+                        )}
+
+                        <span className="text-[11px] text-muted">
+                          {header?.division_image_key ? `R2: ${safeStr(header.division_image_key).split("/").slice(-1)[0]}` : header?.division_image_path ? "URL" : "—"}
+                        </span>
+                      </div>
+
+                      <button className="btn btn-outline text-sm" type="button" onClick={() => deleteDivision(g)}>
+                        Delete division
+                      </button>
+                    </div>
+
+                    <div className="overflow-x-auto rounded-2xl border border-subtle">
+                      <table className="min-w-[980px] w-full text-sm">
+                        <thead className="bg-subtle-surface">
+                          <tr className="text-left">
+                            <th className="px-3 py-2 w-[70px]">#</th>
+                            <th className="px-3 py-2 w-[280px]">Name</th>
+                            <th className="px-3 py-2 w-[140px]">Status</th>
+                            <th className="px-3 py-2">Sleeper URL</th>
+                            <th className="px-3 py-2 w-[220px]">Image</th>
+                            <th className="px-3 py-2 w-[140px]">Spots</th>
+                            <th className="px-3 py-2 w-[70px]">Active</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {leagues.map((lg) => {
-                            const baseStatus = lg.league_status || "TBD";
-                            const draftLg = leagueDrafts[lg.id] || {};
-                            const league_status =
-                              draftLg.league_status ?? baseStatus;
-                            const leagueIsFilling =
-                              league_status === "FILLING";
+                          {g.leagues
+                            .slice()
+                            .sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999))
+                            .map((lg) => {
+                              const leagueImg = lg._pending_league_preview
+                                ? lg._pending_league_preview
+                                : lg.league_image_key
+                                ? `/r2/${lg.league_image_key}`
+                                : lg.league_image_path
+                                ? lg.league_image_path
+                                : "";
 
-                            const displayOrder =
-                              draftLg.display_order ??
-                              (lg.display_order ?? "");
-                            const leagueName =
-                              draftLg.league_name ?? (lg.league_name || "");
-                            const leagueUrl =
-                              draftLg.league_url ?? (lg.league_url || "");
-                            const leagueImg =
-                              draftLg.league_image_path ??
-                              (lg.league_image_path || "");
-                            const spots =
-                              draftLg.spots_available ??
-                              (lg.spots_available ?? "");
-                            const isActive =
-                              draftLg.is_active ?? (lg.is_active !== false);
+                              return (
+                                <tr key={lg.id} className="border-t border-subtle">
+                                  <td className="px-3 py-2">
+                                    <input
+                                      className="input w-16"
+                                      value={safeStr(lg.display_order ?? "")}
+                                      onChange={(e) => upsertRow(lg.id, { display_order: safeNum(e.target.value, null) })}
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <input
+                                      className="input w-72"
+                                      value={safeStr(lg.league_name)}
+                                      onChange={(e) => upsertRow(lg.id, { league_name: e.target.value })}
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <select
+                                      className="input w-36"
+                                      value={safeStr(lg.league_status || "FULL")}
+                                      onChange={(e) => upsertRow(lg.id, { league_status: e.target.value })}
+                                    >
+                                      {LEAGUE_STATUS_OPTIONS.map((s) => (
+                                        <option key={s} value={s}>
+                                          {s}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <input
+                                      className="input w-[320px]"
+                                      value={safeStr(lg.league_url)}
+                                      onChange={(e) => upsertRow(lg.id, { league_url: e.target.value })}
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <div className="flex items-center gap-2">
+                                      <label className="btn btn-outline text-xs cursor-pointer">
+                                        Upload
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (!file) return;
+                                            const preview = URL.createObjectURL(file);
+                                            setRows((prev) =>
+                                              prev.map((r) => {
+                                                if (r.id !== lg.id) return r;
+                                                safeRevoke(r._pending_league_preview);
+                                                return { ...r, _pending_league_file: file, _pending_league_preview: preview };
+                                              })
+                                            );
+                                            e.target.value = "";
+                                          }}
+                                        />
+                                      </label>
 
-                            return (
-                              <tr
-                                key={lg.id}
-                                className="bg-panel border border-subtle/60"
-                              >
-                                <td className="px-2 py-1 align-middle w-[40px]">
-                                  <input
-                                    className="input !py-0 !h-7 w-14 text-[11px]"
-                                    type="number"
-                                    min={1}
-                                    max={8}
-                                    value={displayOrder}
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      setLeagueDrafts((prev) => ({
-                                        ...prev,
-                                        [lg.id]: {
-                                          ...(prev[lg.id] || {}),
-                                          display_order: value,
-                                        },
-                                      }));
-                                      markDivisionDirty(division_name);
-                                    }}
-                                  />
-                                </td>
+                                      {leagueImg ? (
+                                        <img src={leagueImg} alt="League preview" className="h-10 w-16 object-cover rounded-lg border border-subtle" />
+                                      ) : (
+                                        <span className="text-xs text-muted">No image</span>
+                                      )}
 
-                                <td className="px-2 py-1 align-middle">
-                                  <input
-                                    className="input !py-0 !h-7 text-[11px]"
-                                    placeholder="League name"
-                                    value={leagueName}
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      setLeagueDrafts((prev) => ({
-                                        ...prev,
-                                        [lg.id]: {
-                                          ...(prev[lg.id] || {}),
-                                          league_name: value,
-                                        },
-                                      }));
-                                      markDivisionDirty(division_name);
-                                    }}
-                                  />
-                                </td>
-
-                                <td className="px-2 py-1 align-middle w-[120px]">
-                                  <select
-                                    className="input !py-0 !h-7 text-[11px]"
-                                    value={league_status}
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      setLeagueDrafts((prev) => ({
-                                        ...prev,
-                                        [lg.id]: {
-                                          ...(prev[lg.id] || {}),
-                                          league_status: value,
-                                        },
-                                      }));
-                                      markDivisionDirty(division_name);
-                                    }}
-                                  >
-                                    {LEAGUE_STATUS_OPTIONS.map((s) => (
-                                      <option key={s} value={s}>
-                                        {s}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </td>
-
-                                <td className="px-2 py-1 align-middle min-w-[180px]">
-                                  <input
-                                    className="input !py-0 !h-7 text-[11px] font-mono"
-                                    placeholder="https://sleeper.app/leagues/..."
-                                    value={leagueUrl}
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      setLeagueDrafts((prev) => ({
-                                        ...prev,
-                                        [lg.id]: {
-                                          ...(prev[lg.id] || {}),
-                                          league_url: value,
-                                        },
-                                      }));
-                                      markDivisionDirty(division_name);
-                                    }}
-                                  />
-                                </td>
-
-                                <td className="px-2 py-1 align-middle min-w-[160px]">
-                                  <input
-                                    className="input !py-0 !h-7 text-[11px] font-mono"
-                                    placeholder="(optional) override"
-                                    value={leagueImg}
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      setLeagueDrafts((prev) => ({
-                                        ...prev,
-                                        [lg.id]: {
-                                          ...(prev[lg.id] || {}),
-                                          league_image_path: value,
-                                        },
-                                      }));
-                                      markDivisionDirty(division_name);
-                                    }}
-                                  />
-                                </td>
-
-                                <td className="px-2 py-1 align-middle w-[90px]">
-                                  <input
-                                    className="input !py-0 !h-7 text-[11px]"
-                                    type="number"
-                                    min={0}
-                                    max={10}
-                                    placeholder={
-                                      leagueIsFilling ? "Spots" : "-"
-                                    }
-                                    value={leagueIsFilling ? spots : ""}
-                                    disabled={!leagueIsFilling}
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      setLeagueDrafts((prev) => ({
-                                        ...prev,
-                                        [lg.id]: {
-                                          ...(prev[lg.id] || {}),
-                                          spots_available: value,
-                                        },
-                                      }));
-                                      markDivisionDirty(division_name);
-                                    }}
-                                  />
-                                </td>
-
-                                <td className="px-2 py-1 align-middle w-[48px] text-center">
-                                  <input
-                                    type="checkbox"
-                                    className="h-4 w-4"
-                                    checked={isActive}
-                                    onChange={(e) => {
-                                      const checked = e.target.checked;
-                                      setLeagueDrafts((prev) => ({
-                                        ...prev,
-                                        [lg.id]: {
-                                          ...(prev[lg.id] || {}),
-                                          is_active: checked,
-                                        },
-                                      }));
-                                      markDivisionDirty(division_name);
-                                    }}
-                                  />
-                                </td>
-                              </tr>
-                            );
-                          })}
+                                      <span className="text-[11px] text-muted truncate max-w-[120px]">
+                                        {lg.league_image_key ? `R2: ${safeStr(lg.league_image_key).split("/").slice(-1)[0]}` : lg.league_image_path ? "URL" : "—"}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <input
+                                      className="input w-24"
+                                      value={safeStr(lg.spots_available ?? "")}
+                                      onChange={(e) => upsertRow(lg.id, { spots_available: safeNum(e.target.value, null) })}
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <input type="checkbox" checked={lg.is_active !== false} onChange={(e) => upsertRow(lg.id, { is_active: e.target.checked })} />
+                                  </td>
+                                </tr>
+                              );
+                            })}
                         </tbody>
                       </table>
                     </div>
 
-                    {/* Save / reset controls */}
-                    <div className="pt-3 mt-2 border-t border-subtle/70 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-[11px]">
-                      <p className="text-muted">
-                        {isDirty
-                          ? "You have unsaved changes for this division."
-                          : "No unsaved changes."}
-                      </p>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          className="btn btn-outline text-xs"
-                          disabled={!isDirty || savingDivisionName === division_name}
-                          onClick={() =>
-                            handleResetDivisionDraft(division_name, leagues)
-                          }
-                        >
-                          Reset changes
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-primary text-xs"
-                          disabled={!isDirty || savingDivisionName === division_name}
-                          onClick={() =>
-                            handleSaveDivision(division_name, header, leagues)
-                          }
-                        >
-                          {savingDivisionName === division_name
-                            ? "Saving…"
-                            : "Save changes"}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Danger zone: delete division */}
-                    <div className="pt-4 mt-2 border-t border-subtle/70">
-                      {divisionToDelete === division_name ? (
-                        <div className="space-y-2 text-[11px]">
-                          <p className="text-danger font-semibold">
-                            This will permanently delete this division and all 8
-                            leagues for the current season.
-                          </p>
-                          <p className="text-muted">
-                            Type <span className="font-mono">ballsville</span>{" "}
-                            to confirm.
-                          </p>
-                          <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
-                            <input
-                              className="input !h-8 !py-1 text-[11px] font-mono sm:max-w-[200px]"
-                              value={divisionDeleteInput}
-                              onChange={(e) =>
-                                setDivisionDeleteInput(e.target.value)
-                              }
-                              placeholder="ballsville"
-                            />
-                            <div className="flex gap-2">
-                              <button
-                                type="button"
-                                className="btn btn-primary text-xs"
-                                disabled={
-                                  deletingDivisionName === division_name
-                                }
-                                onClick={() =>
-                                  handleDeleteDivision(division_name)
-                                }
-                              >
-                                {deletingDivisionName === division_name
-                                  ? "Deleting…"
-                                  : "Confirm delete"}
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-outline text-xs"
-                                onClick={() => {
-                                  setDivisionToDelete(null);
-                                  setDivisionDeleteInput("");
-                                }}
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn btn-outline text-xs text-danger border-danger"
-                          onClick={() => {
-                            setDivisionToDelete(division_name);
-                            setDivisionDeleteInput("");
-                          }}
-                        >
-                          Delete this division…
-                        </button>
-                      )}
+                    <div className="flex justify-end">
+                      <button className="btn btn-primary" type="button" onClick={() => saveAllToR2(rows, season)} disabled={saving}>
+                        {saving ? "Saving…" : "Save to R2"}
+                      </button>
                     </div>
                   </div>
                 )}
@@ -1083,129 +771,6 @@ export default function BigGameAdminClient() {
           })
         )}
       </div>
-
-      {/* QUICK CREATE MODAL */}
-      {quickOpen && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60">
-          <div className="card bg-bg border border-subtle max-w-lg w-full mx-4 p-6 space-y-4 relative">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-semibold text-primary">
-                New Big Game division ({currentYear})
-              </h2>
-              <button
-                type="button"
-                className="text-muted hover:text-fg"
-                onClick={() => setQuickOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
-
-            <form className="space-y-3 text-sm" onSubmit={handleCreateDivision}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <label className="block">
-                  <span className="text-xs text-muted">Division name *</span>
-                  <input
-                    className="mt-1 w-full rounded-lg border border-subtle bg-transparent px-3 py-2"
-                    placeholder="Game of Thrones"
-                    value={newDivision.division_name}
-                    onChange={(e) =>
-                      handleNewDivisionField("division_name", e.target.value)
-                    }
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="text-xs text-muted">Status *</span>
-                  <select
-                    className="mt-1 w-full rounded-lg border border-subtle bg-transparent px-3 py-2"
-                    value={newDivision.division_status}
-                    onChange={(e) =>
-                      handleNewDivisionField("division_status", e.target.value)
-                    }
-                  >
-                    {DIVISION_STATUS_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <label className="block">
-                <span className="text-xs text-muted">Division # (order)</span>
-                <input
-                  className="mt-1 w-full rounded-lg border border-subtle bg-transparent px-3 py-2"
-                  type="number"
-                  min={1}
-                  placeholder="1"
-                  value={newDivision.division_order}
-                  onChange={(e) =>
-                    handleNewDivisionField("division_order", e.target.value)
-                  }
-                />
-              </label>
-
-              <label className="block">
-                <span className="text-xs text-muted">
-                  Division artwork path
-                </span>
-                <input
-                  className="mt-1 w-full rounded-lg border border-subtle bg-transparent px-3 py-2 font-mono"
-                  placeholder="/photos/biggame/game-of-thrones.jpg"
-                  value={newDivision.division_image_path}
-                  onChange={(e) =>
-                    handleNewDivisionField(
-                      "division_image_path",
-                      e.target.value
-                    )
-                  }
-                />
-              </label>
-
-              <label className="block">
-                <span className="text-xs text-muted">
-                  Division blurb (optional)
-                </span>
-                <textarea
-                  className="mt-1 w-full rounded-lg border border-subtle bg-transparent px-3 py-2 min-h-[80px]"
-                  placeholder="Short description for this division’s vibe."
-                  value={newDivision.division_blurb}
-                  onChange={(e) =>
-                    handleNewDivisionField("division_blurb", e.target.value)
-                  }
-                />
-              </label>
-
-              <p className="text-[11px] text-muted">
-                When you create this division,{" "}
-                <span className="font-semibold">8 blank league slots</span> will
-                be created automatically. You can fill in league names, links,
-                and statuses in the division accordion below.
-              </p>
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  onClick={() => setQuickOpen(false)}
-                  disabled={creatingDivision}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={creatingDivision}
-                >
-                  {creatingDivision ? "Creating…" : "Create division"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </section>
   );
 }

@@ -12,10 +12,13 @@
 //    "redraft-updates"
 //    "redraft-league"
 //    "dynasty-league"
+//    "biggame-division"
+//    "biggame-league"
 // - season: "2025" (required for all sections in this endpoint)
 // - divisionCode: "100" (required for mini-leagues-division and mini-leagues-league)
-// - leagueOrder: "1" (required for mini-leagues-league and redraft-league)
+// - leagueOrder: "1" (required for mini-leagues-league and redraft-league and biggame-league)
 // - leagueId: "<string>" (required for dynasty-league)
+// - divisionSlug: "<string>" (required for biggame-division and biggame-league)
 //
 // Behavior:
 // - Always writes to a deterministic R2 key for that section.
@@ -92,8 +95,11 @@ function cleanId(x) {
 }
 
 function cleanLooseId(x) {
-  // for dynasty league IDs (uuid-ish or any stable string)
-  return String(x || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
+  // for dynasty league IDs or biggame division slugs (uuid-ish or any stable string)
+  return String(x || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .slice(0, 96);
 }
 
 function extFromFile(file) {
@@ -114,7 +120,7 @@ function extFromFile(file) {
  * Deterministic base key (NO extension) for each section.
  * We’ll delete all known image extensions for that base before putting the new one.
  */
-function baseKeyForUpload({ section, season, divisionCode, leagueOrder, leagueId }) {
+function baseKeyForUpload({ section, season, divisionCode, leagueOrder, leagueId, divisionSlug }) {
   // ============
   // MINI-LEAGUES
   // ============
@@ -138,6 +144,12 @@ function baseKeyForUpload({ section, season, divisionCode, leagueOrder, leagueId
   // DYNASTY
   // =======
   if (section === "dynasty-league") return `media/dynasty/leagues/${season}/${leagueId}`;
+
+  // =======
+  // BIG GAME
+  // =======
+  if (section === "biggame-division") return `media/biggame/divisions/${season}/${divisionSlug}`;
+  if (section === "biggame-league") return `media/biggame/leagues/${season}/${divisionSlug}/${leagueOrder}`;
 
   return "";
 }
@@ -178,6 +190,7 @@ export async function onRequest(context) {
     const leagueOrder = Number.isFinite(leagueOrderNum) ? String(leagueOrderNum) : "";
 
     const leagueId = cleanLooseId(form.get("leagueId"));
+    const divisionSlug = cleanLooseId(form.get("divisionSlug"));
 
     if (!section) return json({ ok: false, error: "Missing section" }, 400);
     if (!season) return json({ ok: false, error: "Missing season" }, 400);
@@ -189,20 +202,29 @@ export async function onRequest(context) {
     if (section === "mini-leagues-league" && (!divisionCode || !leagueOrder)) {
       return json({ ok: false, error: "Missing divisionCode or leagueOrder" }, 400);
     }
+
     if (section === "redraft-league" && !leagueOrder) {
       return json({ ok: false, error: "Missing leagueOrder" }, 400);
     }
+
     if (section === "dynasty-league" && !leagueId) {
       return json({ ok: false, error: "Missing leagueId" }, 400);
     }
 
-    const baseKey = baseKeyForUpload({ section, season, divisionCode, leagueOrder, leagueId });
+    if (section === "biggame-division" && !divisionSlug) {
+      return json({ ok: false, error: "Missing divisionSlug" }, 400);
+    }
+    if (section === "biggame-league" && (!divisionSlug || !leagueOrder)) {
+      return json({ ok: false, error: "Missing divisionSlug or leagueOrder" }, 400);
+    }
+
+    const baseKey = baseKeyForUpload({ section, season, divisionCode, leagueOrder, leagueId, divisionSlug });
     if (!baseKey) return json({ ok: false, error: "Invalid section" }, 400);
 
     const ext = extFromFile(file);
     const key = `${baseKey}.${ext}`;
 
-    // ✅ enforce “only one image per section”
+    // Enforce “only one image per section”
     await deleteOtherExtVariants(r2.bucket, baseKey);
 
     const buf = await file.arrayBuffer();

@@ -1,309 +1,183 @@
-// src/lib/BigGameDivisionsClient.jsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
-import { getSupabase } from "@/lib/supabaseClient";
 
-function statusPillClass(kind) {
-  if (kind === "FULL") return "badge-status badge-status-full";
-  if (kind === "FILLING") return "badge-status badge-status-filling";
-  if (kind === "DRAFTING") return "badge-status badge-status-drafting";
-  if (kind === "TBD") return "badge-status badge-status-tbd";
-  return "badge-status badge-status-default";
+const DEFAULT_SEASON = 2025;
+const R2_KEY_FOR = (season) => `data/biggame/leagues_${season}.json`;
+
+function safeStr(v) {
+  return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
-/**
- * Group rows into divisions using division_name.
- * We treat is_division_header = true as the source of theme info.
- * Also compute league-status breakdown + total open spots.
- */
-function transformDivisions(rows) {
-  // Only look at active rows
-  const active = rows.filter((r) => r.is_active !== false);
+function safeNum(v, fallback = null) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
 
-  const byDivision = new Map();
+function slugify(input) {
+  return safeStr(input)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+}
 
-  for (const row of active) {
-    const name = row.division_name || "";
-    if (!name) continue;
-    if (!byDivision.has(name)) {
-      byDivision.set(name, { header: null, leagues: [] });
+function normalizeRow(r, idx = 0) {
+  const year = safeNum(r?.year, DEFAULT_SEASON);
+  const division_name = safeStr(r?.division_name || r?.theme_name || "Division").trim();
+  const division_slug = safeStr(r?.division_slug || slugify(division_name));
+
+  return {
+    id: safeStr(r?.id || `${year}_${division_slug}_${idx}`),
+    year,
+    division_name,
+    division_slug,
+    theme: safeStr(r?.theme || ""),
+    status: safeStr(r?.status || "TBD"),
+    is_active: r?.is_active !== false,
+
+    // images
+    division_image_key: safeStr(r?.division_image_key || ""),
+    division_image_path: safeStr(r?.division_image_path || r?.division_image_url || ""),
+    league_image_key: safeStr(r?.league_image_key || ""),
+    league_image_path: safeStr(r?.league_image_path || r?.league_image_url || ""),
+
+    // league
+    name: safeStr(r?.name || r?.league_name || "").trim(),
+    sleeper_url: safeStr(r?.sleeper_url || r?.url || "").trim(),
+    display_order: safeNum(r?.display_order, idx + 1),
+    fill_note: safeStr(r?.fill_note || "").trim(),
+  };
+}
+
+function r2ImgSrc(key, fallbackUrl) {
+  if (key) return `/r2/${key}?v=${encodeURIComponent(key)}`;
+  return fallbackUrl || "";
+}
+
+function transformDivisions(rows, season) {
+  const divisionsMap = new Map();
+
+  for (const row of rows) {
+    if (!row || row.is_active === false) continue;
+    if (Number(row.year) !== Number(season)) continue;
+
+    const divKey = row.division_slug || slugify(row.division_name) || "division";
+
+    if (!divisionsMap.has(divKey)) {
+      divisionsMap.set(divKey, {
+        id: divKey,
+        division_slug: divKey,
+        division_name: row.division_name,
+        status: row.status,
+        theme: row.theme,
+        division_image: r2ImgSrc(row.division_image_key, row.division_image_path),
+        leagues: [],
+      });
     }
-    const group = byDivision.get(name);
-    if (row.is_division_header) {
-      if (!group.header) group.header = row;
-    } else {
-      group.leagues.push(row);
-    }
-  }
 
-  const divisions = [];
-
-  for (const [division_name, group] of byDivision.entries()) {
-    const header = group.header || group.leagues[0] || null;
-    const leagues = group.leagues;
-    const league_count = leagues.length;
-    const year = header?.year ?? new Date().getFullYear();
-    const image_url =
-      header?.division_image_path || "/photos/biggame/default.jpg";
-    const division_order =
-      header?.division_order != null ? Number(header.division_order) : null;
-
-    // Count league statuses + open spots
-    const statusCounts = {
-      FULL: 0,
-      FILLING: 0,
-      DRAFTING: 0,
-      TBD: 0,
-      OTHER: 0,
-    };
-    let openSpots = 0;
-
-    for (const lg of leagues) {
-      const s = (lg.league_status || "TBD").toUpperCase();
-      if (s === "FULL") statusCounts.FULL += 1;
-      else if (s === "FILLING") statusCounts.FILLING += 1;
-      else if (s === "DRAFTING") statusCounts.DRAFTING += 1;
-      else if (s === "TBD") statusCounts.TBD += 1;
-      else statusCounts.OTHER += 1;
-
-      if (s === "FILLING" && lg.spots_available != null) {
-        const n = Number(lg.spots_available);
-        if (!Number.isNaN(n)) openSpots += n;
-      }
-    }
-
-    // ✅ Division is FULL ONLY when *all* leagues are FULL
-    const isFullyFull =
-      league_count > 0 && statusCounts.FULL === league_count;
-
-    divisions.push({
-      division_name,
-      year,
-      image_url,
-      division_order,
-      league_count,
-      statusCounts,
-      openSpots,
-      isFullyFull,
+    divisionsMap.get(divKey).leagues.push({
+      name: row.name,
+      sleeper_url: row.sleeper_url,
+      display_order: row.display_order,
+      fill_note: row.fill_note,
+      league_image: r2ImgSrc(row.league_image_key, row.league_image_path),
     });
   }
 
-  // Sort by explicit division_order first, then by name
-  divisions.sort((a, b) => {
-    const ao = a.division_order ?? 9999;
-    const bo = b.division_order ?? 9999;
-    if (ao !== bo) return ao - bo;
-    return a.division_name.localeCompare(b.division_name);
-  });
+  const divisions = Array.from(divisionsMap.values());
+  for (const d of divisions) {
+    d.leagues.sort((a, b) => (a.display_order ?? 9999) - (b.display_order ?? 9999));
+  }
 
+  divisions.sort((a, b) => a.division_name.localeCompare(b.division_name));
   return divisions;
 }
 
-export default function BigGameDivisionsClient() {
-  const [rows, setRows] = useState([]);
+export default function BigGameDivisionsClient({ year = DEFAULT_SEASON }) {
+  const [divisions, setDivisions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState("");
+  const [error, setError] = useState("");
+
+  const season = useMemo(() => Number(year) || DEFAULT_SEASON, [year]);
+  const bust = useMemo(() => `v=${Date.now()}` , []);
 
   useEffect(() => {
-    let cancelled = false;
+    let alive = true;
 
-    async function run() {
+    async function load() {
+      setLoading(true);
+      setError("");
       try {
-        const supabase = getSupabase();
-        const currentYear = new Date().getFullYear();
-
-        const { data, error } = await supabase
-          .from("biggame_leagues")
-          .select("*")
-          .eq("year", currentYear)
-          .eq("is_active", true)
-          .order("division_name", { ascending: true })
-          .order("display_order", { ascending: true });
-
-        if (error) throw error;
-        if (!cancelled) {
-          setRows(data || []);
+        const res = await fetch(`/r2/${R2_KEY_FOR(season)}?${bust}`, { cache: "no-store" });
+        if (!res.ok) {
+          if (!alive) return;
+          setDivisions([]);
+          return;
         }
-      } catch (err) {
-        console.error("Failed to load biggame_leagues:", err);
-        if (!cancelled) {
-          setErrorMsg(
-            "Unable to load Big Game divisions right now. Please refresh or try again later."
-          );
-        }
+        const data = await res.json();
+        const list = Array.isArray(data?.rows) ? data.rows : Array.isArray(data) ? data : [];
+        const normalized = list.map(normalizeRow);
+        const divs = transformDivisions(normalized, season);
+        if (!alive) return;
+        setDivisions(divs);
+      } catch (e) {
+        if (!alive) return;
+        setError(e?.message || "Failed to load Big Game data.");
       } finally {
-        if (!cancelled) setLoading(false);
+        if (alive) setLoading(false);
       }
     }
 
-    run();
+    load();
     return () => {
-      cancelled = true;
+      alive = false;
     };
-  }, []);
-
-  const divisions = useMemo(() => transformDivisions(rows), [rows]);
+  }, [season, bust]);
 
   if (loading) {
-    return (
-      <section className="space-y-3">
-        <h2 className="text-2xl font-semibold">Divisions</h2>
-        <p className="text-sm text-muted">Loading divisions…</p>
-      </section>
-    );
+    return <p className="text-sm text-muted">Loading divisions…</p>;
   }
 
-  if (errorMsg) {
-    return (
-      <section className="space-y-3">
-        <h2 className="text-2xl font-semibold">Divisions</h2>
-        <p className="text-sm text-danger">{errorMsg}</p>
-      </section>
-    );
+  if (error) {
+    return <p className="text-sm text-muted">{error}</p>;
   }
 
-  if (divisions.length === 0) {
-    return (
-      <section className="space-y-3">
-        <h2 className="text-2xl font-semibold">Divisions</h2>
-        <p className="text-sm text-muted">
-          No divisions are configured yet. Add them from{" "}
-          <span className="font-semibold">/admin/biggame</span>.
-        </p>
-      </section>
-    );
+  if (!divisions.length) {
+    return <p className="text-sm text-muted">No divisions published yet.</p>;
   }
 
   return (
-    <section className="space-y-4">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h2 className="text-2xl font-semibold">Divisions</h2>
-          <p className="text-sm text-muted">
-            Each division has its own theme, artwork, and 8-league panel.
-          </p>
-        </div>
-      </div>
-
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {divisions.map((division, index) => {
-          const dLabel =
-            division.division_order != null
-              ? division.division_order
-              : index + 1;
-
-          const { FULL, FILLING, DRAFTING, TBD } = division.statusCounts;
-          const isFull = division.isFullyFull;
-
-          return (
-            <div
-              key={division.division_name}
-              className="group rounded-2xl border border-subtle bg-card-surface overflow-hidden flex flex-col shadow-[0_0_25px_rgba(15,23,42,0.8)] hover:shadow-[0_0_40px_rgba(34,211,238,0.4)] transition-all"
-            >
-              <div className="relative aspect-[16/9] overflow-hidden">
-                <Image
-                  src={division.image_url}
-                  alt={division.division_name}
-                  fill
-                  className="object-cover transition-transform duration-500 group-hover:scale-105"
-                  sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
-
-                {/* Division index chip (D1, D2, etc.) */}
-                <div className="absolute top-3 left-3 flex items-center gap-2">
-                  <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-black/70 border border-white/10 text-white">
-                    D{dLabel}
-                  </span>
-                </div>
-
-                 {/* Diagonal FULL ribbon when all 8 leagues are full */}
-                {isFull && (
-                  <div className="absolute -right-10 top-4 w-32 bg-emerald-500 text-white backdrop-blur text-[10px] font-bold uppercase text-center py-1 shadow-lg transform rotate-45">
-                    Full
-                  </div>
-                )}
-              </div>
-
-              <div className="p-4 flex-1 flex flex-col gap-3 text-sm">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-accent">
-                    Big Game Division
-                  </p>
-                  <h3 className="text-sm font-semibold text-fg">
-                    {division.division_name}
-                  </h3>
-                  <p className="text-muted text-[11px]">
-                    {division.league_count || 0}/8 leagues configured.
-                  </p>
-                </div>
-
-                {/* Status area */}
-                {isFull ? (
-                  // FULL division: just a single FULL badge
-                  <div className="space-y-1">
-                    <span className={statusPillClass("FULL")}>
-                      Full division · {division.league_count}/8
-                    </span>
-                  </div>
-                ) : (
-                  // Not full: show breakdown + open spots
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap gap-1.5 text-[11px]">
-                      {FILLING > 0 && (
-                        <span className={statusPillClass("FILLING")}>
-                          Filling: {FILLING}
-                        </span>
-                      )}
-                      {DRAFTING > 0 && (
-                        <span className={statusPillClass("DRAFTING")}>
-                          Drafting: {DRAFTING}
-                        </span>
-                      )}
-                      {TBD > 0 && (
-                        <span className={statusPillClass("TBD")}>
-                          TBD: {TBD}
-                        </span>
-                      )}
-                      {FULL > 0 && (
-                        <span className={statusPillClass("FULL")}>
-                          Full: {FULL}
-                        </span>
-                      )}
-                    </div>
-                    {division.openSpots > 0 && (
-                      <p className="text-[11px] text-muted">
-                        Open spots across this division:{" "}
-                        <span className="font-semibold text-accent">
-                          {division.openSpots}
-                        </span>
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                <div className="mt-auto flex justify-between items-center gap-3">
-                  <Link
-                    href={`/big-game/division?year=${
-                      division.year
-                    }&division=${encodeURIComponent(division.division_name)}`}
-                    className="rounded-3xl border border-subtle bg-subtle-surface p-3 shadow-[0_0_25px_rgba(34,211,238,0.25)] text-xs sm:text-sm"
-                  >
-                    View Division
-                  </Link>
-
-                  <span className="text-[11px] text-muted">
-                    Bestball · BIG Game
-                  </span>
-                </div>
-              </div>
+    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      {divisions.map((d) => (
+        <Link
+          key={d.id}
+          href={`/big-game/divisions/${encodeURIComponent(d.division_slug)}?year=${season}`}
+          className="card bg-card-surface border border-subtle p-5 rounded-3xl hover:border-accent/60 transition"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold truncate">{d.division_name}</p>
+              <p className="text-xs text-muted mt-1 truncate">{d.leagues.length} leagues</p>
             </div>
-          );
-        })}
-      </div>
-    </section>
+            <span className="badge">{safeStr(d.status || "TBD")}</span>
+          </div>
+
+          {d.division_image ? (
+            <div className="mt-4 rounded-2xl overflow-hidden border border-subtle bg-black/20">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={d.division_image} alt="Division" className="w-full h-auto" />
+            </div>
+          ) : null}
+
+          <div className="mt-4 text-xs text-muted flex items-center justify-between">
+            <span className="truncate">View division</span>
+            <span>→</span>
+          </div>
+        </Link>
+      ))}
+    </div>
   );
 }
