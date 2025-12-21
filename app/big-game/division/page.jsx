@@ -2,7 +2,12 @@
 import { Suspense } from "react";
 import BigGameDivisionClient from "@/lib/BigGameDivisionClient";
 
-export default function BigGameDivisionPage() {
+export default function BigGameDivisionPage({ searchParams }) {
+  const divisionSlug = typeof searchParams?.division === "string" ? searchParams.division : "";
+
+  const yearRaw = typeof searchParams?.year === "string" ? searchParams.year : "";
+  const yearNum = Number(String(yearRaw).trim());
+  const year = Number.isFinite(yearNum) ? yearNum : undefined;
   return (
     <main className="min-h-screen">
       <Suspense
@@ -12,7 +17,7 @@ export default function BigGameDivisionPage() {
           </div>
         }
       >
-        <BigGameDivisionClient />
+        <BigGameDivisionClient divisionSlug={divisionSlug} year={year} />
       </Suspense>
     </main>
   );
