@@ -120,26 +120,42 @@ export default function OwnerHeroBlock({
       <div className="p-4 grid gap-4">
         {imgSrc ? (
           <div className="relative w-full overflow-hidden rounded-xl border border-subtle bg-black/20">
-          {/* frame */}
-          <div className="relative w-full h-[220px] sm:h-[240px] flex items-center justify-center">
-            {/* soft glow background */}
-            <div className="pointer-events-none absolute inset-0">
-              <div className="absolute -top-16 -left-16 h-44 w-44 rounded-full bg-cyan-400/10 blur-3xl" />
-              <div className="absolute -bottom-16 -right-16 h-44 w-44 rounded-full bg-purple-500/10 blur-3xl" />
-              <div className="absolute inset-0 bg-gradient-to-b from-white/5 via-transparent to-black/20" />
-            </div>
+            <div
+              className="
+                relative
+                mx-auto
+                flex
+                items-center
+                justify-center
+                h-[200px]
+                sm:h-[220px]
+                lg:h-[240px]
+              "
+            >
+              {/* background polish */}
+              <div className="pointer-events-none absolute inset-0">
+                <div className="absolute -top-16 -left-16 h-44 w-44 rounded-full bg-cyan-400/10 blur-3xl" />
+                <div className="absolute -bottom-16 -right-16 h-44 w-44 rounded-full bg-purple-500/10 blur-3xl" />
+                <div className="absolute inset-0 bg-gradient-to-b from-white/5 via-transparent to-black/20" />
+              </div>
 
-            {/* IMPORTANT: no `fill` */}
-            <Image
-              src={imgSrc}
-              alt={`${title} image`}
-              width={1200}
-              height={675}
-              className="relative z-10 max-h-full max-w-full object-contain p-2"
-              sizes="(max-width: 1024px) 100vw, 520px"
-            />
+              <Image
+                src={imgSrc}
+                alt={`${title} image`}
+                width={1200}
+                height={675}
+                sizes="(max-width: 1024px) 100vw, 520px"
+                className="
+                  relative
+                  z-10
+                  max-h-full
+                  max-w-full
+                  object-contain
+                  p-2
+                "
+              />
+            </div>
           </div>
-        </div>
 
         ) : null}
 
