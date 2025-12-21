@@ -219,49 +219,56 @@ export default function GauntletPage() {
         </Card>
 
         {/* BRACKET EXPLAINER */}
-        <Card>
-          <header className="space-y-2">
-            <h2 className="h2">The Bracket</h2>
-            <p className="text-sm text-muted max-w-2xl">
-              Weeks 1–12 run inside your Leagues. Weeks 9–12 you enter Guillotine.
-              Weeks 13–17 all that work turns into a God Bracket you can follow here.
-            </p>
-            <p className="text-xs text-muted">
-              The bracket shown here will be a live prototype during the season and refined/locked by Week 13.
-            </p>
-          </header>
+       <Card>
+        <header className="space-y-2">
+          <h2 className="h2">The Bracket</h2>
+          <p className="text-sm text-muted max-w-2xl">
+            Weeks 1–12 run inside your Leagues. Weeks 9–12 you enter Guillotine.
+            Weeks 13–17 all that work turns into a God Bracket you can follow here.
+          </p>
+        </header>
 
-          <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+          {/* CLICKABLE LIVE BRACKET CARD */}
+          <Link
+            href="/scores"
+            className="group block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
             <SubCard>
               <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-muted">
                 BRACKET PROTOTYPE
               </p>
               <p className="mt-2 text-sm text-muted">
                 This is where your God Bracket will live — seeded #1–#16 based on points,
-                with Light and Dark leagues colliding. Follow matchups, see who advances, track which Gods remain.
+                with Light and Dark leagues colliding. Follow matchups, see who advances,
+                track which Gods remain.
               </p>
-              <p className="mt-2 text-xs text-muted">
-                Note: this will eventually pull live seeding + matchups once we hit Week 13.
-              </p>
-            </SubCard>
 
-            <SubCard>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-muted">
-                LIGHT & DARK LEAGUES
-              </p>
-              <p className="mt-2 text-sm text-muted">
-                Each God has a <span className="text-fg font-semibold">Light</span> and{" "}
-                <span className="text-fg font-semibold">Dark</span> league. They run as 12-team leagues Weeks 1–12,
-                then merge into a single God Bracket in Week 13.
-              </p>
-              <ul className="mt-3 text-xs text-muted space-y-1.5">
-                <li>• Light League vs Dark League collide in Week 13.</li>
-                <li>• Seeded by points, then locked into a head-to-head bracket.</li>
-                <li>• Win and advance; every win adds more cash.</li>
-              </ul>
+              <div className="mt-3 text-xs font-semibold text-accent">
+                View Live Bracket →
+              </div>
             </SubCard>
-          </div>
-        </Card>
+          </Link>
+
+          {/* STATIC INFO CARD */}
+          <SubCard>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-muted">
+              LIGHT & DARK LEAGUES
+            </p>
+            <p className="mt-2 text-sm text-muted">
+              Each God has a <span className="text-fg font-semibold">Light</span> and{" "}
+              <span className="text-fg font-semibold">Dark</span> league. They run as
+              12-team leagues Weeks 1–12, then merge into a single God Bracket in Week 13.
+            </p>
+            <ul className="mt-3 text-xs text-muted space-y-1.5">
+              <li>• Light League vs Dark League collide in Week 13.</li>
+              <li>• Seeded by points, then locked into a head-to-head bracket.</li>
+              <li>• Win and advance; every win adds more cash.</li>
+            </ul>
+          </SubCard>
+        </div>
+      </Card>
+
 
         {/* LEGIONS */}
         <section className="space-y-4 relative overflow-hidden rounded-3xl border border-border/70 bg-card-surface shadow-2xl shadow-black/40 p-6 md:p-10">
