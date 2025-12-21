@@ -64,7 +64,7 @@ export default function DynastyPage() {
             <div className="absolute -bottom-24 -right-10 h-56 w-56 rounded-full bg-cyan-400/15 blur-3xl" />
           </div>
 
-          <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] items-start">
+          <div className="relative py-2 grid gap-8 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] items-start">
             <div className="space-y-4">
               <p className="text-xs uppercase tracking-[0.35em] text-accent">
                 Heroes &amp; Dragons of Dynasty
@@ -107,12 +107,7 @@ export default function DynastyPage() {
                 </ul>
               </div>
 
-              <div className="rounded-2xl border border-subtle bg-card-surface px-4 py-3 text-xs sm:text-sm text-muted">
-                Drafts are <span className="font-semibold">4-hour timers</span>, paused overnight from{" "}
-                <span className="font-semibold">11pm–9am EST</span> (9pm–6am PST). Startup style is a{" "}
-                <span className="font-semibold">Derby</span>: one shuffle, then managers choose draft spots, which also
-                sets rookie draft order (reverse order).
-              </div>
+              
             </div>
 
             {/* right hero art + owner block */}
@@ -141,10 +136,15 @@ export default function DynastyPage() {
                   </p>
                 </div>
               </div>
-
-              <OwnerHeroBlock mode="dynasty" season={2025} title="Owner Updates" />
+              <div className="rounded-2xl border border-subtle bg-card-surface px-4 py-1 text-xs sm:text-sm text-muted">
+                Drafts are <span className="font-semibold">4-hour timers</span>, paused overnight from{" "}
+                <span className="font-semibold">11pm–9am EST</span> (9pm–6am PST). Startup style is a{" "}
+                <span className="font-semibold">Derby</span>: one shuffle, then managers choose draft spots, which also
+                sets rookie draft order (reverse order).
+              </div>
             </div>
           </div>
+          <OwnerHeroBlock mode="dynasty" season={2025} title="Owner Updates" />
         </section>
 
         {/* DOCS / CORE DOCUMENTS */}

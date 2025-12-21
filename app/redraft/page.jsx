@@ -2,6 +2,7 @@
 import { siteConfig } from "@/app/config/siteConfig";
 import RedraftUpdatesClient from "./RedraftUpdatesClient";
 import RedraftLeaguesClient from "./RedraftLeaguesClient";
+import OwnerHeroBlock from "@/src/components/OwnerHeroBlock";
 
 const pageTitle = `The Redraft Game | ${siteConfig.shortName}`;
 
@@ -79,7 +80,7 @@ export default function RedraftPage() {
                 </div>
               </div>
 
-              <div className="pt-2 flex flex-wrap gap-3">
+              <div className="pt-2 py-3 flex flex-wrap gap-3">
                 <a href="#how-it-works" className="btn btn-primary">
                   🔥 Start Here
                 </a>
@@ -120,10 +121,11 @@ export default function RedraftPage() {
               </div>
             </aside>
           </div>
+           <OwnerHeroBlock mode="redraft" season={2025} title="Owner Updates" />
         </section>
-        
-        {/* Admin-managed updates (R2) */}
-        <RedraftUpdatesClient />
+
+        {/* Admin-managed updates (R2)
+        <RedraftUpdatesClient /> */}
 
         {/* Live leagues (R2) */}
         <RedraftLeaguesClient />

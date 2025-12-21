@@ -74,7 +74,7 @@ export default function BigGamePage() {
                 </div>
               </div>
 
-              <div className="pt-2 flex flex-wrap gap-3">
+              <div className="pt-2 py-3 flex flex-wrap gap-3">
                 <Link
                   href="/constitution"
                   className="inline-flex items-center gap-2 rounded-2xl border border-border/70 bg-surface/70 px-4 py-2.5 text-xs sm:text-sm font-medium text-muted hover:border-accent/80 hover:text-accent transition-colors"
@@ -92,7 +92,7 @@ export default function BigGamePage() {
 
             {/* Right column: owner block + quick facts (matches the premium hero vibe) */}
             <aside className="w-full lg:w-[360px] space-y-4">
-              <OwnerHeroBlock mode="biggame" season={2025} title="Owner Updates" />
+        
 
               <div className="rounded-2xl border border-border/60 bg-card-trans backdrop-blur-sm overflow-hidden shadow-xl shadow-black/50">
                 <div className="px-4 py-3 border-b border-border/60 flex items-center justify-between">
@@ -124,6 +124,7 @@ export default function BigGamePage() {
               </div>
             </aside>
           </div>
+          <OwnerHeroBlock mode="biggame" season={2025} title="Owner Updates" />
         </section>
 
         {/* ESSENTIALLY / ODDS */}

@@ -106,12 +106,14 @@ export default function GauntletPage() {
                 </div>
                 <div className="mt-1 font-semibold text-fg">$2,342</div>
               </div>
+              
             </div>
+            <OwnerHeroBlock mode="gauntlet" season={2025} title="Owner Updates" />
           </div>
 
           {/* right: owner block + rules doc */}
           <div className="space-y-4">
-            <OwnerHeroBlock mode="gauntlet" season={2025} title="Owner Updates" />
+            
 
             {/* framed doc embed like a “panel” */}
             <div className="rounded-2xl border border-border/60 bg-card-trans backdrop-blur-sm overflow-hidden shadow-xl shadow-black/40">
