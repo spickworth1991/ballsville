@@ -55,9 +55,7 @@ function resolveImageSrc({ key, url }) {
 }
 
 function transformForDivision(rows, divisionSlug) {
-  const want = slugify(divisionSlug);
-  const filtered = rows.filter((r) => slugify(r.division_slug) === want && r.is_active !== false);
-
+  const filtered = rows.filter((r) => r.division_slug === divisionSlug && r.is_active !== false);
   if (filtered.length === 0) {
     return {
       header: { division_name: "", division_fill_note: "", division_image: "" },
@@ -85,7 +83,11 @@ function transformForDivision(rows, divisionSlug) {
   return { header, leagues };
 }
 
-export default function BigGameDivisionClient({ year = DEFAULT_SEASON, divisionSlug }) {
+export default function BigGameDivisionClient({
+  year = DEFAULT_SEASON,
+  divisionSlug = "",
+  backHref = "/big-game",
+}) {
   const [division, setDivision] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -122,12 +124,25 @@ export default function BigGameDivisionClient({ year = DEFAULT_SEASON, divisionS
 
   if (loading) return <p className="text-muted">Loading…</p>;
   if (error) return <p className="text-danger">{error}</p>;
-  if (!division) return <p className="text-muted">Division not found.</p>;
+  if (!division) {
+    return (
+      <div className="space-y-3">
+        <a href={backHref} className="btn btn-outline inline-flex w-fit">
+          ← Back
+        </a>
+        <p className="text-muted">Division not found.</p>
+      </div>
+    );
+  }
 
   const { header, leagues } = division;
 
   return (
     <div className="space-y-6">
+      <a href={backHref} className="btn btn-outline inline-flex w-fit">
+        ← Back
+      </a>
+
       <div className="rounded-3xl border border-subtle bg-card-surface overflow-hidden">
         {header.division_image ? (
           <div className="bg-black/20">

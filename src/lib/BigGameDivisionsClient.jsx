@@ -182,10 +182,9 @@ export default function BigGameDivisionsClient({ year = DEFAULT_SEASON }) {
       {divisions.map((d) => (
         <Link
           key={d.id}
-          // NOTE: this site is deployed as a static export (next.config.mjs: output: "export").
-          // Static exports can't serve dynamic segment routes like /big-game/divisions/[division],
-          // so the public division breakdown page lives at /big-game/division and uses query params.
-          href={`/big-game/division?division=${encodeURIComponent(d.division_slug)}&year=${encodeURIComponent(String(season))}`}
+          // NOTE: this site is deployed as a static export.
+          // Keep the drill-down on the same /big-game/divisions page using query params.
+          href={`/big-game/divisions?division=${encodeURIComponent(d.division_slug)}&year=${encodeURIComponent(String(season))}`}
           className="card bg-card-surface border border-subtle p-5 rounded-3xl hover:border-accent/60 transition"
         >
           <div className="flex items-start justify-between gap-3">
