@@ -55,7 +55,9 @@ function resolveImageSrc({ key, url }) {
 }
 
 function transformForDivision(rows, divisionSlug) {
-  const filtered = rows.filter((r) => r.division_slug === divisionSlug && r.is_active !== false);
+  const want = slugify(divisionSlug);
+  const filtered = rows.filter((r) => slugify(r.division_slug) === want && r.is_active !== false);
+
   if (filtered.length === 0) {
     return {
       header: { division_name: "", division_fill_note: "", division_image: "" },
