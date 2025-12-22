@@ -283,19 +283,7 @@ export default function HallOfFameAdmin() {
                         />
                       </label>
 
-                      <label className="block">
-                        <div className="text-xs uppercase tracking-[0.2em] text-muted mb-1">External image URL (optional)</div>
-                        <input
-                          className="input"
-                          value={e.imageUrl}
-                          onChange={(ev) => setEntry(e.id, { imageUrl: ev.target.value, imageKey: "" })}
-                          placeholder="https://..."
-                        />
-                        <div className="mt-1 text-xs text-muted">
-                          If you paste a URL, it will be used instead of R2. Clearing this will fall back to the uploaded
-                          R2 image.
-                        </div>
-                      </label>
+                      
                     </div>
                   </div>
                 </div>

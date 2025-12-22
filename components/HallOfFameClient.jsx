@@ -92,9 +92,34 @@ export default function HallOfFameClient() {
               {data.entries.map((e) => (
                 <article key={e.id} className="rounded-3xl border border-subtle bg-card-surface overflow-hidden shadow-sm">
                   {e.img ? (
-                    <div className="relative w-full h-[220px] sm:h-[260px]">
-                      <Image src={e.img} alt={e.title || "Hall of Fame"} fill sizes="100vw" className="object-cover" />
+                    <div className="relative w-full overflow-hidden rounded-xl border border-subtle bg-black/20">
+                  <div
+                    className="relative mx-auto flex items-center justify-center w-full"
+                    style={{
+                      height: "clamp(180px, 22vw, 240px)", // never taller than 240px
+                      maxWidth: "560px",                  // keeps it from becoming a full-width billboard
+                    }}
+                  >
+                    {/* background polish */}
+                    <div className="pointer-events-none absolute inset-0">
+                      <div className="absolute -top-16 -left-16 h-44 w-44 rounded-full bg-cyan-400/10 blur-3xl" />
+                      <div className="absolute -bottom-16 -right-16 h-44 w-44 rounded-full bg-purple-500/10 blur-3xl" />
+                      <div className="absolute inset-0 bg-gradient-to-b from-white/5 via-transparent to-black/20" />
                     </div>
+                      <Image src={e.img} alt={e.title || "Hall of Fame"} 
+                        width={1600}
+                        height={900}
+                        sizes="(max-width: 1024px) 100vw, 560px"
+                        className="relative z-10 object-contain p-2"
+                        style={{
+                          maxHeight: "100%",  // cannot exceed the frame height
+                          maxWidth: "100%",   // cannot exceed the frame width
+                          width: "auto",
+                          height: "auto",
+                        }}
+                      />
+                    </div>
+                  </div>
                   ) : null}
                   <div className="p-5 space-y-1">
                     <div className="flex items-center justify-between gap-4">
