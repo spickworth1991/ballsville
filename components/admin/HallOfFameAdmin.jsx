@@ -19,6 +19,7 @@ function normalize(e, idx) {
     subtitle: String(e?.subtitle || ""),
     imageKey: String(e?.imageKey || ""),
     imageUrl: String(e?.imageUrl || ""),
+    order: Number.isFinite(Number(e?.order)) ? Number(e.order) : idx + 1,
   };
 }
 
@@ -49,12 +50,58 @@ export default function HallOfFameAdmin() {
       if (!res.ok) throw new Error(`Load failed (${res.status})`);
       const data = await res.json();
       const list = Array.isArray(data?.entries) ? data.entries : [];
-      setEntries(list.map(normalize));
+      const normalized = list.map(normalize);
+      setEntries(normalized);
+
+      // If R2 is empty, pull a one-time seed from Supabase so you can Save into R2.
+      // This keeps Supabase usage limited to verification + the temporary seed.
+      if (normalized.length === 0) {
+        await seedFromSupabase();
+      }
     } catch (e) {
       setErr(e?.message || "Failed to load Hall of Fame.");
       setEntries([]);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function seedFromSupabase() {
+    try {
+      const supabase = getSupabase();
+      // Uses the logged-in admin session (no service role key, no server-side Supabase env usage)
+      const { data, error } = await supabase
+        .from("hall_of_fame")
+        .select("id, year, title, blurb, image_url, sort_order, is_active")
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true });
+
+      if (error) throw error;
+
+      const seeded = Array.isArray(data)
+        ? data.map((r, idx) =>
+            normalize(
+              {
+                id: r.id,
+                year: r.year,
+                title: r.title,
+                subtitle: r.blurb,
+                imageUrl: r.image_url,
+                order: Number.isFinite(Number(r.sort_order)) ? Number(r.sort_order) : idx + 1,
+              },
+              idx
+            )
+          )
+        : [];
+
+      if (seeded.length) {
+        setEntries(seeded);
+        setOk("Seeded from Supabase. Click Save to store in R2.");
+      }
+    } catch (e) {
+      // If the Supabase table/permissions aren't available, just silently do nothing.
+      // (Admin can still add entries manually.)
+      console.warn("Hall of Fame seed failed:", e);
     }
   }
 
@@ -77,6 +124,7 @@ export default function HallOfFameAdmin() {
         subtitle: "",
         imageKey: "",
         imageUrl: "",
+        order: 1,
       },
       ...prev,
     ]);
@@ -125,7 +173,7 @@ export default function HallOfFameAdmin() {
     try {
       const token = await adminToken();
       const payload = {
-        entries: entries.map((e, idx) => normalize(e, idx)),
+        entries: entries.map((e, idx) => normalize(e, idx)).sort((a, b) => a.order - b.order),
       };
       const res = await fetch("/api/admin/hall-of-fame", {
         method: "PUT",

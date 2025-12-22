@@ -52,8 +52,12 @@ function getDisplayTags(row) {
   const base = (row.tags || []).slice();
   const lower = base.map((t) => String(t).toLowerCase());
 
-  if (isMiniGame(row) && !isClosed(row) && !lower.includes("mini game")) base.push("Mini Game");
-  if (isClosed(row) && !lower.includes("mini game (closed)")) base.push("Mini Game (Closed)");
+  const hasMini = lower.includes("mini game") || lower.includes("mini games");
+  const hasMiniClosed = lower.includes("mini game (closed)") || lower.includes("mini games (closed)");
+
+  // Site wording uses plural.
+  if (isMiniGame(row) && !isClosed(row) && !hasMini) base.push("Mini Games");
+  if (isClosed(row) && !hasMiniClosed) base.push("Mini Games (Closed)");
 
   return base;
 }
@@ -141,8 +145,9 @@ export default function NewsPage() {
       }
     }
 
-    if (sawActiveMini) set.add("Mini Game");
-    if (sawClosedMini) set.add("Mini Game (Closed)");
+    // Keep the label plural to match site wording.
+    if (sawActiveMini) set.add("Mini Games");
+    if (sawClosedMini) set.add("Mini Games (Closed)");
 
     return Array.from(set).sort((a, b) => String(a).localeCompare(String(b)));
   }, [rows]);
@@ -151,8 +156,10 @@ export default function NewsPage() {
     if (!activeTag) return rows;
     const tagLower = activeTag.toLowerCase();
 
-    if (tagLower === "mini game") return rows.filter((r) => isMiniGame(r) && !isClosed(r));
-    if (tagLower === "mini game (closed)") return rows.filter((r) => isMiniGame(r) && isClosed(r));
+    // Accept both singular + plural tags for backward compatibility.
+    if (tagLower === "mini game" || tagLower === "mini games") return rows.filter((r) => isMiniGame(r) && !isClosed(r));
+    if (tagLower === "mini game (closed)" || tagLower === "mini games (closed)")
+      return rows.filter((r) => isMiniGame(r) && isClosed(r));
 
     return rows.filter((r) => (r.tags || []).some((t) => String(t).toLowerCase() === tagLower));
   }, [rows, activeTag]);
