@@ -5,9 +5,8 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import OwnerHeroBlock from "@/src/components/OwnerHeroBlock";
-import { CURRENT_SEASON } from "@/src/lib/season";
 
-const SEASON = CURRENT_SEASON;
+const SEASON = 2025;
 
 // ==============================
 // HARD-CODED (non-editable) copy
@@ -19,7 +18,8 @@ const HERO_STATIC = {
     "Way-too-early, rookie-inclusive, budget Best Ball redraft leagues. Most points wins. Optional wagering. Bonuses stack.",
 };
 
-// NOTE: intentionally no "Updated:" label here — it goes stale and creates yearly work.
+// This is hard-coded on purpose (you asked to NOT make it editable)
+const UPDATED_LABEL = "Updated: 01/23/2025";
 
 // ==============================
 // ONLY THESE ARE EDITABLE IN CMS
@@ -34,8 +34,7 @@ const DEFAULT_EDITABLE = {
   winners: {
     title: "Last Year’s Winners",
     imageKey1: "",
-    // Keep empty by default to avoid loading stale/incorrect assets year-to-year.
-    imageUrl1: "",
+    imageUrl1: "/photos/hall-of-fame/minileageus2024.png",
     caption1: "",
     imageKey2: "",
     imageUrl2: "",
@@ -99,12 +98,11 @@ export default function MiniLeaguesClient() {
 
   const winners1Src = editable?.winners?.imageKey1
     ? `/r2/${editable.winners.imageKey1}?v=${encodeURIComponent(editable.winners.imageKey1)}`
-    : editable?.winners?.imageUrl1 || null;
+    : editable?.winners?.imageUrl1 || DEFAULT_EDITABLE.winners.imageUrl1;
 
   const winners2Src = editable?.winners?.imageKey2
     ? `/r2/${editable.winners.imageKey2}?v=${encodeURIComponent(editable.winners.imageKey2)}`
-    : editable?.winners?.imageUrl2 || null;
-
+    : editable?.winners?.imageUrl2 || DEFAULT_EDITABLE.winners.imageUrl2;
 
   async function loadAll() {
     setErr("");
@@ -207,7 +205,11 @@ export default function MiniLeaguesClient() {
                   </Link>
                 </div>
 
-                {/* intentionally no hard-coded "Updated" label */}
+                <div className="mt-4 py-2 inline-flex flex-wrap gap-2 text-xs sm:text-sm">
+                  <span className="rounded-full border border-subtle bg-card-trans px-3 py-1 backdrop-blur-sm">
+                    {UPDATED_LABEL}
+                  </span>
+                </div>
               </div>
               <aside className="w-full space-y-4">
         
@@ -217,7 +219,7 @@ export default function MiniLeaguesClient() {
                   <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
                     Quick Facts
                   </span>
-                  <span className="text-[11px] text-muted">{SEASON}</span>
+                  <span className="text-[11px] text-muted">2025</span>
                 </div>
 
                 <div className="p-4 space-y-3 text-sm">
@@ -268,7 +270,7 @@ export default function MiniLeaguesClient() {
                 </div>
               </div> */}
             </div>
-            <OwnerHeroBlock mode="mini-leagues" season={SEASON} title="Owner Updates" />
+            <OwnerHeroBlock mode="mini-leagues" season={2025} title="Owner Updates" />
           </header>
 
           {/* CONTENT */}
@@ -421,17 +423,11 @@ export default function MiniLeaguesClient() {
                 >
                   {/* Image 1 */}
                   <div className="space-y-2">
-                    {winners1Src ? (
-                        <div className="relative w-full h-[320px] sm:h-[420px]">
-                            <Image
-                            src={winners1Src}
-                            alt="Winners (1)"
-                            fill
-                            sizes="100vw"
-                            className="object-contain"
-                            />
-                        </div>
-                        ) : null}
+                    <div className="relative w-full h-[320px] sm:h-[420px]">
+                      {winners1Src ? (
+                        <Image src={winners1Src} alt="Winners (1)" fill sizes="100vw" className="object-contain" />
+                      ) : null}
+                    </div>
                     {(editable?.winners?.caption1 || "").trim() ? (
                       <div className="text-sm text-muted">{editable.winners.caption1}</div>
                     ) : null}
@@ -440,18 +436,9 @@ export default function MiniLeaguesClient() {
                   {/* Image 2 (optional) */}
                   {winners2Src ? (
                     <div className="space-y-2">
-                      {winners2Src ? (
-                        <div className="relative w-full h-[320px] sm:h-[420px]">
-                            <Image
-                            src={winners2Src}
-                            alt="Winners (2)"
-                            fill
-                            sizes="100vw"
-                            className="object-contain"
-                            />
-                        </div>
-                        ) : null}
-
+                      <div className="relative w-full h-[320px] sm:h-[420px]">
+                        <Image src={winners2Src} alt="Winners (2)" fill sizes="100vw" className="object-contain" />
+                      </div>
                       {(editable?.winners?.caption2 || "").trim() ? (
                         <div className="text-sm text-muted">{editable.winners.caption2}</div>
                       ) : null}

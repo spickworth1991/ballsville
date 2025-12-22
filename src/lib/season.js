@@ -1,14 +1,17 @@
 // src/lib/season.js
-// Single source of truth for the current NFL season year.
-// NFL season is named by the year it starts (e.g., 2025 season runs Sep 2025 → Feb 2026).
-// During Jan/Feb, we still consider the season to be the previous year.
+// Single source of truth for the site's "current season".
+// Rule of thumb: the NFL season year is the year the season STARTS (Sep).
+// Jan/Feb are still the prior season (playoffs / Super Bowl), so we roll back.
 
-export function getCurrentNflSeason(date = new Date()) {
-  const d = date instanceof Date ? date : new Date(date);
-  const year = d.getFullYear();
-  const month = d.getMonth(); // 0=Jan
-  // Jan/Feb -> previous season year
-  return month <= 1 ? year - 1 : year;
+export function getCurrentSeason(d = new Date()) {
+  const dt = d instanceof Date ? d : new Date(d);
+  const y = dt.getFullYear();
+  const m = dt.getMonth() + 1; // 1-12
+
+  // Jan + Feb are still considered the previous season year.
+  // March and later count as the new season year.
+  return m <= 2 ? y - 1 : y;
 }
 
-export const CURRENT_SEASON = getCurrentNflSeason();
+// Convenience constant for client components.
+export const CURRENT_SEASON = getCurrentSeason();

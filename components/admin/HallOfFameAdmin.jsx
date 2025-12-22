@@ -1,379 +1,260 @@
+// components/admin/HallOfFameAdmin.jsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getSupabase } from "@/lib/supabaseClient";
-import Link from "next/link";
+import Image from "next/image";
+import { getSupabase } from "@/src/lib/supabaseClient";
+import { CURRENT_SEASON } from "@/src/lib/season";
 
-const CATEGORY_OPTIONS = [
-  { value: "dynasty", label: "Dynasty" },
-  { value: "biggame", label: "The BIG Game" },
-  { value: "minileagues", label: "Mini-Leagues" },
-  { value: "redraft", label: "Redraft" },
-  { value: "poy", label: "Player of the Year" },
-];
+function uid() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return `id_${Math.random().toString(16).slice(2)}${Date.now().toString(16)}`;
+}
 
-const EMPTY = {
-  id: null,
-  year: new Date().getFullYear(),
-  category: "dynasty", // ✅ REQUIRED by your table
-  game_label: "The BALLSVILLE game #1",
-  title: "",
-  blurb: "",
-  image_url: "/photos/halloffame-1280.webp",
-  image_alt: "",
-  sort_order: 10,
-  is_active: true,
-};
+function normalize(e, idx) {
+  return {
+    id: String(e?.id || idx || uid()),
+    year: Number.isFinite(Number(e?.year)) ? Number(e.year) : "",
+    title: String(e?.title || ""),
+    subtitle: String(e?.subtitle || ""),
+    imageKey: String(e?.imageKey || ""),
+    imageUrl: String(e?.imageUrl || ""),
+  };
+}
 
 export default function HallOfFameAdmin() {
-  const supabase = useMemo(() => getSupabase(), []);
-  const [rows, setRows] = useState([]);
+  const season = CURRENT_SEASON;
+  const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState("");
-  const [error, setError] = useState("");
-  const [editing, setEditing] = useState(EMPTY);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
+
+  async function adminToken() {
+    const supabase = getSupabase();
+    const { data } = await supabase.auth.getSession();
+    return data?.session?.access_token || "";
+  }
 
   async function load() {
-    setError("");
-    setMsg("");
+    setErr("");
+    setOk("");
     setLoading(true);
-
-    if (!supabase) {
-      setError("Supabase client not available.");
+    try {
+      const token = await adminToken();
+      const res = await fetch(`/api/admin/hall-of-fame`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error(`Load failed (${res.status})`);
+      const data = await res.json();
+      const list = Array.isArray(data?.entries) ? data.entries : [];
+      setEntries(list.map(normalize));
+    } catch (e) {
+      setErr(e?.message || "Failed to load Hall of Fame.");
+      setEntries([]);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const { data, error } = await supabase
-      .from("hall_of_fame")
-      .select("*")
-      .order("year", { ascending: false })
-      .order("sort_order", { ascending: true });
-
-    if (error) setError(error.message);
-    setRows(data || []);
-    setLoading(false);
   }
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function startNew() {
-    setMsg("");
-    setError("");
-    setEditing({ ...EMPTY, year: new Date().getFullYear() });
+  function setEntry(id, patch) {
+    setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
   }
 
-  function startEdit(row) {
-    setMsg("");
-    setError("");
-    setEditing({ ...row });
+  function addEntry() {
+    setOk("");
+    setErr("");
+    setEntries((prev) => [
+      {
+        id: uid(),
+        year: season - 1,
+        title: "",
+        subtitle: "",
+        imageKey: "",
+        imageUrl: "",
+      },
+      ...prev,
+    ]);
   }
 
-  async function save(e) {
-    e.preventDefault();
-    setError("");
-    setMsg("");
-
-    if (!supabase) {
-      setError("Supabase client not available.");
-      return;
-    }
-
-    const payload = {
-      year: Number(editing.year),
-      category: String(editing.category || "").trim(), // ✅ REQUIRED
-      game_label: String(editing.game_label || "").trim(),
-      title: String(editing.title || "").trim(),
-      blurb: String(editing.blurb || "").trim(),
-      image_url: String(editing.image_url || "").trim(),
-      image_alt: String(editing.image_alt || "").trim(),
-      sort_order: Number(editing.sort_order),
-      is_active: !!editing.is_active,
-      // updated_at: new Date().toISOString(), // optional if you want it to change on edit
-    };
-
-    if (!payload.category) {
-      setError("Category is required.");
-      return;
-    }
-    if (!payload.title || !payload.blurb || !payload.image_url) {
-      setError("Title, blurb, and image_url are required.");
-      return;
-    }
-    if (!payload.image_alt) payload.image_alt = payload.title;
-
-    if (editing.id) {
-      const { error } = await supabase
-        .from("hall_of_fame")
-        .update(payload)
-        .eq("id", editing.id);
-
-      if (error) return setError(error.message);
-
-      setMsg("Updated.");
-      setEditing(EMPTY);
-      await load();
-      return;
-    }
-
-    const { error } = await supabase.from("hall_of_fame").insert(payload);
-    if (error) return setError(error.message);
-
-    setMsg("Created.");
-    setEditing(EMPTY);
-    await load();
+  function removeEntry(id) {
+    setOk("");
+    setErr("");
+    setEntries((prev) => prev.filter((e) => e.id !== id));
   }
 
-  async function remove(id) {
-    setError("");
-    setMsg("");
+  async function uploadImage(entryId, file) {
+    setOk("");
+    setErr("");
+    if (!file) return;
+    try {
+      const token = await adminToken();
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("section", "hall-of-fame-image");
+      fd.append("season", String(season));
+      fd.append("entryId", String(entryId));
 
-    const { error } = await supabase.from("hall_of_fame").delete().eq("id", id);
-    if (error) return setError(error.message);
+      const res = await fetch("/api/admin/upload", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || `Upload failed (${res.status})`);
 
-    setMsg("Deleted.");
-    await load();
+      // store deterministic key (no extension in base key; upload returns key)
+      setEntry(entryId, {
+        imageKey: data.key || "",
+        imageUrl: "",
+      });
+    } catch (e) {
+      setErr(e?.message || "Upload failed.");
+    }
   }
 
-  async function toggleActive(row) {
-    setError("");
-    setMsg("");
-
-    const { error } = await supabase
-      .from("hall_of_fame")
-      .update({ is_active: !row.is_active })
-      .eq("id", row.id);
-
-    if (error) return setError(error.message);
-
-    setMsg("Updated visibility.");
-    await load();
+  async function saveAll() {
+    setOk("");
+    setErr("");
+    setSaving(true);
+    try {
+      const token = await adminToken();
+      const payload = {
+        entries: entries.map((e, idx) => normalize(e, idx)),
+      };
+      const res = await fetch("/api/admin/hall-of-fame", {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || `Save failed (${res.status})`);
+      setOk("Saved.");
+    } catch (e) {
+      setErr(e?.message || "Save failed.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <section className="section">
-      <div className="container-site space-y-8">
-        <div className="flex flex-col items-end gap-2">
-            <Link href="/hall-of-fame" className="btn btn-primary text-sm">
-              ← View Public Hall of Fame
-            </Link>
-            <a href="/admin" className="btn btn-primary">
-            ← Admin Home
-          </a>
-            <button
-              className="btn btn-primary text-xs"
-              onClick={async () => {
-                const supabase = getSupabase();
-                if (supabase) await supabase.auth.signOut();
-                location.href = "/admin/login";
-              }}
-            >
-              Sign out
+      <div className="container-site space-y-6">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <h1 className="h2 text-primary">Hall of Fame</h1>
+            <p className="text-muted text-sm mt-2">
+              Data + images are stored in R2 (no Supabase tables/storage). Uploading an image overwrites the prior image
+              for that entry.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button className="btn btn-outline" type="button" onClick={load} disabled={loading || saving}>
+              Refresh
+            </button>
+            <button className="btn btn-outline" type="button" onClick={addEntry} disabled={loading || saving}>
+              + Add
+            </button>
+            <button className="btn btn-primary" type="button" onClick={saveAll} disabled={loading || saving}>
+              {saving ? "Saving…" : "Save"}
             </button>
           </div>
-        <header className="bg-card-surface p-6 md:p-8">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <span className="badge">Admin</span>
-              <h1 className="h2 mt-2">Hall of Fame Manager</h1>
-              <p className="text-muted mt-2">
-                Add/edit winners, photos, captions, ordering, and visibility.
-              </p>
-            </div>
-
-            <button className="btn btn-primary" type="button" onClick={startNew}>
-              + New Entry
-            </button>
-          </div>
-
-          {error && <p className="mt-4 text-danger">{error}</p>}
-          {msg && <p className="mt-4 text-accent">{msg}</p>}
-        </header>
-
-        {/* Editor */}
-        <div className="bg-card-surface p-6 md:p-8">
-          <h2 className="h3 mb-4">{editing?.id ? "Edit Entry" : "Create Entry"}</h2>
-
-          <form onSubmit={save} className="grid gap-4">
-            <div className="grid md:grid-cols-2 gap-4">
-              <div>
-                <div className="label mb-1">Year</div>
-                <input
-                  className="input"
-                  type="number"
-                  value={editing.year}
-                  onChange={(e) => setEditing((p) => ({ ...p, year: e.target.value }))}
-                />
-              </div>
-
-              <div>
-                <div className="label mb-1">Sort Order</div>
-                <input
-                  className="input"
-                  type="number"
-                  value={editing.sort_order}
-                  onChange={(e) =>
-                    setEditing((p) => ({ ...p, sort_order: e.target.value }))
-                  }
-                />
-              </div>
-            </div>
-
-            {/* ✅ Category */}
-            <div>
-              <div className="label mb-1">Category</div>
-              <select
-                className="input"
-                value={editing.category}
-                onChange={(e) =>
-                  setEditing((p) => ({ ...p, category: e.target.value }))
-                }
-              >
-                {CATEGORY_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-muted mt-1">
-                This should match the public page section (dynasty, biggame, minileagues, redraft, poy).
-              </p>
-            </div>
-
-            <div>
-              <div className="label mb-1">Game Label</div>
-              <input
-                className="input"
-                placeholder="The BALLSVILLE game #1"
-                value={editing.game_label}
-                onChange={(e) => setEditing((p) => ({ ...p, game_label: e.target.value }))}
-              />
-            </div>
-
-            <div>
-              <div className="label mb-1">Title</div>
-              <input
-                className="input"
-                placeholder="2025 Dragons of Dynasty Winners"
-                value={editing.title}
-                onChange={(e) => setEditing((p) => ({ ...p, title: e.target.value }))}
-              />
-            </div>
-
-            <div>
-              <div className="label mb-1">Blurb</div>
-              <textarea
-                className="input"
-                rows={4}
-                value={editing.blurb}
-                onChange={(e) => setEditing((p) => ({ ...p, blurb: e.target.value }))}
-              />
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-4">
-              <div>
-                <div className="label mb-1">Image URL</div>
-                <input
-                  className="input"
-                  placeholder="/photos/halloffame-1280.webp or https://..."
-                  value={editing.image_url}
-                  onChange={(e) =>
-                    setEditing((p) => ({ ...p, image_url: e.target.value }))
-                  }
-                />
-              </div>
-
-              <div>
-                <div className="label mb-1">Image Alt</div>
-                <input
-                  className="input"
-                  placeholder="Defaults to title if blank"
-                  value={editing.image_alt}
-                  onChange={(e) =>
-                    setEditing((p) => ({ ...p, image_alt: e.target.value }))
-                  }
-                />
-              </div>
-            </div>
-
-            <label className="inline-flex items-center gap-2 text-fg">
-              <input
-                type="checkbox"
-                checked={!!editing.is_active}
-                onChange={(e) =>
-                  setEditing((p) => ({ ...p, is_active: e.target.checked }))
-                }
-              />
-              Visible on public page
-            </label>
-
-            <div className="flex gap-3 flex-wrap">
-              <button className="btn btn-primary" type="submit">
-                {editing?.id ? "Save Changes" : "Create Entry"}
-              </button>
-
-              <button
-                className="btn btn-outline"
-                type="button"
-                onClick={() => setEditing(EMPTY)}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
         </div>
 
-        {/* List */}
-        <div className="bg-card-surface p-6 md:p-8">
-          <h2 className="h3 mb-4">Existing Entries</h2>
+        {err ? <div className="card bg-rose-500/10 border border-rose-400/20 p-4 text-rose-100">{err}</div> : null}
+        {ok ? <div className="card bg-emerald-500/10 border border-emerald-400/20 p-4 text-emerald-100">{ok}</div> : null}
 
-          {loading ? (
-            <p className="text-muted">Loading…</p>
-          ) : rows.length === 0 ? (
-            <p className="text-muted">No Hall of Fame entries yet.</p>
-          ) : (
-            <div className="space-y-3">
-              {rows.map((r) => (
-                <div
-                  key={r.id}
-                  className="bg-subtle-surface p-4 rounded-xl border border-subtle flex items-start justify-between gap-4 flex-wrap"
-                >
-                  <div>
-                    <div className="text-sm text-muted">
-                      {r.year} • {r.category} • sort {r.sort_order} •{" "}
-                      {r.is_active ? (
-                        <span className="text-success">Visible</span>
-                      ) : (
-                        <span className="text-warning">Hidden</span>
-                      )}
+        {loading ? (
+          <div className="card bg-card-surface border border-subtle p-6 text-muted">Loading…</div>
+        ) : entries.length === 0 ? (
+          <div className="card bg-card-surface border border-subtle p-6 text-muted">No entries yet.</div>
+        ) : (
+          <div className="grid gap-4">
+            {entries.map((e) => {
+              const src = e.imageKey ? `/r2/${e.imageKey}` : e.imageUrl || "";
+              return (
+                <div key={e.id} className="card bg-card-surface border border-subtle p-5 rounded-2xl">
+                  <div className="flex flex-col lg:flex-row gap-4">
+                    <div className="w-full lg:w-[320px]">
+                      <div className="relative w-full h-[180px] rounded-xl overflow-hidden border border-subtle bg-black/20">
+                        {src ? <Image src={src} alt={e.title || "Hall of Fame"} fill className="object-cover" /> : null}
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-3">
+                        <label className="btn btn-outline cursor-pointer">
+                          Upload image
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(ev) => uploadImage(e.id, ev.target.files?.[0])}
+                          />
+                        </label>
+                        <button className="btn btn-outline" type="button" onClick={() => removeEntry(e.id)}>
+                          Remove
+                        </button>
+                      </div>
+                      {e.imageKey ? <div className="mt-2 text-xs text-muted break-all">R2: {e.imageKey}</div> : null}
                     </div>
-                    <div className="font-semibold mt-1">{r.title}</div>
-                    <div className="text-sm text-muted mt-1">{r.game_label}</div>
-                  </div>
 
-                  <div className="flex gap-2">
-                    <button className="btn btn-outline" type="button" onClick={() => startEdit(r)}>
-                      Edit
-                    </button>
-                    <button className="btn btn-outline" type="button" onClick={() => toggleActive(r)}>
-                      {r.is_active ? "Hide" : "Show"}
-                    </button>
-                    <button
-                      className="btn btn-outline"
-                      type="button"
-                      onClick={() => remove(r.id)}
-                    >
-                      Delete
-                    </button>
+                    <div className="flex-1 grid gap-3">
+                      <div className="grid sm:grid-cols-3 gap-3">
+                        <label className="block">
+                          <div className="text-xs uppercase tracking-[0.2em] text-muted mb-1">Year</div>
+                          <input
+                            className="input"
+                            value={e.year}
+                            onChange={(ev) => setEntry(e.id, { year: ev.target.value })}
+                            placeholder="2024"
+                          />
+                        </label>
+                        <label className="block sm:col-span-2">
+                          <div className="text-xs uppercase tracking-[0.2em] text-muted mb-1">Title</div>
+                          <input
+                            className="input"
+                            value={e.title}
+                            onChange={(ev) => setEntry(e.id, { title: ev.target.value })}
+                            placeholder="League Winner"
+                          />
+                        </label>
+                      </div>
+                      <label className="block">
+                        <div className="text-xs uppercase tracking-[0.2em] text-muted mb-1">Subtitle</div>
+                        <input
+                          className="input"
+                          value={e.subtitle}
+                          onChange={(ev) => setEntry(e.id, { subtitle: ev.target.value })}
+                          placeholder="Team name / note"
+                        />
+                      </label>
+
+                      <label className="block">
+                        <div className="text-xs uppercase tracking-[0.2em] text-muted mb-1">External image URL (optional)</div>
+                        <input
+                          className="input"
+                          value={e.imageUrl}
+                          onChange={(ev) => setEntry(e.id, { imageUrl: ev.target.value, imageKey: "" })}
+                          placeholder="https://..."
+                        />
+                        <div className="mt-1 text-xs text-muted">
+                          If you paste a URL, it will be used instead of R2. Clearing this will fall back to the uploaded
+                          R2 image.
+                        </div>
+                      </label>
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </section>
   );

@@ -2,7 +2,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getSupabase } from "@/lib/supabaseClient";
 
 const cardCls =
   "card bg-card-surface border border-subtle relative p-6 transition shadow-sm hover:shadow-md hover:-translate-y-[2px]";
@@ -51,7 +50,7 @@ function splitAndSort(rows) {
 
 function getDisplayTags(row) {
   const base = (row.tags || []).slice();
-  const lower = base.map((t) => t.toLowerCase());
+  const lower = base.map((t) => String(t).toLowerCase());
 
   if (isMiniGame(row) && !isClosed(row) && !lower.includes("mini game")) base.push("Mini Game");
   if (isClosed(row) && !lower.includes("mini game (closed)")) base.push("Mini Game (Closed)");
@@ -61,14 +60,14 @@ function getDisplayTags(row) {
 
 function isVideoUrl(url) {
   if (!url) return false;
-  const clean = url.split("?")[0].toLowerCase();
+  const clean = String(url).split("?")[0].toLowerCase();
   return /\.(mp4|mov|webm|ogg|mpe?g)$/.test(clean);
 }
 
 function linkifyBody(text) {
   if (!text) return null;
   const urlRegex = /(https?:\/\/[^\s]+)/g;
-  const parts = text.split(urlRegex);
+  const parts = String(text).split(urlRegex);
 
   return parts.map((part, idx) => {
     const isUrl = /^https?:\/\/\S+$/i.test(part);
@@ -89,31 +88,41 @@ function linkifyBody(text) {
   });
 }
 
+function normalizePost(p) {
+  const imageKey = typeof p?.imageKey === "string" ? p.imageKey : "";
+  return {
+    ...p,
+    id: p?.id ?? p?.slug ?? crypto?.randomUUID?.() ?? String(Math.random()),
+    created_at: p?.created_at || new Date().toISOString(),
+    tags: Array.isArray(p?.tags) ? p.tags : [],
+    image_url: imageKey ? `/r2/${imageKey}` : p?.image_url || p?.imageUrl || "",
+  };
+}
+
 export default function NewsPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTag, setActiveTag] = useState("");
 
   useEffect(() => {
-    const supabase = getSupabase();
-    if (!supabase) {
-      setLoading(false);
-      return;
-    }
-
     let mounted = true;
     (async () => {
-      const { data, error } = await supabase
-        .from("posts")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(200);
-
-      if (!mounted) return;
-      if (!error) setRows(data || []);
-      setLoading(false);
+      try {
+        const bust = `v=${Date.now()}`;
+        const res = await fetch(`/r2/data/posts/posts.json?${bust}`, { cache: "no-store" });
+        if (!res.ok) {
+          if (mounted) setRows([]);
+          return;
+        }
+        const data = await res.json();
+        const list = Array.isArray(data?.posts) ? data.posts : Array.isArray(data) ? data : [];
+        if (mounted) setRows(list.map(normalizePost));
+      } catch {
+        if (mounted) setRows([]);
+      } finally {
+        if (mounted) setLoading(false);
+      }
     })();
-
     return () => {
       mounted = false;
     };
@@ -135,7 +144,7 @@ export default function NewsPage() {
     if (sawActiveMini) set.add("Mini Game");
     if (sawClosedMini) set.add("Mini Game (Closed)");
 
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
+    return Array.from(set).sort((a, b) => String(a).localeCompare(String(b)));
   }, [rows]);
 
   const filtered = useMemo(() => {
@@ -145,7 +154,7 @@ export default function NewsPage() {
     if (tagLower === "mini game") return rows.filter((r) => isMiniGame(r) && !isClosed(r));
     if (tagLower === "mini game (closed)") return rows.filter((r) => isMiniGame(r) && isClosed(r));
 
-    return rows.filter((r) => (r.tags || []).some((t) => t.toLowerCase() === tagLower));
+    return rows.filter((r) => (r.tags || []).some((t) => String(t).toLowerCase() === tagLower));
   }, [rows, activeTag]);
 
   const { activeMini, regularPosts, closedMini } = useMemo(() => splitAndSort(filtered), [filtered]);
@@ -154,7 +163,6 @@ export default function NewsPage() {
   return (
     <section className="section">
       <div className="container-site max-w-4xl mx-auto space-y-6">
-        {/* HERO CARD (more readable, less “busy”) */}
         <header className="relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-10 text-center">
           <div className="pointer-events-none absolute inset-0 opacity-55 mix-blend-screen">
             <div className="absolute -top-24 -left-20 h-64 w-64 rounded-full bg-[color:var(--color-accent)]/18 blur-3xl" />
@@ -171,13 +179,9 @@ export default function NewsPage() {
           </div>
         </header>
 
-        {/* Tag filters (separate readable card) */}
         <div className="bg-card-surface border border-subtle rounded-2xl p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-center gap-2">
-            <button
-              onClick={() => setActiveTag("")}
-              className={`${chipBase} ${!activeTag ? chipActive : chipIdle}`}
-            >
+            <button onClick={() => setActiveTag("")} className={`${chipBase} ${!activeTag ? chipActive : chipIdle}`}>
               All
             </button>
             {allTags.map((t) => (
@@ -201,6 +205,7 @@ export default function NewsPage() {
             {display.map((p) => {
               const closed = isClosed(p);
               const tags = getDisplayTags(p);
+              const mediaSrc = p.image_url || "";
 
               return (
                 <li
@@ -208,7 +213,6 @@ export default function NewsPage() {
                   className={`${cardCls} ${closed ? "grayscale" : ""}`}
                   style={closed ? { opacity: 0.9 } : undefined}
                 >
-                  {/* Closed ribbon for mini games */}
                   {isMiniGame(p) && closed && (
                     <div className="absolute -top-2 -right-2">
                       <div className="rotate-6 rounded px-2 py-1 text-[10px] font-semibold shadow bg-card-surface border border-subtle">
@@ -244,8 +248,7 @@ export default function NewsPage() {
                           closed
                             ? undefined
                             : {
-                                background:
-                                  "color-mix(in oklab, var(--color-success) 18%, transparent)",
+                                background: "color-mix(in oklab, var(--color-success) 18%, transparent)",
                                 color: "var(--color-success)",
                               }
                         }
@@ -255,39 +258,28 @@ export default function NewsPage() {
                     )}
                   </div>
 
-                  {/* Media block: image OR video */}
-                  {p.image_url && (
+                  {mediaSrc ? (
                     <div className="mt-4 rounded-xl overflow-hidden border border-subtle bg-subtle-surface">
-                      {isVideoUrl(p.image_url) ? (
+                      {isVideoUrl(mediaSrc) ? (
                         <video className="w-full" controls preload="metadata">
-                          <source src={p.image_url} />
+                          <source src={mediaSrc} />
                           Your browser does not support the video tag.
                         </video>
                       ) : (
-                        <img
-                          src={p.image_url}
-                          alt={p.title}
-                          className="w-full h-auto object-contain"
-                          loading="lazy"
-                        />
+                        <img src={mediaSrc} alt={p.title} className="w-full h-auto object-contain" loading="lazy" />
                       )}
                     </div>
-                  )}
+                  ) : null}
 
-                  {p.body && (
-                    <p className="mt-4 whitespace-pre-line break-words text-fg">
-                      {linkifyBody(p.body)}
-                    </p>
-                  )}
+                  {p.body ? (
+                    <p className="mt-4 whitespace-pre-line break-words text-fg">{linkifyBody(p.body)}</p>
+                  ) : null}
 
                   <div className="mt-4 text-xs text-muted">
                     Posted {new Date(p.created_at).toLocaleString()}
-                    {isMiniGame(p) && p.expires_at && (
-                      <>
-                        {" "}
-                        • Sign-up closes {new Date(p.expires_at).toLocaleString()}
-                      </>
-                    )}
+                    {isMiniGame(p) && p.expires_at ? (
+                      <> • Sign-up closes {new Date(p.expires_at).toLocaleString()}</>
+                    ) : null}
                   </div>
                 </li>
               );
