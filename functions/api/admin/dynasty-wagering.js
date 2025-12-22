@@ -30,8 +30,9 @@ async function requireAdmin(request, env) {
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!token) return { ok: false, res: json({ error: "Missing auth token" }, 401) };
 
+  // Keep existing binding names (don’t rename). Support either convention.
   const url = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
-const key = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const key = env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return { ok: false, res: json({ error: "Supabase env not configured" }, 500) };
 
   const me = await fetch(`${url}/auth/v1/user`, {
