@@ -1,13 +1,14 @@
 // functions/api/admin/dynasty-wagering.js
-// Admin read/write for Dynasty Wager Tracker stored in R2.
 //
-// Query: ?season=2025
+// Admin CRUD for Dynasty Wagering tracker (stored in R2).
 //
-// GET -> { season, tracker }
-// PUT -> body { season, tracker }
+// GET  /api/admin/dynasty-wagering?season=2025
+// PUT  /api/admin/dynasty-wagering?season=2025   (JSON body { rows: [...] })
 //
-// Storage key:
-//   data/dynasty/wagering_tracker_<season>.json
+// Notes
+// - Uses the SAME R2 binding as the other admin endpoints: env.admin_bucket
+//   (ensureR2 falls back to env.admin_bucket or env if bound directly).
+// - Supabase is ONLY used to verify the admin JWT (Bearer token).
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -20,131 +21,128 @@ function json(data, status = 200) {
 }
 
 function ensureR2(env) {
-  const b = env.admin_bucket || env;
-  if (!b || typeof b.get !== "function") throw new Error("R2 bucket binding missing (admin_bucket)");
+  const b = env?.admin_bucket || env;
+  if (!b || typeof b.get !== "function") {
+    throw new Error(
+      "Missing R2 binding: expected env.admin_bucket (same binding used by other admin endpoints)."
+    );
+  }
   return b;
 }
 
 async function requireAdmin(request, env) {
   const auth = request.headers.get("authorization") || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token) return { ok: false, res: json({ error: "Missing auth token" }, 401) };
 
-  // Keep existing binding names (don’t rename). Support either convention.
+  if (!token) return { ok: false, status: 401, error: "Missing Bearer token" };
+
+  // Same envs used elsewhere for admin auth
   const url = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = env.SUPABASE_ANON_KEY || env.SUPABASE_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_KEY;
-  if (!url || !key) return { ok: false, res: json({ error: "Supabase env not configured" }, 500) };
+  const anon = env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anon) return { ok: false, status: 500, error: "Missing SUPABASE_URL / SUPABASE_ANON_KEY" };
 
-  const me = await fetch(`${url}/auth/v1/user`, {
-    headers: { authorization: `Bearer ${token}`, apikey: key },
+  const res = await fetch(`${url}/auth/v1/user`, {
+    headers: {
+      apikey: anon,
+      authorization: `Bearer ${token}`,
+    },
   });
-  if (!me.ok) return { ok: false, res: json({ error: "Not authenticated" }, 401) };
-  const user = await me.json();
 
-  const allow = (env.ADMIN_EMAILS || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  if (!res.ok) return { ok: false, status: 401, error: "Unauthorized" };
+  const user = await res.json().catch(() => null);
+
+  // Allow-list based on email
+  const allow = (env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
   const email = String(user?.email || "").toLowerCase();
+
   if (!email || (allow.length && !allow.includes(email))) {
-    return { ok: false, res: json({ error: "Not authorized" }, 403) };
+    return { ok: false, status: 403, error: "Forbidden" };
   }
 
-  return { ok: true };
+  return { ok: true, email };
+}
+
+function normalizeRow(r, idx) {
+  const id = String(r?.id || `${r?.group_name || r?.group || "group"}:${r?.league_name || r?.league || idx}`);
+  return {
+    id,
+    season: Number.isFinite(Number(r?.season)) ? Number(r.season) : undefined,
+    group_name: String(r?.group_name || r?.group || "").trim(),
+    league_name: String(r?.league_name || r?.league || "").trim(),
+
+    finalist1_name: String(r?.finalist1_name || "").trim(),
+    finalist1_choice: String(r?.finalist1_choice || "bank").trim(),
+    finalist1_score: r?.finalist1_score === "" ? "" : r?.finalist1_score,
+
+    finalist2_name: String(r?.finalist2_name || "").trim(),
+    finalist2_choice: String(r?.finalist2_choice || "bank").trim(),
+    finalist2_score: r?.finalist2_score === "" ? "" : r?.finalist2_score,
+
+    league_winner: String(r?.league_winner || "").trim(),
+  };
 }
 
 function keyForSeason(season) {
-  return `data/dynasty/wagering_tracker_${season}.json`;
+  return `data/dynasty/wagering_${season}.json`;
 }
 
-const DEFAULT_TRACKER = {
-  updated: "", // freeform display string
-  pot: 0, // computed
-  entries: [], // [{id, username, amount}]
-};
-
-function computePot(entries) {
-  return (Array.isArray(entries) ? entries : []).reduce((acc, e) => {
-    const n = Number(e?.amount);
-    if (!Number.isFinite(n)) return acc;
-    return acc + n;
-  }, 0);
-}
-
-function normalizeEntry(e, idx) {
-  const id = String(e?.id || idx || `e_${Math.random().toString(16).slice(2)}_${Date.now()}`);
-  const username = String(e?.username || "").trim();
-  const amountNum = Number(e?.amount);
-  const amount = Number.isFinite(amountNum) ? amountNum : 0;
-  return { id, username, amount };
-}
-
-export async function onRequest(context) {
-  const { request, env } = context;
-
+export async function onRequest({ request, env }) {
   try {
     const auth = await requireAdmin(request, env);
-    if (!auth.ok) return auth.res;
+    if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
 
     const r2 = ensureR2(env);
     const url = new URL(request.url);
-    const season = Number(url.searchParams.get("season") || 0) || null;
-    if (!season) return json({ error: "Missing season" }, 400);
+    const season = Number(url.searchParams.get("season") || "");
+    if (!Number.isFinite(season) || season < 2000) {
+      return json({ ok: false, error: "Missing/invalid season" }, 400);
+    }
 
-    const KEY = keyForSeason(season);
+    const key = keyForSeason(season);
 
     if (request.method === "GET") {
-      const obj = await r2.get(KEY);
-      if (!obj) return json({ season, tracker: DEFAULT_TRACKER });
-      const txt = await obj.text();
-      try {
-        const parsed = JSON.parse(txt);
-        const raw = parsed?.tracker || parsed || DEFAULT_TRACKER;
-        const entries = Array.isArray(raw?.entries) ? raw.entries : [];
-        const tracker = {
-          ...DEFAULT_TRACKER,
-          ...raw,
-          entries,
-          pot: computePot(entries),
-        };
-        return json({ season, tracker });
-      } catch {
-        return json({ season, tracker: DEFAULT_TRACKER });
+      const obj = await r2.get(key);
+      if (!obj) {
+        // Return empty payload (admin client can seed UI defaults).
+        return json({ ok: true, season, rows: [] }, 200);
       }
+      const text = await obj.text();
+      const parsed = JSON.parse(text);
+      const rows = Array.isArray(parsed?.rows)
+        ? parsed.rows
+        : Array.isArray(parsed)
+          ? parsed
+          : [];
+      return json({ ok: true, season, rows }, 200);
     }
 
     if (request.method === "PUT") {
-      const body = await request.json().catch(() => null);
-      if (!body || typeof body !== "object") return json({ error: "Invalid JSON" }, 400);
-      const tracker = body.tracker ?? body.data ?? body;
-      const entriesRaw = Array.isArray(tracker?.entries) ? tracker.entries : [];
-      const entries = entriesRaw
-        .map((e, idx) => {
-          const id = String(e?.id || idx || crypto?.randomUUID?.() || `id_${Date.now()}_${idx}`);
-          const username = String(e?.username || "").trim();
-          const amountNum = Number(e?.amount);
-          const amount = Number.isFinite(amountNum) ? amountNum : 0;
-          return { id, username, amount };
-        })
-        .filter((e) => e.username);
+      const body = await request.json().catch(() => ({}));
+      const rowsIn = Array.isArray(body?.rows) ? body.rows : [];
+      const normalized = rowsIn.map((r, idx) => {
+        const row = normalizeRow(r, idx);
+        row.season = season;
+        return row;
+      });
 
       const payload = {
         season,
-        tracker: {
-          ...DEFAULT_TRACKER,
-          updated: String(tracker?.updated || "").trim(),
-          entries,
-          pot: computePot(entries),
-          serverUpdatedAt: new Date().toISOString(),
-        },
+        updatedAt: new Date().toISOString(),
+        rows: normalized,
       };
 
-      await r2.put(KEY, JSON.stringify(payload, null, 2), {
-        httpMetadata: { contentType: "application/json" },
+      await r2.put(key, JSON.stringify(payload, null, 2), {
+        httpMetadata: { contentType: "application/json; charset=utf-8" },
       });
 
-      return json({ ok: true, season });
+      return json({ ok: true, season, key, count: normalized.length }, 200);
     }
 
-    return json({ error: "Method not allowed" }, 405);
+    return json({ ok: false, error: "Method not allowed" }, 405);
   } catch (e) {
-    return json({ error: e?.message || String(e) }, 500);
+    return json({ ok: false, error: e?.message || "Server error" }, 500);
   }
 }
