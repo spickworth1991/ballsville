@@ -1,8 +1,13 @@
 // functions/api/admin/dynasty-wagering.js
-// Admin API for Dynasty Wagering content stored in R2.
-// Supabase is used ONLY for verifying the admin's access token.
-
-import { requireAdmin } from "../_adminAuth";
+// Admin read/write for Dynasty Wager Tracker stored in R2.
+//
+// Query: ?season=2025
+//
+// GET -> { season, tracker }
+// PUT -> body { season, tracker }
+//
+// Storage key:
+//   data/dynasty/wagering_tracker_<season>.json
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -15,73 +20,97 @@ function json(data, status = 200) {
 }
 
 function ensureR2(env) {
-  const b = env.admin_bucket || env;
-  if (!b || typeof b.get !== "function" || typeof b.put !== "function") {
-    throw new Error("R2 binding missing: expected env.admin_bucket (or env) to be an R2 bucket");
-  }
+  // support both bindings used across the project
+  const b = env.admin_bucket || env.ADMIN_BUCKET || env;
+  if (!b?.get) throw new Error("R2 bucket binding missing (admin_bucket/ADMIN_BUCKET)");
   return b;
 }
 
-async function readR2Json(bucket, key) {
-  const obj = await bucket.get(key);
-  if (!obj) return null;
-  const txt = await obj.text();
-  try {
-    return JSON.parse(txt);
-  } catch {
-    return null;
-  }
-}
+async function requireAdmin(request, env) {
+  const auth = request.headers.get("authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (!token) return { ok: false, res: json({ error: "Missing auth token" }, 401) };
 
-async function writeR2Json(bucket, key, data) {
-  await bucket.put(key, JSON.stringify(data, null, 2), {
-    httpMetadata: { contentType: "application/json" },
+  // Keep existing binding names (don’t rename). Support either convention.
+  const url = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = env.SUPABASE_ANON_KEY || env.SUPABASE_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_KEY;
+  if (!url || !key) return { ok: false, res: json({ error: "Supabase env not configured" }, 500) };
+
+  const me = await fetch(`${url}/auth/v1/user`, {
+    headers: { authorization: `Bearer ${token}`, apikey: key },
   });
+  if (!me.ok) return { ok: false, res: json({ error: "Not authenticated" }, 401) };
+  const user = await me.json();
+
+  const allow = (env.ADMIN_EMAILS || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const email = String(user?.email || "").toLowerCase();
+  if (!email || (allow.length && !allow.includes(email))) {
+    return { ok: false, res: json({ error: "Not authorized" }, 403) };
+  }
+
+  return { ok: true };
 }
 
-function normalizePayload(input) {
-  const payload = input && typeof input === "object" ? input : {};
-  return {
-    title: typeof payload.title === "string" ? payload.title : "Dynasty Wagering",
-    intro: typeof payload.intro === "string" ? payload.intro : "",
-    tiers: Array.isArray(payload.tiers)
-      ? payload.tiers.map((t) => ({
-          label: typeof t?.label === "string" ? t.label : "",
-          text: typeof t?.text === "string" ? t.text : "",
-          amount: typeof t?.amount === "string" || typeof t?.amount === "number" ? t.amount : "",
-        }))
-      : [],
-    notes: Array.isArray(payload.notes) ? payload.notes.map(String) : [],
-  };
+function keyForSeason(season) {
+  return `data/dynasty/wagering_tracker_${season}.json`;
 }
 
-export async function onRequest({ request, env }) {
+const DEFAULT_TRACKER = {
+  // Keep schema flexible; UI can render/adjust.
+  updatedAt: null,
+  notesHtml: "",
+  rows: [],
+};
+
+export async function onRequest(context) {
+  const { request, env } = context;
+
   try {
-    const { ok, error } = await requireAdmin(request, env);
-    if (!ok) return json({ ok: false, error }, 401);
+    const auth = await requireAdmin(request, env);
+    if (!auth.ok) return auth.res;
 
+    const r2 = ensureR2(env);
     const url = new URL(request.url);
-    const season = url.searchParams.get("season") || "";
-    const year = season && /^\d{4}$/.test(season) ? season : "";
-    if (!year) return json({ ok: false, error: "Missing/invalid season" }, 400);
+    const season = Number(url.searchParams.get("season") || 0) || null;
+    if (!season) return json({ error: "Missing season" }, 400);
 
-    const bucket = ensureR2(env);
-    const key = `data/dynasty/wagering_${year}.json`;
+    const KEY = keyForSeason(season);
 
     if (request.method === "GET") {
-      const payload = (await readR2Json(bucket, key)) || normalizePayload({});
-      return json({ ok: true, season: year, payload });
+      const obj = await r2.get(KEY);
+      if (!obj) return json({ season, tracker: DEFAULT_TRACKER });
+      const txt = await obj.text();
+      try {
+        const parsed = JSON.parse(txt);
+        return json({ season, tracker: parsed?.tracker || parsed || DEFAULT_TRACKER });
+      } catch {
+        return json({ season, tracker: DEFAULT_TRACKER });
+      }
     }
 
     if (request.method === "PUT") {
-      const body = await request.json().catch(() => ({}));
-      const payload = normalizePayload(body?.payload);
-      await writeR2Json(bucket, key, payload);
-      return json({ ok: true, season: year });
+      const body = await request.json().catch(() => null);
+      if (!body || typeof body !== "object") return json({ error: "Invalid JSON" }, 400);
+      const tracker = body.tracker ?? body.data ?? body;
+
+      const payload = {
+        season,
+        tracker: {
+          ...DEFAULT_TRACKER,
+          ...tracker,
+          updatedAt: new Date().toISOString(),
+        },
+      };
+
+      await r2.put(KEY, JSON.stringify(payload, null, 2), {
+        httpMetadata: { contentType: "application/json" },
+      });
+
+      return json({ ok: true, season });
     }
 
-    return json({ ok: false, error: "Method not allowed" }, 405);
+    return json({ error: "Method not allowed" }, 405);
   } catch (e) {
-    return json({ ok: false, error: e?.message || String(e) }, 500);
+    return json({ error: e?.message || String(e) }, 500);
   }
 }

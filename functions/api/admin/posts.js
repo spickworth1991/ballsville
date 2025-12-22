@@ -1,12 +1,11 @@
 // functions/api/admin/posts.js
-// Admin API for Posts (News + Mini-Games) stored in R2.
+// Admin read/write for News + Mini-Games posts stored in R2.
 //
-// If the R2 JSON does not exist yet, we return a local seed (exported from
-// the old Supabase table) so you can review it in the admin UI and Save
-// once to migrate.
-
-import { requireAdmin } from "../_adminAuth";
-import { POSTS_SEED } from "../seeds/posts";
+// GET  -> returns { posts: [...] }
+// PUT  -> body { posts: [...] }
+//
+// Storage key is deterministic so re-save replaces data:
+//   data/posts/posts.json
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -19,75 +18,140 @@ function json(data, status = 200) {
 }
 
 function ensureR2(env) {
-  const b = env.admin_bucket || env;
-  if (!b || typeof b.get !== "function" || typeof b.put !== "function") {
-    throw new Error("R2 binding missing: expected env.admin_bucket (or env) to be an R2 bucket binding.");
-  }
+  // support both bindings used across the project
+  const b = env.admin_bucket || env.ADMIN_BUCKET || env;
+  if (!b?.get) throw new Error("R2 bucket binding missing (admin_bucket/ADMIN_BUCKET)");
   return b;
 }
 
-async function readR2Json(bucket, key) {
-  const obj = await bucket.get(key);
-  if (!obj) return null;
-  return await obj.json();
-}
+async function requireAdmin(request, env) {
+  // Reuse the site's Supabase admin auth model.
+  // Frontend sends: Authorization: Bearer <access_token>
+  const auth = request.headers.get("authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (!token) return { ok: false, res: json({ error: "Missing auth token" }, 401) };
 
-async function writeR2Json(bucket, key, data) {
-  await bucket.put(key, JSON.stringify(data, null, 2), {
-    httpMetadata: { contentType: "application/json; charset=utf-8" },
-    customMetadata: { updatedAt: new Date().toISOString() },
+  // Keep existing binding names (don’t rename). Support either convention.
+  const url = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = env.SUPABASE_ANON_KEY || env.SUPABASE_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_KEY;
+  if (!url || !key) return { ok: false, res: json({ error: "Supabase env not configured" }, 500) };
+
+  const me = await fetch(`${url}/auth/v1/user`, {
+    headers: {
+      authorization: `Bearer ${token}`,
+      apikey: key,
+    },
   });
+
+  if (!me.ok) return { ok: false, res: json({ error: "Not authenticated" }, 401) };
+  const user = await me.json();
+
+  const allow = (env.ADMIN_EMAILS || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const email = String(user?.email || "").toLowerCase();
+  if (!email || (allow.length && !allow.includes(email))) {
+    return { ok: false, res: json({ error: "Not authorized" }, 403) };
+  }
+
+  return { ok: true, token, user };
 }
 
-function normalizePost(p, idx) {
-  const id = String(p?.id || idx);
-  const created_at = typeof p?.created_at === "string" ? p.created_at : new Date().toISOString();
-  const tags = Array.isArray(p?.tags)
-    ? p.tags.map(String)
-    : typeof p?.tags === "string"
-      ? p.tags
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
+const KEY = "data/posts/posts.json";
 
-  return {
-    id,
-    created_at,
-    title: String(p?.title || "").trim(),
-    body: String(p?.body || "").trim(),
-    tags,
-    pinned: Boolean(p?.pinned),
-    imageKey: typeof p?.imageKey === "string" ? p.imageKey : "",
-    imageUrl: typeof p?.imageUrl === "string" ? p.imageUrl : "",
-  };
-}
+// One-time seed from Supabase export (used only if R2 JSON does not exist yet)
+const SEED_POSTS = [
+  {
+    "id": "71215870-3640-4166-ab75-b243770c0348",
+    "created_at": "2025-11-29T02:39:58.796193Z",
+    "title": "Redraft Promo",
+    "body": "Brief Explanation",
+    "tags": [
+      "Promo"
+    ],
+    "pinned": false,
+    "imageKey": "",
+    "imageUrl": "https://pxwgquaviukhzhvgzvsg.supabase.co/storage/v1/object/public/news/f764b3cd-ade6-4f45-9578-7ae8b4e19285.mp4"
+  },
+  {
+    "id": "72c95cc6-18cd-48c4-9de8-6bba8273d72d",
+    "created_at": "2025-11-29T02:44:20.868977Z",
+    "title": "Guess the most receiving yards for week 13",
+    "body": "Submit your guess in the hub at http://sleeper.com/i/JKmljme9dDbW3 !!",
+    "tags": [
+      "Mini Game"
+    ],
+    "pinned": false,
+    "imageKey": "",
+    "imageUrl": ""
+  },
+  {
+    "id": "e2533afb-fe94-442b-b1e8-7287b1a0bd3b",
+    "created_at": "2025-11-29T02:17:31.198264Z",
+    "title": "test",
+    "body": "Guess The most rushing yards week 8! Submit your guesses in the hub at http://sleeper.com/i/JKmljme9dDbW3",
+    "tags": [
+      "Mini Game"
+    ],
+    "pinned": false,
+    "imageKey": "",
+    "imageUrl": ""
+  }
+];
 
 export async function onRequest(context) {
   const { request, env } = context;
 
   try {
-    await requireAdmin(request, env);
+    const auth = await requireAdmin(request, env);
+    if (!auth.ok) return auth.res;
 
-    const bucket = ensureR2(env);
-    const key = `data/posts/posts.json`;
+    const r2 = ensureR2(env);
 
     if (request.method === "GET") {
-      const existing = await readR2Json(bucket, key);
-      const payload = existing || POSTS_SEED || { posts: [] };
-      return json(payload, 200);
+      const obj = await r2.get(KEY);
+      if (!obj) return json({ posts: SEED_POSTS });
+      const txt = await obj.text();
+      try {
+        const parsed = JSON.parse(txt);
+        const posts = Array.isArray(parsed?.posts) ? parsed.posts : Array.isArray(parsed) ? parsed : [];
+        return json({ posts });
+      } catch {
+        return json({ posts: [] });
+      }
     }
 
     if (request.method === "PUT") {
-      const body = await request.json().catch(() => ({}));
-      const list = Array.isArray(body?.posts) ? body.posts : [];
-      const normalized = list.map(normalizePost);
+      const body = await request.json().catch(() => null);
+      const posts = Array.isArray(body?.posts) ? body.posts : [];
 
-      await writeR2Json(bucket, key, { posts: normalized });
-      return json({ ok: true }, 200);
+      // Light validation/sanitization
+      const cleaned = posts.map((p, idx) => {
+        const id = String(p?.id || "").trim() || String(idx + 1);
+        const title = String(p?.title || "").trim();
+        const bodyText = String(p?.body || "");
+        const tags = Array.isArray(p?.tags) ? p.tags.map((t) => String(t).trim()).filter(Boolean) : [];
+
+        return {
+          id,
+          title,
+          body: bodyText,
+          tags,
+          pin: !!p?.pin,
+          is_coupon: !!p?.is_coupon,
+          expires_at: p?.expires_at ? String(p.expires_at) : null,
+          created_at: p?.created_at ? String(p.created_at) : new Date().toISOString(),
+          imageKey: typeof p?.imageKey === "string" ? p.imageKey : "",
+          image_url: typeof p?.image_url === "string" ? p.image_url : "",
+        };
+      });
+
+      await r2.put(KEY, JSON.stringify({ posts: cleaned }, null, 2), {
+        httpMetadata: { contentType: "application/json; charset=utf-8" },
+      });
+
+      return json({ ok: true, key: KEY, count: cleaned.length });
     }
 
-    return json({ error: "Method not allowed" }, 405);
+    return json({ error: "Method Not Allowed" }, 405);
   } catch (e) {
     return json({ error: e?.message || "Server error" }, 500);
   }
