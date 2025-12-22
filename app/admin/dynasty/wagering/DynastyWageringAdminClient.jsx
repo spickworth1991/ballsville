@@ -19,6 +19,14 @@ function clampNum(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function sumPot(entries) {
+  return (entries || []).reduce((acc, e) => {
+    const n = Number(e?.amount);
+    if (!Number.isFinite(n)) return acc;
+    return acc + n;
+  }, 0);
+}
+
 export default function DynastyWageringAdminClient() {
   const [tracker, setTracker] = useState(DEFAULT_TRACKER);
   const [loading, setLoading] = useState(true);
@@ -27,6 +35,7 @@ export default function DynastyWageringAdminClient() {
   const [okMsg, setOkMsg] = useState("");
 
   const bust = useMemo(() => `v=${Date.now()}`, []);
+  const computedPot = useMemo(() => sumPot(tracker.entries), [tracker.entries]);
 
   async function getToken() {
     const supabase = getSupabase();
@@ -62,13 +71,14 @@ export default function DynastyWageringAdminClient() {
     setSaving(true);
     try {
       const token = await getToken();
+      const nextTracker = { ...tracker, pot: computedPot };
       const res = await fetch(`/api/admin/dynasty-wagering?season=${SEASON}`, {
         method: "PUT",
         headers: {
           "content-type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ season: SEASON, tracker }),
+        body: JSON.stringify({ season: SEASON, tracker: nextTracker }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || `Save failed (${res.status})`);
@@ -140,9 +150,10 @@ export default function DynastyWageringAdminClient() {
             <input
               className="input w-full"
               type="number"
-              value={tracker.pot}
-              onChange={(e) => setTracker((t) => ({ ...t, pot: clampNum(e.target.value) }))}
+              value={computedPot}
+              readOnly
             />
+            <div className="text-xs text-muted">Auto-calculated from all wagers (amounts) below.</div>
           </label>
 
           <label className="space-y-1 sm:col-span-2">

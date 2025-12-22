@@ -20,9 +20,8 @@ function json(data, status = 200) {
 }
 
 function ensureR2(env) {
-  // support both bindings used across the project
-  const b = env.admin_bucket || env.ADMIN_BUCKET || env;
-  if (!b?.get) throw new Error("R2 bucket binding missing (admin_bucket/ADMIN_BUCKET)");
+  const b = env.admin_bucket || env;
+  if (!b || typeof b.get !== "function") throw new Error("R2 bucket binding missing (admin_bucket)");
   return b;
 }
 
@@ -56,11 +55,26 @@ function keyForSeason(season) {
 }
 
 const DEFAULT_TRACKER = {
-  // Keep schema flexible; UI can render/adjust.
-  updatedAt: null,
-  notesHtml: "",
-  rows: [],
+  updated: "", // freeform display string
+  pot: 0, // computed
+  entries: [], // [{id, username, amount}]
 };
+
+function computePot(entries) {
+  return (Array.isArray(entries) ? entries : []).reduce((acc, e) => {
+    const n = Number(e?.amount);
+    if (!Number.isFinite(n)) return acc;
+    return acc + n;
+  }, 0);
+}
+
+function normalizeEntry(e, idx) {
+  const id = String(e?.id || idx || `e_${Math.random().toString(16).slice(2)}_${Date.now()}`);
+  const username = String(e?.username || "").trim();
+  const amountNum = Number(e?.amount);
+  const amount = Number.isFinite(amountNum) ? amountNum : 0;
+  return { id, username, amount };
+}
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -82,7 +96,15 @@ export async function onRequest(context) {
       const txt = await obj.text();
       try {
         const parsed = JSON.parse(txt);
-        return json({ season, tracker: parsed?.tracker || parsed || DEFAULT_TRACKER });
+        const raw = parsed?.tracker || parsed || DEFAULT_TRACKER;
+        const entries = Array.isArray(raw?.entries) ? raw.entries : [];
+        const tracker = {
+          ...DEFAULT_TRACKER,
+          ...raw,
+          entries,
+          pot: computePot(entries),
+        };
+        return json({ season, tracker });
       } catch {
         return json({ season, tracker: DEFAULT_TRACKER });
       }
@@ -92,13 +114,25 @@ export async function onRequest(context) {
       const body = await request.json().catch(() => null);
       if (!body || typeof body !== "object") return json({ error: "Invalid JSON" }, 400);
       const tracker = body.tracker ?? body.data ?? body;
+      const entriesRaw = Array.isArray(tracker?.entries) ? tracker.entries : [];
+      const entries = entriesRaw
+        .map((e, idx) => {
+          const id = String(e?.id || idx || crypto?.randomUUID?.() || `id_${Date.now()}_${idx}`);
+          const username = String(e?.username || "").trim();
+          const amountNum = Number(e?.amount);
+          const amount = Number.isFinite(amountNum) ? amountNum : 0;
+          return { id, username, amount };
+        })
+        .filter((e) => e.username);
 
       const payload = {
         season,
         tracker: {
           ...DEFAULT_TRACKER,
-          ...tracker,
-          updatedAt: new Date().toISOString(),
+          updated: String(tracker?.updated || "").trim(),
+          entries,
+          pot: computePot(entries),
+          serverUpdatedAt: new Date().toISOString(),
         },
       };
 
