@@ -1,11 +1,12 @@
 // functions/api/admin/posts.js
-// Admin read/write for News + Mini-Games posts stored in R2.
+// Admin API for Posts (News + Mini-Games) stored in R2.
 //
-// GET  -> returns { posts: [...] }
-// PUT  -> body { posts: [...] }
-//
-// Storage key is deterministic so re-save replaces data:
-//   data/posts/posts.json
+// If the R2 JSON does not exist yet, we return a local seed (exported from
+// the old Supabase table) so you can review it in the admin UI and Save
+// once to migrate.
+
+import { requireAdmin } from "../_adminAuth";
+import { POSTS_SEED } from "../seeds/posts";
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -19,98 +20,74 @@ function json(data, status = 200) {
 
 function ensureR2(env) {
   const b = env.admin_bucket || env;
-  if (!b || typeof b.get !== "function") throw new Error("R2 bucket binding missing (admin_bucket)");
+  if (!b || typeof b.get !== "function" || typeof b.put !== "function") {
+    throw new Error("R2 binding missing: expected env.admin_bucket (or env) to be an R2 bucket binding.");
+  }
   return b;
 }
 
-async function requireAdmin(request, env) {
-  // Reuse the site's Supabase admin auth model.
-  // Frontend sends: Authorization: Bearer <access_token>
-  const auth = request.headers.get("authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token) return { ok: false, res: json({ error: "Missing auth token" }, 401) };
-
-  // Keep existing binding names (don’t rename). Support either convention.
-  const url = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = env.SUPABASE_ANON_KEY || env.SUPABASE_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_KEY;
-  if (!url || !key) return { ok: false, res: json({ error: "Supabase env not configured" }, 500) };
-
-  const me = await fetch(`${url}/auth/v1/user`, {
-    headers: {
-      authorization: `Bearer ${token}`,
-      apikey: key,
-    },
-  });
-
-  if (!me.ok) return { ok: false, res: json({ error: "Not authenticated" }, 401) };
-  const user = await me.json();
-
-  const allow = (env.ADMIN_EMAILS || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
-  const email = String(user?.email || "").toLowerCase();
-  if (!email || (allow.length && !allow.includes(email))) {
-    return { ok: false, res: json({ error: "Not authorized" }, 403) };
-  }
-
-  return { ok: true, token, user };
+async function readR2Json(bucket, key) {
+  const obj = await bucket.get(key);
+  if (!obj) return null;
+  return await obj.json();
 }
 
-const KEY = "data/posts/posts.json";
+async function writeR2Json(bucket, key, data) {
+  await bucket.put(key, JSON.stringify(data, null, 2), {
+    httpMetadata: { contentType: "application/json; charset=utf-8" },
+    customMetadata: { updatedAt: new Date().toISOString() },
+  });
+}
+
+function normalizePost(p, idx) {
+  const id = String(p?.id || idx);
+  const created_at = typeof p?.created_at === "string" ? p.created_at : new Date().toISOString();
+  const tags = Array.isArray(p?.tags)
+    ? p.tags.map(String)
+    : typeof p?.tags === "string"
+      ? p.tags
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+
+  return {
+    id,
+    created_at,
+    title: String(p?.title || "").trim(),
+    body: String(p?.body || "").trim(),
+    tags,
+    pinned: Boolean(p?.pinned),
+    imageKey: typeof p?.imageKey === "string" ? p.imageKey : "",
+    imageUrl: typeof p?.imageUrl === "string" ? p.imageUrl : "",
+  };
+}
 
 export async function onRequest(context) {
   const { request, env } = context;
 
   try {
-    const auth = await requireAdmin(request, env);
-    if (!auth.ok) return auth.res;
+    await requireAdmin(request, env);
 
-    const r2 = ensureR2(env);
+    const bucket = ensureR2(env);
+    const key = `data/posts/posts.json`;
 
     if (request.method === "GET") {
-      const obj = await r2.get(KEY);
-      if (!obj) return json({ posts: [] });
-      const txt = await obj.text();
-      try {
-        const parsed = JSON.parse(txt);
-        const posts = Array.isArray(parsed?.posts) ? parsed.posts : Array.isArray(parsed) ? parsed : [];
-        return json({ posts });
-      } catch {
-        return json({ posts: [] });
-      }
+      const existing = await readR2Json(bucket, key);
+      const payload = existing || POSTS_SEED || { posts: [] };
+      return json(payload, 200);
     }
 
     if (request.method === "PUT") {
-      const body = await request.json().catch(() => null);
-      const posts = Array.isArray(body?.posts) ? body.posts : [];
+      const body = await request.json().catch(() => ({}));
+      const list = Array.isArray(body?.posts) ? body.posts : [];
+      const normalized = list.map(normalizePost);
 
-      // Light validation/sanitization
-      const cleaned = posts.map((p, idx) => {
-        const id = String(p?.id || "").trim() || String(idx + 1);
-        const title = String(p?.title || "").trim();
-        const bodyText = String(p?.body || "");
-        const tags = Array.isArray(p?.tags) ? p.tags.map((t) => String(t).trim()).filter(Boolean) : [];
-
-        return {
-          id,
-          title,
-          body: bodyText,
-          tags,
-          pin: !!p?.pin,
-          is_coupon: !!p?.is_coupon,
-          expires_at: p?.expires_at ? String(p.expires_at) : null,
-          created_at: p?.created_at ? String(p.created_at) : new Date().toISOString(),
-          imageKey: typeof p?.imageKey === "string" ? p.imageKey : "",
-          image_url: typeof p?.image_url === "string" ? p.image_url : "",
-        };
-      });
-
-      await r2.put(KEY, JSON.stringify({ posts: cleaned }, null, 2), {
-        httpMetadata: { contentType: "application/json; charset=utf-8" },
-      });
-
-      return json({ ok: true, key: KEY, count: cleaned.length });
+      await writeR2Json(bucket, key, { posts: normalized });
+      return json({ ok: true }, 200);
     }
 
-    return json({ error: "Method Not Allowed" }, 405);
+    return json({ error: "Method not allowed" }, 405);
   } catch (e) {
     return json({ error: e?.message || "Server error" }, 500);
   }
