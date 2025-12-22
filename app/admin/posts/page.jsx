@@ -4,8 +4,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import AdminGuard from "@/components/AdminGuard";
-import { getSupabase } from "@/src/lib/supabaseClient";
-import { CURRENT_SEASON } from "@/src/lib/season";
+import { getSupabase } from "@/lib/supabaseClient";
+import { CURRENT_SEASON } from "@/lib/season";
 
 function uid() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();

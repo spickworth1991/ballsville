@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import OwnerHeroBlock from "@/src/components/OwnerHeroBlock";
+import OwnerHeroBlock from "@/components/blocks/OwnerHeroBlock";
 
 const SEASON = 2025;
 

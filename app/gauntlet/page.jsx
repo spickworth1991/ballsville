@@ -1,8 +1,8 @@
 // src/app/gauntlet/page.jsx
 import Link from "next/link";
-import GauntletLegionsClient from "@/lib/GauntletLegionsClient";
-import OwnerHeroBlock from "@/src/components/OwnerHeroBlock";
-import { CURRENT_SEASON } from "@/src/lib/season";
+import GauntletLegionsClient from "@/components/gauntlet/GauntletLegionsClient";
+import OwnerHeroBlock from "@/components/blocks/OwnerHeroBlock";
+import { CURRENT_SEASON } from "@/lib/season";
 
 const DOC_EMBED_SRC =
   "https://docs.google.com/document/d/e/2PACX-1vT1-uDhonEEjWlgg4nT1Ix5HHcgwIKCWRuVTUCK9P2HH19bp_MwER8R_BCxM2EQ4mNMe6nSyJaxpfpC/pub?embedded=true";

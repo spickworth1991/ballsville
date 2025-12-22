@@ -1,8 +1,8 @@
 // app/big-game/page.jsx
 import Link from "next/link";
-import BigGameDivisionsClient from "@/lib/BigGameDivisionsClient";
-import OwnerHeroBlock from "@/src/components/OwnerHeroBlock";
-import { CURRENT_SEASON } from "@/src/lib/season";
+import BigGameDivisionsClient from "@/components/big-game/BigGameDivisionsClient";
+import OwnerHeroBlock from "@/components/blocks/OwnerHeroBlock";
+import { CURRENT_SEASON } from "@/lib/season";
 
 export const metadata = {
   title: "The BIG Game | Ballsville",

@@ -2,7 +2,7 @@
 "use client";
 
 import AdminGuard from "@/components/AdminGuard";
-import DynastyWageringAdminClient from "./DynastyWageringAdminClient";
+import DynastyWageringAdminClient from "../../../../components/dynasty/DynastyWageringAdminClient";
 
 export default function Page() {
   return (

@@ -1,6 +1,6 @@
 // app/dynasty/rosters/page.jsx
 import { siteConfig } from "@/app/config/siteConfig";
-import DynastyRostersClient from "./DynastyRostersClient";
+import DynastyRostersClient from "../../../components/dynasty/DynastyRostersClient";
 
 const pageTitle = `All Dynasty Rosters | ${siteConfig.shortName}`;
 const pageDesc =

@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getSupabase } from "@/src/lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
 import RedraftAdminClient from "./RedraftAdminClient";
 
 function parseAdmins() {

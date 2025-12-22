@@ -2,8 +2,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useMemo } from "react";
-import { siteConfig } from "@/app/config/siteConfig";
-import { CURRENT_SEASON } from "@/src/lib/season";
+import { CURRENT_SEASON } from "@/lib/season";
 
 const LEG3_YEAR = CURRENT_SEASON;
 

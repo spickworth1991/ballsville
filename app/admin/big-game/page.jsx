@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
-import BigGameAdminClient from "@/lib/BigGameAdminClient";
+import BigGameAdminClient from "@/components/admin/big-game/BigGameAdminClient";
 
 function parseAdmins() {
   return (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")

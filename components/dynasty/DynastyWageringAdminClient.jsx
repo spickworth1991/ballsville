@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { getSupabase } from "@/src/lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
 
 const SEASON = 2025;
 

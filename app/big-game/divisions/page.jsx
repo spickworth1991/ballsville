@@ -1,4 +1,4 @@
-import DivisionPageClient from "./DivisionPageClient";
+import DivisionPageClient from "../../../components/big-game/DivisionPageClient";
 import { Suspense } from "react";
 
 export const metadata = {

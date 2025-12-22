@@ -1,6 +1,6 @@
 // app/dynasty/wagering-demo/page.jsx
 import { siteConfig } from "@/app/config/siteConfig";
-import DynastyWageringDemoClient from "./DynastyWageringDemoClient";
+import DynastyWageringDemoClient from "../../../components/dynasty/DynastyWageringDemoClient";
 
 const pageTitle = `Dynasty Wagering Demo | ${siteConfig.shortName}`;
 const pageDesc =

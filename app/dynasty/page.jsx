@@ -1,9 +1,9 @@
 // app/dynasty/page.jsx
 import Image from "next/image";
 import Link from "next/link";
-import DynastyLeaguesClient from "@/lib/DynastyLeaguesClient";
-import OwnerHeroBlock from "@/src/components/OwnerHeroBlock";
-import { CURRENT_SEASON } from "@/src/lib/season";
+import DynastyLeaguesClient from "@/components/dynasty/DynastyLeaguesClient";
+import OwnerHeroBlock from "@/components/blocks/OwnerHeroBlock";
+import { CURRENT_SEASON } from "@/lib/season";
 
 export const metadata = {
   title: "The Dynasty Game | Ballsville",

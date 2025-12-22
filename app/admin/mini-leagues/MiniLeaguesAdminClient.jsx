@@ -4,8 +4,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { getSupabase } from "@/src/lib/supabaseClient";
-import { CURRENT_SEASON } from "@/src/lib/season";
+import { getSupabase } from "@/lib/supabaseClient";
+import { CURRENT_SEASON } from "@/lib/season";
 
 const SEASON = CURRENT_SEASON;
 

@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
-import DynastyAdminClient from "@/lib/DynastyAdminClient";
+import DynastyAdminClient from "@/components/admin/dynasty/DynastyAdminClient";
 
 function parseAdmins() {
   return (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")

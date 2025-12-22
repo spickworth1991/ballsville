@@ -5,7 +5,7 @@ module.exports = {
     "./app/**/*.{js,jsx,ts,tsx}",
     "./components/**/*.{js,jsx,ts,tsx}",
     "./templates/**/*.{js,jsx,ts,tsx}",
-    "./src/lib/**/*.{js,jsx,ts,tsx}",      // 🔥 add this line
+    "./lib/**/*.{js,jsx,ts,tsx}",      // 🔥 add this line
     // or, if you prefer: "./src/**/*.{js,jsx,ts,tsx}"
   ],
   theme: {

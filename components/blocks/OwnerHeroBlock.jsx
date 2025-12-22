@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import { CURRENT_SEASON } from "@/src/lib/season";
+import { CURRENT_SEASON } from "@/lib/season";
 
 function safeMode(mode) {
   const m = String(mode || "").trim().toLowerCase();

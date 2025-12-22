@@ -1,6 +1,6 @@
 // src/app/admin/gauntlet/page.jsx
 import Link from "next/link";
-import GauntletAdminClient from "@/lib/GauntletAdminClient";
+import GauntletAdminClient from "@/components/admin/gauntlet/GauntletAdminClient";
 
 export const metadata = {
   title: "Gauntlet Admin | Ballsville",

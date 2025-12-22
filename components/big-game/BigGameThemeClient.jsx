@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { CURRENT_SEASON } from "@/src/lib/season";
+import { CURRENT_SEASON } from "@/lib/season";
 
 const DEFAULT_SEASON = CURRENT_SEASON;
 const R2_KEY_FOR = (season) => `data/biggame/leagues_${season}.json`;

@@ -2,8 +2,8 @@
 
 import { useMemo } from "react";
 import { useSearchParams } from "next/navigation";
-import BigGameDivisionClient from "@/lib/BigGameDivisionClient";
-import { CURRENT_SEASON } from "@/src/lib/season";
+import BigGameDivisionClient from "@/components/big-game/BigGameDivisionClient";
+import { CURRENT_SEASON } from "@/lib/season";
 
 export default function DivisionPageClient() {
   const sp = useSearchParams();

@@ -43,4 +43,5 @@ tmp
 
 make-icons.mjs
 wrangler.toml
+/unused/
 

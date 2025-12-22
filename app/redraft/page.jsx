@@ -2,8 +2,8 @@
 import { siteConfig } from "@/app/config/siteConfig";
 import RedraftUpdatesClient from "./RedraftUpdatesClient";
 import RedraftLeaguesClient from "./RedraftLeaguesClient";
-import OwnerHeroBlock from "@/src/components/OwnerHeroBlock";
-import { CURRENT_SEASON } from "@/src/lib/season";
+import OwnerHeroBlock from "@/components/blocks/OwnerHeroBlock";
+import { CURRENT_SEASON } from "@/lib/season";
 
 const pageTitle = `The Redraft Game | ${siteConfig.shortName}`;
 

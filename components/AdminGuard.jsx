@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getSupabase } from "@/src/lib/supabaseClient"; // ⬅️ match your Gauntlet imports
+import { getSupabase } from "@/lib/supabaseClient"; // ⬅️ match your Gauntlet imports
 
 function parseAdmins() {
   return (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")
