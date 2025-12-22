@@ -27,7 +27,7 @@ async function requireAdmin(request, env) {
 
   // Keep existing binding names (don’t rename). Support either convention.
   const url = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const key = env.SUPABASE_ANON_KEY || env.SUPABASE_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_KEY;
   if (!url || !key) return { ok: false, res: json({ error: "Supabase env not configured" }, 500) };
 
   const me = await fetch(`${url}/auth/v1/user`, {

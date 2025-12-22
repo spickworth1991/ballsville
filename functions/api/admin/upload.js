@@ -58,7 +58,7 @@ async function requireAdmin(context) {
   if (!token) return { ok: false, status: 401, error: "Missing Authorization Bearer token." };
 
   const supabaseUrl = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnon = env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseAnon = env.SUPABASE_ANON_KEY || env.SUPABASE_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_KEY;
 
   const adminsRaw = (env.ADMIN_EMAILS || env.NEXT_PUBLIC_ADMIN_EMAILS || "").trim();
   const admins = adminsRaw
@@ -67,7 +67,7 @@ async function requireAdmin(context) {
     .filter(Boolean);
 
   if (!supabaseUrl || !supabaseAnon) {
-    return { ok: false, status: 500, error: "Missing SUPABASE_URL / SUPABASE_ANON_KEY." };
+    return { ok: false, status: 500, error: "Missing SUPABASE_URL / SUPABASE_ANON_KEY (or SUPABASE_KEY)." };
   }
   if (!admins.length) return { ok: false, status: 500, error: "ADMIN_EMAILS is not set." };
 
