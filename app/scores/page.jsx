@@ -867,33 +867,46 @@ function GodCard({ god, divisionName, isOpen, onToggle, viewMode, roundFilter, f
         (scoreA !== 0 || scoreB !== 0);
 
       return {
-        match: m.matchIndex,
-        round: selectedRound.roundNumber,
-        week: selectedRound.week,
+              match: m.matchIndex,
+              round: selectedRound.roundNumber,
+              week: selectedRound.week,
 
-        teamAName: teamA.ownerName,
-        teamBName: teamB.ownerName,
-        teamASeed: teamA.seed,
-        teamBSeed: teamB.seed,
-        teamASide: teamA.side || null,
-        teamBSide: teamB.side || null,
+              teamAName: teamA.ownerName,
+              teamBName: teamB.ownerName,
+              teamASeed: teamA.seed,
+              teamBSeed: teamB.seed,
+              teamASide: teamA.side || null,
+              teamBSide: teamB.side || null,
 
-        scoreA: Number(scoreA || 0),
-        scoreB: Number(scoreB || 0),
+              scoreA: Number(scoreA || 0),
+              scoreB: Number(scoreB || 0),
 
-        winnerRosterId: winnerId,
+              winnerRosterId: winnerId,
 
-        // ✅ add these so the table can reliably compare winner ids
-        teamARosterId: rosterA,
-        teamBRosterId: rosterB,
+              // ✅ compare ids reliably
+              teamARosterId: rosterA,
+              teamBRosterId: rosterB,
 
-        teamAIsWinner,
-        teamBIsWinner,
-        isPlayed,
+              teamAIsWinner,
+              teamBIsWinner,
+              isPlayed,
 
-        lineupA: m.lineupA || null,
-        lineupB: m.lineupB || null,
-      };
+              lineupA: m.lineupA || null,
+              lineupB: m.lineupB || null,
+
+              // ✅ ALIASES so MatchupBreakdown + LineupSide keep working
+              lightOwnerName: teamA.ownerName,
+              darkOwnerName: teamB.ownerName,
+              lightSeed: teamA.seed,
+              darkSeed: teamB.seed,
+              lightScore: Number(scoreA || 0),
+              darkScore: Number(scoreB || 0),
+              lightIsWinner: teamAIsWinner,
+              darkIsWinner: teamBIsWinner,
+              lightLineup: m.lineupA || null,
+              darkLineup: m.lineupB || null,
+            };
+
 
 
     });
