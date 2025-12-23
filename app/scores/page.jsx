@@ -181,14 +181,12 @@ function GauntletLeg3Inner() {
         }
 
         // Pick a "leader" for this god based on the best total we can find.
-        // Prefer leg3Total if present; fallback to sum of leg3Weekly; fallback to 0.
         function getLeg3Total(t) {
           const direct = t?.leg3Total;
           if (typeof direct === "number") return direct;
 
           const weekly = t?.leg3Weekly;
           if (weekly && typeof weekly === "object") {
-            // sum numeric week values
             let sum = 0;
             for (const v of Object.values(weekly)) {
               const n = Number(v);
@@ -214,7 +212,6 @@ function GauntletLeg3Inner() {
         if (!best) continue;
 
         rows.push({
-          // match the fields your Week 17 table expects
           division: divisionName,
           godIndex,
           godName,
@@ -232,7 +229,6 @@ function GauntletLeg3Inner() {
       }
     }
 
-    // De-dupe (in case the same team shows up multiple times)
     const seen = new Set();
     const deduped = [];
     for (const r of rows) {
@@ -242,11 +238,9 @@ function GauntletLeg3Inner() {
       deduped.push(r);
     }
 
-    // Sort by Leg 3 total desc and assign ranks
     deduped.sort((a, b) => Number(b.leg3Total || 0) - Number(a.leg3Total || 0));
     return deduped.map((r, idx) => ({ ...r, rank: idx + 1 }));
   }, [forceWeek17Preview, divisionsData]);
-
 
   function godKey(divisionName, godIndex) {
     return `${divisionName}::${godIndex}`;
@@ -375,10 +369,10 @@ function GauntletLeg3Inner() {
       clearInterval(intervalId);
     };
   }, [payloadMeta, updatedAt]);
+
   const finalizedThroughWeek = payloadMeta?.finalizedThroughWeek ?? null;
   const week16Finalized =
-  forceWeek17Preview || (finalizedThroughWeek != null && Number(finalizedThroughWeek) >= 16);
-
+    forceWeek17Preview || (finalizedThroughWeek != null && Number(finalizedThroughWeek) >= 16);
 
   const divisionsMeta = payloadMeta?.divisionsMeta || {};
   const realGrandStandings = Array.isArray(grand?.standings) ? grand.standings : [];
@@ -387,18 +381,18 @@ function GauntletLeg3Inner() {
     : realGrandStandings;
 
   // ✅ If preview mode is ON and the real list is empty, fake it from current data.
-  const grandStandings = (forceWeek17Preview && realGrandStandings.length === 0)
-    ? previewGrandStandings
-    : realGrandStandings;
+  const grandStandings =
+    forceWeek17Preview && realGrandStandings.length === 0 ? previewGrandStandings : realGrandStandings;
 
-  const grandParticipants = (forceWeek17Preview && realGrandParticipants.length === 0)
-    ? previewGrandStandings
-    : realGrandParticipants;
-
+  const grandParticipants =
+    forceWeek17Preview && realGrandParticipants.length === 0
+      ? previewGrandStandings
+      : realGrandParticipants;
 
   const hasWeek17Scores =
     grandParticipants.length > 0 &&
     grandParticipants.some((p) => typeof p.week17Score === "number" && p.week17Score !== 0);
+
   function SideBadge({ side }) {
     if (!side) return null;
 
@@ -411,11 +405,54 @@ function GauntletLeg3Inner() {
       : "border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)]/12 text-[color:var(--color-accent)]";
 
     return (
-      <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[0.65rem] leading-none ${cls}`}>
+      <span
+        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[0.65rem] leading-none ${cls}`}
+      >
         {pretty}
       </span>
     );
   }
+
+  // ✅ Build a map of { "leagueId::rosterId" -> "light" | "dark" } from division JSONs
+  const sideByLeagueRosterKey = useMemo(() => {
+    const map = new Map();
+
+    function putTeam(t) {
+      if (!t) return;
+      const leagueId = t.leagueId ?? t.league_id;
+      const rosterId = t.rosterId ?? t.roster_id;
+      const side = t.side ?? t.bracketSide ?? t.seedSide;
+      if (!leagueId || rosterId == null || !side) return;
+      map.set(`${leagueId}::${rosterId}`, String(side).toLowerCase());
+    }
+
+    for (const divisionData of Object.values(divisionsData || {})) {
+      const gods = Array.isArray(divisionData?.gods) ? divisionData.gods : [];
+      for (const god of gods) {
+        // Pairings
+        const pairings = Array.isArray(god?.pairings) ? god.pairings : [];
+        for (const p of pairings) {
+          putTeam(p?.teamA);
+          putTeam(p?.teamB);
+        }
+
+        // Bracket rounds
+        const rounds = Array.isArray(god?.bracketRounds) ? god.bracketRounds : [];
+        for (const r of rounds) {
+          const results = Array.isArray(r?.results) ? r.results : [];
+          for (const m of results) {
+            putTeam(m?.teamA);
+            putTeam(m?.teamB);
+          }
+        }
+
+        // Champion (if present)
+        putTeam(god?.champion?.winnerTeam);
+      }
+    }
+
+    return map;
+  }, [divisionsData]);
 
   return (
     <section className="section">
@@ -451,11 +488,7 @@ function GauntletLeg3Inner() {
             </div>
 
             <div className="relative flex flex-wrap items-center justify-start md:justify-end gap-2">
-              {error && (
-                <div className="text-xs text-danger max-w-md">
-                  {error}
-                </div>
-              )}
+              {error && <div className="text-xs text-danger max-w-md">{error}</div>}
 
               {/* <button
                 type="button"
@@ -466,12 +499,7 @@ function GauntletLeg3Inner() {
                 {forceWeek17Preview ? "Week 17 Preview: ON" : "Week 17 Preview"}
               </button> */}
 
-
-              <button
-                type="button"
-                onClick={handleRefresh}
-                className="btn btn-outline"
-              >
+              <button type="button" onClick={handleRefresh} className="btn btn-outline">
                 Refresh
               </button>
 
@@ -483,11 +511,7 @@ function GauntletLeg3Inner() {
                 {expandAllGods ? "Keep All Expanded" : "Expand All"}
               </button>
 
-              <button
-                type="button"
-                onClick={() => setExpandedGods({})}
-                className="btn btn-outline"
-              >
+              <button type="button" onClick={() => setExpandedGods({})} className="btn btn-outline">
                 Collapse All
               </button>
             </div>
@@ -516,9 +540,7 @@ function GauntletLeg3Inner() {
                       <>
                         <span className="mx-2 text-muted">•</span>
                         Current bracket week:{" "}
-                        <span className="font-mono text-accent">
-                          {payloadMeta.currentBracketWeek}
-                        </span>
+                        <span className="font-mono text-accent">{payloadMeta.currentBracketWeek}</span>
                       </>
                     )}
                   </p>
@@ -528,7 +550,6 @@ function GauntletLeg3Inner() {
                 </div>
 
                 <div className="flex flex-col items-start sm:items-end gap-3">
-                  {/* Matchups vs Bracket */}
                   <div className="inline-flex items-center rounded-full border border-subtle bg-subtle-surface p-1 text-xs shadow-inner">
                     <button
                       type="button"
@@ -633,7 +654,6 @@ function GauntletLeg3Inner() {
                 )}
               </div>
 
-              {/* ✅ Hide Week 17 standings until Week 16 is finalized */}
               {!week16Finalized ? (
                 <div className="rounded-xl border border-subtle bg-subtle-surface px-4 py-3 text-sm text-muted">
                   Week 17 will populate once Week 16 is finalized.
@@ -644,7 +664,6 @@ function GauntletLeg3Inner() {
                     ? "Preview mode: showing a simulated Week 17 field based on current best Leg 3 totals (not official champions)."
                     : "Grand Championship standings will appear here once the God champions have been determined."}
                 </div>
-
               ) : (
                 <>
                   {!hasWeek17Scores && (
@@ -669,36 +688,46 @@ function GauntletLeg3Inner() {
                       </thead>
                       <tbody className="divide-y divide-subtle text-[0.75rem]">
                         {grandStandings.map((p) => {
-                        const side = p?.side ?? p?.bracketSide ?? p?.seedSide ?? null;
+                          const leagueId = p?.leagueId ?? p?.league_id ?? null;
+                          const rosterId = p?.rosterId ?? p?.roster_id ?? null;
+                          const key = leagueId && rosterId != null ? `${leagueId}::${rosterId}` : null;
 
-                        return (
-                          <tr key={`${p.leagueId}-${p.rosterId}`}>
-                            <td className="px-3 py-2 text-center font-mono text-primary">{p.rank}</td>
-                            <td className="px-3 py-2">{p.division}</td>
-                            <td className="px-3 py-2">{p.godName || `God ${p.godIndex ?? "?"}`}</td>
+                          const inferredSide = key ? sideByLeagueRosterKey.get(key) : null;
 
-                            <td className="px-3 py-2">
-                              <div className="truncate max-w-[160px]">{p.ownerName}</div>
-                            </td>
+                          const side =
+                            p?.side ??
+                            p?.bracketSide ??
+                            p?.seedSide ??
+                            inferredSide ??
+                            null;
 
-                            <td className="px-3 py-2">
-                              <SideBadge side={side} />
-                            </td>
+                          return (
+                            <tr key={`${p.leagueId}-${p.rosterId}`}>
+                              <td className="px-3 py-2 text-center font-mono text-primary">{p.rank}</td>
+                              <td className="px-3 py-2">{p.division}</td>
+                              <td className="px-3 py-2">{p.godName || `God ${p.godIndex ?? "?"}`}</td>
 
-                            <td className="px-3 py-2">
-                              <div className="truncate max-w-[260px] text-muted">{p.leagueName}</div>
-                            </td>
+                              <td className="px-3 py-2">
+                                <div className="truncate max-w-[160px]">{p.ownerName}</div>
+                              </td>
 
-                            <td className="px-3 py-2 text-right font-mono">
-                              {Number(p.week17Score || 0).toFixed(2)}
-                            </td>
-                            <td className="px-3 py-2 text-right font-mono">
-                              {Number(p.leg3Total || 0).toFixed(2)}
-                            </td>
-                          </tr>
-                        );
-                      })}
+                              <td className="px-3 py-2">
+                                <SideBadge side={side} />
+                              </td>
 
+                              <td className="px-3 py-2">
+                                <div className="truncate max-w-[260px] text-muted">{p.leagueName}</div>
+                              </td>
+
+                              <td className="px-3 py-2 text-right font-mono">
+                                {Number(p.week17Score || 0).toFixed(2)}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono">
+                                {Number(p.leg3Total || 0).toFixed(2)}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
 
@@ -711,8 +740,6 @@ function GauntletLeg3Inner() {
                 </>
               )}
             </section>
-
-
           </main>
         )}
       </div>
@@ -733,7 +760,6 @@ function DivisionCard({
   isGodOpen,
   toggleGodOpen,
 }) {
-
   const gods = Array.isArray(divisionData?.gods) ? divisionData.gods : [];
 
   return (
@@ -747,9 +773,7 @@ function DivisionCard({
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="badge">
-            {divisionMeta.godsCount ?? gods.length ?? 0} Gods
-          </span>
+          <span className="badge">{divisionMeta.godsCount ?? gods.length ?? 0} Gods</span>
 
           {isLoading && !divisionData && (
             <span className="flex items-center gap-2 text-xs text-muted">
