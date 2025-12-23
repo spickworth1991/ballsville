@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { CURRENT_SEASON } from "@/lib/season";
+import DivisionLeagueTabCard from "@/components/shared/DivisionLeagueTabCard";
 
 const DEFAULT_SEASON = CURRENT_SEASON;
 const R2_KEY_FOR = (season) => `data/biggame/leagues_${season}.json`;
@@ -181,33 +181,17 @@ export default function BigGameDivisionsClient({ year = DEFAULT_SEASON }) {
   return (
     <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
       {divisions.map((d) => (
-        <Link
+        <DivisionLeagueTabCard
           key={d.id}
           // NOTE: this site is deployed as a static export.
           // Keep the drill-down on the same /big-game/divisions page using query params.
           href={`/big-game/divisions?division=${encodeURIComponent(d.division_slug)}&year=${encodeURIComponent(String(season))}`}
-          className="card bg-card-surface border border-subtle p-5 rounded-3xl hover:border-accent/60 transition"
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold truncate">{d.division_name}</p>
-              <p className="text-xs text-muted mt-1 truncate">{d.leagues.length} leagues</p>
-            </div>
-            <span className="badge">{safeStr(d.status || "TBD")}</span>
-          </div>
-
-          {d.division_image ? (
-            <div className="mt-4 rounded-2xl overflow-hidden border border-subtle bg-black/20">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={d.division_image} alt="Division" className="w-full h-auto" />
-            </div>
-          ) : null}
-
-          <div className="mt-4 text-xs text-muted flex items-center justify-between">
-            <span className="truncate">View division</span>
-            <span>→</span>
-          </div>
-        </Link>
+          title={d.division_name}
+          subtitle={`${d.leagues.length} leagues`}
+          badgeText={safeStr(d.status || "TBD")}
+          imageSrc={d.division_image || null}
+          footerLeft="View division"
+        />
       ))}
     </div>
   );

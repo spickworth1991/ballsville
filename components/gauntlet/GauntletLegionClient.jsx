@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
+import DivisionLeagueTabCard from "@/components/shared/DivisionLeagueTabCard";
 
 function statusBadge(status) {
   const s = String(status || "TBD").toUpperCase();
@@ -157,39 +157,20 @@ export default function GauntletLegionClient({ year, legionSlug, backHref }) {
                 const leagueImg = l.league_image_url || l.league_image_key || "";
                 const href = l.league_url || "";
                 return (
-                  <a
+                  <DivisionLeagueTabCard
                     key={`${l.legion_slug}_${l.league_order}`}
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group card bg-card-surface border border-subtle overflow-hidden hover:shadow-md hover:-translate-y-[1px] transition"
-                  >
-                    <div className="relative w-full aspect-[16/9] bg-black/20">
-                      {leagueImg ? (
-                        <Image
-                          src={leagueImg}
-                          alt={l.league_name || "League"}
-                          fill
-                          className="object-cover group-hover:scale-[1.02] transition-transform"
-                          sizes="(max-width: 768px) 100vw, 50vw"
-                        />
-                      ) : (
-                        <div className="absolute inset-0 grid place-items-center text-muted">No image</div>
-                      )}
-                    </div>
-                    <div className="p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-xs text-muted">League {l.league_order}</p>
-                          <h3 className="h3 text-fg group-hover:text-primary transition-colors">{l.league_name || "Sleeper League"}</h3>
-                        </div>
-                        <span className="text-accent group-hover:text-primary transition-colors">↗</span>
-                      </div>
-                      {l.league_status ? (
-                        <div className="mt-3">{statusBadge(l.league_status)}</div>
-                      ) : null}
-                    </div>
-                  </a>
+                    href={href || "#"}
+                    external={Boolean(href)}
+                    target={href ? "_blank" : undefined}
+                    rel={href ? "noopener noreferrer" : undefined}
+                    title={l.league_name || "Sleeper League"}
+                    subtitle={`League ${l.league_order}`}
+                    imageSrc={leagueImg || null}
+                    imageAlt={l.league_name || "League"}
+                    badge={l.league_status ? statusBadge(l.league_status) : null}
+                    rightTop={<span className="text-xs text-muted">OPEN</span>}
+                    rightBottom={<span className="text-accent">↗</span>}
+                  />
                 );
               })}
 

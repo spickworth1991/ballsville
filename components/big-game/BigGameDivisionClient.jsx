@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { CURRENT_SEASON } from "@/lib/season";
+import DivisionLeagueTabCard from "@/components/shared/DivisionLeagueTabCard";
 
 const DEFAULT_SEASON = CURRENT_SEASON;
 const R2_KEY_FOR = (season) => `data/biggame/leagues_${season}.json`;
@@ -160,30 +161,19 @@ export default function BigGameDivisionClient({
 
       <div className="grid gap-4 sm:grid-cols-2">
         {leagues.map((lg, idx) => (
-          <a
+          <DivisionLeagueTabCard
             key={`${lg.league_order}-${idx}`}
             href={lg.league_url || "#"}
+            external
             target={lg.league_url ? "_blank" : undefined}
             rel={lg.league_url ? "noreferrer" : undefined}
-            className="group rounded-2xl border border-subtle bg-card-surface p-5 hover:border-accent/60 transition"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-fg truncate">{lg.league_name || `League ${lg.league_order || idx + 1}`}</p>
-                <p className="text-xs text-muted mt-1">League #{lg.league_order || idx + 1}</p>
-              </div>
-              <span className="opacity-0 group-hover:opacity-100 transition">→</span>
-            </div>
-
-            {lg.league_image ? (
-              <div className="mt-4 rounded-xl overflow-hidden border border-subtle bg-black/20">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={lg.league_image} alt="League" className="w-full h-auto" />
-              </div>
-            ) : null}
-
-            <div className="mt-4 text-xs text-muted truncate">{lg.league_url ? "Open in Sleeper" : "Link not set"}</div>
-          </a>
+            title={lg.league_name || `League ${lg.league_order || idx + 1}`}
+            subtitle={`League #${lg.league_order || idx + 1}`}
+            imageSrc={lg.league_image || null}
+            imageAlt={lg.league_name || "League"}
+            rightTop={<span className="text-xs text-muted">{lg.league_url ? "Open in Sleeper" : "Link not set"}</span>}
+            rightBottom={<span className="opacity-0 group-hover:opacity-100 transition">→</span>}
+          />
         ))}
       </div>
     </div>
