@@ -53,7 +53,7 @@ function PremiumFrame({ title, subtitle, kicker, children, className = "" }) {
   return (
     <section
       className={[
-        "mt-6 relative overflow-hidden rounded-3xl border border-border/70 bg-card-surface",
+        "mt-6 relative overflow-hidden rounded-3xl  bg-card-surface",
         "shadow-2xl shadow-black/30",
         "px-6 py-6 sm:px-10 sm:py-8",
         className,
@@ -89,10 +89,13 @@ export default function DynastyPage() {
 
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-12 space-y-12">
         {/* HERO (premium framed) */}
-        <section className="relative overflow-hidden rounded-3xl border border-border/70 bg-card-surface shadow-2xl shadow-black/40 px-6 py-8 sm:px-10 sm:py-10">
-          <div className="pointer-events-none absolute inset-0 opacity-60 mix-blend-screen">
-            <div className="absolute -top-24 -left-10 h-56 w-56 rounded-full bg-purple-500/20 blur-3xl" />
-            <div className="absolute -bottom-24 -right-10 h-56 w-56 rounded-full bg-cyan-400/15 blur-3xl" />
+        <section className="relative overflow-hidden rounded-3xl bg-card-surface shadow-2xl shadow-black/40 px-6 py-8 sm:px-10 sm:py-10">
+          <div className="pointer-events-none absolute inset-0 mix-blend-screen">
+            <div className="opacity-50 absolute -top-24 -left-5 h-56 w-56 rounded-full bg-green-500/50 blur-3xl" />
+            <div className="opacity-50 absolute -top-24 -right-5 h-56 w-56 rounded-full bg-purple-500/50 blur-3xl" />
+            <div className="opacity-65 absolute -bottom-24 -right-5 h-56 w-64 rounded-full bg-orange-400/40 blur-3xl" />
+            <div className="opacity-55 absolute -bottom-24 -left-7 h-56 w-56 rounded-full bg-red-500/50 blur-3xl" />
+            <div className="opacity-30 absolute left-1/2 top-1/2 h-56 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-500/50 blur-3xl" />
           </div>
 
           <div className="relative py-2 grid gap-8 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] items-start">

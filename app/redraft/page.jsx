@@ -29,10 +29,12 @@ export default function RedraftPage() {
          {/* Hero (hardcoded) — moved BELOW updates + live leagues */}
         <section className="relative overflow-hidden rounded-3xl border border-border/70 bg-card-surface shadow-2xl shadow-black/40 px-6 py-8 sm:px-10 sm:py-10">
           {/* glow accents */}
-          <div className="pointer-events-none absolute inset-0 opacity-60 mix-blend-screen">
-            <div className="absolute -top-24 -left-10 h-56 w-56 rounded-full bg-rose-500/18 blur-3xl" />
-            <div className="absolute -bottom-24 -right-10 h-56 w-56 rounded-full bg-sky-500/16 blur-3xl" />
-            <div className="absolute top-10 right-20 h-40 w-40 rounded-full bg-purple-500/10 blur-3xl" />
+          <div className="pointer-events-none absolute inset-0 mix-blend-screen">
+            <div className="opacity-50 absolute -top-24 -left-5 h-56 w-56 rounded-full bg-green-500/50 blur-3xl" />
+            <div className="opacity-50 absolute -top-24 -right-5 h-56 w-56 rounded-full bg-purple-500/50 blur-3xl" />
+            <div className="opacity-65 absolute -bottom-24 -right-5 h-56 w-64 rounded-full bg-orange-400/40 blur-3xl" />
+            <div className="opacity-55 absolute -bottom-24 -left-7 h-56 w-56 rounded-full bg-red-500/50 blur-3xl" />
+            <div className="opacity-30 absolute left-1/2 top-1/2 h-56 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-500/50 blur-3xl" />
           </div>
 
           <div className="relative grid gap-1 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,0.9fr)] lg:items-start">

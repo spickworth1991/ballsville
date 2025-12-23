@@ -64,7 +64,7 @@ function PremiumSection({ title, subtitle, kicker, children, className = "" }) {
   return (
     <section
       className={[
-        "mt-6 relative overflow-hidden rounded-3xl border border-border/70 bg-card-surface",
+        "mt-6 relative overflow-hidden rounded-3xl bg-card-surface",
         "shadow-2xl shadow-black/30",
         "px-6 py-6 sm:px-10 sm:py-8",
         className,

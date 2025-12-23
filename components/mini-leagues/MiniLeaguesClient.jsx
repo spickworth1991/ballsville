@@ -217,11 +217,19 @@ export default function MiniLeaguesClient() {
       <section className="section">
         <div className="container-site space-y-10">
           {/* HERO */}
-          <header className="relative py-2 overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-10">
+          <header className="relative py-2 overflow-hidden rounded-3xl border border-border/70 bg-card-surface shadow-xl p-6 md:p-10">
             <div className="pointer-events-none absolute inset-0 opacity-55 mix-blend-screen">
               <div className="absolute -top-24 -left-16 h-64 w-64 rounded-full bg-[color:var(--color-accent)]/18 blur-3xl" />
               <div className="absolute -bottom-24 -right-16 h-64 w-64 rounded-full bg-[color:var(--color-primary)]/14 blur-3xl" />
             </div>
+
+            <div className="pointer-events-none absolute inset-0 mix-blend-screen">
+            <div className="opacity-50 absolute -top-24 -left-5 h-56 w-56 rounded-full bg-green-500/50 blur-3xl" />
+            <div className="opacity-50 absolute -top-24 -right-5 h-56 w-56 rounded-full bg-purple-500/50 blur-3xl" />
+            <div className="opacity-65 absolute -bottom-24 -right-5 h-56 w-64 rounded-full bg-orange-400/40 blur-3xl" />
+            <div className="opacity-55 absolute -bottom-24 -left-7 h-56 w-56 rounded-full bg-red-500/50 blur-3xl" />
+            <div className="opacity-30 absolute left-1/2 top-1/2 h-56 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-500/50 blur-3xl" />
+          </div>
 
             <div className="relative grid gap-8 py-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,.9fr)] lg:items-start">
               <div className="space-y-4">
