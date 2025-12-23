@@ -77,13 +77,13 @@ function PremiumSection({ title, subtitle, kicker, children, className = "" }) {
       </div>
 
       <div className="relative space-y-4">
-        <header className="text-center space-y-2">
+        <header className="space-y-2">
           {kicker ? (
             <p className="text-xs uppercase tracking-[0.35em] text-accent">{kicker}</p>
           ) : null}
           <h2 className="text-2xl sm:text-3xl font-semibold text-foreground">{title}</h2>
           {subtitle ? (
-            <p className="text-sm text-muted max-w-3xl mx-auto">{subtitle}</p>
+            <p className="text-sm text-muted mx-auto">{subtitle}</p>
           ) : null}
         </header>
 
@@ -214,7 +214,7 @@ export default function DynastyLeaguesClient() {
         title="Payouts & Bonuses"
         subtitle="Each league is a 12-team SF, 3WR build that ladders into the Dynasty Empire structure and shared Week 17 upside."
       >
-        <div className="flex flex-wrap justify-center gap-3 text-xs sm:text-sm">
+        <div className="flex flex-wrap justify gap-3 text-xs sm:text-sm">
           <span className="rounded-xl bg-panel border border-subtle px-3 py-2">
             <span className="font-semibold text-foreground">$25</span> annually
           </span>
@@ -229,7 +229,7 @@ export default function DynastyLeaguesClient() {
           </span>
         </div>
 
-        <div className="mt-5 mx-auto max-w-4xl space-y-3 text-center">
+        <div className="mt-5 mx-auto max-w-4xl space-y-3">
           <p className="text-sm text-muted">
             These custom leagues play the season out with the same odds to win cash. In the championship round, you win $50 just for making it. You can
             keep it, or push your $50 into the pot for a shot at big money.

@@ -65,12 +65,12 @@ function PremiumFrame({ title, subtitle, kicker, children, className = "" }) {
       </div>
 
       <div className="relative space-y-4">
-        <header className="text-center space-y-2">
+        <header className="space-y-2">
           {kicker ? (
             <p className="text-xs uppercase tracking-[0.35em] text-accent">{kicker}</p>
           ) : null}
           <h2 className="text-2xl sm:text-3xl font-semibold text-foreground">{title}</h2>
-          {subtitle ? <p className="text-sm text-muted max-w-3xl mx-auto">{subtitle}</p> : null}
+          {subtitle ? <p className="text-sm text-muted mx-auto">{subtitle}</p> : null}
         </header>
 
         <div>{children}</div>
