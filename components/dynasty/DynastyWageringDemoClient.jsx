@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
-const UPDATED = "01/23/2025";
 const SEASON = 2025;
 
 const DRAGONS_LEAGUES = [
@@ -166,7 +165,7 @@ export default function DynastyWageringDemoClient() {
               </h1>
 
               <p className="text-sm sm:text-base text-muted max-w-prose">
-                Updated {UPDATED}. The Heroes of Dynasty expansion mirrors these settings for the Dragons of Dynasty.
+                The Heroes of Dynasty expansion mirrors these settings for the Dragons of Dynasty.
                 This page explains how the $50 credit works — and tracks wagers, banking, and scores.
               </p>
 
@@ -225,52 +224,102 @@ export default function DynastyWageringDemoClient() {
             </p>
           </section>
 
-          {/* Tracker */}
-          <section className="space-y-4">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <h2 className="text-2xl sm:text-3xl font-semibold">Wager Tracker</h2>
-                <p className="mt-1 text-sm text-muted max-w-prose">
-                  This is the live Week 17 tracker. Admin fills in finalists, wager/bank choices, scores, and league winners.
-                </p>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setTab("dragons")}
-                  className={`btn ${tab === "dragons" ? "btn-primary" : "btn-outline"}`}
-                >
-                  🐉 Dragons
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTab("heroes")}
-                  className={`btn ${tab === "heroes" ? "btn-primary" : "btn-outline"}`}
-                >
-                  🛡️ Heroes
-                </button>
-              </div>
+          {/* Tracker (main feature) */}
+          <section className="relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-8">
+            {/* flashier glow accent */}
+            <div className="pointer-events-none absolute inset-0 opacity-60 mix-blend-screen">
+              <div className="absolute -top-28 -left-20 h-72 w-72 rounded-full bg-[color:var(--color-accent)]/22 blur-3xl" />
+              <div className="absolute -bottom-28 -right-20 h-72 w-72 rounded-full bg-[color:var(--color-primary)]/18 blur-3xl" />
+              <div className="absolute top-10 right-1/3 h-40 w-40 rounded-full bg-purple-500/10 blur-3xl" />
             </div>
 
-            {err ? (
-              <div className="rounded-2xl border border-subtle bg-card-surface p-4 text-sm text-red-300">
-                {err}
-              </div>
-            ) : null}
+            <div className="relative space-y-5">
+              {/* Header row */}
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div className="space-y-2">
+                  <p className="text-xs uppercase tracking-[0.35em] text-accent">
+                    Live Dashboard
+                  </p>
+                  <h2 className="text-2xl sm:text-3xl font-semibold">
+                    Wager Tracker <span className="text-primary">(Week 17)</span>
+                  </h2>
+                  <p className="text-sm text-muted max-w-prose">
+                    Admin fills in finalists, wager/bank choices, scores, and league winners. If no reply is given, the credit defaults to <span className="font-semibold text-fg">BANK</span>.
+                  </p>
+                </div>
 
-            {loading ? (
-              <div className="rounded-2xl border border-subtle bg-card-surface p-4 text-sm text-muted">
-                Loading tracker…
-              </div>
-            ) : (
-              <LeagueTable rows={rows} />
-            )}
+                {/* Tabs */}
+                <div className="flex w-full flex-col gap-2 sm:w-auto">
+                  <div className="inline-flex w-full sm:w-auto rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm p-1">
+                    <button
+                      type="button"
+                      onClick={() => setTab("dragons")}
+                      className={[
+                        "px-4 py-2 rounded-xl text-sm font-semibold transition",
+                        tab === "dragons"
+                          ? "bg-[color:var(--color-primary)] text-black shadow"
+                          : "text-muted hover:text-fg hover:bg-subtle-surface",
+                      ].join(" ")}
+                    >
+                      🐉 Dragons
+                    </button>
 
-            <p className="text-xs text-muted">
-              Want edit access? Use the admin screen. This public page is read-only on purpose.
-            </p>
+                    <button
+                      type="button"
+                      onClick={() => setTab("heroes")}
+                      className={[
+                        "px-4 py-2 rounded-xl text-sm font-semibold transition",
+                        tab === "heroes"
+                          ? "bg-[color:var(--color-primary)] text-black shadow"
+                          : "text-muted hover:text-fg hover:bg-subtle-surface",
+                      ].join(" ")}
+                    >
+                      🛡️ Heroes
+                    </button>
+                  </div>
+
+                  {/* micro hint line */}
+                  <p className="text-[11px] text-muted sm:text-right">
+                    Tip: horizontal scroll on mobile for the full table →
+                  </p>
+                </div>
+              </div>
+
+              {/* Status blocks */}
+              {err ? (
+                <div className="rounded-2xl border border-subtle bg-red-950/30 p-4 text-sm text-red-200">
+                  {err}
+                </div>
+              ) : null}
+
+              {loading ? (
+                <div className="rounded-2xl border border-subtle bg-subtle-surface p-4 text-sm text-muted">
+                  Loading tracker…
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {/* table wrapper + legend */}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <span className="rounded-full border border-subtle bg-subtle-surface px-3 py-1">
+                        WAGER = risks credit for bonus
+                      </span>
+                      <span className="rounded-full border border-subtle bg-card-trans backdrop-blur-sm px-3 py-1">
+                        BANK = locks the $50
+                      </span>
+                    </div>
+
+                    <div className="text-xs text-muted">
+                      Season: <span className="font-semibold text-fg">{SEASON}</span>
+                    </div>
+                  </div>
+
+                  <LeagueTable rows={rows} />
+                </div>
+              )}
+            </div>
           </section>
+
         </div>
       </section>
     </main>

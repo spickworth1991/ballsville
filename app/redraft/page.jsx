@@ -35,7 +35,7 @@ export default function RedraftPage() {
             <div className="absolute top-10 right-20 h-40 w-40 rounded-full bg-purple-500/10 blur-3xl" />
           </div>
 
-          <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,0.9fr)] lg:items-start">
+          <div className="relative grid gap-1 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,0.9fr)] lg:items-start">
             {/* left */}
             <div className="space-y-4">
               <p className="text-xs uppercase tracking-[0.35em] text-accent">
@@ -92,7 +92,7 @@ export default function RedraftPage() {
             </div>
 
             {/* right: quick facts panel */}
-            <aside className="w-full">
+            <aside className="w-full py-4">
               <div className="rounded-2xl border border-border/60 bg-card-trans backdrop-blur-sm overflow-hidden shadow-xl shadow-black/40">
                 <div className="px-4 py-3 border-b border-border/60 flex items-center justify-between">
                   <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">

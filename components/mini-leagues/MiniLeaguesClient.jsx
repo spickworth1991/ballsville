@@ -18,9 +18,6 @@ const HERO_STATIC = {
     "Way-too-early, rookie-inclusive, budget Best Ball redraft leagues. Most points wins. Optional wagering. Bonuses stack.",
 };
 
-// This is hard-coded on purpose (you asked to NOT make it editable)
-const UPDATED_LABEL = "Updated: 01/23/2025";
-
 // ==============================
 // ONLY THESE ARE EDITABLE IN CMS
 // ==============================
@@ -82,6 +79,49 @@ function normDivision(d, idx) {
     imageUrl: String(d?.imageUrl || ""),
     leagues,
   };
+}
+
+function PremiumFrame({ kicker, title, subtitle, children, className = "" }) {
+  return (
+    <section
+      className={[
+        "relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-xl",
+        "p-6 md:p-8",
+        className,
+      ].join(" ")}
+    >
+      <div className="pointer-events-none absolute inset-0 opacity-55 mix-blend-screen">
+        <div className="absolute -top-24 -left-16 h-64 w-64 rounded-full bg-[color:var(--color-accent)]/16 blur-3xl" />
+        <div className="absolute -bottom-24 -right-16 h-64 w-64 rounded-full bg-[color:var(--color-primary)]/14 blur-3xl" />
+      </div>
+
+      <div className="relative space-y-4">
+        {(kicker || title || subtitle) ? (
+          <header className="text-center space-y-2">
+            {kicker ? (
+              <p className="text-xs uppercase tracking-[0.35em] text-accent">{kicker}</p>
+            ) : null}
+            {title ? (
+              <h2 className="text-2xl sm:text-3xl font-semibold">{title}</h2>
+            ) : null}
+            {subtitle ? (
+              <p className="text-sm text-muted max-w-3xl mx-auto">{subtitle}</p>
+            ) : null}
+          </header>
+        ) : null}
+
+        <div>{children}</div>
+      </div>
+    </section>
+  );
+}
+
+function InlineNotice({ children }) {
+  return (
+    <div className="rounded-2xl border border-subtle bg-subtle-surface p-4 text-sm text-muted text-center">
+      <div className="mx-auto max-w-3xl">{children}</div>
+    </div>
+  );
 }
 
 export default function MiniLeaguesClient() {
@@ -183,7 +223,7 @@ export default function MiniLeaguesClient() {
               <div className="absolute -bottom-24 -right-16 h-64 w-64 rounded-full bg-[color:var(--color-primary)]/14 blur-3xl" />
             </div>
 
-            <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,.9fr)] lg:items-start">
+            <div className="relative grid gap-8 py-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,.9fr)] lg:items-start">
               <div className="space-y-4">
                 <p className="text-xs uppercase tracking-[0.35em] text-accent">{HERO_STATIC.eyebrow}</p>
 
@@ -204,142 +244,110 @@ export default function MiniLeaguesClient() {
                     Hall of Fame
                   </Link>
                 </div>
-
-                <div className="mt-4 py-2 inline-flex flex-wrap gap-2 text-xs sm:text-sm">
-                  <span className="rounded-full border border-subtle bg-card-trans px-3 py-1 backdrop-blur-sm">
-                    {UPDATED_LABEL}
-                  </span>
-                </div>
               </div>
+
               <aside className="w-full space-y-4">
-        
-
-              <div className="rounded-2xl py-2 border border-border/60 bg-card-trans backdrop-blur-sm overflow-hidden shadow-xl shadow-black/50">
-                <div className="px-4 py-3 border-b border-border/60 flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
-                    Quick Facts
-                  </span>
-                  <span className="text-[11px] text-muted">2025</span>
-                </div>
-
-                <div className="p-4 space-y-3 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Buy-in</span>
-                    <span className="font-semibold text-primary">$4</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">League size</span>
-                    <span className="font-semibold">12 teams</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted">Format</span>
-                    <span className="font-semibold">Bestball · SF</span>
-                  </div>
-                  <div className="h-px bg-border/60" />
-                  <p className="text-xs text-muted">
-                    Most points after Week 14 wins the league. League winners
-                    can cash out or roll into Division + Championship weeks.
-                  </p>
-                </div>
-              </div>
-            </aside>
-              {/* UPDATES CARD */}
-              {/* <div className="rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm overflow-hidden shadow-lg">
-                <div className="px-4 py-3 border-b border-subtle flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">UPDATES</span>
-                </div>
-
-                <div className="p-4 space-y-3">
-                  <div className="relative w-full aspect-[16/9] rounded-xl overflow-hidden border border-subtle bg-black/20">
-                    <Image
-                      src={updatesSrc}
-                      alt="Mini-Leagues updates"
-                      fill
-                      sizes="(max-width: 1024px) 100vw, 520px"
-                      className="object-stretch"
-                      priority
-                    />
+                <div className="rounded-2xl py-2 border border-border/60 bg-card-trans backdrop-blur-sm overflow-hidden shadow-xl shadow-black/50">
+                  <div className="px-4 py-3 border-b border-border/60 flex items-center justify-between">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                      Quick Facts
+                    </span>
+                    <span className="text-[11px] text-muted">{SEASON}</span>
                   </div>
 
-                  <div
-                    className="prose prose-invert max-w-none text-sm text-muted"
-                    dangerouslySetInnerHTML={{
-                      __html: editable?.hero?.updatesHtml || DEFAULT_EDITABLE.hero.updatesHtml,
-                    }}
-                  />
+                  <div className="p-4 space-y-3 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted">Buy-in</span>
+                      <span className="font-semibold text-primary">$4</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted">League size</span>
+                      <span className="font-semibold">12 teams</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted">Format</span>
+                      <span className="font-semibold">Bestball · SF</span>
+                    </div>
+                    <div className="h-px bg-border/60" />
+                    <p className="text-xs text-muted">
+                      Most points after Week 14 wins the league. League winners
+                      can cash out or roll into Division + Championship weeks.
+                    </p>
+                  </div>
                 </div>
-              </div> */}
+
+                {/* OPTIONAL: Updates card (kept functional, still commented in your original)
+                    If you want it back, we can re-enable and style it to match.
+                */}
+              </aside>
             </div>
-            <OwnerHeroBlock mode="mini-leagues" season={2025} title="Owner Updates" />
+
+            <OwnerHeroBlock mode="mini-leagues" season={SEASON} title="Owner Updates" />
           </header>
 
-          {/* CONTENT */}
-          <section className="grid gap-6 lg:grid-cols-3">
-            <div className="rounded-2xl border border-subtle bg-card-surface p-6 shadow-sm space-y-2">
-              <h2 className="text-lg font-semibold text-primary">BALLSVILLE SETTINGS</h2>
-              <ul className="text-sm text-muted space-y-1">
-                <li>Most points wins ⚠️</li>
-                <li>12 team SF (No TEP, 2x Flex, +6 passing TD)</li>
-                <li>Rookie-inclusive drafting</li>
-                <li>3x shuffle or quick Derby</li>
-                <li>No 3rd-round reversal</li>
-                <li>No trading</li>
-                <li>1–2 hr timers or fast draft (predetermined)</li>
-                <li>Pure draft &amp; go</li>
-              </ul>
-            </div>
-
-            <div className="rounded-2xl border border-subtle bg-card-surface p-6 shadow-sm space-y-2">
-              <h2 className="text-lg font-semibold text-primary">How the game works</h2>
-              <p className="text-sm text-muted">
-                Win your league (most points through Week 14) → earn $30 (🪙). After Week 14, a game manager will ask if
-                you’d like to <strong>wager</strong> your 🪙 or keep it.
-              </p>
-              <p className="text-sm text-muted">
-                Without a wager: eligible for Division Bonus (+$30) and Championship Bonus (+$100).
-                <br />
-                With a wager: eligible for <strong>all wagers</strong>, both bonuses, and Wager Bonus (+$60).
-              </p>
-              <p className="text-sm text-muted font-semibold">Bonuses stack.</p>
-            </div>
-
-            <div className="rounded-2xl border border-subtle bg-card-surface p-6 shadow-sm space-y-2">
-              <h2 className="text-lg font-semibold text-primary">Draft etiquette</h2>
-              <ul className="text-sm text-muted space-y-1">
-                <li>Please tag the next person up.</li>
-                <li>Please don’t rush people.</li>
-                <li>League can vote to reduce timer after Round 10.</li>
-                <li>No one auto-picks Round 1 ⚠️ (spot may be substituted).</li>
-                <li>If you auto at 1.12, the 2.01 may be pushed through.</li>
-                <li>Mistakes: tag managers immediately for a chance at reversal (not for expired clocks).</li>
-              </ul>
-            </div>
-          </section>
-
-          {/* DIVISIONS */}
-          <section className="space-y-4">
-            <div className="flex items-end justify-between gap-4">
-              <div>
-                <h2 className="text-2xl sm:text-3xl font-semibold">Divisions</h2>
-                <p className="text-sm text-muted">Divisions contain 10 leagues each (12 teams per league).</p>
+          {/* CONTENT (wrapped so headings never float on background) */}
+          <PremiumFrame
+            kicker="Rules & Format"
+            title="Mini-Leagues Settings"
+            subtitle="Fast, simple, and built for upside — with optional wagering that stacks bonuses."
+          >
+            <div className="grid gap-6 lg:grid-cols-3">
+              <div className="rounded-2xl border border-subtle bg-subtle-surface p-6 space-y-2">
+                <h3 className="text-lg font-semibold text-primary">BALLSVILLE SETTINGS</h3>
+                <ul className="text-sm text-muted space-y-1">
+                  <li>Most points wins ⚠️</li>
+                  <li>12 team SF (No TEP, 2x Flex, +6 passing TD)</li>
+                  <li>Rookie-inclusive drafting</li>
+                  <li>3x shuffle or quick Derby</li>
+                  <li>No 3rd-round reversal</li>
+                  <li>No trading</li>
+                  <li>1–2 hr timers or fast draft (predetermined)</li>
+                  <li>Pure draft &amp; go</li>
+                </ul>
               </div>
-              {loading ? null : (
-                <button className="btn btn-outline" type="button" onClick={loadAll}>
-                  Refresh
-                </button>
-              )}
-            </div>
 
+              <div className="rounded-2xl border border-subtle bg-subtle-surface p-6 space-y-2">
+                <h3 className="text-lg font-semibold text-primary">How the game works</h3>
+                <p className="text-sm text-muted">
+                  Win your league (most points through Week 14) → earn $30 (🪙). After Week 14, a game manager will ask if
+                  you’d like to <strong className="text-fg">wager</strong> your 🪙 or keep it.
+                </p>
+                <p className="text-sm text-muted">
+                  Without a wager: eligible for Division Bonus (+$30) and Championship Bonus (+$100).
+                  <br />
+                  With a wager: eligible for <strong className="text-fg">all wagers</strong>, both bonuses, and Wager Bonus (+$60).
+                </p>
+                <p className="text-sm text-muted font-semibold">Bonuses stack.</p>
+              </div>
+
+              <div className="rounded-2xl border border-subtle bg-subtle-surface p-6 space-y-2">
+                <h3 className="text-lg font-semibold text-primary">Draft etiquette</h3>
+                <ul className="text-sm text-muted space-y-1">
+                  <li>Please tag the next person up.</li>
+                  <li>Please don’t rush people.</li>
+                  <li>League can vote to reduce timer after Round 10.</li>
+                  <li>No one auto-picks Round 1 ⚠️ (spot may be substituted).</li>
+                  <li>If you auto at 1.12, the 2.01 may be pushed through.</li>
+                  <li>Mistakes: tag managers immediately for a chance at reversal (not for expired clocks).</li>
+                </ul>
+              </div>
+            </div>
+          </PremiumFrame>
+
+          {/* DIVISIONS (wrapped + clearer header) */}
+          <PremiumFrame
+            kicker="Live Directory"
+            title="Divisions"
+            subtitle="Divisions contain 10 leagues each (12 teams per league)."
+          >
             {err ? (
-              <div className="rounded-2xl border border-subtle bg-card-surface p-4 text-sm text-red-300">{err}</div>
+              <div className="rounded-2xl border border-subtle bg-red-950/30 p-4 text-sm text-red-200">{err}</div>
             ) : null}
 
             {loading ? (
-              <div className="rounded-2xl border border-subtle bg-card-surface p-4 text-sm text-muted">Loading…</div>
+              <InlineNotice>Loading…</InlineNotice>
             ) : divisions.length === 0 ? (
-              <div className="rounded-2xl border border-subtle bg-card-surface p-4 text-sm text-muted">
-                No divisions loaded yet.
-              </div>
+              <InlineNotice>No divisions loaded yet.</InlineNotice>
             ) : (
               <div className="grid gap-6 lg:grid-cols-2">
                 {divisions.map((d) => {
@@ -406,14 +414,14 @@ export default function MiniLeaguesClient() {
                 })}
               </div>
             )}
-          </section>
+          </PremiumFrame>
 
-          {/* WINNERS */}
-          <section className="space-y-4">
-            <h2 className="text-2xl sm:text-3xl font-semibold">
-              {editable?.winners?.title || DEFAULT_EDITABLE.winners.title}
-            </h2>
-
+          {/* WINNERS (wrapped so the title isn't floating) */}
+          <PremiumFrame
+            kicker="Hall of Fame"
+            title={editable?.winners?.title || DEFAULT_EDITABLE.winners.title}
+            subtitle="A snapshot of last season — updated by the admins."
+          >
             <div className="rounded-3xl border border-subtle bg-card-surface shadow-sm overflow-hidden">
               <div className="p-4 bg-black/10">
                 <div
@@ -447,7 +455,7 @@ export default function MiniLeaguesClient() {
                 </div>
               </div>
             </div>
-          </section>
+          </PremiumFrame>
         </div>
       </section>
     </main>

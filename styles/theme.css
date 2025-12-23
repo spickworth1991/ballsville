@@ -90,7 +90,7 @@ body {
   --shadow-lg:  0 22px 65px rgba(15,23,42,.75);
 
   --container-max: 1200px;
-  --section-y:     4rem;
+  --section-y:     2rem;
 
   --font-sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter,
     "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji",

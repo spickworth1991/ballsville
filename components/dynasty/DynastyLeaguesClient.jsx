@@ -60,6 +60,47 @@ function imageSrcForRow(row) {
   return url;
 }
 
+function PremiumSection({ title, subtitle, kicker, children, className = "" }) {
+  return (
+    <section
+      className={[
+        "mt-6 relative overflow-hidden rounded-3xl border border-border/70 bg-card-surface",
+        "shadow-2xl shadow-black/30",
+        "px-6 py-6 sm:px-10 sm:py-8",
+        className,
+      ].join(" ")}
+    >
+      {/* subtle glow accents like hero */}
+      <div className="pointer-events-none absolute inset-0 opacity-40 mix-blend-screen">
+        <div className="absolute -top-24 -left-10 h-56 w-56 rounded-full bg-purple-500/15 blur-3xl" />
+        <div className="absolute -bottom-24 -right-10 h-56 w-56 rounded-full bg-cyan-400/10 blur-3xl" />
+      </div>
+
+      <div className="relative space-y-4">
+        <header className="text-center space-y-2">
+          {kicker ? (
+            <p className="text-xs uppercase tracking-[0.35em] text-accent">{kicker}</p>
+          ) : null}
+          <h2 className="text-2xl sm:text-3xl font-semibold text-foreground">{title}</h2>
+          {subtitle ? (
+            <p className="text-sm text-muted max-w-3xl mx-auto">{subtitle}</p>
+          ) : null}
+        </header>
+
+        <div>{children}</div>
+      </div>
+    </section>
+  );
+}
+
+function EmptyState({ children }) {
+  return (
+    <div className="rounded-2xl border border-subtle bg-subtle-surface px-4 py-4 text-sm text-muted text-center">
+      <div className="mx-auto max-w-3xl">{children}</div>
+    </div>
+  );
+}
+
 export default function DynastyLeaguesClient() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -73,7 +114,6 @@ export default function DynastyLeaguesClient() {
         const bust = `v=${Date.now()}`;
         const res = await fetch(`/r2/${R2_ROWS_KEY}?${bust}`, { cache: "no-store" });
         if (!res.ok) {
-          // If file doesn't exist yet, just show empty.
           if (!cancelled) setRows([]);
           return;
         }
@@ -82,9 +122,7 @@ export default function DynastyLeaguesClient() {
         if (!cancelled) setRows(list);
       } catch (err) {
         console.error("Failed to load dynasty leagues from R2:", err);
-        if (!cancelled) {
-          setErrorMsg("Unable to load leagues right now. Please refresh or try again later.");
-        }
+        if (!cancelled) setErrorMsg("Unable to load leagues right now. Please refresh or try again later.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -97,50 +135,50 @@ export default function DynastyLeaguesClient() {
   }, []);
 
   const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows]);
+  const hasOrphans = orphans.length > 0;
 
   if (loading) {
     return (
-      <section className="space-y-3">
-        <h2 className="text-lg sm:text-xl font-semibold">Dynasty Leagues</h2>
-        <p className="text-sm text-muted">Loading leagues…</p>
-      </section>
+      <PremiumSection title="Dynasty Leagues" subtitle="Loading the directory…">
+        <p className="text-center text-sm text-muted">Loading leagues…</p>
+      </PremiumSection>
     );
   }
 
   if (errorMsg) {
     return (
-      <section className="space-y-3">
-        <h2 className="text-lg sm:text-xl font-semibold">Dynasty Leagues</h2>
-        <p className="text-sm text-danger">{errorMsg}</p>
-      </section>
+      <PremiumSection title="Dynasty Leagues">
+        <p className="text-center text-sm text-danger">{errorMsg}</p>
+      </PremiumSection>
     );
   }
-
-  const hasOrphans = orphans.length > 0;
 
   return (
     <>
       {/* ORPHAN OPENINGS (TOP LIST) */}
-      <section className="space-y-3">
-        <h2 className="text-lg sm:text-xl font-semibold">Orphan Openings</h2>
-        <p className="text-sm text-muted max-w-prose">
-          When a Dynasty Empire roster becomes available, it will appear here. These are rare and usually go fast.
-        </p>
-
+      <PremiumSection
+        kicker="Roster Availability"
+        title="Orphan Openings"
+        subtitle="When a Dynasty Empire roster becomes available, it will appear here. These are rare and usually go fast."
+      >
         {!hasOrphans ? (
-          <div className="rounded-xl border border-subtle bg-panel px-4 py-3 text-xs sm:text-sm text-muted">
+          <EmptyState>
             No orphan teams are available right now. Check back after the season or follow announcements in the BALLSVILLE chat.
-          </div>
+          </EmptyState>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {orphans.map((o, idx) => (
               <Link
                 key={o?.id || `${o?.year}-${o?.theme_name}-${o?.name}-${idx}`}
                 href={o?.sleeper_url || "#"}
-                className="group rounded-xl border border-accent/60 bg-card-surface p-4 hover:border-accent hover:-translate-y-0.5 transition"
+                className={[
+                  "group rounded-2xl border border-accent/60 bg-card-surface p-4",
+                  "hover:border-accent hover:-translate-y-0.5 transition",
+                  "shadow-[0_0_0_1px_rgba(255,255,255,0.03)]",
+                ].join(" ")}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     {imageSrcForRow(o) ? (
                       <img
                         src={imageSrcForRow(o)}
@@ -148,142 +186,157 @@ export default function DynastyLeaguesClient() {
                         className="h-12 w-12 shrink-0 rounded-full border border-subtle bg-panel object-cover"
                       />
                     ) : null}
-                    <div>
-                      <p className="text-sm font-semibold">{o?.name || "Orphan Team"}</p>
-                      <p className="text-[11px] text-muted">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-foreground truncate">{o?.name || "Orphan Team"}</p>
+                      <p className="text-[11px] text-muted truncate">
                         {o?.year} · {o?.theme_name || o?.kind || "Dynasty"}
                       </p>
                     </div>
                   </div>
-                  <span className="rounded-full border border-accent bg-panel px-2 py-1 text-[11px] tracking-wide uppercase text-accent">
+
+                  <span className="shrink-0 rounded-full border border-accent bg-panel px-2 py-1 text-[11px] tracking-wide uppercase text-accent">
                     Orphan Open
                   </span>
                 </div>
-                <p className="mt-2 text-[11px] text-muted">Click for Sleeper league details and to request the team.</p>
+
+                <p className="mt-2 text-[11px] text-muted">
+                  Click for Sleeper league details and to request the team.
+                </p>
               </Link>
             ))}
           </div>
         )}
-      </section>
+      </PremiumSection>
 
-      {/* GAME PAYOUTS / BONUSES (hardcoded block) */}
-      <section className="mt-6 rounded-xl bg-card-surface border border-subtle px-4 py-3 text-xs sm:text-sm text-muted space-y-3">
-        <h2 className="text-xl sm:text-2xl font-semibold">Payouts &amp; Bonuses</h2>
-
-        <p className="text-sm text-muted max-w-prose">
-          Each league is a 12-team SF, 3WR build that ladders into the Dynasty Empire structure and shared Week 17 upside.
-        </p>
-
-        <div className="flex flex-wrap gap-3 text-xs sm:text-sm">
-          <span className="rounded-lg bg-panel border border-subtle px-3 py-2">
-            <span className="font-semibold">$25</span> annually
+      {/* PAYOUTS */}
+      <PremiumSection
+        kicker="Money Stuff"
+        title="Payouts & Bonuses"
+        subtitle="Each league is a 12-team SF, 3WR build that ladders into the Dynasty Empire structure and shared Week 17 upside."
+      >
+        <div className="flex flex-wrap justify-center gap-3 text-xs sm:text-sm">
+          <span className="rounded-xl bg-panel border border-subtle px-3 py-2">
+            <span className="font-semibold text-foreground">$25</span> annually
           </span>
-          <span className="rounded-lg bg-panel border border-subtle px-3 py-2">
-            Max payouts – <span className="font-semibold">$2,300</span>
+          <span className="rounded-xl bg-panel border border-subtle px-3 py-2">
+            Max payouts – <span className="font-semibold text-foreground">$2,300</span>
           </span>
-          <span className="rounded-lg bg-panel border border-subtle px-3 py-2">
+          <span className="rounded-xl bg-panel border border-subtle px-3 py-2 text-center">
             $1,500 possible wager pot + $200 wager BONUS + $250 🏆 Championship
           </span>
-          <span className="rounded-lg bg-panel border border-subtle px-3 py-2">
+          <span className="rounded-xl bg-panel border border-subtle px-3 py-2 text-center">
             + $100 🥈, + $50 🥉, + $125 league winner, + $225 EMPIRE win
           </span>
         </div>
 
-        <p className="text-xs text-muted max-w-prose">
-          These custom leagues play the season out with the same odds to win cash. In the championship round, you win $50 just for making it. You
-          can keep it, or push your $50 into the pot for a shot at big money.
-        </p>
+        <div className="mt-5 mx-auto max-w-4xl space-y-3 text-center">
+          <p className="text-sm text-muted">
+            These custom leagues play the season out with the same odds to win cash. In the championship round, you win $50 just for making it. You can
+            keep it, or push your $50 into the pot for a shot at big money.
+          </p>
 
-        <p className="text-xs text-muted max-w-prose">
-          There are <span className="font-semibold">3 BONUS prizes</span>: $200 to the wager winner (most points in Week 17 among wagering players),
-          $100 to 2nd, and $50 to 3rd. A final passive bonus of $200 goes to the overall highest scorer among all league finalists, regardless of wagering.
-        </p>
-      </section>
-
-      {/* LEAGUE DIRECTORY BY YEAR / THEME */}
-      <section className="space-y-6">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-semibold">League Directory</h2>
-          <p className="mt-1 text-sm text-muted max-w-prose">
-            All full &amp; active Dynasty Empire leagues, grouped by season and theme. New seasons appear automatically once added in the admin dashboard.
+          <p className="text-sm text-muted">
+            There are <span className="font-semibold text-foreground">3 BONUS prizes</span>: $200 to the wager winner (most points in Week 17 among
+            wagering players), $100 to 2nd, and $50 to 3rd. A final passive bonus of $200 goes to the overall highest scorer among all league finalists,
+            regardless of wagering.
           </p>
         </div>
+      </PremiumSection>
 
+      {/* DIRECTORY */}
+      <PremiumSection
+        kicker="All Leagues"
+        title="League Directory"
+        subtitle="All full & active Dynasty Empire leagues, grouped by season and theme. New seasons appear automatically once added in the admin dashboard."
+      >
         {years.length === 0 ? (
-          <p className="text-sm text-muted">
-            No leagues are configured yet. Add leagues from <span className="font-semibold">/admin/dynasty</span>.
-          </p>
+          <EmptyState>No leagues are configured yet.</EmptyState>
         ) : (
-          years.map((year) => {
-            const themeMap = byYear.get(year) || new Map();
-            const themeNames = Array.from(themeMap.keys()).sort((a, b) => a.localeCompare(b));
-            if (themeNames.length === 0) return null;
+          <div className="space-y-12">
+            {years.map((year) => {
+              const themeMap = byYear.get(year) || new Map();
+              const themeNames = Array.from(themeMap.keys()).sort((a, b) => a.localeCompare(b));
+              if (themeNames.length === 0) return null;
 
-            return (
-              <div key={year} className="space-y-4">
-                <p className="text-xs uppercase tracking-[0.25em] text-accent">{year} Season</p>
+              return (
+                <div key={year} className="space-y-6">
+                  <div className="flex items-center justify-center">
+                    <p className="text-xs uppercase tracking-[0.25em] text-accent">{year} Season</p>
+                  </div>
 
-                {themeNames.map((themeName) => {
-                  const leaguesInTheme = themeMap.get(themeName) || [];
-                  if (leaguesInTheme.length === 0) return null;
-                  const themeBlurb = leaguesInTheme[0]?.theme_blurb || "";
+                  {themeNames.map((themeName) => {
+                    const leaguesInTheme = themeMap.get(themeName) || [];
+                    if (leaguesInTheme.length === 0) return null;
+                    const themeBlurb = leaguesInTheme[0]?.theme_blurb || "";
 
-                  return (
-                    <div key={themeName} className="space-y-2">
-                      <h3 className="text-2xl sm:text-3xl font-semibold">
-                        {themeName} – {year}
-                      </h3>
-                      {themeBlurb ? <p className="text-xs text-muted max-w-prose">{themeBlurb}</p> : null}
+                    return (
+                      <div key={themeName} className="space-y-4">
+                        <div className="text-center">
+                          <h3 className="text-2xl sm:text-3xl font-semibold text-foreground">
+                            {themeName} <span className="text-muted">– {year}</span>
+                          </h3>
+                          {themeBlurb ? (
+                            <p className="mt-2 text-sm text-muted max-w-4xl mx-auto">{themeBlurb}</p>
+                          ) : null}
+                        </div>
 
-                      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                        {leaguesInTheme.map((lg, idx) => {
-                          const isFilling = lg?.status === "CURRENTLY FILLING" || lg?.status === "DRAFTING";
-                          const img = imageSrcForRow(lg);
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                          {leaguesInTheme.map((lg, idx) => {
+                            const isFilling = lg?.status === "CURRENTLY FILLING" || lg?.status === "DRAFTING";
+                            const img = imageSrcForRow(lg);
 
-                          return (
-                            <Link
-                              key={lg?.id || `${year}-${themeName}-${lg?.name}-${idx}`}
-                              href={lg?.sleeper_url || "#"}
-                              className="group rounded-xl border border-subtle bg-card-surface p-4 hover:border-accent hover:-translate-y-0.5 transition"
-                            >
-                              <div className="flex items-center gap-3">
-                                {img ? (
-                                  <img
-                                    src={img}
-                                    alt={lg?.name || "League"}
-                                    className="h-12 w-12 shrink-0 rounded-full border border-subtle bg-panel object-cover"
-                                  />
-                                ) : null}
+                            return (
+                              <Link
+                                key={lg?.id || `${year}-${themeName}-${lg?.name}-${idx}`}
+                                href={lg?.sleeper_url || "#"}
+                                className={[
+                                  "group rounded-2xl border border-subtle bg-card-surface p-4",
+                                  "hover:border-accent hover:-translate-y-0.5 transition",
+                                  "shadow-[0_0_0_1px_rgba(255,255,255,0.03)]",
+                                ].join(" ")}
+                              >
+                                <div className="flex items-center gap-3">
+                                  {img ? (
+                                    <img
+                                      src={img}
+                                      alt={lg?.name || "League"}
+                                      className="h-12 w-12 shrink-0 rounded-full border border-subtle bg-panel object-cover"
+                                    />
+                                  ) : null}
 
-                                <div className="flex-1 flex items-center justify-between gap-2">
-                                  <div>
-                                    <p className="text-sm font-semibold">{lg?.name}</p>
-                                    <p className="text-[11px] text-muted">
-                                      12-team SF · Division {lg?.display_order ?? "–"}
-                                    </p>
+                                  <div className="flex-1 flex items-center justify-between gap-2 min-w-0">
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-semibold text-foreground truncate">{lg?.name}</p>
+                                      <p className="text-[11px] text-muted truncate">
+                                        12-team SF · Division {lg?.display_order ?? "–"}
+                                      </p>
+                                    </div>
+
+                                    <span className="shrink-0 rounded-full border border-subtle bg-panel px-2 py-1 text-[11px] tracking-wide uppercase">
+                                      {lg?.status || "FULL & ACTIVE"}
+                                    </span>
                                   </div>
-                                  <span className="rounded-full border border-subtle bg-panel px-2 py-1 text-[11px] tracking-wide uppercase">
-                                    {lg?.status || "FULL & ACTIVE"}
-                                  </span>
                                 </div>
-                              </div>
 
-                              {isFilling && lg?.fill_note ? (
-                                <p className="mt-2 text-[11px] text-accent">{lg.fill_note}</p>
-                              ) : null}
-                              {lg?.note ? <p className="mt-1 text-[11px] text-muted">{lg.note}</p> : null}
-                            </Link>
-                          );
-                        })}
+                                {isFilling && lg?.fill_note ? (
+                                  <p className="mt-2 text-[11px] text-accent text-center">{lg.fill_note}</p>
+                                ) : null}
+                                {lg?.note ? (
+                                  <p className="mt-1 text-[11px] text-muted text-center">{lg.note}</p>
+                                ) : null}
+                              </Link>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
         )}
-      </section>
+      </PremiumSection>
     </>
   );
 }

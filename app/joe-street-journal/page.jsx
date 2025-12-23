@@ -68,7 +68,7 @@ export default function JoeStreetJournalPage() {
               </p>
               <ul className="mt-3 space-y-2 text-sm text-fg">
                 <li>• Positional DFS</li>
-                <li>• prop Bets</li>
+                <li>• Prop Bets</li>
                 <li>• Updated Weekly!</li>
               </ul>
               <div className="mt-4">

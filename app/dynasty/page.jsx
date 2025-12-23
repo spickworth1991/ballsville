@@ -23,7 +23,7 @@ const DYNASTY_DOCS = [
     href: "/constitution/dynasty",
   },
   {
-    label: "Wagering Demo (Optional)",
+    label: "Wagering Tracker (Optional)",
     description: "See how wagers map to the big upside in Week 17.",
     href: "/dynasty/wagering-demo",
   },
@@ -48,6 +48,36 @@ const MANAGERS = [
     image: "/photos/managers/alex.jpg",
   },
 ];
+
+function PremiumFrame({ title, subtitle, kicker, children, className = "" }) {
+  return (
+    <section
+      className={[
+        "mt-6 relative overflow-hidden rounded-3xl border border-border/70 bg-card-surface",
+        "shadow-2xl shadow-black/30",
+        "px-6 py-6 sm:px-10 sm:py-8",
+        className,
+      ].join(" ")}
+    >
+      <div className="pointer-events-none absolute inset-0 opacity-40 mix-blend-screen">
+        <div className="absolute -top-24 -left-10 h-56 w-56 rounded-full bg-purple-500/15 blur-3xl" />
+        <div className="absolute -bottom-24 -right-10 h-56 w-56 rounded-full bg-cyan-400/10 blur-3xl" />
+      </div>
+
+      <div className="relative space-y-4">
+        <header className="text-center space-y-2">
+          {kicker ? (
+            <p className="text-xs uppercase tracking-[0.35em] text-accent">{kicker}</p>
+          ) : null}
+          <h2 className="text-2xl sm:text-3xl font-semibold text-foreground">{title}</h2>
+          {subtitle ? <p className="text-sm text-muted max-w-3xl mx-auto">{subtitle}</p> : null}
+        </header>
+
+        <div>{children}</div>
+      </div>
+    </section>
+  );
+}
 
 export default function DynastyPage() {
   return (
@@ -107,8 +137,6 @@ export default function DynastyPage() {
                   </li>
                 </ul>
               </div>
-
-              
             </div>
 
             {/* right hero art + owner block */}
@@ -137,7 +165,8 @@ export default function DynastyPage() {
                   </p>
                 </div>
               </div>
-              <div className="rounded-2xl border border-subtle bg-card-surface px-4 py-1 text-xs sm:text-sm text-muted">
+
+              <div className="rounded-2xl border border-subtle bg-card-surface px-4 py-3 text-xs sm:text-sm text-muted">
                 Drafts are <span className="font-semibold">4-hour timers</span>, paused overnight from{" "}
                 <span className="font-semibold">11pm–9am EST</span> (9pm–6am PST). Startup style is a{" "}
                 <span className="font-semibold">Derby</span>: one shuffle, then managers choose draft spots, which also
@@ -145,19 +174,17 @@ export default function DynastyPage() {
               </div>
             </div>
           </div>
+
           <OwnerHeroBlock mode="dynasty" season={CURRENT_SEASON} title="Owner Updates" />
         </section>
 
         {/* DOCS / CORE DOCUMENTS */}
-        <section>
-          <div>
-            <h2 className="text-xl sm:text-2xl font-semibold">Read to get to know the Game</h2>
-            <p className="mt-1 text-sm text-muted max-w-prose">
-              All BALLSVILLE Dynasty Empire leagues follow these documents. Anyone who joins will be expected to have read them.
-            </p>
-          </div>
-
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <PremiumFrame
+          kicker="Core Docs"
+          title="Read to get to know the Game"
+          subtitle="All BALLSVILLE Dynasty Empire leagues follow these documents. Anyone who joins will be expected to have read them."
+        >
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {DYNASTY_DOCS.map((doc) => (
               <Link
                 key={doc.label}
@@ -165,27 +192,24 @@ export default function DynastyPage() {
                 className="group rounded-2xl border border-subtle bg-card-surface p-4 hover:border-accent hover:-translate-y-0.5 transition"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold">{doc.label}</h3>
+                  <h3 className="text-sm font-semibold text-foreground">{doc.label}</h3>
                   <span className="text-[11px] text-muted group-hover:text-accent">View →</span>
                 </div>
                 <p className="mt-2 text-xs text-muted">{doc.description}</p>
               </Link>
             ))}
           </div>
-        </section>
+        </PremiumFrame>
 
-        {/* DYNAMIC LEAGUES / ORPHANS / DIRECTORY (Supabase-driven) */}
+        {/* DYNAMIC LEAGUES / ORPHANS / DIRECTORY */}
         <DynastyLeaguesClient />
 
         {/* ABOUT THE MANAGERS */}
-        <section className="space-y-4">
-          <div>
-            <h2 className="text-2xl sm:text-3xl font-semibold">About the Managers</h2>
-            <p className="mt-1 text-sm text-muted max-w-prose">
-              Your Game Manager for the Heroes of Dynasty expansion leagues and the Game Creator overseeing the Dynasty Empire.
-            </p>
-          </div>
-
+        <PremiumFrame
+          kicker="Staff"
+          title="About the Managers"
+          subtitle="Your Game Manager for the Heroes of Dynasty expansion leagues and the Game Creator overseeing the Dynasty Empire."
+        >
           <div className="grid gap-4 sm:grid-cols-2">
             {MANAGERS.map((m) => (
               <div
@@ -195,8 +219,8 @@ export default function DynastyPage() {
                 <div className="relative h-16 w-16 sm:h-20 sm:w-20 shrink-0 overflow-hidden rounded-full border border-subtle bg-panel">
                   <Image src={m.image} alt={m.name} fill className="object-cover" />
                 </div>
-                <div className="space-y-1">
-                  <h3 className="text-sm font-semibold">{m.name}</h3>
+                <div className="space-y-1 min-w-0">
+                  <h3 className="text-sm font-semibold text-foreground">{m.name}</h3>
                   <p className="text-xs sm:text-sm text-muted">{m.role}</p>
                   <p className="text-xs text-muted">
                     Sleeper name:{" "}
@@ -208,7 +232,7 @@ export default function DynastyPage() {
               </div>
             ))}
           </div>
-        </section>
+        </PremiumFrame>
       </div>
     </main>
   );

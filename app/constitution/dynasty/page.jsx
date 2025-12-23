@@ -94,7 +94,6 @@ export default function Page() {
                   </p>
                 </div>
                 <div className="p-4 space-y-2 text-sm text-muted">
-                  <p className="font-semibold text-fg">Meta</p>
                   <p>The Heroes expansion is included here and will be added to the wagering demo.</p>
                   <p>“Wagering Demos will be in your leagues”</p>
                 </div>

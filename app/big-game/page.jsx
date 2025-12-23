@@ -92,7 +92,7 @@ export default function BigGamePage() {
             </div>
 
             {/* Right column: owner block + quick facts (matches the premium hero vibe) */}
-            <aside className="w-full lg:w-[360px] space-y-4">
+            <aside className="w-full py-3 lg:w-[360px] space-y-4">
         
 
               <div className="rounded-2xl border border-border/60 bg-card-trans backdrop-blur-sm overflow-hidden shadow-xl shadow-black/50">

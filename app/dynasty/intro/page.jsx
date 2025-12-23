@@ -70,7 +70,6 @@ function LeagueGrid({ title, items }) {
     <section className="rounded-2xl border border-subtle bg-card-surface p-5 shadow-sm space-y-4">
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <h3 className="text-lg sm:text-xl font-semibold text-primary">{title}</h3>
-        <p className="text-xs text-muted">Tap a card to zoom in (mobile-friendly).</p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
