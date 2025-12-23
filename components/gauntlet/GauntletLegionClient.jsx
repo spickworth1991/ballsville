@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import DivisionLeagueTabCard from "@/components/shared/DivisionLeagueTabCard";
+import Image from "next/image";
+import MediaTabCard from "@/components/ui/MediaTabCard";
 
 function statusBadge(status) {
   const s = String(status || "TBD").toUpperCase();
@@ -156,20 +157,18 @@ export default function GauntletLegionClient({ year, legionSlug, backHref }) {
               {activeLeagues.map((l) => {
                 const leagueImg = l.league_image_url || l.league_image_key || "";
                 const href = l.league_url || "";
+
                 return (
-                  <DivisionLeagueTabCard
+                  <MediaTabCard
                     key={`${l.legion_slug}_${l.league_order}`}
-                    href={href || "#"}
-                    external={Boolean(href)}
-                    target={href ? "_blank" : undefined}
-                    rel={href ? "noopener noreferrer" : undefined}
+                    href={href}
+                    external
                     title={l.league_name || "Sleeper League"}
                     subtitle={`League ${l.league_order}`}
+                    metaLeft={l.league_status ? statusBadge(l.league_status) : null}
                     imageSrc={leagueImg || null}
                     imageAlt={l.league_name || "League"}
-                    badge={l.league_status ? statusBadge(l.league_status) : null}
-                    rightTop={<span className="text-xs text-muted">OPEN</span>}
-                    rightBottom={<span className="text-accent">↗</span>}
+                    footerText="Open League"
                   />
                 );
               })}

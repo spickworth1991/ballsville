@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { CURRENT_SEASON } from "@/lib/season";
-import DivisionLeagueTabCard from "@/components/shared/DivisionLeagueTabCard";
+import MediaTabCard from "@/components/ui/MediaTabCard";
 
 const DEFAULT_SEASON = CURRENT_SEASON;
 const R2_KEY_FOR = (season) => `data/biggame/leagues_${season}.json`;
@@ -180,19 +180,26 @@ export default function BigGameDivisionsClient({ year = DEFAULT_SEASON }) {
 
   return (
     <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-      {divisions.map((d) => (
-        <DivisionLeagueTabCard
-          key={d.id}
-          // NOTE: this site is deployed as a static export.
-          // Keep the drill-down on the same /big-game/divisions page using query params.
-          href={`/big-game/divisions?division=${encodeURIComponent(d.division_slug)}&year=${encodeURIComponent(String(season))}`}
-          title={d.division_name}
-          subtitle={`${d.leagues.length} leagues`}
-          badgeText={safeStr(d.status || "TBD")}
-          imageSrc={d.division_image || null}
-          footerLeft="View division"
-        />
-      ))}
+      {divisions.map((d) => {
+        // NOTE: this site is deployed as a static export.
+        // Keep the drill-down on the same /big-game/divisions page using query params.
+        const href = `/big-game/divisions?division=${encodeURIComponent(
+          d.division_slug
+        )}&year=${encodeURIComponent(String(season))}`;
+
+        return (
+          <MediaTabCard
+            key={d.id}
+            href={href}
+            title={d.division_name}
+            subtitle={`${d.leagues.length} leagues`}
+            metaRight={<span className="badge">{safeStr(d.status || "TBD")}</span>}
+            imageSrc={d.division_image || ""}
+            imageAlt="Division"
+            footerText="View division"
+          />
+        );
+      })}
     </div>
   );
 }

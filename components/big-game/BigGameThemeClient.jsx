@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import MediaTabCard from "@/components/ui/MediaTabCard";
 import { CURRENT_SEASON } from "@/lib/season";
 
 const DEFAULT_SEASON = CURRENT_SEASON;
@@ -108,7 +109,7 @@ export default function BigGameThemeClient({ themeSlug, season = DEFAULT_SEASON 
         <p className="text-xs text-muted">This division consists of up to 8 leagues. Each tile below links directly to the Sleeper league.</p>
       </header>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {rows.map((lg) => {
           const leagueUrl = safeStr(lg?.sleeper_url || lg?.league_url);
 
@@ -119,29 +120,17 @@ export default function BigGameThemeClient({ themeSlug, season = DEFAULT_SEASON 
           });
 
           return (
-            <Link
+            <MediaTabCard
               key={safeStr(lg.id)}
               href={leagueUrl || "#"}
-              className="group rounded-xl border border-subtle bg-card-surface overflow-hidden flex flex-col hover:border-accent hover:-translate-y-0.5 transition"
-            >
-              <div className="relative aspect-square overflow-hidden">
-                <Image
-                  src={leagueImg}
-                  alt={safeStr(lg.league_name || lg.name || "League")}
-                  fill
-                  className="object-cover transition-transform duration-500 group-hover:scale-105"
-                  sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
-                <div className="absolute bottom-2 left-2 right-2">
-                  <p className="text-xs font-semibold text-white drop-shadow">{safeStr(lg.league_name || lg.name)}</p>
-                </div>
-              </div>
-              <div className="p-3 text-xs text-muted flex-1 flex items-center justify-between gap-2">
-                <span>Big Game Bestball</span>
-                <span className="text-[11px] font-mono text-accent">#{lg.display_order ?? "—"}</span>
-              </div>
-            </Link>
+              external
+              title={safeStr(lg.league_name || lg.name || "League")}
+              subtitle="Big Game Bestball"
+              metaRight={<span className="text-[11px] font-mono text-accent">#{lg.display_order ?? "—"}</span>}
+              imageSrc={leagueImg}
+              imageAlt={safeStr(lg.league_name || lg.name || "League")}
+              footerLabel="Open League"
+            />
           );
         })}
       </div>

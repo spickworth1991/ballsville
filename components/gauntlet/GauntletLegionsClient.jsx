@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import DivisionLeagueTabCard from "@/components/shared/DivisionLeagueTabCard";
+import MediaTabCard from "@/components/ui/MediaTabCard";
 import { CURRENT_SEASON } from "@/lib/season";
 
 function slugify(s) {
@@ -86,40 +86,50 @@ export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedde
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
       {legions.map((l) => {
         const status = String(l?.legion_status || "TBD").toUpperCase();
-        const badgeClass = statusBadge(status);
+        const badge = statusBadge(status);
         const href = `/gauntlet/legions?legion=${encodeURIComponent(l.legion_slug)}&year=${encodeURIComponent(
           String(season)
         )}`;
 
         return (
-          <DivisionLeagueTabCard
+          <MediaTabCard
             key={l.legion_slug}
             href={href}
             title={l.legion_name || "Unnamed Legion"}
-            subtitle={l.legion_blurb || "Choose to view this legion’s leagues."}
+            subtitle={"Gauntlet Legion"}
             imageSrc={l.legion_image_url || null}
             imageAlt={l.legion_name || "Legion"}
-            badge={
+            metaLeft={
               <span
-                className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClass}`}
+                className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${badge}`}
               >
                 {status}
               </span>
             }
-            rightTop={
+            metaRight={
               l.activeCount ? (
-                <span className="inline-flex items-center rounded-full border border-subtle bg-subtle-surface px-2.5 py-1 text-xs font-semibold text-fg">
+                <span className="inline-flex items-center rounded-full border border-subtle bg-card-subtle px-2.5 py-1 text-xs font-semibold text-fg">
                   {l.activeCount} leagues
                 </span>
               ) : null
             }
-            rightBottom={
-              typeof l.openSpots === "number" ? (
-                <span className="inline-flex items-center rounded-full border border-subtle bg-subtle-surface px-2.5 py-1 text-xs text-muted">
-                  {l.openSpots} spots open
-                </span>
-              ) : null
-            }
+            badges={[
+              typeof l.openSpots === "number"
+                ? {
+                    text: `${l.openSpots} spots open`,
+                    className:
+                      "inline-flex items-center rounded-full border border-subtle bg-card-subtle px-2.5 py-1 text-xs text-muted",
+                  }
+                : null,
+              l.legion_blurb
+                ? {
+                    text: l.legion_blurb,
+                    className:
+                      "inline-flex items-center rounded-full border border-subtle bg-card-subtle px-2.5 py-1 text-xs text-muted",
+                  }
+                : null,
+            ].filter(Boolean)}
+            footerText="View Legion"
           />
         );
       })}
