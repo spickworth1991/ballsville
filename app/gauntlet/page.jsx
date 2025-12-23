@@ -234,7 +234,7 @@ export default function GauntletPage() {
         <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
           {/* CLICKABLE LIVE BRACKET CARD */}
           <Link
-            href="/scores"
+            href="/gauntlet/leaderboard"
             className="group block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             <SubCard>

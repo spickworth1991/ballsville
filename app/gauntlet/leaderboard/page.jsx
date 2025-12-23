@@ -1,7 +1,7 @@
-// src/app/gauntlet/leg3/page.jsx
+// src/app/gauntlet/leaderboard/page.jsx
 "use client";
 
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef, useMemo, Fragment } from "react";
 import { CURRENT_SEASON } from "@/lib/season";
 
 const LEG3_YEAR = CURRENT_SEASON;
@@ -62,6 +62,8 @@ function GauntletLeg3Inner() {
   const [error, setError] = useState("");
   const [viewMode, setViewMode] = useState("matchups");
   const [roundFilter, setRoundFilter] = useState("1");
+  const [expandedGrand, setExpandedGrand] = useState(null);
+
 
   async function hardReloadAll(jsonFromManifest) {
     const divisions = jsonFromManifest?.divisions || {};
@@ -681,17 +683,19 @@ function GauntletLeg3Inner() {
                           <th className="px-3 py-2">God</th>
                           <th className="px-3 py-2">Owner</th>
                           <th className="px-3 py-2">Side</th>
-                          <th className="px-3 py-2">League</th>
                           <th className="px-3 py-2 text-right">Wk 17 Score</th>
                           <th className="px-3 py-2 text-right">Leg 3 Total</th>
+                          <th className="px-3 py-2 text-right">Details</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-subtle text-[0.75rem]">
                         {grandStandings.map((p) => {
+                          const rowKey = `${p.leagueId}-${p.rosterId}`;
+                          const isExpanded = expandedGrand === rowKey;
+                          const played = typeof p.week17Score === "number" && p.week17Score !== 0;
                           const leagueId = p?.leagueId ?? p?.league_id ?? null;
                           const rosterId = p?.rosterId ?? p?.roster_id ?? null;
                           const key = leagueId && rosterId != null ? `${leagueId}::${rosterId}` : null;
-
                           const inferredSide = key ? sideByLeagueRosterKey.get(key) : null;
 
                           const side =
@@ -700,34 +704,54 @@ function GauntletLeg3Inner() {
                             p?.seedSide ??
                             inferredSide ??
                             null;
-
                           return (
-                            <tr key={`${p.leagueId}-${p.rosterId}`}>
-                              <td className="px-3 py-2 text-center font-mono text-primary">{p.rank}</td>
-                              <td className="px-3 py-2">{p.division}</td>
-                              <td className="px-3 py-2">{p.godName || `God ${p.godIndex ?? "?"}`}</td>
+                            <Fragment key={rowKey}>
+                              <tr
+                                className={`cursor-pointer hover:bg-[color:var(--color-card)]/60 transition ${
+                                  isExpanded ? "bg-[color:var(--color-card)]/60" : ""
+                                }`}
+                                onClick={() => setExpandedGrand((prev) => (prev === rowKey ? null : rowKey))}
+                              >
+                                <td className="px-3 py-2 text-center font-mono text-primary">{p.rank}</td>
+                                <td className="px-3 py-2">{p.division}</td>
+                                <td className="px-3 py-2">{p.godName}</td>
+                                <td className="px-3 py-2">{p.ownerName}</td>
+                                <td className="px-3 py-2"><SideBadge side={side}/></td>
+                                <td className="px-3 py-2 text-right font-mono">{Number(p.week17Score || 0).toFixed(2)}</td>
+                                <td className="px-3 py-2 text-right font-mono">{Number(p.leg3Total || 0).toFixed(2)}</td>
+                                <td className="px-3 py-2 text-right text-xs text-muted">{isExpanded ? "Hide" : "Lineup"}</td>
+                              </tr>
 
-                              <td className="px-3 py-2">
-                                <div className="truncate max-w-[160px]">{p.ownerName}</div>
-                              </td>
+                              {isExpanded && (
+                                <tr className="bg-subtle-surface/40">
+                                  <td colSpan={8} className="px-3 py-3">
+                                    <div className="rounded-2xl border border-subtle bg-subtle-surface p-4">
+                                      <div className="mb-2 flex items-center justify-between">
+                                        <div className="text-xs text-muted">
+                                          Week 17 lineup — <span className="font-semibold text-fg">{p.ownerName || "Team"}</span>
+                                        </div>
+                                        <div className="text-[0.7rem] text-muted">{played ? "Final / in-progress" : "Scores pending"}</div>
+                                      </div>
 
-                              <td className="px-3 py-2">
-                                <SideBadge side={side} />
-                              </td>
-
-                              <td className="px-3 py-2">
-                                <div className="truncate max-w-[260px] text-muted">{p.leagueName}</div>
-                              </td>
-
-                              <td className="px-3 py-2 text-right font-mono">
-                                {Number(p.week17Score || 0).toFixed(2)}
-                              </td>
-                              <td className="px-3 py-2 text-right font-mono">
-                                {Number(p.leg3Total || 0).toFixed(2)}
-                              </td>
-                            </tr>
+                                      <LineupSide
+                                        title={p.ownerName || "Team"}
+                                        seed={typeof p.seed === "number" ? p.seed : undefined}
+                                        lineup={p.lineup || null}
+                                        isWinner={Number(p.rank) === 1 && played}
+                                        isPlayed={played}
+                                      />
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </Fragment>
                           );
                         })}
+
+
+
+                        
+
                       </tbody>
                     </table>
 

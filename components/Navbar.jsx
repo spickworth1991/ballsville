@@ -41,7 +41,7 @@ const NAV_ITEMS = [
     icon: FiBarChart2,
     children: [
       { name: "Leaderboards", to: "/leaderboards" },
-      { name: "Gauntlet Bracket", to: "/scores" },
+      { name: "Gauntlet Bracket", to: "/gauntlet/leaderboard" },
     ],
   },
   {
