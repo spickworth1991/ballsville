@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "next dev",
-    "proxy": "wrangler pages dev --proxy 3000 --port 8788",
+    "proxy": "npx wrangler pages dev --proxy 3000 --port 8788 --persist-to .wrangler/state",
+    "seed": "npx wrangler r2 object put admin/data/gauntlet/leagues_2025.json --file r2/data/gauntlet/leagues_2025.json --local --persist-to .wrangler/state",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

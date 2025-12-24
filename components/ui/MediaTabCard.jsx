@@ -60,7 +60,7 @@ export default function MediaTabCard({
               <img
                 src={imageSrc}
                 alt={imageAlt || String(title || "")}
-                className="h-40 w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                className="h-40 w-full object-contain transition-transform duration-300 group-hover:scale-[1.03]"
                 loading="lazy"
               />
             </div>

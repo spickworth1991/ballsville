@@ -140,7 +140,7 @@ export default function GauntletLegionClient({ season = 2025, legionKey = "", ti
   const title = titleOverride || header.legion_name || "Legion";
 
   return (
-    <div className="space-y-6">
+    <div className="rounded-3xl border border-subtle bg-card-surface overflow-hidden">
       <div className="rounded-2xl border border-white/10 bg-black/20 p-5 backdrop-blur">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-xl font-semibold text-white">{title}</h2>

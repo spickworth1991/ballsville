@@ -19,6 +19,7 @@ const DEFAULT_PAGE_EDITABLE = {
   },
 };
 
+
 function slugify(s) {
   return String(s || "")
     .trim()
@@ -39,17 +40,6 @@ async function getAccessToken() {
   return data?.session?.access_token || "";
 }
 
-function isAbsUrl(s) {
-  return /^https?:\/\//i.test(String(s || ""));
-}
-
-function r2UrlFromUpload(out) {
-  // functions/api/admin/upload returns: { ok, key, url }
-  // - url is already "/r2/<key>?v=..." for cache-busted preview
-  if (out?.url) return String(out.url);
-  if (out?.key) return `/r2/${String(out.key)}`;
-  return "";
-}
 
 function statusBadge(status) {
   const s = (status || "TBD").toUpperCase();
