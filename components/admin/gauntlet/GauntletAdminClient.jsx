@@ -32,10 +32,23 @@ function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
-function r2ImgSrc(key, fallbackUrl) {
-  // Use key-based URL (served by /r2/* function). Keep deterministic query for light cache-busting.
-  if (key) return `/r2/${key}?v=${encodeURIComponent(key)}`;
-  return fallbackUrl || "";
+async function getAccessToken() {
+  const supabase = getSupabase();
+  if (!supabase) return "";
+  const { data } = await supabase.auth.getSession();
+  return data?.session?.access_token || "";
+}
+
+function isAbsUrl(s) {
+  return /^https?:\/\//i.test(String(s || ""));
+}
+
+function r2UrlFromUpload(out) {
+  // functions/api/admin/upload returns: { ok, key, url }
+  // - url is already "/r2/<key>?v=..." for cache-busted preview
+  if (out?.url) return String(out.url);
+  if (out?.key) return `/r2/${String(out.key)}`;
+  return "";
 }
 
 function statusBadge(status) {
@@ -55,14 +68,6 @@ async function safeJson(res) {
     return { ok: false, error: text?.slice(0, 300) || "Non-JSON response" };
   }
 }
-
-async function getAccessToken() {
-  const supabase = getSupabase();
-  if (!supabase) return "";
-  const { data } = await supabase.auth.getSession();
-  return data?.session?.access_token || "";
-}
-
 
 export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) {
   const [season, setSeason] = useState(defaultSeason);
@@ -88,7 +93,15 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
       });
       const data = await safeJson(res);
       if (!res.ok || data?.ok === false) throw new Error(data?.error || "Failed to load");
-      setRows(Array.isArray(data.rows) ? data.rows.map((r) => ({ ...r, __key: r.__key || uid() })) : []);
+      // IMPORTANT: assign a stable per-row key ONCE so editing doesn't remount inputs
+      // (never key by legion_slug / league_order, because those can change while typing).
+      const list = Array.isArray(data.rows) ? data.rows : [];
+      setRows(
+        list.map((r) => ({
+          ...r,
+          __key: r?.__key || uid(),
+        }))
+      );
     } catch (e) {
       setError(e?.message || String(e));
       setRows([]);
@@ -144,17 +157,22 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
   }
 
   async function uploadOwnerUpdatesImage(file) {
+    const token = await getAccessToken();
     const fd = new FormData();
     fd.append("file", file);
     fd.append("section", "gauntlet-updates");
     fd.append("season", String(season));
-    const token = await getAccessToken();
-    const res = await fetch(`/api/admin/upload`, { method: "POST", body: fd, headers: { authorization: `Bearer ${token}` } });
+    const res = await fetch(`/api/admin/upload`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: fd,
+    });
     const out = await safeJson(res);
     if (!res.ok || out?.ok === false) throw new Error(out?.error || "Upload failed");
 
     setPageCfg((p) => ({
       ...p,
+      // upload.js returns { key, url }
       hero: { ...p.hero, promoImageKey: String(out.key || ""), promoImageUrl: String(out.url || "") },
     }));
     setNotice("Image uploaded. Click Save Owner Updates to publish.");
@@ -231,7 +249,6 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
         legion_status: "TBD",
         legion_spots: 0,
         legion_order: maxOrder + 1,
-        legion_image_key: "",
         legion_image_path: "",
         is_active: true,
       },
@@ -258,7 +275,6 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
         league_url: "",
         league_status: "FULL",
         is_active: true,
-        league_image_key: "",
         league_image_path: "",
       },
     ]);
@@ -316,6 +332,7 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
     setError("");
     setNotice("");
     try {
+      const token = await getAccessToken();
       const form = new FormData();
 
       if (uploadCtx.type === "legion") {
@@ -331,23 +348,28 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
 
       form.set("file", file);
 
-      const token = await getAccessToken();
-
-      const res = await fetch("/api/admin/upload", { method: "POST", body: form, headers: { authorization: `Bearer ${token}` } });
+      const res = await fetch("/api/admin/upload", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+        body: form,
+      });
       const data = await safeJson(res);
       if (!res.ok || data?.ok === false) throw new Error(data?.error || "Upload failed");
 
-      // IMPORTANT:
-      // The PUBLIC gauntlet pages currently render from *_image_path (as seen in leagues_YYYY.json).
-      // The upload endpoint returns a deterministic key + a cache-busted /r2 URL.
-      // We store the URL (or a /r2/<key> fallback) directly into *_image_path so publishing persists it.
-      const nextKey = String(data.key || "");
-      const nextPath = String(data.url || (nextKey ? `/r2/${nextKey}` : ""));
+      // upload.js returns { key, url }
+      const key = String(data?.key || "");
+      const url = String(data?.url || "");
 
       if (uploadCtx.type === "legion") {
-        updateLegion(uploadCtx.legionSlug, { legion_image_path: nextPath });
+        updateLegion(uploadCtx.legionSlug, {
+          legion_image_key: key,
+          legion_image_path: url, // store full /r2/... URL for rendering
+        });
       } else {
-        updateLeague(uploadCtx.legionSlug, uploadCtx.leagueOrder, { league_image_path: nextPath });
+        updateLeague(uploadCtx.legionSlug, uploadCtx.leagueOrder, {
+          league_image_key: key,
+          league_image_path: url,
+        });
       }
       setNotice("Image uploaded ✓ (remember to Publish)");
     } catch (e2) {
@@ -469,8 +491,8 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
                 <div className="flex flex-col lg:flex-row gap-4 lg:items-start lg:justify-between">
                   <div className="flex gap-4 items-start">
                     <div className="relative h-20 w-20 rounded-xl overflow-hidden border border-subtle bg-subtle-surface flex-shrink-0">
-                      {(h.legion_image_key || h.legion_image_path) ? (
-                        <Image src={r2ImgSrc(h.legion_image_key, h.legion_image_path)} alt={h.legion_name || "Legion"} fill sizes="80px" className="object-cover" />
+                      {h.legion_image_path ? (
+                        <Image src={h.legion_image_path} alt={h.legion_name || "Legion"} fill sizes="80px" className="object-cover" />
                       ) : (
                         <div className="h-full w-full grid place-items-center text-xs text-muted">No Image</div>
                       )}
@@ -621,14 +643,8 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
                               <td className="py-2 pr-3 align-top">
                                 <div className="flex items-center gap-2">
                                   <div className="relative h-10 w-10 rounded-lg overflow-hidden border border-subtle bg-subtle-surface">
-                                    {(l.league_image_key || l.league_image_path) ? (
-                                      <Image
-                                        src={r2ImgSrc(l.league_image_key, l.league_image_path)}
-                                        alt={l.league_name || "League"}
-                                        fill
-                                        sizes="40px"
-                                        className="object-cover"
-                                      />
+                                    {l.league_image_path ? (
+                                      <Image src={l.league_image_path} alt={l.league_name || "League"} fill sizes="40px" className="object-cover" />
                                     ) : (
                                       <div className="h-full w-full grid place-items-center text-[10px] text-muted">—</div>
                                     )}

@@ -4,6 +4,23 @@ import { useEffect, useMemo, useState } from "react";
 import MediaTabCard from "@/components/ui/MediaTabCard";
 import { CURRENT_SEASON } from "@/lib/season";
 
+function safeStr(v) {
+  return typeof v === "string" ? v : v == null ? "" : String(v);
+}
+
+function resolveImageSrc({ imagePath, imageKey, updatedAt }) {
+  const p = safeStr(imagePath).trim();
+  const k = safeStr(imageKey).trim();
+  const bust = updatedAt ? `v=${encodeURIComponent(updatedAt)}` : `v=${Date.now()}`;
+
+  if (p) {
+    if (p.includes("?")) return p;
+    return `${p}?${bust}`;
+  }
+  if (k) return `/r2/${k}?${bust}`;
+  return "";
+}
+
 function slugify(s) {
   return String(s || "")
     .trim()
@@ -23,11 +40,6 @@ function statusBadge(status) {
   return map[s] || map.TBD;
 }
 
-function r2ImgSrc(key, fallbackUrl) {
-  if (key) return `/r2/${key}?v=${encodeURIComponent(key)}`;
-  return fallbackUrl || "";
-}
-
 function fmtSpots(openSpots) {
   if (openSpots == null) return null;
   const n = Number(openSpots);
@@ -39,6 +51,7 @@ export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedde
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [updatedAt, setUpdatedAt] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -47,11 +60,13 @@ export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedde
       setLoading(true);
       try {
         const r2Base = process.env.NEXT_PUBLIC_ADMIN_R2_PROXY_BASE || "/r2";
-        const url = `${r2Base}/data/gauntlet/leagues_${season}.json`;
+        const url = `${r2Base}/data/gauntlet/leagues_${season}.json?v=${Date.now()}`;
         const res = await fetch(url, { cache: "no-store" });
         if (!res.ok) throw new Error(`Failed to load gauntlet data (${res.status})`);
         const json = await res.json();
-        if (!cancelled) setRows(Array.isArray(json?.rows) ? json.rows : []);
+        if (cancelled) return;
+        setRows(Array.isArray(json?.rows) ? json.rows : []);
+        setUpdatedAt(String(json?.updated_at || ""));
       } catch (e) {
         if (!cancelled) setError(e?.message || "Failed to load gauntlet legions");
       } finally {
@@ -74,7 +89,8 @@ export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedde
           .sort((a, b) => Number(a?.league_order ?? 0) - Number(b?.league_order ?? 0));
 
         const activeCount = legionLeagues.filter((x) => x?.is_active !== false).length;
-        const openSpots = fmtSpots(r?.open_spots);
+        // Gauntlet schema uses legion_spots (not open_spots)
+        const openSpots = fmtSpots(r?.legion_spots);
 
         return {
           ...r,
@@ -101,8 +117,12 @@ export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedde
             key={l.legion_slug}
             href={href}
             title={l.legion_name || "Unnamed Legion"}
-            subtitle={"Gauntlet Legion"}
-            imageSrc={r2ImgSrc(l.legion_image_key, l.legion_image_path) || null}
+            subtitle={l.legion_blurb ? String(l.legion_blurb) : "Gauntlet Legion"}
+            imageSrc={resolveImageSrc({
+              imagePath: l.legion_image_path,
+              imageKey: l.legion_image_key,
+              updatedAt,
+            })}
             imageAlt={l.legion_name || "Legion"}
             metaLeft={
               <span
@@ -118,22 +138,6 @@ export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedde
                 </span>
               ) : null
             }
-            badges={[
-              typeof l.openSpots === "number"
-                ? {
-                    text: `${l.openSpots} spots open`,
-                    className:
-                      "inline-flex items-center rounded-full border border-subtle bg-card-subtle px-2.5 py-1 text-xs text-muted",
-                  }
-                : null,
-              l.legion_blurb
-                ? {
-                    text: l.legion_blurb,
-                    className:
-                      "inline-flex items-center rounded-full border border-subtle bg-card-subtle px-2.5 py-1 text-xs text-muted",
-                  }
-                : null,
-            ].filter(Boolean)}
             footerText="View Legion"
           />
         );

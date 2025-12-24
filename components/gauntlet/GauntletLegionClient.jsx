@@ -12,13 +12,23 @@ function slugify(s) {
     .replace(/-+/g, "-");
 }
 
-function r2ImgSrc(key, fallbackUrl) {
-  if (key) return `/r2/${key}?v=${encodeURIComponent(key)}`;
-  return fallbackUrl || "";
-}
-
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
+}
+
+function resolveImageSrc({ imagePath, imageKey, updatedAt }) {
+  const p = safeStr(imagePath).trim();
+  const k = safeStr(imageKey).trim();
+  const bust = updatedAt ? `v=${encodeURIComponent(updatedAt)}` : `v=${Date.now()}`;
+
+  // If we already stored a full URL (/r2/... or https://...), just ensure it has a cache-bust.
+  if (p) {
+    if (p.includes("?")) return p;
+    return `${p}?${bust}`;
+  }
+  // If we stored only the key, build a public /r2 URL.
+  if (k) return `/r2/${k}?${bust}`;
+  return "";
 }
 
 function buildIndex(rows) {
@@ -70,11 +80,12 @@ async function fetchLeagues(season) {
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(`Failed to load gauntlet leagues (${res.status})`);
   const data = await res.json();
-  return data?.rows || [];
+  return { rows: data?.rows || [], updated_at: data?.updated_at || "" };
 }
 
 export default function GauntletLegionClient({ season = 2025, legionKey = "", titleOverride = "" }) {
   const [rows, setRows] = useState(null);
+  const [updatedAt, setUpdatedAt] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -83,8 +94,10 @@ export default function GauntletLegionClient({ season = 2025, legionKey = "", ti
     setRows(null);
 
     fetchLeagues(season)
-      .then((r) => {
-        if (!cancelled) setRows(r);
+      .then((out) => {
+        if (cancelled) return;
+        setRows(out.rows);
+        setUpdatedAt(String(out.updated_at || ""));
       })
       .catch((e) => {
         if (!cancelled) setError(e?.message || "Failed to load gauntlet leagues.");
@@ -148,7 +161,11 @@ export default function GauntletLegionClient({ season = 2025, legionKey = "", ti
             key={`${header.legion_slug}_${l.league_order}_${l.league_name}`}
             title={l.league_name || "League"}
             subtitle={l.league_status || ""}
-            imageSrc={r2ImgSrc(l.league_image_key, l.league_image_path)}
+            imageSrc={resolveImageSrc({
+              imagePath: l.league_image_path,
+              imageKey: l.league_image_key,
+              updatedAt,
+            })}
             href={l.league_url || "#"}
             external={Boolean(l.league_url)}
           />
