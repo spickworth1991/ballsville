@@ -23,6 +23,11 @@ function statusBadge(status) {
   return map[s] || map.TBD;
 }
 
+function r2ImgSrc(key, fallbackUrl) {
+  if (key) return `/r2/${key}?v=${encodeURIComponent(key)}`;
+  return fallbackUrl || "";
+}
+
 function fmtSpots(openSpots) {
   if (openSpots == null) return null;
   const n = Number(openSpots);
@@ -97,7 +102,7 @@ export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedde
             href={href}
             title={l.legion_name || "Unnamed Legion"}
             subtitle={"Gauntlet Legion"}
-            imageSrc={l.legion_image_url || null}
+            imageSrc={r2ImgSrc(l.legion_image_key, l.legion_image_path) || null}
             imageAlt={l.legion_name || "Legion"}
             metaLeft={
               <span

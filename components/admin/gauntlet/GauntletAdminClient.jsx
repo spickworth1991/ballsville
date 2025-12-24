@@ -32,6 +32,11 @@ function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
+function r2ImgSrc(key, fallbackUrl) {
+  if (key) return `/r2/${key}?v=${encodeURIComponent(key)}`;
+  return fallbackUrl || "";
+}
+
 function statusBadge(status) {
   const s = (status || "TBD").toUpperCase();
   const base = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold border";
@@ -57,6 +62,7 @@ async function getAccessToken() {
   return data?.session?.access_token || "";
 }
 
+
 export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) {
   const [season, setSeason] = useState(defaultSeason);
   const [rows, setRows] = useState([]);
@@ -81,11 +87,7 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
       });
       const data = await safeJson(res);
       if (!res.ok || data?.ok === false) throw new Error(data?.error || "Failed to load");
-      // Important: stabilize React keys for loaded rows.
-      // If we key by legion_slug (or regenerate ids each render), editing a slug/name
-      // will remount the entire section and you can only type 1 character before focus resets.
-      const list = Array.isArray(data.rows) ? data.rows : [];
-      setRows(list.map((r) => ({ ...r, __key: r.__key || uid() })));
+      setRows(Array.isArray(data.rows) ? data.rows.map((r) => ({ ...r, __key: r.__key || uid() })) : []);
     } catch (e) {
       setError(e?.message || String(e));
       setRows([]);
@@ -141,23 +143,18 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
   }
 
   async function uploadOwnerUpdatesImage(file) {
-    const token = await getAccessToken();
-    if (!token) throw new Error("Missing admin session token. Please sign in again.");
     const fd = new FormData();
     fd.append("file", file);
     fd.append("section", "gauntlet-updates");
     fd.append("season", String(season));
-    const res = await fetch(`/api/admin/upload`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}` },
-      body: fd,
-    });
+    const token = await getAccessToken();
+    const res = await fetch(`/api/admin/upload`, { method: "POST", body: fd, headers: { authorization: `Bearer ${token}` } });
     const out = await safeJson(res);
     if (!res.ok || out?.ok === false) throw new Error(out?.error || "Upload failed");
 
     setPageCfg((p) => ({
       ...p,
-      hero: { ...p.hero, promoImageKey: String(out.key || ""), promoImageUrl: String(out.publicUrl || "") },
+      hero: { ...p.hero, promoImageKey: String(out.key || ""), promoImageUrl: String(out.url || "") },
     }));
     setNotice("Image uploaded. Click Save Owner Updates to publish.");
   }
@@ -316,8 +313,6 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
     setError("");
     setNotice("");
     try {
-      const token = await getAccessToken();
-      if (!token) throw new Error("Missing admin session token. Please sign in again.");
       const form = new FormData();
 
       if (uploadCtx.type === "legion") {
@@ -333,18 +328,16 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
 
       form.set("file", file);
 
-      const res = await fetch("/api/admin/upload", {
-        method: "POST",
-        headers: { authorization: `Bearer ${token}` },
-        body: form,
-      });
+      const token = await getAccessToken();
+
+      const res = await fetch("/api/admin/upload", { method: "POST", body: form, headers: { authorization: `Bearer ${token}` } });
       const data = await safeJson(res);
       if (!res.ok || data?.ok === false) throw new Error(data?.error || "Upload failed");
 
       if (uploadCtx.type === "legion") {
-        updateLegion(uploadCtx.legionSlug, { legion_image_path: data.publicPath || "" });
+        updateLegion(uploadCtx.legionSlug, { legion_image_key: String(data.key || "") });
       } else {
-        updateLeague(uploadCtx.legionSlug, uploadCtx.leagueOrder, { league_image_path: data.publicPath || "" });
+        updateLeague(uploadCtx.legionSlug, uploadCtx.leagueOrder, { league_image_key: String(data.key || "") });
       }
       setNotice("Image uploaded ✓ (remember to Publish)");
     } catch (e2) {
@@ -467,7 +460,7 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
                   <div className="flex gap-4 items-start">
                     <div className="relative h-20 w-20 rounded-xl overflow-hidden border border-subtle bg-subtle-surface flex-shrink-0">
                       {h.legion_image_path ? (
-                        <Image src={h.legion_image_path} alt={h.legion_name || "Legion"} fill sizes="80px" className="object-cover" />
+                        <Image src={r2ImgSrc(h.legion_image_key, h.legion_image_path)} alt={h.legion_name || "Legion"} fill sizes="80px" className="object-cover" />
                       ) : (
                         <div className="h-full w-full grid place-items-center text-xs text-muted">No Image</div>
                       )}

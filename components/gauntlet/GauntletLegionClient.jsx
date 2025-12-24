@@ -12,6 +12,11 @@ function slugify(s) {
     .replace(/-+/g, "-");
 }
 
+function r2ImgSrc(key, fallbackUrl) {
+  if (key) return `/r2/${key}?v=${encodeURIComponent(key)}`;
+  return fallbackUrl || "";
+}
+
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
@@ -28,6 +33,7 @@ function buildIndex(rows) {
       legion_status: safeStr(r.legion_status || "TBD"),
       legion_spots: Number.isFinite(Number(r.legion_spots)) ? Number(r.legion_spots) : null,
       legion_order: Number.isFinite(Number(r.legion_order)) ? Number(r.legion_order) : 999,
+      legion_image_key: safeStr(r.legion_image_key || ""),
       legion_image_path: safeStr(r.legion_image_path || ""),
     }))
     .sort((a, b) => a.legion_order - b.legion_order);
@@ -45,6 +51,7 @@ function buildIndex(rows) {
         league_name: safeStr(r.league_name).trim(),
         league_url: safeStr(r.league_url || ""),
         league_status: safeStr(r.league_status || "TBD"),
+        league_image_key: safeStr(r.league_image_key || ""),
         league_image_path: safeStr(r.league_image_path || ""),
       });
       leaguesByLegion.set(slug, arr);
@@ -141,7 +148,7 @@ export default function GauntletLegionClient({ season = 2025, legionKey = "", ti
             key={`${header.legion_slug}_${l.league_order}_${l.league_name}`}
             title={l.league_name || "League"}
             subtitle={l.league_status || ""}
-            imagePath={l.league_image_path}
+            imageSrc={r2ImgSrc(l.league_image_key, l.league_image_path)}
             href={l.league_url || "#"}
             external={Boolean(l.league_url)}
           />
