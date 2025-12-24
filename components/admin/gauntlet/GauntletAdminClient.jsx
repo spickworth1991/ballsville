@@ -33,6 +33,7 @@ function uid() {
 }
 
 function r2ImgSrc(key, fallbackUrl) {
+  // Use key-based URL (served by /r2/* function). Keep deterministic query for light cache-busting.
   if (key) return `/r2/${key}?v=${encodeURIComponent(key)}`;
   return fallbackUrl || "";
 }
@@ -230,6 +231,7 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
         legion_status: "TBD",
         legion_spots: 0,
         legion_order: maxOrder + 1,
+        legion_image_key: "",
         legion_image_path: "",
         is_active: true,
       },
@@ -256,6 +258,7 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
         league_url: "",
         league_status: "FULL",
         is_active: true,
+        league_image_key: "",
         league_image_path: "",
       },
     ]);
@@ -334,10 +337,17 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
       const data = await safeJson(res);
       if (!res.ok || data?.ok === false) throw new Error(data?.error || "Upload failed");
 
+      // IMPORTANT:
+      // The PUBLIC gauntlet pages currently render from *_image_path (as seen in leagues_YYYY.json).
+      // The upload endpoint returns a deterministic key + a cache-busted /r2 URL.
+      // We store the URL (or a /r2/<key> fallback) directly into *_image_path so publishing persists it.
+      const nextKey = String(data.key || "");
+      const nextPath = String(data.url || (nextKey ? `/r2/${nextKey}` : ""));
+
       if (uploadCtx.type === "legion") {
-        updateLegion(uploadCtx.legionSlug, { legion_image_key: String(data.key || "") });
+        updateLegion(uploadCtx.legionSlug, { legion_image_path: nextPath });
       } else {
-        updateLeague(uploadCtx.legionSlug, uploadCtx.leagueOrder, { league_image_key: String(data.key || "") });
+        updateLeague(uploadCtx.legionSlug, uploadCtx.leagueOrder, { league_image_path: nextPath });
       }
       setNotice("Image uploaded ✓ (remember to Publish)");
     } catch (e2) {
@@ -459,7 +469,7 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
                 <div className="flex flex-col lg:flex-row gap-4 lg:items-start lg:justify-between">
                   <div className="flex gap-4 items-start">
                     <div className="relative h-20 w-20 rounded-xl overflow-hidden border border-subtle bg-subtle-surface flex-shrink-0">
-                      {h.legion_image_path ? (
+                      {(h.legion_image_key || h.legion_image_path) ? (
                         <Image src={r2ImgSrc(h.legion_image_key, h.legion_image_path)} alt={h.legion_name || "Legion"} fill sizes="80px" className="object-cover" />
                       ) : (
                         <div className="h-full w-full grid place-items-center text-xs text-muted">No Image</div>
@@ -611,8 +621,14 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
                               <td className="py-2 pr-3 align-top">
                                 <div className="flex items-center gap-2">
                                   <div className="relative h-10 w-10 rounded-lg overflow-hidden border border-subtle bg-subtle-surface">
-                                    {l.league_image_path ? (
-                                      <Image src={l.league_image_path} alt={l.league_name || "League"} fill sizes="40px" className="object-cover" />
+                                    {(l.league_image_key || l.league_image_path) ? (
+                                      <Image
+                                        src={r2ImgSrc(l.league_image_key, l.league_image_path)}
+                                        alt={l.league_name || "League"}
+                                        fill
+                                        sizes="40px"
+                                        className="object-cover"
+                                      />
                                     ) : (
                                       <div className="h-full w-full grid place-items-center text-[10px] text-muted">—</div>
                                     )}
