@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { CURRENT_SEASON } from "@/lib/season";
+import MediaTabCard from "@/components/ui/MediaTabCard";
 
 const DEFAULT_SEASON = CURRENT_SEASON;
 const R2_KEY_FOR = (season) => `data/biggame/leagues_${season}.json`;
@@ -48,6 +49,12 @@ function normalizeRow(r, idx = 0) {
 
     is_active: r?.is_active !== false,
   };
+}
+
+function withBust(url, bust) {
+  if (!url) return "";
+  if (url.includes("?")) return url;
+  return `${url}?${bust}`;
 }
 
 function resolveImageSrc({ key, url }) {
@@ -137,6 +144,7 @@ export default function BigGameDivisionClient({
   }
 
   const { header, leagues } = division;
+  const headerImage = withBust(header.division_image, bust);
 
   return (
     <div className="space-y-6">
@@ -145,46 +153,45 @@ export default function BigGameDivisionClient({
       </a>
 
       <div className="rounded-3xl border border-subtle bg-card-surface overflow-hidden">
-        {header.division_image ? (
-          <div className="bg-black/20">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={header.division_image} alt="Division" className="w-full h-auto" />
-          </div>
-        ) : null}
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-5 backdrop-blur">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 space-y-2">
+              <p className="text-xs uppercase tracking-[0.25em] text-accent">Big Game Division</p>
+              <h1 className="text-2xl sm:text-3xl font-semibold text-white truncate">{header.division_name}</h1>
+              {header.division_fill_note ? <p className="text-sm text-white/70 max-w-prose">{header.division_fill_note}</p> : null}
+            </div>
 
-        <div className="p-6 md:p-8 space-y-2">
-          <h1 className="h2">{header.division_name}</h1>
-          {header.division_fill_note ? <p className="text-sm text-muted">{header.division_fill_note}</p> : null}
+            {headerImage ? (
+              <div className="shrink-0 w-28 sm:w-36">
+                <div className="overflow-hidden rounded-xl border border-white/10 bg-white/5">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={headerImage} alt="Division" className="w-full h-24 sm:h-28 object-contain" />
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        {leagues.map((lg, idx) => (
-          <a
-            key={`${lg.league_order}-${idx}`}
-            href={lg.league_url || "#"}
-            target={lg.league_url ? "_blank" : undefined}
-            rel={lg.league_url ? "noreferrer" : undefined}
-            className="group rounded-2xl border border-subtle bg-card-surface p-5 hover:border-accent/60 transition"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-fg truncate">{lg.league_name || `League ${lg.league_order || idx + 1}`}</p>
-                <p className="text-xs text-muted mt-1">League #{lg.league_order || idx + 1}</p>
-              </div>
-              <span className="opacity-0 group-hover:opacity-100 transition">→</span>
-            </div>
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        {leagues.map((lg, idx) => {
+          const leagueNum = lg.league_order || idx + 1;
+          const img = withBust(lg.league_image, bust);
 
-            {lg.league_image ? (
-              <div className="mt-4 rounded-xl overflow-hidden border border-subtle bg-black/20">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={lg.league_image} alt="League" className="w-full h-auto" />
-              </div>
-            ) : null}
-
-            <div className="mt-4 text-xs text-muted truncate">{lg.league_url ? "Open in Sleeper" : "Link not set"}</div>
-          </a>
-        ))}
+          return (
+            <MediaTabCard
+              key={`${leagueNum}-${idx}`}
+              href={lg.league_url || "#"}
+              external={Boolean(lg.league_url)}
+              title={lg.league_name || `League ${leagueNum}`}
+              subtitle="Big Game Bestball"
+              metaRight={<span className="text-[11px] font-mono text-accent">#{leagueNum}</span>}
+              imageSrc={img}
+              imageAlt={lg.league_name || `League ${leagueNum}`}
+              footerLabel={lg.league_url ? "Open League" : "Link not set"}
+            />
+          );
+        })}
       </div>
     </div>
   );

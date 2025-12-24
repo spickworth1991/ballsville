@@ -4,6 +4,13 @@
 
 import Link from "next/link";
 
+/**
+ * Shared card used across BigGame + Gauntlet.
+ *
+ * - For internal links, uses next/link.
+ * - For external links (e.g., Sleeper), use `external`.
+ * - `footerLabel` is an alias for `footerText` (keeps older call sites working).
+ */
 export default function MediaTabCard({
   href,
   title,
@@ -12,14 +19,24 @@ export default function MediaTabCard({
   metaRight,
   imageSrc,
   imageAlt,
-  footerText = "View",
+  footerText,
+  footerLabel,
   badge,
   badgeRight,
   className = "",
+  external = false,
 }) {
+  const footer = footerLabel ?? footerText ?? "View";
+  const safeHref = href || "#";
+
+  const Wrapper = external ? "a" : Link;
+  const wrapperProps = external
+    ? { href: safeHref, target: "_blank", rel: "noreferrer" }
+    : { href: safeHref };
+
   return (
-    <Link
-      href={href}
+    <Wrapper
+      {...wrapperProps}
       className={`group relative overflow-hidden rounded-2xl border border-subtle bg-card-surface shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/70 ${className}`}
     >
       {/* ambient glow */}
@@ -69,10 +86,10 @@ export default function MediaTabCard({
 
         {/* Footer */}
         <div className="mt-5 flex items-center justify-between border-t border-subtle px-5 py-4 text-sm">
-          <span className="text-muted">{footerText}</span>
+          <span className="text-muted">{footer}</span>
           <span className="text-primary transition-transform group-hover:translate-x-1">→</span>
         </div>
       </div>
-    </Link>
+    </Wrapper>
   );
 }

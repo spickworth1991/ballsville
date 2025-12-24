@@ -138,20 +138,38 @@ export default function GauntletLegionClient({ season = 2025, legionKey = "", ti
   }
 
   const title = titleOverride || header.legion_name || "Legion";
+  const legionHeaderImg = resolveImageSrc({
+    imagePath: header.legion_image_path,
+    imageKey: header.legion_image_key,
+    updatedAt,
+  });
 
   return (
     <div className="rounded-3xl border border-subtle bg-card-surface overflow-hidden">
       <div className="rounded-2xl border border-white/10 bg-black/20 p-5 backdrop-blur">
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-xl font-semibold text-white">{title}</h2>
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/80">
-            {header.legion_status}
-          </span>
-          {header.legion_spots != null && (
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/80">
-              Spots: {header.legion_spots}
-            </span>
-          )}
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-xl font-semibold text-white">{title}</h2>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/80">
+                {header.legion_status}
+              </span>
+              {header.legion_spots != null && (
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/80">
+                  Spots: {header.legion_spots}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {legionHeaderImg ? (
+            <div className="shrink-0 w-28 sm:w-36">
+              <div className="overflow-hidden rounded-xl border border-white/10 bg-white/5">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={legionHeaderImg} alt="Legion" className="w-full h-24 sm:h-28 object-contain" />
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
