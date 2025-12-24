@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { FiUpload, FiTrash2, FiPlus, FiSave, FiRefreshCw } from "react-icons/fi";
 import { CURRENT_SEASON } from "@/lib/season";
+import { getSupabase } from "@/lib/supabaseClient";
 
 // GAUNTLET admin (R2-backed) — modeled after BigGameAdminClient.
 // Stores to /api/admin/gauntlet (R2 JSON) and uploads images via /api/admin/upload.
@@ -49,6 +50,13 @@ async function safeJson(res) {
   }
 }
 
+async function getAccessToken() {
+  const supabase = getSupabase();
+  if (!supabase) return "";
+  const { data } = await supabase.auth.getSession();
+  return data?.session?.access_token || "";
+}
+
 export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) {
   const [season, setSeason] = useState(defaultSeason);
   const [rows, setRows] = useState([]);
@@ -73,7 +81,11 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
       });
       const data = await safeJson(res);
       if (!res.ok || data?.ok === false) throw new Error(data?.error || "Failed to load");
-      setRows(Array.isArray(data.rows) ? data.rows : []);
+      // Important: stabilize React keys for loaded rows.
+      // If we key by legion_slug (or regenerate ids each render), editing a slug/name
+      // will remount the entire section and you can only type 1 character before focus resets.
+      const list = Array.isArray(data.rows) ? data.rows : [];
+      setRows(list.map((r) => ({ ...r, __key: r.__key || uid() })));
     } catch (e) {
       setError(e?.message || String(e));
       setRows([]);
@@ -129,11 +141,17 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
   }
 
   async function uploadOwnerUpdatesImage(file) {
+    const token = await getAccessToken();
+    if (!token) throw new Error("Missing admin session token. Please sign in again.");
     const fd = new FormData();
     fd.append("file", file);
     fd.append("section", "gauntlet-updates");
     fd.append("season", String(season));
-    const res = await fetch(`/api/admin/upload`, { method: "POST", body: fd });
+    const res = await fetch(`/api/admin/upload`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: fd,
+    });
     const out = await safeJson(res);
     if (!res.ok || out?.ok === false) throw new Error(out?.error || "Upload failed");
 
@@ -155,7 +173,7 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
       .filter((r) => r?.is_legion_header)
       .map((r) => ({
         ...r,
-        __key: r.__key || r.legion_slug || uid(),
+        __key: r.__key,
       }))
       .sort((a, b) => (Number(a.legion_order || 0) - Number(b.legion_order || 0)) || String(a.legion_name || "").localeCompare(String(b.legion_name || "")));
 
@@ -165,7 +183,7 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
       const slug = r.legion_slug;
       if (!slug) continue;
       if (!bySlug.has(slug)) bySlug.set(slug, []);
-      bySlug.get(slug).push({ ...r, __key: r.__key || uid() });
+      bySlug.get(slug).push({ ...r, __key: r.__key });
     }
     for (const [slug, list] of bySlug.entries()) {
       list.sort((a, b) => Number(a.league_order || 0) - Number(b.league_order || 0));
@@ -298,6 +316,8 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
     setError("");
     setNotice("");
     try {
+      const token = await getAccessToken();
+      if (!token) throw new Error("Missing admin session token. Please sign in again.");
       const form = new FormData();
 
       if (uploadCtx.type === "legion") {
@@ -313,7 +333,11 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
 
       form.set("file", file);
 
-      const res = await fetch("/api/admin/upload", { method: "POST", body: form });
+      const res = await fetch("/api/admin/upload", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+        body: form,
+      });
       const data = await safeJson(res);
       if (!res.ok || data?.ok === false) throw new Error(data?.error || "Upload failed");
 
