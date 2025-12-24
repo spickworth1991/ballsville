@@ -87,9 +87,9 @@ export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedde
       {legions.map((l) => {
         const status = String(l?.legion_status || "TBD").toUpperCase();
         const badge = statusBadge(status);
-        const href = `/gauntlet/legions?legion=${encodeURIComponent(l.legion_slug)}&year=${encodeURIComponent(
-          String(season)
-        )}`;
+        // Navigate to a dedicated legion page (like Big Game divisions → division page)
+        // Static-export friendly (no searchParams needed).
+        const href = `/gauntlet/legions/${encodeURIComponent(l.legion_slug)}`;
 
         return (
           <MediaTabCard

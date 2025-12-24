@@ -1,19 +1,11 @@
 // app/gauntlet/legions/page.jsx
-// Public: list all leagues within a Gauntlet "Legion" (Romans / Greeks / Egyptians), like Big Game divisions.
+// Static export friendly: no searchParams + no useSearchParams.
 
-import { Suspense } from "react";
-import GauntletLegionClient from "@/components/gauntlet/GauntletLegionClient";
+import GauntletLegionsClient from "@/components/gauntlet/GauntletLegionsClient";
+import { CURRENT_SEASON } from "@/lib/season";
 
-export const metadata = {
-  title: "Gauntlet — Legion Leagues",
-  description: "View all leagues within a Gauntlet legion.",
-};
+export const dynamic = "force-static";
 
-export default function GauntletLegionPage({ searchParams }) {
-  // Next can provide searchParams as a Promise in some setups; GauntletLegionClient already handles both shapes.
-  return (
-    <Suspense fallback={<div className="container-site py-10 text-muted">Loading legion…</div>}>
-      <GauntletLegionClient searchParams={searchParams} />
-    </Suspense>
-  );
+export default function GauntletLegionsPage() {
+  return <GauntletLegionsClient year={CURRENT_SEASON} />;
 }
