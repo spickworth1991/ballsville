@@ -355,6 +355,88 @@ export default function MiniLeaguesAdminClient() {
     });
   }
 
+  function addLeague(divIdx) {
+    setDivisions((prev) =>
+      prev.map((d, i) => {
+        if (i !== divIdx) return d;
+        const leagues = Array.isArray(d.leagues) ? d.leagues.slice() : [];
+
+        // Choose the next available integer order (keeps existing upload keys stable).
+        const used = new Set(leagues.map((l, idx) => Number(l?.order ?? idx + 1)));
+        let nextOrder = 1;
+        while (used.has(nextOrder)) nextOrder += 1;
+
+        leagues.push({
+          name: `League ${nextOrder}`,
+          url: "",
+          status: "tbd",
+          active: true,
+          order: nextOrder,
+          imageKey: "",
+          imageUrl: "",
+        });
+
+        return { ...d, leagues };
+      })
+    );
+  }
+
+  function deleteDivisionByCode(divisionCode) {
+    const code = String(divisionCode);
+    if (!confirm(`Delete Division ${code} and all leagues inside it? This cannot be undone.`)) return;
+
+    // Remove pending uploads tied to this division.
+    setPendingDivisionFiles((prev) => {
+      const copy = { ...prev };
+      delete copy[`div:${code}`];
+      return copy;
+    });
+
+    setPendingLeagueFiles((prev) => {
+      const copy = { ...prev };
+      for (const k of Object.keys(copy)) {
+        if (k.startsWith(`lg:${code}:`)) delete copy[k];
+      }
+      return copy;
+    });
+
+    setOpenDivs((prev) => {
+      const next = new Set(prev);
+      next.delete(code);
+      return next;
+    });
+
+    setDivisions((prev) => prev.filter((d) => String(d.divisionCode) !== code));
+  }
+
+  function deleteLeague(divIdx, leagueIdx) {
+    const div = divisions[divIdx];
+    const leagues = Array.isArray(div?.leagues) ? div.leagues : [];
+    const league = leagues[leagueIdx];
+    const divisionCode = String(div?.divisionCode || "");
+    const order = Number(league?.order ?? leagueIdx + 1);
+
+    const label = league?.name ? `${league.name} (order ${order})` : `order ${order}`;
+    if (!confirm(`Delete league ${label}? This cannot be undone.`)) return;
+
+    const pendingKey = `lg:${divisionCode}:${String(order)}`;
+    setPendingLeagueFiles((prev) => {
+      if (!prev[pendingKey]) return prev;
+      const copy = { ...prev };
+      delete copy[pendingKey];
+      return copy;
+    });
+
+    setDivisions((prev) =>
+      prev.map((d, i) => {
+        if (i !== divIdx) return d;
+        const next = Array.isArray(d.leagues) ? d.leagues.slice() : [];
+        next.splice(leagueIdx, 1);
+        return { ...d, leagues: next };
+      })
+    );
+  }
+
   const canAct = !saving && !loading;
 
   // ==================================
@@ -858,13 +940,44 @@ export default function MiniLeaguesAdminClient() {
                               </div>
                             </div>
 
+                            {/* Division actions */}
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <button
+                                type="button"
+                                className="btn btn-outline"
+                                onClick={() => addLeague(divIdx)}
+                                disabled={!canAct}
+                              >
+                                + Add League
+                              </button>
+
+                              <button
+                                type="button"
+                                className="btn btn-outline border-red-500/40 text-red-200 hover:bg-red-500/10"
+                                onClick={() => deleteDivisionByCode(d.divisionCode)}
+                                disabled={!canAct}
+                              >
+                                Delete Division
+                              </button>
+                            </div>
+
                             {/* Leagues */}
                             <div className="rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm p-4 space-y-3">
                               <div className="flex items-center justify-between gap-3">
                                 <h4 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted">
-                                  Leagues (10)
+                                  Leagues ({Array.isArray(d.leagues) ? d.leagues.length : 0})
                                 </h4>
-                                <span className="text-xs text-muted">Tip: leave URL blank until league is ready.</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-muted">Tip: leave URL blank until league is ready.</span>
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline btn-sm"
+                                    onClick={() => addLeague(divIdx)}
+                                    disabled={!canAct}
+                                  >
+                                    + Add
+                                  </button>
+                                </div>
                               </div>
 
                               <div className="space-y-3">
@@ -975,6 +1088,16 @@ export default function MiniLeaguesAdminClient() {
                                               <Image src={leaguePreview} alt="League preview" fill className="object-cover" />
                                             </div>
                                           ) : null}
+
+                                          <button
+                                            type="button"
+                                            className="btn btn-outline border-red-500/40 text-red-200 hover:bg-red-500/10"
+                                            onClick={() => deleteLeague(divIdx, leagueIdx)}
+                                            disabled={!canAct}
+                                            title="Delete this league"
+                                          >
+                                            Delete
+                                          </button>
                                         </div>
                                       </div>
 
