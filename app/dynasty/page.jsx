@@ -22,11 +22,11 @@ const DYNASTY_DOCS = [
     description: "All BALLSVILLE Dynasty Empire leagues follow these documents.",
     href: "/constitution/dynasty",
   },
-  {
-    label: "Wagering Tracker (Optional)",
-    description: "See how wagers map to the big upside in Week 17.",
-    href: "/dynasty/wagering-demo",
-  },
+  // {
+  //   label: "Wagering Tracker (Optional)",
+  //   description: "See how wagers map to the big upside in Week 17.",
+  //   href: "/dynasty/wagering-demo",
+  // },
   {
     label: "All Dyno Rosters",
     description: "Reference doc for every roster across the Dynasty Empire.",

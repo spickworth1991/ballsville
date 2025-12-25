@@ -131,7 +131,7 @@ export default function AdminHomePage() {
               orphan status.
             </p>
           </Link>
-          <Link
+          {/* <Link
             href="/admin/dynasty/wagering"
             className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
           >
@@ -141,7 +141,7 @@ export default function AdminHomePage() {
             <p className="mt-1 text-sm text-muted">
               Manage Wagering for dynasty leagues.
             </p>
-          </Link>
+          </Link> */}
           <Link
             href="/admin/big-game"
             className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
