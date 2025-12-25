@@ -378,7 +378,7 @@ export default function MiniLeaguesClient() {
                         </div>
 
                         {divImage ? (
-                          <div className="relative h-12 w-12 rounded-xl overflow-hidden border border-subtle bg-black/20">
+                          <div className="relative h-24 w-24 rounded-lg overflow-hidden border border-subtle bg-black/20 shrink-0">
                             <Image src={divImage} alt={`${d.title} image`} fill className="object-cover" />
                           </div>
                         ) : null}
@@ -408,7 +408,7 @@ export default function MiniLeaguesClient() {
                                 </div>
 
                                 {img ? (
-                                  <div className="relative h-10 w-10 rounded-lg overflow-hidden border border-subtle bg-black/20 shrink-0">
+                                  <div className="relative h-16 w-16 rounded-lg overflow-hidden border border-subtle bg-black/20 shrink-0">
                                     <Image src={img} alt={`${l.name} image`} fill className="object-cover" />
                                   </div>
                                 ) : null}
