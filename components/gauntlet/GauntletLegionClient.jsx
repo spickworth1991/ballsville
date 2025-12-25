@@ -145,7 +145,7 @@ export default function GauntletLegionClient({ season = 2025, legionKey = "", ti
   });
 
   return (
-    <div className="rounded-3xl border border-subtle bg-card-surface overflow-hidden">
+    <div className="space-y-6">
       <div className="rounded-2xl border border-white/10 bg-black/20 p-5 backdrop-blur">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
