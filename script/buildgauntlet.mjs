@@ -167,6 +167,9 @@ const LEG3_END = 17; // Weeks 13–17 → BB; 13–16 used for bracket, 17 = Gra
 // Round 4 → Week 16
 const LEG3_ROUND_WEEKS = [13, 14, 15, 16];
 
+// Used only for detecting scoring/finalization (includes Grand Championship week)
+const LEG3_SCORE_WEEKS = [13, 14, 15, 16, 17];
+
 const GRAND_CHAMP_WEEK = 17; // Week 17 = all God winners vs each other
 
 const CONCURRENCY = 5;
@@ -332,7 +335,7 @@ function detectBracketWeek(allTeams) {
     };
   }
 
-  const weeksWithScores = LEG3_ROUND_WEEKS.filter((w) =>
+  const weeksWithScores = LEG3_SCORE_WEEKS.filter((w) =>
     allTeams.some((t) => {
       const v = t.leg3Weekly?.[w];
       return typeof v === "number" && v !== 0;
@@ -362,10 +365,10 @@ function detectBracketWeek(allTeams) {
   // On Tuesday and Wednesday, treat the *next* week as "current"
   // (as long as there is a next Leg 3 week).
   if (weekday === "Tue" || weekday === "Wed") {
-    const idx = LEG3_ROUND_WEEKS.indexOf(latestScoreWeek);
-    if (idx !== -1 && idx < LEG3_ROUND_WEEKS.length - 1) {
-      currentBracketWeek = LEG3_ROUND_WEEKS[idx + 1];
-    }
+    const idx = LEG3_SCORE_WEEKS.indexOf(latestScoreWeek);
+if (idx !== -1 && idx < LEG3_SCORE_WEEKS.length - 1) {
+  currentBracketWeek = LEG3_SCORE_WEEKS[idx + 1];
+}
   }
 
   return { latestScoreWeek, currentBracketWeek };
