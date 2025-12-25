@@ -130,6 +130,27 @@ async function uploadImage(file, payload) {
   return res.json(); // expects { key: "..." }
 }
 
+// Delete one or more images from R2 (and any known extension variants).
+// We only do this after a successful Save when something was actually removed.
+async function deleteMedia({ keys = [], baseKeys = [] }) {
+  const token = await getAccessToken();
+  const res = await fetch("/api/admin/upload", {
+    method: "DELETE",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ keys, baseKeys }),
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
+  return res.json();
+}
+
+function keyToBase(key) {
+  const k = String(key || "").trim().replace(/^\//, "");
+  return k.replace(/\.[a-z0-9]{2,5}$/i, "");
+}
+
 function StatusPill({ status }) {
   const label = (STATUS_OPTIONS.find((x) => x.value === status)?.label || "TBD").toUpperCase();
   const cls =
@@ -173,6 +194,8 @@ export default function MiniLeaguesAdminClient() {
 
   const [pageCfg, setPageCfg] = useState(DEFAULT_PAGE_EDITABLE);
   const [divisions, setDivisions] = useState([]);
+  // Snapshot of last-loaded (saved) divisions so we can compute deletions safely on Save.
+  const [baselineDivisions, setBaselineDivisions] = useState([]);
 
   // Collapsible UI state
   const [openDivs, setOpenDivs] = useState(() => new Set()); // divisionCode set
@@ -286,7 +309,9 @@ export default function MiniLeaguesAdminClient() {
       const div = await apiGET("divisions");
       const raw = div?.data;
       const list = Array.isArray(raw?.divisions) ? raw.divisions : Array.isArray(raw) ? raw : [];
-      setDivisions(list.length ? list : [emptyDivision("100"), emptyDivision("200"), emptyDivision("400")]);
+      const next = list.length ? list : [emptyDivision("100"), emptyDivision("200"), emptyDivision("400")];
+      setDivisions(next);
+      setBaselineDivisions(next);
 
       setOpenDivs((prev) => {
         if (prev.size) return prev;
@@ -355,84 +380,25 @@ export default function MiniLeaguesAdminClient() {
     });
   }
 
-  function addLeague(divIdx) {
+  function removeDivision(divIdx) {
+    const code = String(divisions[divIdx]?.divisionCode || "");
+    setDivisions((prev) => prev.filter((_, i) => i !== divIdx));
+    if (code) {
+      setOpenDivs((prev) => {
+        const next = new Set(prev);
+        next.delete(code);
+        return next;
+      });
+    }
+  }
+
+  function removeLeague(divIdx, leagueIdx) {
     setDivisions((prev) =>
       prev.map((d, i) => {
         if (i !== divIdx) return d;
         const leagues = Array.isArray(d.leagues) ? d.leagues.slice() : [];
-
-        // Choose the next available integer order (keeps existing upload keys stable).
-        const used = new Set(leagues.map((l, idx) => Number(l?.order ?? idx + 1)));
-        let nextOrder = 1;
-        while (used.has(nextOrder)) nextOrder += 1;
-
-        leagues.push({
-          name: `League ${nextOrder}`,
-          url: "",
-          status: "tbd",
-          active: true,
-          order: nextOrder,
-          imageKey: "",
-          imageUrl: "",
-        });
-
+        leagues.splice(leagueIdx, 1);
         return { ...d, leagues };
-      })
-    );
-  }
-
-  function deleteDivisionByCode(divisionCode) {
-    const code = String(divisionCode);
-    if (!confirm(`Delete Division ${code} and all leagues inside it? This cannot be undone.`)) return;
-
-    // Remove pending uploads tied to this division.
-    setPendingDivisionFiles((prev) => {
-      const copy = { ...prev };
-      delete copy[`div:${code}`];
-      return copy;
-    });
-
-    setPendingLeagueFiles((prev) => {
-      const copy = { ...prev };
-      for (const k of Object.keys(copy)) {
-        if (k.startsWith(`lg:${code}:`)) delete copy[k];
-      }
-      return copy;
-    });
-
-    setOpenDivs((prev) => {
-      const next = new Set(prev);
-      next.delete(code);
-      return next;
-    });
-
-    setDivisions((prev) => prev.filter((d) => String(d.divisionCode) !== code));
-  }
-
-  function deleteLeague(divIdx, leagueIdx) {
-    const div = divisions[divIdx];
-    const leagues = Array.isArray(div?.leagues) ? div.leagues : [];
-    const league = leagues[leagueIdx];
-    const divisionCode = String(div?.divisionCode || "");
-    const order = Number(league?.order ?? leagueIdx + 1);
-
-    const label = league?.name ? `${league.name} (order ${order})` : `order ${order}`;
-    if (!confirm(`Delete league ${label}? This cannot be undone.`)) return;
-
-    const pendingKey = `lg:${divisionCode}:${String(order)}`;
-    setPendingLeagueFiles((prev) => {
-      if (!prev[pendingKey]) return prev;
-      const copy = { ...prev };
-      delete copy[pendingKey];
-      return copy;
-    });
-
-    setDivisions((prev) =>
-      prev.map((d, i) => {
-        if (i !== divIdx) return d;
-        const next = Array.isArray(d.leagues) ? d.leagues.slice() : [];
-        next.splice(leagueIdx, 1);
-        return { ...d, leagues: next };
       })
     );
   }
@@ -575,14 +541,67 @@ export default function MiniLeaguesAdminClient() {
         });
       }
 
+      // Compute what was removed compared to the last-loaded saved state.
+      // We only delete media after a successful Save so the CMS can't get into
+      // a state where content is deleted but JSON didn't update.
+      const deletedKeys = new Set();
+      const deletedBaseKeys = new Set();
+
+      const addDelete = (k) => {
+        const key = String(k || "").trim().replace(/^\//, "");
+        if (!key) return;
+        deletedKeys.add(key);
+        deletedBaseKeys.add(keyToBase(key));
+      };
+
+      const nextByCode = new Map(nextDivisions.map((d) => [String(d.divisionCode), d]));
+      for (const oldDiv of baselineDivisions) {
+        const code = String(oldDiv?.divisionCode);
+        const nextDiv = nextByCode.get(code);
+
+        // Whole division removed -> delete division image + all league images within it
+        if (!nextDiv) {
+          addDelete(oldDiv?.imageKey);
+          const olds = Array.isArray(oldDiv?.leagues) ? oldDiv.leagues : [];
+          for (const l of olds) addDelete(l?.imageKey);
+          continue;
+        }
+
+        // Division still exists -> delete only leagues removed (by order)
+        const nextOrders = new Set(
+          (Array.isArray(nextDiv?.leagues) ? nextDiv.leagues : [])
+            .map((l, idx) => Number(l?.order ?? idx + 1))
+            .filter((n) => Number.isFinite(n))
+        );
+        for (const l of Array.isArray(oldDiv?.leagues) ? oldDiv.leagues : []) {
+          const ord = Number(l?.order);
+          if (Number.isFinite(ord) && !nextOrders.has(ord)) {
+            addDelete(l?.imageKey);
+          }
+        }
+      }
+
       // Persist JSON
       await apiPUT("divisions", { season: SEASON, divisions: nextDivisions });
 
+      // Delete any media for removed items (best-effort; do not fail the Save)
+      if (deletedKeys.size || deletedBaseKeys.size) {
+        try {
+          await deleteMedia({
+            keys: [...deletedKeys],
+            baseKeys: [...deletedBaseKeys],
+          });
+        } catch {
+          // Ignore — the JSON is already saved, worst case we leave some orphaned objects in R2.
+        }
+      }
+
       // Update state + clear pending maps
       setDivisions(nextDivisions);
+      setBaselineDivisions(nextDivisions);
       setPendingDivisionFiles({});
       setPendingLeagueFiles({});
-      setOk("Saved divisions (images uploaded on save).");
+      setOk("Saved divisions (images uploaded on save). Deleted images for removed divisions/leagues.");
     } catch (e) {
       setErr(e?.message || "Save failed.");
     } finally {
@@ -940,22 +959,36 @@ export default function MiniLeaguesAdminClient() {
                               </div>
                             </div>
 
-                            {/* Division actions */}
                             <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="text-xs text-muted">
+                                Deleting a division also deletes all leagues inside it (and their images) when you click <strong>Save Divisions</strong>.
+                              </div>
                               <button
                                 type="button"
-                                className="btn btn-outline"
-                                onClick={() => addLeague(divIdx)}
+                                className="btn btn-outline border-red-500/30 text-red-200 hover:bg-red-500/10"
                                 disabled={!canAct}
-                              >
-                                + Add League
-                              </button>
+                                onClick={() => {
+                                  const name = d.title || `Division ${d.divisionCode}`;
+                                  if (!confirm(`Delete ${name} and all its leagues? This is saved only after you click Save Divisions.`)) return;
 
-                              <button
-                                type="button"
-                                className="btn btn-outline border-red-500/40 text-red-200 hover:bg-red-500/10"
-                                onClick={() => deleteDivisionByCode(d.divisionCode)}
-                                disabled={!canAct}
+                                  // Clear any pending files for this division + its leagues
+                                  setPendingDivisionFiles((prev) => {
+                                    const copy = { ...prev };
+                                    delete copy[`div:${String(d.divisionCode)}`];
+                                    return copy;
+                                  });
+                                  setPendingLeagueFiles((prev) => {
+                                    const copy = { ...prev };
+                                    const leagues = Array.isArray(d.leagues) ? d.leagues : [];
+                                    for (const l of leagues) {
+                                      const ord = Number(l.order);
+                                      if (Number.isFinite(ord)) delete copy[`lg:${String(d.divisionCode)}:${String(ord)}`];
+                                    }
+                                    return copy;
+                                  });
+
+                                  removeDivision(divIdx);
+                                }}
                               >
                                 Delete Division
                               </button>
@@ -965,19 +998,9 @@ export default function MiniLeaguesAdminClient() {
                             <div className="rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm p-4 space-y-3">
                               <div className="flex items-center justify-between gap-3">
                                 <h4 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted">
-                                  Leagues ({Array.isArray(d.leagues) ? d.leagues.length : 0})
+                                  Leagues (10)
                                 </h4>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs text-muted">Tip: leave URL blank until league is ready.</span>
-                                  <button
-                                    type="button"
-                                    className="btn btn-outline btn-sm"
-                                    onClick={() => addLeague(divIdx)}
-                                    disabled={!canAct}
-                                  >
-                                    + Add
-                                  </button>
-                                </div>
+                                <span className="text-xs text-muted">Tip: leave URL blank until league is ready.</span>
                               </div>
 
                               <div className="space-y-3">
@@ -992,7 +1015,7 @@ export default function MiniLeaguesAdminClient() {
                                       key={`${d.divisionCode}-${leagueIdx}`}
                                       className="rounded-2xl border border-subtle bg-card-surface p-4"
                                     >
-                                      <div className="grid gap-3 md:grid-cols-[1.2fr_1.8fr_.7fr_.5fr_auto] items-end">
+                                      <div className="grid gap-3 md:grid-cols-[1.2fr_1.8fr_.7fr_.5fr_auto_auto] items-end">
                                         <div>
                                           <label className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
                                             Name
@@ -1088,13 +1111,27 @@ export default function MiniLeaguesAdminClient() {
                                               <Image src={leaguePreview} alt="League preview" fill className="object-cover" />
                                             </div>
                                           ) : null}
+                                        </div>
 
+                                        <div className="flex items-end justify-end">
                                           <button
                                             type="button"
-                                            className="btn btn-outline border-red-500/40 text-red-200 hover:bg-red-500/10"
-                                            onClick={() => deleteLeague(divIdx, leagueIdx)}
+                                            className="btn btn-outline border-red-500/30 text-red-200 hover:bg-red-500/10"
                                             disabled={!canAct}
-                                            title="Delete this league"
+                                            onClick={() => {
+                                              const name = l.name || `League ${order}`;
+                                              if (!confirm(`Delete ${name}? This is saved only after you click Save Divisions.`)) return;
+
+                                              // Clear any pending upload for this league slot
+                                              setPendingLeagueFiles((prev) => {
+                                                if (!prev[pendingKey]) return prev;
+                                                const copy = { ...prev };
+                                                delete copy[pendingKey];
+                                                return copy;
+                                              });
+
+                                              removeLeague(divIdx, leagueIdx);
+                                            }}
                                           >
                                             Delete
                                           </button>
@@ -1111,6 +1148,7 @@ export default function MiniLeaguesAdminClient() {
                                         />
                                         Active
                                       </label>
+
                                     </div>
                                   );
                                 })}

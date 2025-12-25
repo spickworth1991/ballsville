@@ -211,6 +211,39 @@ export async function onRequest(context) {
     const gate = await requireAdmin(context);
     if (!gate.ok) return json({ ok: false, error: gate.error }, gate.status);
 
+    // We use this endpoint for both uploads and deterministic media deletions.
+    // - POST: upload/replace an image
+    // - DELETE: delete one or more deterministic objects (and known extension variants)
+    if (request.method === "DELETE") {
+      const body = await request.json().catch(() => null);
+      const keys = Array.isArray(body?.keys) ? body.keys : [];
+      const baseKeys = Array.isArray(body?.baseKeys) ? body.baseKeys : [];
+
+      const cleanedKeys = keys
+        .map((k) => String(k || "").trim().replace(/^\//, ""))
+        .filter(Boolean)
+        .slice(0, 200);
+      const cleanedBaseKeys = baseKeys
+        .map((k) => String(k || "").trim().replace(/^\//, ""))
+        .filter(Boolean)
+        .slice(0, 200);
+
+      if (!cleanedKeys.length && !cleanedBaseKeys.length) {
+        return json({ ok: false, error: "Missing keys/baseKeys" }, 400);
+      }
+
+      const deletions = [];
+      for (const k of cleanedKeys) {
+        deletions.push(r2.bucket.delete(k).catch(() => null));
+      }
+      for (const b of cleanedBaseKeys) {
+        deletions.push(deleteOtherExtVariants(r2.bucket, b));
+      }
+      await Promise.all(deletions);
+
+      return json({ ok: true, deleted: cleanedKeys.length, deletedBases: cleanedBaseKeys.length });
+    }
+
     if (request.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405);
 
     const form = await request.formData();
