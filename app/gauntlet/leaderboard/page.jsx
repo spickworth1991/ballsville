@@ -1208,7 +1208,7 @@ function MobileBottomSheet({ open, title, subtitle, onClose, children }) {
       />
 
       {/* Sheet */}
-      <div className="absolute inset-x-0 bottom-24 pb-[env(safe-area-inset-bottom)]">
+      <div className="absolute inset-x-0 bottom-12 pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto w-full max-w-xl rounded-t-3xl border border-subtle bg-card-surface shadow-2xl">
           {/* Header */}
           <div className="sticky top-0 z-10 rounded-t-3xl border-b border-subtle bg-card-surface px-4 py-3">
@@ -1310,7 +1310,7 @@ function GodMatchupsTable({ rows, roundFilter, finalizedThroughWeek }) {
       </div>
 
       {/* ✅ Use Team A / Team B labels + side badges */}
-      <div className="grid grid-cols-5 border-y border-subtle bg-subtle-surface px-4 py-2 text-[0.7rem] uppercase tracking-wide text-muted">
+      <div className="hidden md:grid grid-cols-5 border-y border-subtle bg-subtle-surface px-4 py-2 text-[0.7rem] uppercase tracking-wide text-muted">
         <span className="text-center">Match</span>
         <span className="text-center">Team A</span>
         <span className="text-center">A Score</span>
@@ -1319,67 +1319,172 @@ function GodMatchupsTable({ rows, roundFilter, finalizedThroughWeek }) {
       </div>
 
       {/* Mobile cards */}
-            <div className="md:hidden divide-y divide-subtle">
-            {safeRows.map((m) => {
-                const aScore =
-                typeof m.scoreA === "number"
-                    ? m.scoreA
-                    : typeof m.lightScore === "number"
-                    ? m.lightScore
-                    : 0;
-                const bScore =
-                typeof m.scoreB === "number"
-                    ? m.scoreB
-                    : typeof m.darkScore === "number"
-                    ? m.darkScore
-                    : 0;
+        <div className="md:hidden divide-y divide-subtle">
+          {safeRows.map((m) => {
+            const aScore =
+              typeof m.scoreA === "number"
+                ? m.scoreA
+                : typeof m.lightScore === "number"
+                ? m.lightScore
+                : 0;
 
-                const aName = m.teamAName ?? m.lightOwnerName ?? "?";
-                const bName = m.teamBName ?? m.darkOwnerName ?? "?";
+            const bScore =
+              typeof m.scoreB === "number"
+                ? m.scoreB
+                : typeof m.darkScore === "number"
+                ? m.darkScore
+                : 0;
 
-                const aSide = m.teamASide ?? "light";
-                const bSide = m.teamBSide ?? "dark";
+            const played = Number(aScore || 0) !== 0 || Number(bScore || 0) !== 0;
+            const tied = played && Number(aScore || 0) === Number(bScore || 0);
 
-                const isExpanded = expandedMatch === m.match;
+            const aName = m.teamAName ?? m.lightOwnerName ?? "?";
+            const bName = m.teamBName ?? m.darkOwnerName ?? "?";
 
-                return (
-                <div key={m.match} className="px-4 py-3">
-                    <button
-                    type="button"
-                    onClick={() => setExpandedMatch((prev) => (prev === m.match ? null : m.match))}
-                    className="w-full text-left"
-                    >
-                    <div className="flex items-center justify-between text-xs text-muted">
-                        <span className="font-mono">Match {m.match}</span>
-                        <span className="text-[0.7rem]">{isExpanded ? "Hide" : "Lineup"}</span>
-                    </div>
+            const aSide = m.teamASide ?? "light";
+            const bSide = m.teamBSide ?? "dark";
 
-                    <div className="mt-2 rounded-2xl border border-subtle bg-subtle-surface p-3">
-                        <div className="flex items-center justify-between gap-2">
+            const aSeed = m.teamASeed ?? m.lightSeed;
+            const bSeed = m.teamBSeed ?? m.darkSeed;
+
+            // ✅ same gating logic as desktop
+            const matchupWeek = Number(m.week ?? meta?.week ?? 0);
+            const weekFinalized =
+              finalizedThroughWeek != null &&
+              Number(finalizedThroughWeek) >= matchupWeek &&
+              matchupWeek > 0;
+
+            const winnerRosterId = m.winnerRosterId != null ? Number(m.winnerRosterId) : null;
+            const rosterAId = m.teamARosterId != null ? Number(m.teamARosterId) : null;
+            const rosterBId = m.teamBRosterId != null ? Number(m.teamBRosterId) : null;
+
+            let aIsWinner = false;
+            let bIsWinner = false;
+
+            const explicitWinnerValid =
+              winnerRosterId != null &&
+              rosterAId != null &&
+              rosterBId != null &&
+              rosterAId !== rosterBId &&
+              (winnerRosterId === rosterAId || winnerRosterId === rosterBId);
+
+            if (explicitWinnerValid) {
+              aIsWinner = winnerRosterId === rosterAId;
+              bIsWinner = winnerRosterId === rosterBId;
+            } else if (weekFinalized && played && !tied) {
+              aIsWinner = Number(aScore || 0) > Number(bScore || 0);
+              bIsWinner = Number(bScore || 0) > Number(aScore || 0);
+            }
+
+            const winnerDecided = explicitWinnerValid || (weekFinalized && played && !tied);
+
+            const teamALost = winnerDecided && weekFinalized && played && !tied && !aIsWinner;
+            const teamBLost = winnerDecided && weekFinalized && played && !tied && !bIsWinner;
+
+            const isExpanded = expandedMatch === m.match;
+
+            const aRowCls = aIsWinner
+              ? "border-[color:var(--color-success)]/40 bg-[color:var(--color-success)]/10"
+              : teamALost
+              ? "border-red-500/40 bg-red-500/10"
+              : "border-subtle bg-card-surface";
+
+            const bRowCls = bIsWinner
+              ? "border-[color:var(--color-success)]/40 bg-[color:var(--color-success)]/10"
+              : teamBLost
+              ? "border-red-500/40 bg-red-500/10"
+              : "border-subtle bg-card-surface";
+
+            return (
+              <div key={m.match} className="px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => setExpandedMatch((prev) => (prev === m.match ? null : m.match))}
+                  className="w-full text-left"
+                >
+                  <div className="flex items-center justify-between text-xs text-muted">
+                    <span className="font-mono">Match {m.match}</span>
+                    <span className="text-[0.7rem]">{isExpanded ? "Hide" : "Lineup"}</span>
+                  </div>
+
+                  <div className="mt-2 rounded-2xl border border-subtle bg-subtle-surface p-3 space-y-2">
+                    {/* Team A */}
+                    <div className={`rounded-xl border px-3 py-2 ${aRowCls}`}>
+                      <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
-                            <div className="truncate text-sm text-fg">{aName}</div>
-                            <div className="mt-1 text-[0.7rem] text-muted">Side: {aSide}</div>
+                          <div
+                            className={`truncate text-sm ${
+                              aIsWinner
+                                ? "text-[color:var(--color-success)] font-semibold"
+                                : teamALost
+                                ? "text-danger line-through"
+                                : "text-fg"
+                            }`}
+                          >
+                            {aName}
+                            <SideBadge side={aSide} />
+                          </div>
+
+                          <div className="mt-0.5 text-[0.7rem] text-muted">
+                            {typeof aSeed === "number" ? `Seed ${aSeed}` : null}
+                            {teamALost ? (typeof aSeed === "number" ? " • Eliminated" : "Eliminated") : null}
+                            {!teamALost && aIsWinner ? (typeof aSeed === "number" ? " • Advances" : "Advances") : null}
+                          </div>
                         </div>
+
                         <div className="font-mono text-sm">{Number(aScore || 0).toFixed(2)}</div>
-                        </div>
-
-                        <div className="my-2 h-px bg-[color:var(--color-border)]/40" />
-
-                        <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                            <div className="truncate text-sm text-fg">{bName}</div>
-                            <div className="mt-1 text-[0.7rem] text-muted">Side: {bSide}</div>
-                        </div>
-                        <div className="font-mono text-sm">{Number(bScore || 0).toFixed(2)}</div>
-                        </div>
+                      </div>
                     </div>
-                    </button>
 
-                    {isExpanded && <div className="mt-3"><MatchupBreakdown row={m} /></div>}
-                </div>
-                );
-            })}
+                    {/* Team B */}
+                    <div className={`rounded-xl border px-3 py-2 ${bRowCls}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div
+                            className={`truncate text-sm ${
+                              bIsWinner
+                                ? "text-[color:var(--color-success)] font-semibold"
+                                : teamBLost
+                                ? "text-danger line-through"
+                                : "text-fg"
+                            }`}
+                          >
+                            {bName}
+                            <SideBadge side={bSide} />
+                          </div>
+
+                          <div className="mt-0.5 text-[0.7rem] text-muted">
+                            {typeof bSeed === "number" ? `Seed ${bSeed}` : null}
+                            {teamBLost ? (typeof bSeed === "number" ? " • Eliminated" : "Eliminated") : null}
+                            {!teamBLost && bIsWinner ? (typeof bSeed === "number" ? " • Advances" : "Advances") : null}
+                          </div>
+                        </div>
+
+                        <div className="font-mono text-sm">{Number(bScore || 0).toFixed(2)}</div>
+                      </div>
+                    </div>
+
+                    {/* Optional: show a “pending” hint when not finalized */}
+                    {!weekFinalized && (
+                      <div className="text-[0.7rem] text-muted">
+                        {played ? "Scores posted (week not finalized yet)" : "Scores pending"}
+                      </div>
+                    )}
+                  </div>
+                </button>
+
+                {isExpanded && <div className="mt-3"><MatchupBreakdown row={m} /></div>}
+              </div>
+            );
+          })}
+
+          {safeRows.length === 0 && (
+            <div className="px-4 py-4 text-center text-sm text-muted">
+              No matchups for this round yet.
             </div>
+          )}
+        </div>
+
 
             {/* Desktop table */}
             <div className="hidden md:block divide-y divide-subtle">
