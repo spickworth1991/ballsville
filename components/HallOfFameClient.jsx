@@ -284,7 +284,9 @@ export default function HallOfFameClient() {
       {/* Lightbox Modal */}
       {activeEntry?.img ? (
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          className="fixed inset-x-0 top-[var(--nav-h,72px)] z-[9999]
+                    flex items-center justify-center p-4"
+          style={{ height: "calc(100vh - var(--nav-h, 72px))" }}
           role="dialog"
           aria-modal="true"
           aria-label="Image viewer"
