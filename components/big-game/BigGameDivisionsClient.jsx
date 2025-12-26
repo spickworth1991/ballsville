@@ -34,9 +34,11 @@ function normalizeRow(r, idx = 0) {
   // - header rows: is_division_header=true, division_* fields, division_status
   // - league rows: is_division_header=false, league_* fields, league_status
   // Legacy/supabase rows may still provide generic `status` and `name/url`.
-  const is_division_header = !!r?.is_division_header || !!r?.is_division_header;
+  const is_division_header = !!r?.is_division_header;
   const division_status = safeStr(r?.division_status || r?.status || "TBD").trim() || "TBD";
   const league_status = safeStr(r?.league_status || r?.status || "TBD").trim() || "TBD";
+
+  const division_order = safeNum(r?.division_order, null);
 
   return {
     id: safeStr(r?.id || `${year}_${division_slug}_${idx}`),
@@ -46,6 +48,7 @@ function normalizeRow(r, idx = 0) {
     is_division_header,
     division_status,
     league_status,
+    division_order,
     theme: safeStr(r?.theme || ""),
     is_active: r?.is_active !== false,
 
@@ -83,6 +86,7 @@ function transformDivisions(rows, season) {
         division_slug: divKey,
         division_name: row.division_name,
         status: row.division_status || "TBD",
+        division_order: null,
         division_image: r2ImgSrc(row.division_image_key, row.division_image_path),
         leagues: [],
       });
@@ -94,6 +98,7 @@ function transformDivisions(rows, season) {
     if (row.is_division_header) {
       div.division_name = row.division_name || div.division_name;
       div.status = row.division_status || div.status || "TBD";
+      div.division_order = Number.isFinite(row.division_order) ? row.division_order : div.division_order;
       div.division_image = r2ImgSrc(row.division_image_key, row.division_image_path) || div.division_image;
       continue;
     }

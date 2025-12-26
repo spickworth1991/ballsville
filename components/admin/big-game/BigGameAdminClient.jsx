@@ -388,7 +388,10 @@ export default function BigGameAdminClient() {
       const out = await res.json().catch(() => ({}));
       if (!res.ok || !out?.ok) throw new Error(out?.error || `Save failed (${res.status})`);
 
-      setRows(clean);
+      // Keep rows from other seasons in memory so we can do cross-season edits/copies.
+      // (Save to R2 only writes the selected season file.)
+      const others = updated.filter((r) => Number(r.year) !== Number(nextSeason));
+      setRows([...others, ...clean]);
       setInfoMsg(`Saved Big Game divisions to R2 (season ${nextSeason}).`);
     } catch (e) {
       setErrorMsg(e?.message || "Failed to save Big Game data.");
@@ -541,6 +544,41 @@ export default function BigGameAdminClient() {
     // revoke local preview blob if present
     safeRevoke(leagueRow._pending_league_preview);
     setRows((prev) => prev.filter((r) => r.id !== leagueRow.id));
+  }
+
+  function moveDivisionToYear(group, targetYear) {
+    const y = safeNum(targetYear, null);
+    if (!Number.isFinite(y)) return;
+    setRows((prev) =>
+      prev.map((r) => {
+        if (Number(r.year) !== Number(group.year)) return r;
+        if (safeStr(r.division_slug) !== safeStr(group.division_slug)) return r;
+        return { ...r, year: y };
+      })
+    );
+    setInfoMsg(`Moved division "${group.division_name}" to year ${y} locally. Switch season + click "Save to R2" to publish.`);
+  }
+
+  function duplicateDivisionToYear(group, targetYear) {
+    const y = safeNum(targetYear, null);
+    if (!Number.isFinite(y)) return;
+
+    const base = rows.filter((r) => Number(r.year) === Number(group.year) && safeStr(r.division_slug) === safeStr(group.division_slug));
+    if (!base.length) return;
+
+    const copies = base.map((r) => ({
+      ...r,
+      id: newId("bg"),
+      year: y,
+      // keep existing image keys/paths so it works immediately; you can re-upload later per-season if desired
+      _pending_division_file: null,
+      _pending_division_preview: "",
+      _pending_league_file: null,
+      _pending_league_preview: "",
+    }));
+
+    setRows((prev) => [...prev, ...copies]);
+    setInfoMsg(`Duplicated division "${group.division_name}" to year ${y} locally. Switch season + click "Save to R2" to publish.`);
   }
 
   if (loading) {
@@ -719,6 +757,16 @@ export default function BigGameAdminClient() {
                       </label>
 
                       <label className="space-y-1">
+                        <span className="text-xs text-muted">Division year</span>
+                        <input
+                          className="input w-28"
+                          value={safeStr(header?.year ?? g.year)}
+                          onChange={(e) => moveDivisionToYear(g, e.target.value)}
+                        />
+                        <span className="text-[11px] text-muted">Tip: change year + update the public URL to start a new season.</span>
+                      </label>
+
+                      <label className="space-y-1">
                         <span className="text-xs text-muted">Division status</span>
                         <select
                           className="input"
@@ -801,6 +849,18 @@ export default function BigGameAdminClient() {
 
                       <button className="btn btn-outline text-sm" type="button" onClick={() => deleteDivision(g)}>
                         Delete division
+                      </button>
+
+                      <button
+                        className="btn btn-outline text-sm"
+                        type="button"
+                        onClick={() => {
+                          const y = window.prompt("Duplicate this division to what year?", String(Number(g.year) + 1));
+                          if (!y) return;
+                          duplicateDivisionToYear(g, y);
+                        }}
+                      >
+                        Duplicate to year
                       </button>
                     </div>
 

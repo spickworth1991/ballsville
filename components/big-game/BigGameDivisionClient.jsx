@@ -30,14 +30,21 @@ function normalizeRow(r, idx = 0) {
   const division_name = safeStr(r?.division_name || r?.theme_name || "Division").trim();
   const division_slug = safeStr(r?.division_slug || slugify(division_name));
 
+  // R2-admin schema:
+  // - header rows: is_division_header=true, division_* fields
+  // - league rows: is_division_header=false, league_* fields
+  const is_division_header = !!r?.is_division_header;
+
   return {
     id: safeStr(r?.id || `${year}_${division_slug}_${idx}`),
     year,
     division_name,
     division_slug,
+    is_division_header,
     theme: safeStr(r?.theme || ""),
-    status: safeStr(r?.status || "TBD"),
-    division_fill_note: safeStr(r?.division_fill_note || ""),
+    // prefer new field names when present
+    division_status: safeStr(r?.division_status || r?.status || "TBD"),
+    division_fill_note: safeStr(r?.division_blurb || r?.division_fill_note || ""),
     division_image_key: safeStr(r?.division_image_key || ""),
     division_image_path: safeStr(r?.division_image_path || ""),
 
@@ -46,6 +53,8 @@ function normalizeRow(r, idx = 0) {
     league_order: safeNum(r?.league_order ?? r?.display_order, idx + 1),
     league_image_key: safeStr(r?.league_image_key || ""),
     league_image_path: safeStr(r?.league_image_path || ""),
+
+    league_status: safeStr(r?.league_status || r?.status || "TBD"),
 
     is_active: r?.is_active !== false,
   };
@@ -71,20 +80,23 @@ function transformForDivision(rows, divisionSlug) {
     };
   }
 
-  const first = filtered[0];
+  const headerRow = filtered.find((r) => r.is_division_header) || filtered[0];
   const header = {
-    division_name: first.division_name,
-    division_fill_note: first.division_fill_note,
-    division_image: resolveImageSrc({ key: first.division_image_key, url: first.division_image_path }),
+    division_name: headerRow.division_name,
+    division_fill_note: headerRow.division_fill_note,
+    division_image: resolveImageSrc({ key: headerRow.division_image_key, url: headerRow.division_image_path }),
   };
 
+  // IMPORTANT: exclude the header row from the league list (prevents the "extra league" card)
   const leagues = filtered
+    .filter((r) => !r.is_division_header)
     .slice()
     .sort((a, b) => (a.league_order ?? 999) - (b.league_order ?? 999))
     .map((r) => ({
       league_name: r.league_name,
       league_url: r.league_url,
       league_order: r.league_order,
+      league_status: r.league_status,
       league_image: resolveImageSrc({ key: r.league_image_key, url: r.league_image_path }),
     }));
 
