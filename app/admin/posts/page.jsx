@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import AdminGuard from "@/components/AdminGuard";
+import AdminNav from "@/components/AdminNav";
 import { getSupabase } from "@/lib/supabaseClient";
 import { CURRENT_SEASON } from "@/lib/season";
 
@@ -215,31 +216,29 @@ function AdminPostsInner() {
   const selectedIsClosed = !!(selected?.is_coupon && selected?.expires_at && new Date(selected.expires_at) < new Date());
 
   return (
+    
     <main className="section">
       <div className="container-site space-y-6">
-        <header className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold text-primary">Posts</h1>
-            <p className="text-sm text-muted">News + Mini-Games posts are stored in R2.</p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <button className="btn btn-outline" type="button" onClick={load} disabled={loading || saving}>
-              Refresh
-            </button>
-            <button className="btn btn-outline" type="button" onClick={addPost} disabled={saving}>
-              New Post
-            </button>
-            <button
-              className="btn btn-primary"
-              type="button"
-              onClick={() => saveAll(posts)}
-              disabled={saving}
-            >
-              {saving ? "Saving…" : "Save"}
-            </button>
-          </div>
-        </header>
+        <AdminNav
+          eyebrow={`Admin · Posts · Season ${season}`}
+          title="Posts"
+          description="News + Mini-Games posts are stored in R2."
+          publicHref="/news"
+          publicLabel="← View Public News Page"
+          rightExtra={
+            <div className="flex flex-wrap gap-2">
+              <button className="btn btn-outline" type="button" onClick={load} disabled={loading || saving}>
+                Refresh
+              </button>
+              <button className="btn btn-outline" type="button" onClick={addPost} disabled={saving}>
+                New Post
+              </button>
+              <button className="btn btn-primary" type="button" onClick={() => saveAll(posts)} disabled={saving}>
+                {saving ? "Saving…" : "Save"}
+              </button>
+            </div>
+          }
+        />
 
         {err ? <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 p-4 text-sm text-rose-100">{err}</div> : null}
         {ok ? <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm text-emerald-100">{ok}</div> : null}
