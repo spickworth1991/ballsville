@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import AdminGuard from "@/components/AdminGuard";
-import AdminNav from "@/components/AdminNav";
+import AdminNav from "@/components/admin/AdminNav";
 import { getSupabase } from "@/lib/supabaseClient";
 import { CURRENT_SEASON } from "@/lib/season";
 
