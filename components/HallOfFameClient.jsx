@@ -77,7 +77,7 @@ function EmptyState({ children }) {
   );
 }
 
-function HOFCard({ entry }) {
+function HOFCard({ entry, onOpenImage }) {
   const e = entry;
   const title = e.title || "Untitled";
 
@@ -97,7 +97,12 @@ function HOFCard({ entry }) {
 
       {/* Image */}
       {e.img ? (
-        <div className="relative border-b border-subtle bg-black/20">
+        <button
+          type="button"
+          onClick={() => onOpenImage?.(e)}
+          className="relative block w-full text-left border-b border-subtle bg-black/20 cursor-zoom-in"
+          aria-label={`Open image for ${title}`}
+        >
           <div
             className="relative mx-auto flex items-center justify-center w-full"
             style={{
@@ -126,8 +131,13 @@ function HOFCard({ entry }) {
                 height: "auto",
               }}
             />
+
+            {/* subtle hint */}
+            <span className="pointer-events-none absolute bottom-3 right-3 rounded-full border border-subtle bg-card-trans/80 backdrop-blur px-3 py-1 text-[11px] text-muted">
+              Click to zoom
+            </span>
           </div>
-        </div>
+        </button>
       ) : null}
 
       {/* Content */}
@@ -165,20 +175,45 @@ export default function HallOfFameClient() {
   const [err, setErr] = useState("");
   const bust = useMemo(() => `v=${Date.now()}`, []);
 
+  // Lightbox / modal
+  const [activeEntry, setActiveEntry] = useState(null);
+
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (e.key === "Escape") setActiveEntry(null);
+    }
+    if (activeEntry) {
+      window.addEventListener("keydown", onKeyDown);
+      // prevent background scroll while open
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        window.removeEventListener("keydown", onKeyDown);
+        document.body.style.overflow = prev;
+      };
+    }
+  }, [activeEntry]);
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setErr("");
       setLoading(true);
       try {
-        const res = await fetch(`/r2/data/hall-of-fame/hall_of_fame.json?${bust}`, { cache: "no-store" });
+        const res = await fetch(`/r2/data/hall-of-fame/hall_of_fame.json?${bust}`, {
+          cache: "no-store",
+        });
         if (!res.ok) {
           if (!cancelled) setData(FALLBACK);
           return;
         }
         const json = await res.json();
         const title = String(json?.title || FALLBACK.title);
-        const list = Array.isArray(json?.entries) ? json.entries : Array.isArray(json) ? json : [];
+        const list = Array.isArray(json?.entries)
+          ? json.entries
+          : Array.isArray(json)
+          ? json
+          : [];
         const entries = list.map(normalizeEntry).sort((a, b) => a.order - b.order);
         if (!cancelled) setData({ title, entries });
       } catch (e) {
@@ -210,7 +245,7 @@ export default function HallOfFameClient() {
             {/* status strip */}
             <div className="flex flex-wrap items-center justify-center gap-2 pt-2 text-xs sm:text-sm">
               <span className="rounded-full border border-subtle bg-card-trans backdrop-blur-sm px-3 py-1 text-muted">
-                 CONGRATS!
+                CONGRATS!
               </span>
               <span className="rounded-full border border-subtle bg-card-trans backdrop-blur-sm px-3 py-1 text-muted">
                 Check out the winner quotes!
@@ -232,18 +267,83 @@ export default function HallOfFameClient() {
             <>
               {/* little featured banner (no logic change, just vibe) */}
               <div className="rounded-2xl border border-subtle bg-card-surface p-4 text-sm text-muted text-center">
-                <span className="font-semibold text-fg">Pro tip:</span> Tap any image to screenshot — these are meant to be shared.
+                <span className="font-semibold text-fg">Pro tip:</span> Tap any image to
+                screenshot — these are meant to be shared.
               </div>
 
               <div className="grid gap-6 md:grid-cols-2">
                 {data.entries.map((e) => (
-                  <HOFCard key={e.id} entry={e} />
+                  <HOFCard key={e.id} entry={e} onOpenImage={setActiveEntry} />
                 ))}
               </div>
             </>
           )}
         </div>
       </section>
+
+      {/* Lightbox Modal */}
+      {activeEntry?.img ? (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Image viewer"
+          onMouseDown={(e) => {
+            // close only if they click the backdrop
+            if (e.target === e.currentTarget) setActiveEntry(null);
+          }}
+        >
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+
+          <div className="relative z-10 w-full max-w-6xl overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-2xl">
+            {/* top bar */}
+            <div className="flex items-center justify-between gap-3 border-b border-subtle bg-card-trans px-4 py-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-fg">
+                  {activeEntry.title || "Untitled"}
+                </div>
+                {activeEntry.subtitle ? (
+                  <div className="truncate text-xs text-muted">{activeEntry.subtitle}</div>
+                ) : null}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveEntry(null)}
+                className="rounded-full border border-subtle bg-card-surface px-3 py-1.5 text-xs text-muted hover:text-fg"
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            {/* image area */}
+            <div className="relative bg-black/20">
+              <div className="relative mx-auto flex items-center justify-center w-full">
+                {/* Use next/image but in a big contain layout */}
+                <Image
+                  src={activeEntry.img}
+                  alt={activeEntry.title || "Hall of Fame image"}
+                  width={2000}
+                  height={1200}
+                  sizes="100vw"
+                  className="object-contain"
+                  style={{
+                    width: "100%",
+                    height: "auto",
+                    maxHeight: "80vh",
+                  }}
+                  priority
+                />
+              </div>
+            </div>
+
+            {/* footer hint */}
+            <div className="border-t border-subtle bg-card-trans px-4 py-3 text-xs text-muted">
+              Tip: Press <span className="text-fg font-semibold">Esc</span> to close.
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
