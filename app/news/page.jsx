@@ -68,7 +68,8 @@ function isVideoUrl(url) {
   return /\.(mp4|mov|webm|ogg|mpe?g)$/.test(clean);
 }
 
-function linkifyBody(text) {
+function linkifyBody(text, opts = {}) {
+  const disableLinks = !!opts.disableLinks;
   if (!text) return null;
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   const parts = String(text).split(urlRegex);
@@ -76,6 +77,13 @@ function linkifyBody(text) {
   return parts.map((part, idx) => {
     const isUrl = /^https?:\/\/\S+$/i.test(part);
     if (isUrl) {
+      if (disableLinks) {
+        return (
+          <span key={idx} className="text-muted break-all">
+            {part}
+          </span>
+        );
+      }
       return (
         <a
           key={idx}
@@ -279,7 +287,7 @@ export default function NewsPage() {
                   ) : null}
 
                   {p.body ? (
-                    <p className="mt-4 whitespace-pre-line break-words text-fg">{linkifyBody(p.body)}</p>
+                    <p className="mt-4 whitespace-pre-line break-words text-fg">{linkifyBody(p.body, { disableLinks: closed })}</p>
                   ) : null}
 
                   <div className="mt-4 text-xs text-muted">
