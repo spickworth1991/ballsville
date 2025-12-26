@@ -3,7 +3,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabaseClient";
-import MiniLeaguesAdminClient from "./MiniLeaguesAdminClient";
+import MiniLeaguesAdminClient from "@/components/admin/mini-leagues/MiniLeaguesAdminClient";
+
 
 function parseAdmins() {
   return (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")

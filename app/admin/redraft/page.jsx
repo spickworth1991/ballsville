@@ -3,7 +3,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabaseClient";
-import RedraftAdminClient from "./RedraftAdminClient";
+import RedraftAdminClient from "@/components/admin/redraft/RedraftAdminClient";
+
 
 function parseAdmins() {
   return (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")
