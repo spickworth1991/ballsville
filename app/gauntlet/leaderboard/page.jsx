@@ -63,6 +63,23 @@ function GauntletLeg3Inner() {
   const [viewMode, setViewMode] = useState("matchups");
   const [roundFilter, setRoundFilter] = useState("1");
   const [expandedGrand, setExpandedGrand] = useState(null);
+  const [grandSheetOpen, setGrandSheetOpen] = useState(false);
+  const [grandSheetTeam, setGrandSheetTeam] = useState(null);
+  const [grandSheetSide, setGrandSheetSide] = useState(null);
+
+
+    function openGrandLineup(team, side) {
+        setGrandSheetTeam(team || null);
+        setGrandSheetSide(side || null);
+        setGrandSheetOpen(true);
+    }
+
+    function closeGrandLineup() {
+        setGrandSheetOpen(false);
+        // optional: keep data so reopening is instant
+        setGrandSheetTeam(null);
+        setGrandSheetSide(null);
+    }
 
 
   async function hardReloadAll(jsonFromManifest) {
@@ -489,7 +506,7 @@ function GauntletLeg3Inner() {
               </p>
             </div>
 
-            <div className="relative flex flex-wrap items-center justify-start md:justify-end gap-2">
+            <div className="relative grid grid-cols-2 sm:flex sm:flex-wrap items-center justify-start md:justify-end gap-2">
               {error && <div className="text-xs text-danger max-w-md">{error}</div>}
 
               {/* <button
@@ -578,6 +595,7 @@ function GauntletLeg3Inner() {
                   </div>
 
                   {viewMode === "matchups" && (
+                    <div className="sticky top-[72px] z-20 -mx-6 px-6 py-2 bg-[color:var(--color-bg)]/80 backdrop-blur border-b border-subtle md:static md:mx-0 md:px-0 md:py-0 md:bg-transparent md:border-0">
                     <div className="flex items-center gap-2 text-xs text-muted">
                       <span className="hidden sm:inline">Round:</span>
                       <div className="inline-flex items-center rounded-full border border-subtle bg-subtle-surface p-1 shadow-inner">
@@ -602,6 +620,7 @@ function GauntletLeg3Inner() {
                           );
                         })}
                       </div>
+                    </div>
                     </div>
                   )}
                 </div>
@@ -674,93 +693,129 @@ function GauntletLeg3Inner() {
                     </div>
                   )}
 
-                  <div className="overflow-x-auto rounded-2xl border border-subtle bg-subtle-surface">
-                    <table className="min-w-full text-left text-xs">
-                      <thead className="border-b border-subtle text-[0.7rem] uppercase tracking-wide text-muted">
-                        <tr>
-                          <th className="px-3 py-2 text-center">Rank</th>
-                          <th className="px-3 py-2">Legion</th>
-                          <th className="px-3 py-2">God</th>
-                          <th className="px-3 py-2">Owner</th>
-                          <th className="px-3 py-2">Side</th>
-                          <th className="px-3 py-2 text-right">Wk 17 Score</th>
-                          <th className="px-3 py-2 text-right">Leg 3 Total</th>
-                          <th className="px-3 py-2 text-right">Details</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-subtle text-[0.75rem]">
-                        {grandStandings.map((p) => {
-                          const rowKey = `${p.leagueId}-${p.rosterId}`;
-                          const isExpanded = expandedGrand === rowKey;
-                          const played = typeof p.week17Score === "number" && p.week17Score !== 0;
-                          const leagueId = p?.leagueId ?? p?.league_id ?? null;
-                          const rosterId = p?.rosterId ?? p?.roster_id ?? null;
-                          const key = leagueId && rosterId != null ? `${leagueId}::${rosterId}` : null;
-                          const inferredSide = key ? sideByLeagueRosterKey.get(key) : null;
+                  {/* Mobile: cards + bottom sheet */}
+                    <GrandChampMobileCards
+                    standings={grandStandings}
+                    sideByLeagueRosterKey={sideByLeagueRosterKey}
+                    onOpenLineup={openGrandLineup}
+                    />
 
-                          const side =
-                            p?.side ??
-                            p?.bracketSide ??
-                            p?.seedSide ??
-                            inferredSide ??
-                            null;
-                          return (
+                    <MobileBottomSheet
+                    open={grandSheetOpen}
+                    title={grandSheetTeam?.ownerName || "Team"}
+                    subtitle={
+                        grandSheetTeam
+                        ? `${grandSheetTeam?.division || ""}${grandSheetTeam?.godName ? ` • ${grandSheetTeam.godName}` : ""}${
+                            grandSheetSide ? ` • ${String(grandSheetSide).toLowerCase() === "light" ? "Light" : "Dark"}` : ""
+                            }`
+                        : ""
+                    }
+                    onClose={closeGrandLineup}
+                    >
+                    <LineupSide
+                        title={grandSheetTeam?.ownerName || "Team"}
+                        seed={typeof grandSheetTeam?.seed === "number" ? grandSheetTeam.seed : undefined}
+                        lineup={grandSheetTeam?.lineup || null}
+                        isWinner={Number(grandSheetTeam?.rank) === 1 && typeof grandSheetTeam?.week17Score === "number" && grandSheetTeam.week17Score !== 0}
+                        isPlayed={typeof grandSheetTeam?.week17Score === "number" && grandSheetTeam.week17Score !== 0}
+                    />
+                    </MobileBottomSheet>
+
+                    {/* Desktop: keep your full table */}
+                    <div className="hidden md:block overflow-x-auto rounded-2xl border border-subtle bg-subtle-surface">
+                    <table className="min-w-full text-left text-xs">
+                        <thead className="border-b border-subtle text-[0.7rem] uppercase tracking-wide text-muted">
+                        <tr>
+                            <th className="px-3 py-2 text-center">Rank</th>
+                            <th className="px-3 py-2">Legion</th>
+                            <th className="px-3 py-2">God</th>
+                            <th className="px-3 py-2">Owner</th>
+                            <th className="px-3 py-2">Side</th>
+                            <th className="px-3 py-2 text-right">Wk 17 Score</th>
+                            <th className="px-3 py-2 text-right">Leg 3 Total</th>
+                            <th className="px-3 py-2 text-right">Details</th>
+                        </tr>
+                        </thead>
+
+                        {/* keep your existing tbody exactly as-is */}
+                        <tbody className="divide-y divide-subtle text-[0.75rem]">
+                        {grandStandings.map((p) => {
+                            const rowKey = `${p.leagueId}-${p.rosterId}`;
+                            const isExpanded = expandedGrand === rowKey;
+                            const played = typeof p.week17Score === "number" && p.week17Score !== 0;
+                            const leagueId = p?.leagueId ?? p?.league_id ?? null;
+                            const rosterId = p?.rosterId ?? p?.roster_id ?? null;
+                            const key = leagueId && rosterId != null ? `${leagueId}::${rosterId}` : null;
+                            const inferredSide = key ? sideByLeagueRosterKey.get(key) : null;
+
+                            const side = p?.side ?? p?.bracketSide ?? p?.seedSide ?? inferredSide ?? null;
+
+                            return (
                             <Fragment key={rowKey}>
-                              <tr
+                                <tr
                                 className={`cursor-pointer hover:bg-[color:var(--color-card)]/60 transition ${
-                                  isExpanded ? "bg-[color:var(--color-card)]/60" : ""
+                                    isExpanded ? "bg-[color:var(--color-card)]/60" : ""
                                 }`}
                                 onClick={() => setExpandedGrand((prev) => (prev === rowKey ? null : rowKey))}
-                              >
+                                >
                                 <td className="px-3 py-2 text-center font-mono text-primary">{p.rank}</td>
                                 <td className="px-3 py-2">{p.division}</td>
                                 <td className="px-3 py-2">{p.godName}</td>
                                 <td className="px-3 py-2">{p.ownerName}</td>
-                                <td className="px-3 py-2"><SideBadge side={side}/></td>
-                                <td className="px-3 py-2 text-right font-mono">{Number(p.week17Score || 0).toFixed(2)}</td>
-                                <td className="px-3 py-2 text-right font-mono">{Number(p.leg3Total || 0).toFixed(2)}</td>
-                                <td className="px-3 py-2 text-right text-xs text-muted">{isExpanded ? "Hide" : "Lineup"}</td>
-                              </tr>
+                                <td className="px-3 py-2">
+                                    <SideBadge side={side} />
+                                </td>
+                                <td className="px-3 py-2 text-right font-mono">
+                                    {Number(p.week17Score || 0).toFixed(2)}
+                                </td>
+                                <td className="px-3 py-2 text-right font-mono">
+                                    {Number(p.leg3Total || 0).toFixed(2)}
+                                </td>
+                                <td className="px-3 py-2 text-right text-xs text-muted">
+                                    {isExpanded ? "Hide" : "Lineup"}
+                                </td>
+                                </tr>
 
-                              {isExpanded && (
+                                {isExpanded && (
                                 <tr className="bg-subtle-surface/40">
-                                  <td colSpan={8} className="px-3 py-3">
+                                    <td colSpan={8} className="px-3 py-3">
                                     <div className="rounded-2xl border border-subtle bg-subtle-surface p-4">
-                                      <div className="mb-2 flex items-center justify-between">
+                                        <div className="mb-2 flex items-center justify-between">
                                         <div className="text-xs text-muted">
-                                          Week 17 lineup — <span className="font-semibold text-fg">{p.ownerName || "Team"}</span>
+                                            Week 17 lineup —{" "}
+                                            <span className="font-semibold text-fg">
+                                            {p.ownerName || "Team"}
+                                            </span>
                                         </div>
-                                        <div className="text-[0.7rem] text-muted">{played ? "Final / in-progress" : "Scores pending"}</div>
-                                      </div>
+                                        <div className="text-[0.7rem] text-muted">
+                                            {played ? "Final / in-progress" : "Scores pending"}
+                                        </div>
+                                        </div>
 
-                                      <LineupSide
+                                        <LineupSide
                                         title={p.ownerName || "Team"}
                                         seed={typeof p.seed === "number" ? p.seed : undefined}
                                         lineup={p.lineup || null}
                                         isWinner={Number(p.rank) === 1 && played}
                                         isPlayed={played}
-                                      />
+                                        />
                                     </div>
-                                  </td>
+                                    </td>
                                 </tr>
-                              )}
+                                )}
                             </Fragment>
-                          );
+                            );
                         })}
-
-
-
-                        
-
-                      </tbody>
+                        </tbody>
                     </table>
 
                     <p className="px-3 py-2 text-[0.65rem] text-muted">
-                      {hasWeek17Scores
+                        {hasWeek17Scores
                         ? "Ties are broken by total Leg 3 score, then by better seed."
                         : "Week 17 sorting will update automatically once scores post."}
                     </p>
-                  </div>
+                    </div>
+
                 </>
               )}
             </section>
@@ -1035,6 +1090,160 @@ function GodCard({ god, divisionName, isOpen, onToggle, viewMode, roundFilter, f
   );
 }
 
+function GrandChampMobileCards({
+  standings,
+  sideByLeagueRosterKey,
+  onOpenLineup,
+}) {
+  const safe = Array.isArray(standings) ? standings : [];
+
+  return (
+    <div className="md:hidden space-y-3">
+      {safe.map((p) => {
+        const leagueId = p?.leagueId ?? p?.league_id ?? null;
+        const rosterId = p?.rosterId ?? p?.roster_id ?? null;
+        const key = leagueId && rosterId != null ? `${leagueId}::${rosterId}` : null;
+        const inferredSide = key ? sideByLeagueRosterKey.get(key) : null;
+
+        const side = p?.side ?? p?.bracketSide ?? p?.seedSide ?? inferredSide ?? null;
+
+        const played = typeof p.week17Score === "number" && p.week17Score !== 0;
+
+        return (
+          <div
+            key={`${p.leagueId}-${p.rosterId}`}
+            className="rounded-2xl border border-subtle bg-subtle-surface p-4"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center justify-center h-7 w-7 rounded-full border border-subtle bg-card-surface font-mono text-xs text-primary">
+                    {p.rank}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-fg">
+                      {p.ownerName || "Unknown"}
+                    </div>
+                    <div className="mt-0.5 text-[0.7rem] text-muted">
+                      {p.division} • {p.godName}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="shrink-0">
+                {/* reuse your badge styling by reusing SideBadge from parent scope if you want,
+                    but since it's nested elsewhere, keep it simple here: */}
+                {side ? (
+                  <span
+                    className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[0.65rem] leading-none ${
+                      String(side).toLowerCase() === "light"
+                        ? "border-[color:var(--color-primary)]/50 bg-[color:var(--color-primary)]/12 text-[color:var(--color-primary)]"
+                        : "border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)]/12 text-[color:var(--color-accent)]"
+                    }`}
+                  >
+                    {String(side).toLowerCase() === "light"
+                      ? "Light"
+                      : String(side).toLowerCase() === "dark"
+                      ? "Dark"
+                      : side}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="rounded-xl border border-subtle bg-card-surface px-3 py-2">
+                <div className="text-[0.65rem] uppercase tracking-wide text-muted">Wk 17</div>
+                <div className="mt-0.5 font-mono text-sm text-fg">
+                  {Number(p.week17Score || 0).toFixed(2)}
+                </div>
+                <div className="mt-0.5 text-[0.65rem] text-muted">
+                  {played ? "Final / in-progress" : "Pending"}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-subtle bg-card-surface px-3 py-2">
+                <div className="text-[0.65rem] uppercase tracking-wide text-muted">Leg 3 Total</div>
+                <div className="mt-0.5 font-mono text-sm text-fg">
+                  {Number(p.leg3Total || 0).toFixed(2)}
+                </div>
+                <div className="mt-0.5 text-[0.65rem] text-muted">Tie-break fuel</div>
+              </div>
+            </div>
+
+            <div className="mt-3 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => onOpenLineup(p, side)}
+                className="btn btn-outline"
+              >
+                Lineup
+              </button>
+            </div>
+          </div>
+        );
+      })}
+
+      {safe.length === 0 && (
+        <div className="rounded-xl border border-subtle bg-subtle-surface px-4 py-3 text-sm text-muted">
+          No standings yet.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MobileBottomSheet({ open, title, subtitle, onClose, children }) {
+  if (!open) return null;
+
+  return (
+    <div className="md:hidden fixed inset-0 z-[999]">
+      {/* Backdrop */}
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/60"
+      />
+
+      {/* Sheet */}
+      <div className="absolute inset-x-0 bottom-24 pb-[env(safe-area-inset-bottom)]">
+        <div className="mx-auto w-full max-w-xl rounded-t-3xl border border-subtle bg-card-surface shadow-2xl">
+          {/* Header */}
+          <div className="sticky top-0 z-10 rounded-t-3xl border-b border-subtle bg-card-surface px-4 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-fg truncate">{title}</div>
+                {subtitle ? (
+                  <div className="mt-0.5 text-[0.75rem] text-muted truncate">{subtitle}</div>
+                ) : null}
+              </div>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="inline-flex items-center justify-center h-9 w-9 rounded-full border border-subtle bg-subtle-surface hover:bg-subtle-surface/70"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          {/* Body (viewport-contained scrolling) */}
+          <div className="px-4 py-4 overflow-y-auto max-h-[75vh]">
+            {children}
+          </div>
+
+          {/* Grab handle spacing */}
+          <div className="h-3" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 /* ======== Matchups table + breakdown (logic unchanged, restyled) ======== */
 
 function GodMatchupsTable({ rows, roundFilter, finalizedThroughWeek }) {
@@ -1109,8 +1318,72 @@ function GodMatchupsTable({ rows, roundFilter, finalizedThroughWeek }) {
         <span className="text-center">Team B</span>
       </div>
 
-      <div className="divide-y divide-subtle">
-        {safeRows.map((m) => {
+      {/* Mobile cards */}
+            <div className="md:hidden divide-y divide-subtle">
+            {safeRows.map((m) => {
+                const aScore =
+                typeof m.scoreA === "number"
+                    ? m.scoreA
+                    : typeof m.lightScore === "number"
+                    ? m.lightScore
+                    : 0;
+                const bScore =
+                typeof m.scoreB === "number"
+                    ? m.scoreB
+                    : typeof m.darkScore === "number"
+                    ? m.darkScore
+                    : 0;
+
+                const aName = m.teamAName ?? m.lightOwnerName ?? "?";
+                const bName = m.teamBName ?? m.darkOwnerName ?? "?";
+
+                const aSide = m.teamASide ?? "light";
+                const bSide = m.teamBSide ?? "dark";
+
+                const isExpanded = expandedMatch === m.match;
+
+                return (
+                <div key={m.match} className="px-4 py-3">
+                    <button
+                    type="button"
+                    onClick={() => setExpandedMatch((prev) => (prev === m.match ? null : m.match))}
+                    className="w-full text-left"
+                    >
+                    <div className="flex items-center justify-between text-xs text-muted">
+                        <span className="font-mono">Match {m.match}</span>
+                        <span className="text-[0.7rem]">{isExpanded ? "Hide" : "Lineup"}</span>
+                    </div>
+
+                    <div className="mt-2 rounded-2xl border border-subtle bg-subtle-surface p-3">
+                        <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                            <div className="truncate text-sm text-fg">{aName}</div>
+                            <div className="mt-1 text-[0.7rem] text-muted">Side: {aSide}</div>
+                        </div>
+                        <div className="font-mono text-sm">{Number(aScore || 0).toFixed(2)}</div>
+                        </div>
+
+                        <div className="my-2 h-px bg-[color:var(--color-border)]/40" />
+
+                        <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                            <div className="truncate text-sm text-fg">{bName}</div>
+                            <div className="mt-1 text-[0.7rem] text-muted">Side: {bSide}</div>
+                        </div>
+                        <div className="font-mono text-sm">{Number(bScore || 0).toFixed(2)}</div>
+                        </div>
+                    </div>
+                    </button>
+
+                    {isExpanded && <div className="mt-3"><MatchupBreakdown row={m} /></div>}
+                </div>
+                );
+            })}
+            </div>
+
+            {/* Desktop table */}
+            <div className="hidden md:block divide-y divide-subtle">
+            {safeRows.map((m) => {
           const aScore =
         typeof m.scoreA === "number" ? m.scoreA : typeof m.lightScore === "number" ? m.lightScore : 0;
       const bScore =
@@ -1280,6 +1553,7 @@ function LineupSide({ title, seed, lineup, isWinner, isPlayed }) {
   if (!lineup) return <div className="text-sm text-muted">No lineup data yet.</div>;
 
   const slotsOrder = ["QB", "RB", "WR", "TE", "FLEX", "SF"];
+  const [showBench, setShowBench] = useState(false);
 
   const startersBySlot = slotsOrder.map((slot) => ({
     slot,
@@ -1342,10 +1616,18 @@ function LineupSide({ title, seed, lineup, isWinner, isPlayed }) {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-subtle bg-subtle-surface p-3">
-        <div className="mb-2 text-[0.7rem] font-semibold uppercase tracking-wide text-muted">
-          Bench
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted">
+            Bench
         </div>
+        <button
+            type="button"
+            onClick={() => setShowBench((v) => !v)}
+            className="text-[0.7rem] underline underline-offset-4 decoration-accent text-muted hover:text-accent"
+        >
+            {showBench ? "Hide" : "Show"}
+        </button>
+        {showBench && (
         <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
           {benchSorted.length === 0 && <div className="text-xs text-muted">No bench players recorded.</div>}
           {benchSorted.map((p) => (
@@ -1368,6 +1650,7 @@ function LineupSide({ title, seed, lineup, isWinner, isPlayed }) {
             </div>
           ))}
         </div>
+        )}
       </div>
     </div>
   );
