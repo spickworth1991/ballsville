@@ -50,6 +50,19 @@ function ensureR2(env) {
   return { ok: true, bucket: b };
 }
 
+async function touchManifest(env, section, season) {
+  try {
+    const b = ensureR2(env);
+    const key = season ? `data/manifests/${section}_${season}.json` : `data/manifests/${section}.json`;
+    const body = JSON.stringify({ section, season: season || null, updatedAt: Date.now() }, null, 2);
+    await b.put(key, body, { httpMetadata: { contentType: "application/json; charset=utf-8" } });
+  if (manifestSection) await touchManifest(env, manifestSection, season);
+  } catch (e) {
+    // non-fatal
+  }
+}
+
+
 async function requireAdmin(context) {
   const { request, env } = context;
 

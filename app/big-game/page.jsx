@@ -1,5 +1,6 @@
 // app/big-game/page.jsx
 import Link from "next/link";
+import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import BigGameDivisionsClient from "@/components/big-game/BigGameDivisionsClient";
 import OwnerHeroBlock from "@/components/blocks/OwnerHeroBlock";
 import { CURRENT_SEASON } from "@/lib/season";

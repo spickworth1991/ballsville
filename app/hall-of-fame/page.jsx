@@ -1,5 +1,6 @@
 // app/hall-of-fame/page.jsx
 import { siteConfig } from "@/app/config/siteConfig";
+import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import HallOfFameClient from "@/components/HallOfFameClient";
 
 const pageTitle = `Hall of Fame | ${siteConfig.shortName}`;

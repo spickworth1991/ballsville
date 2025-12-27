@@ -1,5 +1,6 @@
 // src/app/gauntlet/page.jsx
 import Link from "next/link";
+import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import GauntletLegionsClient from "@/components/gauntlet/GauntletLegionsClient";
 import OwnerHeroBlock from "@/components/blocks/OwnerHeroBlock";
 import { CURRENT_SEASON } from "@/lib/season";

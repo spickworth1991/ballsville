@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { useSearchParams } from "next/navigation";
+import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import BigGameDivisionClient from "@/components/big-game/BigGameDivisionClient";
 import { CURRENT_SEASON } from "@/lib/season";
 

@@ -113,15 +113,30 @@ function normalizePost(p) {
 
 export default function NewsPage() {
   const [rows, setRows] = useState([]);
+  const [version, setVersion] = useState("0");
   const [loading, setLoading] = useState(true);
   const [activeTag, setActiveTag] = useState("");
+useEffect(() => {
+  (async () => {
+    try {
+      const res = await fetch("/r2/data/manifests/news.json");
+      if (!res.ok) return;
+      const m = await res.json();
+      if (m?.updatedAt) setVersion(String(m.updatedAt));
+    } catch (e) {
+      // ignore
+    }
+  })();
+}, [version]);
+
+
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
         const bust = `v=${Date.now()}`;
-        const res = await fetch(`/r2/data/posts/posts.json?${bust}`, { cache: "no-store" });
+        const res = await fetch(`/r2/data/posts/posts.json?${bust}`);
         if (!res.ok) {
           if (mounted) setRows([]);
           return;

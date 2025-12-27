@@ -33,7 +33,7 @@ function normLeague(l, idx) {
   };
 }
 
-export default function RedraftLeaguesClient() {
+export default function RedraftLeaguesClient({ version = "0" }) {
   const [leagues, setLeagues] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");

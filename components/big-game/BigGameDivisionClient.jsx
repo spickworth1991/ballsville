@@ -103,11 +103,9 @@ function transformForDivision(rows, divisionSlug) {
   return { header, leagues };
 }
 
-export default function BigGameDivisionClient({
-  year = DEFAULT_SEASON,
+export default function BigGameDivisionClient({year = DEFAULT_SEASON,
   divisionSlug = "",
-  backHref = "/big-game",
-}) {
+  backHref = "/big-game",, version = "0"}) {
   const [division, setDivision] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -140,7 +138,7 @@ export default function BigGameDivisionClient({
 
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [divisionSlug, year]);
+  }, [divisionSlug, year, version]);
 
   if (loading) return <p className="text-muted">Loading…</p>;
   if (error) return <p className="text-danger">{error}</p>;

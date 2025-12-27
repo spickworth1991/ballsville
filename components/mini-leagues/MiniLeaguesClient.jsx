@@ -127,10 +127,11 @@ function InlineNotice({ children }) {
 export default function MiniLeaguesClient() {
   const [editable, setEditable] = useState(DEFAULT_EDITABLE);
   const [divisions, setDivisions] = useState([]);
+  const [version, setVersion] = useState("0");
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
-  const bust = `v=${Date.now()}`;
+  const bust = `v=${version}`;
 
   const updatesSrc = editable?.hero?.promoImageKey
     ? `/r2/${editable.hero.promoImageKey}?v=${encodeURIComponent(editable.hero.promoImageKey)}`
@@ -150,7 +151,7 @@ export default function MiniLeaguesClient() {
 
     try {
       // 1) editable blocks
-      const pageRes = await fetch(`/r2/content/mini-leagues/page_${SEASON}.json?${bust}`, { cache: "no-store" });
+      const pageRes = await fetch(`/r2/content/mini-leagues/page_${SEASON}.json?${bust}`);
       if (pageRes.ok) {
         const pageData = await pageRes.json();
 
@@ -187,7 +188,7 @@ export default function MiniLeaguesClient() {
       }
 
       // 2) divisions
-      const divRes = await fetch(`/r2/data/mini-leagues/divisions_${SEASON}.json?${bust}`, { cache: "no-store" });
+      const divRes = await fetch(`/r2/data/mini-leagues/divisions_${SEASON}.json?${bust}`);
       if (divRes.ok) {
         const divData = await divRes.json();
         const list = Array.isArray(divData?.divisions) ? divData.divisions : Array.isArray(divData) ? divData : [];
@@ -203,6 +204,20 @@ export default function MiniLeaguesClient() {
       setLoading(false);
     }
   }
+useEffect(() => {
+  (async () => {
+    try {
+      const res = await fetch(`/r2/data/manifests/mini-leagues_${SEASON}.json`);
+      if (!res.ok) return;
+      const m = await res.json();
+      if (m?.updatedAt) setVersion(String(m.updatedAt));
+    } catch (e) {
+      // ignore — fallback to version "0"
+    }
+  })();
+}, []);
+
+
 
   useEffect(() => {
     loadAll();
@@ -290,7 +305,7 @@ export default function MiniLeaguesClient() {
               </aside>
             </div>
 
-            <OwnerHeroBlock mode="mini-leagues" season={SEASON} title="Owner Updates" />
+            <OwnerHeroBlock mode="mini-leagues" season={SEASON} title="Owner Updates" version={version} />
           </header>
 
           {/* CONTENT (wrapped so headings never float on background) */}

@@ -169,7 +169,7 @@ function HOFCard({ entry, onOpenImage }) {
   );
 }
 
-export default function HallOfFameClient() {
+export default function HallOfFameClient({ version = "0" }) {
   const [data, setData] = useState(FALLBACK);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");

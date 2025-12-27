@@ -145,7 +145,7 @@ export default function BigGameDivisionsClient({ year = DEFAULT_SEASON }) {
       setLoading(true);
       setError("");
       try {
-        const res = await fetch(`/r2/${R2_KEY_FOR(season)}?${bust}`, { cache: "no-store" });
+        const res = await fetch(`/r2/${R2_KEY_FOR(season)}?${bust}`);
         if (!res.ok) {
           if (!alive) return;
           setDivisions([]);

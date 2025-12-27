@@ -17,7 +17,7 @@ const DEFAULT_PAGE = {
   },
 };
 
-export default function RedraftUpdatesClient() {
+export default function RedraftUpdatesClient({ version = "0" }) {
   const [pageCfg, setPageCfg] = useState(DEFAULT_PAGE);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");

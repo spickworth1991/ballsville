@@ -1,6 +1,7 @@
 // app/dynasty/page.jsx
 import Image from "next/image";
 import Link from "next/link";
+import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import DynastyLeaguesClient from "@/components/dynasty/DynastyLeaguesClient";
 import OwnerHeroBlock from "@/components/blocks/OwnerHeroBlock";
 import { CURRENT_SEASON } from "@/lib/season";

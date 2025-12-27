@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { CURRENT_SEASON } from "@/lib/season";
+import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import GauntletLegionClient from "@/components/gauntlet/GauntletLegionClient";
 
 export default function GauntletLegionsPageClient() {

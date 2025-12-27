@@ -61,7 +61,7 @@ export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedde
       try {
         const r2Base = process.env.NEXT_PUBLIC_ADMIN_R2_PROXY_BASE || "/r2";
         const url = `${r2Base}/data/gauntlet/leagues_${season}.json?v=${Date.now()}`;
-        const res = await fetch(url, { cache: "no-store" });
+        const res = await fetch(url);
         if (!res.ok) throw new Error(`Failed to load gauntlet data (${res.status})`);
         const json = await res.json();
         if (cancelled) return;
@@ -77,7 +77,7 @@ export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedde
     return () => {
       cancelled = true;
     };
-  }, [season]);
+  }, [season, version]);
 
   const legions = useMemo(() => {
     const headers = rows.filter((r) => r?.is_legion_header);

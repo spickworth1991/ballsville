@@ -24,6 +24,15 @@ function ensureR2(env) {
   return b;
 }
 
+async function touchManifest(env, season) {
+  const b = ensureR2(env);
+  const key = season ? `data/manifests/news_${season}.json` : `data/manifests/news.json`;
+  const body = JSON.stringify({ section: "news", season: season || null, updatedAt: Date.now() }, null, 2);
+  await b.put(key, body, { httpMetadata: { contentType: "application/json; charset=utf-8" } });
+    await touchManifest(env, null);
+}
+
+
 async function requireAdmin(request, env) {
   // Reuse the site's Supabase admin auth model.
   // Frontend sends: Authorization: Bearer <access_token>

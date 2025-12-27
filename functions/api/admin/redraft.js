@@ -35,6 +35,15 @@ function ensureR2(env) {
   return { ok: true, bucket: b };
 }
 
+async function touchManifest(env, season) {
+  const b = ensureR2(env);
+  const key = season ? `data/manifests/redraft_${season}.json` : `data/manifests/redraft.json`;
+  const body = JSON.stringify({ section: "redraft", season: season || null, updatedAt: Date.now() }, null, 2);
+  await b.put(key, body, { httpMetadata: { contentType: "application/json; charset=utf-8" } });
+    await touchManifest(env, season);
+}
+
+
 async function requireAdmin(context) {
   const { request, env } = context;
 
@@ -151,6 +160,7 @@ export async function onRequest(context) {
       await r2.bucket.put(key, JSON.stringify(payload, null, 2), {
         httpMetadata: { contentType: "application/json; charset=utf-8" },
       });
+    await touchManifest(env, season);
 
       return json({ ok: true, key });
     }

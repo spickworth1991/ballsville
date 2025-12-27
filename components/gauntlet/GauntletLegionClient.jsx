@@ -77,13 +77,13 @@ function buildIndex(rows) {
 
 async function fetchLeagues(season) {
   const url = `/r2/data/gauntlet/leagues_${season}.json?cachebust=${Date.now()}`;
-  const res = await fetch(url, { cache: "no-store" });
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to load gauntlet leagues (${res.status})`);
   const data = await res.json();
   return { rows: data?.rows || [], updated_at: data?.updated_at || "" };
 }
 
-export default function GauntletLegionClient({ season = 2025, legionKey = "", titleOverride = "" }) {
+export default function GauntletLegionClient({season = 2025, legionKey = "", titleOverride = "", version = "0"}) {
   const [rows, setRows] = useState(null);
   const [updatedAt, setUpdatedAt] = useState("");
   const [error, setError] = useState("");
@@ -106,7 +106,7 @@ export default function GauntletLegionClient({ season = 2025, legionKey = "", ti
     return () => {
       cancelled = true;
     };
-  }, [season]);
+  }, [season, version]);
 
   const { headers, leaguesByLegion } = useMemo(() => buildIndex(rows), [rows]);
 

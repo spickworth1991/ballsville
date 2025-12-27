@@ -29,6 +29,15 @@ function ensureR2(env) {
   return b;
 }
 
+async function touchManifest(env, season) {
+  const b = ensureR2(env);
+  const key = season ? `data/manifests/gauntlet_${season}.json` : `data/manifests/gauntlet.json`;
+  const body = JSON.stringify({ section: "gauntlet", season: season || null, updatedAt: Date.now() }, null, 2);
+  await b.put(key, body, { httpMetadata: { contentType: "application/json; charset=utf-8" } });
+    await touchManifest(env, season);
+}
+
+
 function leaguesKeyForSeason(season) {
   const s = String(season || "").trim() || String(getCurrentNflSeason());
   return `data/gauntlet/leagues_${s}.json`;

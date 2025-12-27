@@ -101,7 +101,7 @@ function EmptyState({ children }) {
   );
 }
 
-export default function DynastyLeaguesClient() {
+export default function DynastyLeaguesClient({ version = "0" }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");

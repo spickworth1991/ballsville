@@ -24,9 +24,10 @@ const DEFAULT = {
 
 export default function OwnerHeroBlock({
   mode,
-  season = CURRENT_SEASON, // used only to determine which JSON we fetch
+  season = CURRENT_SEASON, // used only to determine... which JSON we fetch
   title = "Owner Updates",
   subtitle,
+  version = "0",
 }) {
   const m = safeMode(mode);
   const [cfg, setCfg] = useState(DEFAULT);
