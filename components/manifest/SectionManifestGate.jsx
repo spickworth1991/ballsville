@@ -15,6 +15,14 @@ function manifestUrl(section, season) {
   return base;
 }
 
+async function tryFetchJson(url) {
+  const res = await fetch(url);
+  if (res.status === 404) return { ok: false, status: 404, data: null };
+  if (!res.ok) return { ok: false, status: res.status, data: null };
+  const data = await res.json();
+  return { ok: true, status: res.status, data };
+}
+
 export default function SectionManifestGate({ section, season, pollMs = 0, children }) {
   const [manifest, setManifest] = useState(null);
   const [error, setError] = useState(null);
@@ -22,10 +30,26 @@ export default function SectionManifestGate({ section, season, pollMs = 0, child
   async function load() {
     try {
       setError(null);
-      const res = await fetch(manifestUrl(section, season), { cache: "no-store" });
-      if (!res.ok) throw new Error(`Manifest fetch failed: ${res.status}`);
-      const data = await res.json();
-      setManifest(data);
+      // Let normal browser caching apply (Cloudflare sends must-revalidate + ETag).
+      // We want 304s when unchanged, not forced 200s.
+      let out = null;
+
+      // Try season-scoped manifest first.
+      if (season) {
+        const r1 = await tryFetchJson(manifestUrl(section, season));
+        if (r1.ok) out = r1.data;
+        // Fall back to non-season manifest if the season-scoped one doesn't exist.
+        if (!out && r1.status === 404) {
+          const r2 = await tryFetchJson(manifestUrl(section));
+          if (r2.ok) out = r2.data;
+        }
+      } else {
+        const r = await tryFetchJson(manifestUrl(section));
+        if (r.ok) out = r.data;
+      }
+
+      // If manifest doesn't exist yet (404), still render with a stable fallback.
+      setManifest(out || { updatedAt: 0, section, season });
     } catch (e) {
       setError(e);
       // still render children with a stable fallback version so the page works

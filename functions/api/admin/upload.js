@@ -52,12 +52,23 @@ function ensureR2(env) {
 
 async function touchManifest(env, section, season) {
   try {
-    const b = ensureR2(env);
+    const r2 = ensureR2(env);
+    if (!r2.ok) return;
+
     const key = season ? `data/manifests/${section}_${season}.json` : `data/manifests/${section}.json`;
-    const body = JSON.stringify({ section, season: season || null, updatedAt: Date.now() }, null, 2);
-    await b.put(key, body, { httpMetadata: { contentType: "application/json; charset=utf-8" } });
-  if (manifestSection) await touchManifest(env, manifestSection, season);
-  } catch (e) {
+    const body = JSON.stringify(
+      {
+        section,
+        season: season || null,
+        updatedAt: new Date().toISOString(),
+        nonce: crypto.randomUUID(),
+      },
+      null,
+      2
+    );
+
+    await r2.bucket.put(key, body, { httpMetadata: { contentType: "application/json; charset=utf-8" } });
+  } catch {
     // non-fatal
   }
 }
@@ -341,6 +352,42 @@ export async function onRequest(context) {
     await r2.bucket.put(key, buf, {
       httpMetadata: { contentType: file.type || "application/octet-stream" },
     });
+
+    // Touch the section manifest so public pages know something changed.
+    // These manifests are used by client-side polling to decide whether to refetch.
+    const manifestSection = (() => {
+      // Big Game
+      if (section.startsWith("biggame-")) return "biggame";
+
+      // Gauntlet
+      if (section.startsWith("gauntlet-")) return "gauntlet";
+
+      // Redraft
+      if (section.startsWith("redraft-")) return "redraft";
+
+      // Mini Leagues
+      if (section.startsWith("mini-leagues-")) return "mini-leagues";
+
+      // Dynasty
+      if (section.startsWith("dynasty-")) return "dynasty";
+
+      // News / posts
+      if (section === "posts-image") return "posts";
+
+      // Hall of Fame
+      if (section === "hall-of-fame-entry") return "hall-of-fame";
+
+      return null;
+    })();
+
+    if (manifestSection) {
+      // Fire-and-forget; a failure here shouldn't block the upload.
+      try {
+        await touchManifest(env, manifestSection, season);
+      } catch {
+        // ignore
+      }
+    }
 
     // cache-bust for immediate preview
     const url = `/r2/${key}?v=${Date.now()}`;

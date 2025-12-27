@@ -205,23 +205,38 @@ export default function MiniLeaguesClient() {
     }
   }
 useEffect(() => {
-  (async () => {
+  let cancelled = false;
+
+  async function check() {
     try {
-      const res = await fetch(`/r2/data/manifests/mini-leagues_${SEASON}.json`);
+      // Try season-scoped manifest first, then fall back to non-season.
+      const primary = await fetch(`/r2/data/manifests/mini-leagues_${SEASON}.json`);
+      let res = primary;
+      if (primary.status === 404) {
+        res = await fetch(`/r2/data/manifests/mini-leagues.json`);
+      }
       if (!res.ok) return;
       const m = await res.json();
-      if (m?.updatedAt) setVersion(String(m.updatedAt));
-    } catch (e) {
+      const next = m?.updatedAt ? String(m.updatedAt) : "0";
+      if (!cancelled && next) setVersion(next);
+    } catch {
       // ignore — fallback to version "0"
     }
-  })();
+  }
+
+  check();
+  const t = setInterval(check, 60_000);
+  return () => {
+    cancelled = true;
+    clearInterval(t);
+  };
 }, []);
 
 
 
   useEffect(() => {
     loadAll();
-  }, []);
+  }, [version]);
 
   return (
     <main className="relative min-h-screen text-fg">

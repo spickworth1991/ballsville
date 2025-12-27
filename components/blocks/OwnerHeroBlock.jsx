@@ -59,9 +59,14 @@ export default function OwnerHeroBlock({
 
       try {
         // Let the /r2 proxy handle caching + ETag revalidation.
-        const res = await fetch(`/r2/content/${m}/page_${season}.json`, { cache: "default" });
+        // Some sections may not be season-scoped yet; fall back to page.json if page_{season}.json is missing.
+        let res = await fetch(`/r2/content/${m}/page_${season}.json`, { cache: "default" });
+        if (res.status === 404) {
+          res = await fetch(`/r2/content/${m}/page.json`, { cache: "default" });
+        }
 
         if (!res.ok) {
+          // 404 just means the owner block hasn't been configured for this section yet.
           if (!cancelled) setCfg({ ...DEFAULT, season });
           return;
         }
@@ -94,7 +99,7 @@ export default function OwnerHeroBlock({
     return () => {
       cancelled = true;
     };
-  }, [m, season]);
+  }, [m, season, version]);
 
   if (loading) {
     return (
