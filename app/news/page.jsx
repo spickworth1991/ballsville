@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { CURRENT_SEASON } from "@/lib/season";
 
 const cardCls =
   "card bg-card-surface border border-subtle relative p-6 transition shadow-sm hover:shadow-md hover:-translate-y-[2px]";
@@ -116,18 +117,28 @@ export default function NewsPage() {
   const [version, setVersion] = useState("0");
   const [loading, setLoading] = useState(true);
   const [activeTag, setActiveTag] = useState("");
-useEffect(() => {
-  (async () => {
-    try {
-      const res = await fetch("/r2/data/manifests/news.json");
-      if (!res.ok) return;
-      const m = await res.json();
-      if (m?.updatedAt) setVersion(String(m.updatedAt));
-    } catch (e) {
-      // ignore
-    }
-  })();
-}, [version]);
+  useEffect(() => {
+    (async () => {
+      try {
+        // Prefer season-scoped manifest (matches other sections).
+        // Fall back to the legacy unscoped filename if it exists.
+        const urls = [
+          `/r2/data/manifests/news_${CURRENT_SEASON}.json`,
+          "/r2/data/manifests/news.json",
+        ];
+
+        for (const url of urls) {
+          const res = await fetch(url);
+          if (!res.ok) continue;
+          const m = await res.json();
+          if (m?.updatedAt) setVersion(String(m.updatedAt));
+          break;
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
 
 
 

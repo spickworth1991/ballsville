@@ -206,7 +206,7 @@ export default function DynastyPage() {
         </PremiumFrame>
 
         {/* DYNAMIC LEAGUES / ORPHANS / DIRECTORY */}
-        <SectionManifestGate section="dynasty">
+        <SectionManifestGate section="dynasty" season={CURRENT_SEASON}>
           <DynastyLeaguesClient />
         </SectionManifestGate>
 
