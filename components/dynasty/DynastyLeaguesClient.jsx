@@ -125,6 +125,16 @@ function imageSrcForTheme(theme, updatedAt) {
   return `${base}?${bust}`;
 }
 
+function imageSrcForTheme(bucket, updatedAt) {
+  const key = typeof bucket?.themeImageKey === "string" ? bucket.themeImageKey.trim() : "";
+  const url = typeof bucket?.themeImageUrl === "string" ? bucket.themeImageUrl.trim() : "";
+  const base = (key ? `/r2/${key}` : "") || url || FALLBACK_IMG;
+  const bust = updatedAt ? `v=${encodeURIComponent(updatedAt)}` : "";
+  if (!bust) return base;
+  if (base.includes("?")) return `${base}&${bust}`;
+  return `${base}?${bust}`;
+}
+
 function PremiumSection({ title, subtitle, kicker, children, className = "" }) {
   return (
     <section
@@ -225,14 +235,34 @@ export default function DynastyLeaguesClient({
   const yearNum = Number.isFinite(parsedYear) ? parsedYear : years[0];
 
   const isLeagueView = mode === "leagues";
-  const isDivisionView = isLeagueView && Boolean(divisionSlug) && Number.isFinite(yearNum);
+
+  // Safety: if the server page didn't pass search params for some reason,
+  // fall back to reading them client-side so division links still work.
+  const [clientDivision, setClientDivision] = useState("");
+  const [clientYear, setClientYear] = useState("");
+
+  useEffect(() => {
+    if (!isLeagueView) return;
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search || "");
+    const div = sp.get("division") || "";
+    const yr = sp.get("year") || "";
+    // Only fill missing server props; never override explicit props.
+    if (!division && div) setClientDivision(div);
+    if ((year == null || year === "") && yr) setClientYear(yr);
+  }, [isLeagueView, division, year]);
+
+  const effectiveDivisionSlug = slugify(division || clientDivision);
+  const effectiveYearNum = Number(year || clientYear);
+
+  const isDivisionView = isLeagueView && Boolean(effectiveDivisionSlug) && Number.isFinite(effectiveYearNum);
   let divisionThemeName = "";
   let divisionThemeLeagues = null;
   if (isDivisionView) {
-    const themeMap = byYear?.get ? byYear.get(yearNum) : null; // Map<themeName, leagues[]>
+    const themeMap = byYear?.get ? byYear.get(effectiveYearNum) : null; // Map<themeName, leagues[]>
     if (themeMap && typeof themeMap?.entries === "function") {
       for (const [themeName, leagues] of themeMap.entries()) {
-        if (slugify(themeName) === divisionSlug) {
+        if (slugify(themeName) === effectiveDivisionSlug) {
           divisionThemeName = themeName;
           divisionThemeLeagues = Array.isArray(leagues) ? leagues : [];
           break;
@@ -263,6 +293,17 @@ export default function DynastyLeaguesClient({
     return (
       <PremiumSection title="Dynasty Leagues">
         <p className="text-center text-sm text-danger">{errorMsg}</p>
+      </PremiumSection>
+    );
+  }
+
+  // If this is the division/leagues page but we don't have valid params,
+  // don't fall back to the directory view (that makes it look like the click
+  // did nothing).
+  if (isLeagueView && !isDivisionView) {
+    return (
+      <PremiumSection title="Division" subtitle="That division link is missing required parameters.">
+        <EmptyState>Division not found. Please go back and pick a division again.</EmptyState>
       </PremiumSection>
     );
   }
@@ -404,28 +445,27 @@ export default function DynastyLeaguesClient({
 
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {themeNames.map((themeName) => {
-                     const themeVal = themeMap.get(themeName);
+                      const leaguesInTheme = themeMap.get(themeName) || [];
+                      if (leaguesInTheme.length === 0) return null;
+                      const first = [...leaguesInTheme].sort(
+                        (a, b) => Number(a?.display_order ?? 0) - Number(b?.display_order ?? 0)
+                      )[0];
+                      const themeImgKey = typeof first?.theme_imageKey === "string" ? first.theme_imageKey.trim() : "";
+                      const themeImgUrl = typeof first?.theme_image_url === "string" ? first.theme_image_url.trim() : "";
 
-                    // themeVal can be either an array OR an object like { blurb, leagues }
-                    const leaguesInTheme = Array.isArray(themeVal)
-                      ? themeVal
-                      : Array.isArray(themeVal?.leagues)
-                      ? themeVal.leagues
-                      : [];
-
-                    if (leaguesInTheme.length === 0) return null;
-
-                    const first = leaguesInTheme
-                      .slice()
-                      .sort((a, b) => Number(a?.display_order ?? 0) - Number(b?.display_order ?? 0))[0];
-
-                    const img = first ? imageSrcForRow(first, updatedAt) : "";
-
-                    const themeBlurb =
-                      (typeof themeVal === "object" && !Array.isArray(themeVal) && themeVal?.blurb) ||
-                      leaguesInTheme[0]?.theme_blurb ||
-                      "";
-
+                      let img = "";
+                      if (themeImgUrl) {
+                        img = themeImgUrl;
+                        if (updatedAt) {
+                          const bust = `v=${encodeURIComponent(updatedAt)}`;
+                          img = img.includes("?") ? `${img}&${bust}` : `${img}?${bust}`;
+                        }
+                      } else if (themeImgKey) {
+                        img = `/r2/${themeImgKey}${updatedAt ? `?v=${encodeURIComponent(updatedAt)}` : ""}`;
+                      } else {
+                        img = first ? imageSrcForRow(first, updatedAt, FALLBACK_IMG) : FALLBACK_IMG;
+                      }
+                      const themeBlurb = leaguesInTheme[0]?.theme_blurb || "";
 
                       return (
                         <MediaTabCard
