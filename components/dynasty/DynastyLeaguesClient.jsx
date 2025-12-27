@@ -11,6 +11,12 @@ function normalize(row) {
   const r = row && typeof row === "object" ? row : {};
   const yearNum = Number(r.year ?? r.season);
 
+  // Normalize status early so orphan detection is reliable even if the admin UI
+  // only changes `status` (and older rows don't have `is_orphan`).
+  const statusRaw = r?.status ?? r?.STATUS ?? "";
+  const status = typeof statusRaw === "string" ? statusRaw.trim() : String(statusRaw || "").trim();
+  const isOrphanByStatus = status.toUpperCase() === "ORPHAN OPEN";
+
   // Backward compatible field names
   return {
     ...r,
@@ -18,6 +24,10 @@ function normalize(row) {
     year: Number.isFinite(yearNum) ? yearNum : r.year,
     name: r.name ?? r.league_name ?? "",
     sleeper_url: r.sleeper_url ?? r.sleeperUrl ?? r.url ?? "",
+
+    status,
+    // If `is_orphan` is missing, infer it from status.
+    is_orphan: typeof r?.is_orphan === "boolean" ? r.is_orphan : isOrphanByStatus,
 
     // League image
     imageKey: r.imageKey ?? r.image_key ?? r.league_image_key ?? "",
@@ -47,7 +57,10 @@ function transformLeagues(rows) {
   // Only show leagues marked active (or with null/undefined treated as active)
   const active = (rows || []).filter((r) => r?.is_active !== false);
 
-  const orphans = active.filter((r) => r?.is_orphan || r?.status === "ORPHAN OPEN");
+  const orphans = active.filter((r) => {
+    const st = String(r?.status || "").trim().toUpperCase();
+    return r?.is_orphan === true || st === "ORPHAN OPEN";
+  });
 
   // IMPORTANT: keep orphans in the main list too, so they still show in their theme
   const byYear = new Map();
@@ -212,18 +225,19 @@ export default function DynastyLeaguesClient({
       }
     }
   }
-      const scopedOrphans = useMemo(() => {
-      if (!isLeagueView) return orphans;
+  const scopedOrphans = useMemo(() => {
+    // Main directory pages show all orphans.
+    if (!isLeagueView) return orphans;
 
-      return orphans.filter((o) => {
-        const oy = Number(o?.year);
-        const od = slugify(o?.theme_name || o?.kind || "");
-        return oy === yearNum && od === divisionSlug;
-      });
-    }, [orphans, isLeagueView, yearNum, divisionSlug]);
+    // Division (league list) page shows only orphans for this division + year.
+    return orphans.filter((o) => {
+      const oy = Number(o?.year);
+      const od = slugify(o?.theme_name || o?.kind || "");
+      return oy === yearNum && od === divisionSlug;
+    });
+  }, [orphans, isLeagueView, yearNum, divisionSlug]);
 
-    const hasOrphans = scopedOrphans.length > 0;
-
+  const hasOrphans = scopedOrphans.length > 0;
 
   if (loading) {
     return (
@@ -296,41 +310,6 @@ export default function DynastyLeaguesClient({
         )}
       </PremiumSection>
 
-      {/* PAYOUTS */}
-      <PremiumSection
-        kicker="Money Stuff"
-        title="Payouts & Bonuses"
-        subtitle="Each league is a 12-team SF, 3WR build that ladders into the Dynasty Empire structure and shared Week 17 upside."
-      >
-        <div className="flex flex-wrap justify gap-3 text-xs sm:text-sm">
-          <span className="rounded-xl bg-panel border border-subtle px-3 py-2">
-            <span className="font-semibold text-foreground">$25</span> annually
-          </span>
-          <span className="rounded-xl bg-panel border border-subtle px-3 py-2">
-            Max payouts – <span className="font-semibold text-foreground">$2,300</span>
-          </span>
-          <span className="rounded-xl bg-panel border border-subtle px-3 py-2 text-center">
-            $1,500 possible wager pot + $200 wager BONUS + $250 🏆 Championship
-          </span>
-          <span className="rounded-xl bg-panel border border-subtle px-3 py-2 text-center">
-            + $100 🥈, + $50 🥉, + $125 league winner, + $225 EMPIRE win
-          </span>
-        </div>
-
-        <div className="mt-5 mx-auto max-w-4xl space-y-3">
-          <p className="text-sm text-muted">
-            These custom leagues play the season out with the same odds to win cash. In the championship round, you win $50 just for making it. You can
-            keep it, or push your $50 into the pot for a shot at big money.
-          </p>
-
-          <p className="text-sm text-muted">
-            There are <span className="font-semibold text-foreground">3 BONUS prizes</span>: $200 to the wager winner (most points in Week 17 among
-            wagering players), $100 to 2nd, and $50 to 3rd. A final passive bonus of $200 goes to the overall highest scorer among all league finalists,
-            regardless of wagering.
-          </p>
-        </div>
-      </PremiumSection>
-
       {/* DIRECTORY */}
       <PremiumSection
         kicker="All Leagues"
@@ -343,11 +322,11 @@ export default function DynastyLeaguesClient({
           <div className="space-y-6">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <Link
-                href="/dynasty"
+                href="/dynasty/divisions"
                 prefetch={false}
                 className="text-sm text-muted hover:text-foreground transition"
               >
-                ← Back to Dynasty
+                ← Back to Divisions
               </Link>
               <p className="text-xs uppercase tracking-[0.25em] text-accent">{yearNum} Season</p>
             </div>
