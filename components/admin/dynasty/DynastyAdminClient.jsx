@@ -335,25 +335,6 @@ export default function DynastyAdminClient() {
     });
   }
 
-  function clearStagedDivisionImage({ year, themeName }) {
-    setRows((prev) => {
-      let cleared = false;
-      return prev.map((r) => {
-        if (cleared) return r;
-        if (Number(r?.year) !== Number(year)) return r;
-        if (safeStr(r?.theme_name).trim() !== safeStr(themeName).trim()) return r;
-
-        safeRevoke(r.pendingThemeImagePreviewUrl);
-        cleared = true;
-        return {
-          ...r,
-          pendingThemeImageFile: null,
-          pendingThemeImagePreviewUrl: "",
-        };
-      });
-    });
-  }
-
   async function saveAllToR2(nextRows = rows) {
     setErrorMsg("");
     setInfoMsg("");
@@ -783,6 +764,66 @@ export default function DynastyAdminClient() {
         )}
       </div>
 
+      {/* Division / Theme Images */}
+      <div className="mt-6 rounded-2xl border border-subtle bg-card-surface p-5">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Division images (theme cards)</h2>
+            <p className="text-sm text-muted">
+              These images show on the public Dynasty page as the division/theme cards for <span className="font-semibold">{pageSeason}</span>.
+              Images upload when you click <span className="font-semibold">Save to R2</span>.
+            </p>
+          </div>
+        </div>
+
+        {divisionGroupsForSeason.length === 0 ? (
+          <p className="mt-3 text-sm text-muted">No themes found for this season yet.</p>
+        ) : (
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {divisionGroupsForSeason.map((g) => {
+              const rep = g.leagues?.[0] || {};
+              const img =
+                rep.pendingThemeImagePreviewUrl ||
+                (rep.theme_imageKey ? `/r2/${rep.theme_imageKey}` : rep.theme_image_url || "");
+              const fallback = rep.imageKey ? `/r2/${rep.imageKey}` : rep.image_url || "";
+              const shown = img || fallback;
+
+              return (
+                <div key={g.key} className="rounded-2xl border border-subtle bg-panel p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="h-12 w-12 rounded-xl border border-subtle bg-subtle-surface overflow-hidden shrink-0">
+                      {shown ? (
+                        <img src={shown} alt={g.theme_name} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="h-full w-full grid place-items-center text-xs text-muted">No img</div>
+                      )}
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate">{g.theme_name}</p>
+                      <p className="text-xs text-muted truncate">{g.leagues.length} leagues</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid gap-2">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        stageDivisionImage({ year: g.year, themeName: g.theme_name, file });
+                      }}
+                    />
+                    <p className="text-[11px] text-muted">Recommended: square (512×512+). WebP/PNG/JPG.</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Themes */}
       <div className="space-y-4">
         <h2 className="text-lg font-semibold">Existing themes &amp; leagues</h2>
@@ -810,63 +851,6 @@ export default function DynastyAdminClient() {
 
                 {open && (
                   <div className="p-5 space-y-4">
-                    {(() => {
-                      const rep = group.leagues?.[0] || {};
-                      const img =
-                        rep.pendingThemeImagePreviewUrl ||
-                        (rep.theme_imageKey ? `/r2/${rep.theme_imageKey}` : rep.theme_image_url || "");
-                      const fallback = rep.imageKey ? `/r2/${rep.imageKey}` : rep.image_url || "";
-                      const shown = img || fallback;
-
-                      return (
-                        <div className="rounded-2xl border border-subtle bg-panel p-4">
-                          <div className="flex items-center justify-between gap-3 flex-wrap">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="h-12 w-12 rounded-xl border border-subtle bg-subtle-surface overflow-hidden shrink-0">
-                                {shown ? (
-                                  <img src={shown} alt={group.theme_name} className="h-full w-full object-cover" />
-                                ) : (
-                                  <div className="h-full w-full grid place-items-center text-xs text-muted">No img</div>
-                                )}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-sm font-semibold truncate">Division image</p>
-                                <p className="text-xs text-muted truncate">
-                                  Shows on the public Dynasty page on the division card.
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              <label className="btn btn-outline text-xs cursor-pointer">
-                                Choose
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  className="hidden"
-                                  onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    if (!file) return;
-                                    stageDivisionImage({ year: group.year, themeName: group.theme_name, file });
-                                    e.target.value = "";
-                                  }}
-                                />
-                              </label>
-                              <button
-                                type="button"
-                                className="text-xs text-muted hover:text-fg underline"
-                                onClick={() => clearStagedDivisionImage({ year: group.year, themeName: group.theme_name })}
-                              >
-                                clear
-                              </button>
-                            </div>
-                          </div>
-
-                          <p className="mt-2 text-[11px] text-muted">Recommended: square (512×512+). WebP/PNG/JPG. Upload happens when you click “Save to R2”.</p>
-                        </div>
-                      );
-                    })()}
-
                     <div className="grid gap-3 sm:grid-cols-2">
                       <label className="space-y-1">
                         <span className="text-xs text-muted">Theme name</span>
@@ -910,8 +894,7 @@ export default function DynastyAdminClient() {
                             <th className="px-3 py-2">Image</th>
                             <th className="px-3 py-2">Fill note</th>
                             <th className="px-3 py-2">Active</th>
-                            <th className="px-3 py-2">Orphan</th>
-                            <th className="px-3 py-2"></th>
+<th className="px-3 py-2"></th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1011,13 +994,7 @@ export default function DynastyAdminClient() {
                                 <td className="px-3 py-2">
                                   <input className="input w-[260px] max-w-[260px]" value={lg.fill_note} onChange={(e) => updateLeague(lg.id, { fill_note: e.target.value })} />
                                 </td>
-                                <td className="px-3 py-2">
-                                  <input type="checkbox" checked={lg.is_active !== false} onChange={(e) => updateLeague(lg.id, { is_active: e.target.checked })} />
-                                </td>
-                                <td className="px-3 py-2">
-                                  <input type="checkbox" checked={!!lg.is_orphan} onChange={(e) => updateLeague(lg.id, { is_orphan: e.target.checked })} />
-                                </td>
-                                <td className="px-3 py-2">
+<td className="px-3 py-2">
                                   <button className="btn btn-outline text-xs" type="button" onClick={() => deleteLeague(lg.id)}>
                                     Delete
                                   </button>
