@@ -14,7 +14,7 @@ export default function DynastyDivisionsPage({ searchParams }) {
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-10">
       <SectionManifestGate section="dynasty" season={CURRENT_SEASON}>
-        <DynastyLeaguesClient year={year} division={division} />
+        <DynastyLeaguesClient year={year} division={division} mode="leagues" />
       </SectionManifestGate>
     </main>
   );

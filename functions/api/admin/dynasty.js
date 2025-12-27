@@ -126,11 +126,18 @@ function normalizeRow(r, idx) {
   const imageKey = asStr(r?.imageKey || r?.image_key || "").trim();
   const image_url = asStr(r?.image_url || r?.imageUrl || "").trim();
 
+  // Optional per-theme (division) image. Stored on each row so the public
+  // directory can render division cards without needing a separate file.
+  const theme_imageKey = asStr(r?.theme_imageKey || r?.theme_image_key || "").trim();
+  const theme_image_url = asStr(r?.theme_image_url || r?.theme_imageUrl || "").trim();
+
   return {
     id,
     year,
     theme_name: asStr(r?.theme_name || r?.kind || "Dynasty").trim() || "Dynasty",
     theme_blurb: asStr(r?.theme_blurb || "").trim() || null,
+    theme_imageKey: theme_imageKey || null,
+    theme_image_url: theme_image_url || null,
     name: asStr(r?.name || "").trim() || `League ${idx + 1}`,
     status,
     sleeper_url: asStr(r?.sleeper_url || r?.url || "").trim() || null,
