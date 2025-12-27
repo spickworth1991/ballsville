@@ -58,9 +58,10 @@ function ensureR2(env) {
 async function touchManifest(env, season) {
   try {
     const b = ensureR2(env);
+    if (!b.ok) return;
     const key = season ? `data/manifests/biggame_${season}.json` : `data/manifests/biggame.json`;
     const body = JSON.stringify({ section: "biggame", season: season || null, updatedAt: Date.now() }, null, 2);
-    await b.put(key, body, {
+    await b.bucket.put(key, body, {
       httpMetadata: { contentType: "application/json; charset=utf-8" },
     });
   } catch (e) {
@@ -213,7 +214,7 @@ export async function onRequest(context) {
         await r2.bucket.put(r2KeyFor("page", season), JSON.stringify(payload, null, 2), {
           httpMetadata: { contentType: "application/json; charset=utf-8" },
         });
-        await touchManifest(env, season);
+        await touchManifest(context.env, season);
         return json({ ok: true, key: r2KeyFor("page", season), type: "page" });
       }
 
@@ -255,7 +256,7 @@ export async function onRequest(context) {
       await r2.bucket.put(r2KeyFor("leagues", season), JSON.stringify(payload, null, 2), {
         httpMetadata: { contentType: "application/json; charset=utf-8" },
       });
-        await touchManifest(env, season);
+        await touchManifest(context.env, season);
 
       return json({ ok: true, key: r2KeyFor("leagues", season), type: "leagues", count: rows.length });
     }
