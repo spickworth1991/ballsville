@@ -14,6 +14,7 @@ function safeMode(mode) {
 
 const DEFAULT = {
   season: CURRENT_SEASON,
+  updated_at: null,
   hero: {
     promoImageKey: "",
     promoImageUrl: "",
@@ -32,11 +33,14 @@ export default function OwnerHeroBlock({
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
-  // one-time cache-bust per mount (good enough)
-  const bust = useMemo(() => `v=${Date.now()}`, []);
+  const imgVer = useMemo(() => {
+    // If the admin saved the page after changing the image, updated_at changes.
+    // This makes the promo image URL effectively versioned so it can be cached long-term.
+    return cfg?.updated_at || cfg?.hero?.promoImageKey || "";
+  }, [cfg?.updated_at, cfg?.hero?.promoImageKey]);
 
   const imgSrc = cfg?.hero?.promoImageKey
-    ? `/r2/${cfg.hero.promoImageKey}?v=${encodeURIComponent(cfg.hero.promoImageKey)}`
+    ? `/r2/${cfg.hero.promoImageKey}?v=${encodeURIComponent(String(imgVer))}`
     : cfg?.hero?.promoImageUrl || "";
 
   useEffect(() => {
@@ -53,7 +57,8 @@ export default function OwnerHeroBlock({
       }
 
       try {
-        const res = await fetch(`/r2/content/${m}/page_${season}.json?${bust}`, { cache: "no-store" });
+        // Let the /r2 proxy handle caching + ETag revalidation.
+        const res = await fetch(`/r2/content/${m}/page_${season}.json`, { cache: "default" });
 
         if (!res.ok) {
           if (!cancelled) setCfg({ ...DEFAULT, season });
@@ -65,6 +70,7 @@ export default function OwnerHeroBlock({
 
         const next = {
           season: Number(data?.season || season) || season,
+          updated_at: data?.updated_at || null,
           hero: {
             promoImageKey: typeof hero?.promoImageKey === "string" ? hero.promoImageKey : "",
             promoImageUrl: typeof hero?.promoImageUrl === "string" ? hero.promoImageUrl : "",
@@ -87,7 +93,7 @@ export default function OwnerHeroBlock({
     return () => {
       cancelled = true;
     };
-  }, [m, season, bust]);
+  }, [m, season]);
 
   if (loading) {
     return (

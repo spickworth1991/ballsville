@@ -1,5 +1,6 @@
 // app/leaderboards/page.jsx
 import { siteConfig } from "@/app/config/siteConfig";
+import LeaderboardEmbed from "./LeaderboardEmbed";
 
 const pageTitle = `Leaderboards | ${siteConfig.shortName}`;
 
@@ -76,13 +77,7 @@ export default function Page() {
             </div>
           </div>
 
-          <iframe
-            src="https://ballsville-leaderboard.pages.dev/"
-            title="BALLSVILLE Leaderboards"
-            loading="lazy"
-            allowFullScreen
-            className="w-full h-[150vh] min-h-[600px] border-0"
-          />
+          <LeaderboardEmbed />
         </div>
       </div>
     </section>
