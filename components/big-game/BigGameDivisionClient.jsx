@@ -105,7 +105,7 @@ function transformForDivision(rows, divisionSlug) {
 
 export default function BigGameDivisionClient({year = DEFAULT_SEASON,
   divisionSlug = "",
-  backHref = "/big-game",, version = "0"}) {
+  backHref = "/big-game", version = "0"}) {
   const [division, setDivision] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);

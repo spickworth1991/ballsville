@@ -47,7 +47,10 @@ function fmtSpots(openSpots) {
   return n;
 }
 
-export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedded = false }) {
+// NOTE: `version` is an optional prop some pages use as a manual cache-bust signal.
+// With the manifest-based caching it usually isn't needed, but keeping it here
+// prevents build-time ReferenceErrors if a parent still uses it.
+export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedded = false, version = "0" }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -61,7 +64,7 @@ export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedde
       try {
         const r2Base = process.env.NEXT_PUBLIC_ADMIN_R2_PROXY_BASE || "/r2";
         const url = `${r2Base}/data/gauntlet/leagues_${season}.json?v=${Date.now()}`;
-        const res = await fetch(url);
+        const res = await fetch(url, { cache: "no-store" });
         if (!res.ok) throw new Error(`Failed to load gauntlet data (${res.status})`);
         const json = await res.json();
         if (cancelled) return;

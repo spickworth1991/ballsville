@@ -77,13 +77,16 @@ function buildIndex(rows) {
 
 async function fetchLeagues(season) {
   const url = `/r2/data/gauntlet/leagues_${season}.json?cachebust=${Date.now()}`;
-  const res = await fetch(url);
+  const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(`Failed to load gauntlet leagues (${res.status})`);
   const data = await res.json();
   return { rows: data?.rows || [], updated_at: data?.updated_at || "" };
 }
 
-export default function GauntletLegionClient({season = 2025, legionKey = "", titleOverride = "", version = "0"}) {
+// NOTE: `version` is an optional prop used as a manual cache-bust signal.
+// Not required for manifest-based caching, but keeping it prevents undefined
+// reference issues and allows parent components to force a refetch if desired.
+export default function GauntletLegionClient({ season = 2025, legionKey = "", titleOverride = "", version = "0" }) {
   const [rows, setRows] = useState(null);
   const [updatedAt, setUpdatedAt] = useState("");
   const [error, setError] = useState("");
