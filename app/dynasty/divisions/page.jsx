@@ -1,5 +1,9 @@
+// app/dynasty/divisions/page.jsx
+// Static export safe (output: "export"). We must read ?year=&division= on the client.
+
+import { Suspense } from "react";
 import SectionManifestGate from "@/components/data/SectionManifestGate";
-import DynastyLeaguesClient from "@/components/dynasty/DynastyLeaguesClient";
+import DynastyDivisionsPageClient from "@/components/dynasty/DynastyDivisionsPageClient";
 import { CURRENT_SEASON } from "@/lib/season";
 
 export const metadata = {
@@ -7,15 +11,16 @@ export const metadata = {
   description: "Browse dynasty expansion divisions and leagues.",
 };
 
-export default function DynastyDivisionsPage({ searchParams }) {
-  const year = searchParams?.year;
-  const division = searchParams?.division;
+export const dynamic = "force-static";
 
+export default function DynastyDivisionsPage() {
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-10">
-      <SectionManifestGate section="dynasty" season={CURRENT_SEASON}>
-        <DynastyLeaguesClient year={year} division={division} mode="leagues" />
-      </SectionManifestGate>
+      <Suspense fallback={<p className="text-muted">Loading…</p>}>
+        <SectionManifestGate section="dynasty" season={CURRENT_SEASON}>
+          <DynastyDivisionsPageClient />
+        </SectionManifestGate>
+      </Suspense>
     </main>
   );
 }
