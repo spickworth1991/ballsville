@@ -1,4 +1,4 @@
-// src/lib/DynastyLeaguesClient.jsx
+// components/dynasty/DynastyLeaguesClient.jsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -14,6 +14,39 @@ function slugify(s) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
 }
+
+function normalize(r) {
+  const row = r && typeof r === "object" ? r : {};
+
+  const out = { ...row };
+
+  // enforce expected types / defaults
+  out.year = Number(out.year) || new Date().getFullYear();
+  out.name = typeof out.name === "string" ? out.name.trim() : "";
+  out.theme_name = typeof out.theme_name === "string" ? out.theme_name.trim() : out.theme_name;
+  out.theme_blurb = typeof out.theme_blurb === "string" ? out.theme_blurb : out.theme_blurb ?? "";
+  out.status = typeof out.status === "string" ? out.status.trim() : out.status;
+  out.sleeper_url = typeof out.sleeper_url === "string" ? out.sleeper_url.trim() : out.sleeper_url;
+
+  out.imageKey = typeof out.imageKey === "string" ? out.imageKey.trim() : out.imageKey;
+  out.image_url = typeof out.image_url === "string" ? out.image_url.trim() : out.image_url;
+
+  out.fill_note = typeof out.fill_note === "string" ? out.fill_note : out.fill_note ?? "";
+  out.note = typeof out.note === "string" ? out.note : out.note ?? "";
+
+  // keep booleans as booleans
+  out.is_active = out.is_active !== false; // default true unless explicitly false
+  out.is_orphan = Boolean(out.is_orphan) || out.status === "ORPHAN OPEN";
+
+  // display_order
+  out.display_order =
+    out.display_order === null || out.display_order === undefined || out.display_order === ""
+      ? undefined
+      : Number(out.display_order);
+
+  return out;
+}
+
 
 /**
  * Transform raw rows into:
