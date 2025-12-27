@@ -114,26 +114,6 @@ function imageSrcForRow(row, updatedAt, fallback = "") {
   return `${base}?${bust}`;
 }
 
-function imageSrcForTheme(theme, updatedAt) {
-  const key = typeof theme?.theme_imageKey === "string" ? theme.theme_imageKey.trim() : "";
-  const url = typeof theme?.theme_image_url === "string" ? theme.theme_image_url.trim() : "";
-  const base = url || (key ? `/r2/${key}` : "");
-  if (!base) return FALLBACK_IMG;
-  const bust = updatedAt ? `v=${encodeURIComponent(updatedAt)}` : "";
-  if (!bust) return base;
-  if (base.includes("?")) return `${base}&${bust}`;
-  return `${base}?${bust}`;
-}
-
-function imageSrcForTheme(bucket, updatedAt) {
-  const key = typeof bucket?.themeImageKey === "string" ? bucket.themeImageKey.trim() : "";
-  const url = typeof bucket?.themeImageUrl === "string" ? bucket.themeImageUrl.trim() : "";
-  const base = (key ? `/r2/${key}` : "") || url || FALLBACK_IMG;
-  const bust = updatedAt ? `v=${encodeURIComponent(updatedAt)}` : "";
-  if (!bust) return base;
-  if (base.includes("?")) return `${base}&${bust}`;
-  return `${base}?${bust}`;
-}
 
 function PremiumSection({ title, subtitle, kicker, children, className = "" }) {
   return (
