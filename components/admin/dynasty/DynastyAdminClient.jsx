@@ -85,8 +85,12 @@ function normalizeRow(r, idx = 0) {
     sleeper_url: safeStr(r?.sleeper_url).trim(),
     imageKey: safeStr(r?.imageKey).trim(),
     image_url: safeStr(r?.image_url).trim(),
+	    divisionImageKey: safeStr(r?.divisionImageKey).trim(),
+	    division_image_url: safeStr(r?.division_image_url).trim(),
     pendingImageFile: null,
     pendingImagePreviewUrl: "",
+	    pendingDivisionImageFile: null,
+	    pendingDivisionImagePreviewUrl: "",
     fill_note: safeStr(r?.fill_note).trim(),
     display_order,
     is_active: r?.is_active !== false,
@@ -279,6 +283,24 @@ export default function DynastyAdminClient() {
     return out.key;
   }
 
+  async function uploadDynastyDivisionImage({ year, divisionSlug, file, token }) {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("section", "dynasty-division");
+    fd.append("season", String(year));
+    fd.append("divisionSlug", String(divisionSlug)); // deterministic key per year/division
+
+    const res = await fetch(`/api/admin/upload`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: fd,
+    });
+
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok || !out?.ok) throw new Error(out?.error || "Upload failed");
+    return out.key;
+  }
+
   async function saveAllToR2(nextRows = rows) {
     setErrorMsg("");
     setInfoMsg("");
@@ -289,6 +311,51 @@ export default function DynastyAdminClient() {
 
             // ✅ 1) Upload any staged images first
             const staged = nextRows.map((r) => ({ ...r }));
+
+            // Theme/Division card images (upload once per year + theme)
+            const divUploads = new Map();
+            for (const r of staged) {
+              if (!r?.pendingDivisionImageFile) continue;
+              const yr = Number(r?.year) || pageSeason;
+              const theme = safeStr(r?.theme_name).trim();
+              if (!theme) continue;
+              const divSlug = slugify(theme);
+              const k = `${yr}__${divSlug}`;
+              if (!divUploads.has(k)) {
+                divUploads.set(k, {
+                  year: yr,
+                  theme,
+                  divisionSlug: divSlug,
+                  file: r.pendingDivisionImageFile,
+                });
+              }
+            }
+
+            for (const info of divUploads.values()) {
+              const key = await uploadDynastyDivisionImage({
+                year: info.year,
+                divisionSlug: info.divisionSlug,
+                file: info.file,
+                token,
+              });
+
+              for (let i = 0; i < staged.length; i++) {
+                const r = staged[i];
+                const yr = Number(r?.year) || pageSeason;
+                if (yr !== info.year) continue;
+                if (slugify(r?.theme_name) !== info.divisionSlug) continue;
+
+                safeRevoke(r.pendingDivisionImagePreviewUrl);
+                staged[i] = {
+                  ...r,
+                  divisionImageKey: key,
+                  // Keep empty by default; public can read from /r2/<key>
+                  division_image_url: "",
+                  pendingDivisionImageFile: null,
+                  pendingDivisionImagePreviewUrl: "",
+                };
+              }
+            }
 
             for (let i = 0; i < staged.length; i++) {
               const r = staged[i];
@@ -720,6 +787,75 @@ export default function DynastyAdminClient() {
                         />
                       </label>
                     </div>
+
+	                  {/* Division / Theme card image (shown on the public Dynasty directory) */}
+	                  {(() => {
+	                    const rep = group.leagues[0] || {};
+	                    const currentSrc = rep.pendingDivisionImagePreviewUrl
+	                      || (rep.division_image_url ? rep.division_image_url : "")
+	                      || (rep.divisionImageKey ? `/r2/${rep.divisionImageKey}` : "");
+
+	                    return (
+	                      <div className="rounded-2xl border border-subtle bg-panel/30 p-4">
+	                        <div className="flex items-start justify-between gap-4 flex-wrap">
+	                          <div>
+	                            <p className="text-sm font-semibold">Division image</p>
+	                            <p className="text-xs text-muted">Used for the {group.year} {group.theme_name} card on /dynasty.</p>
+	                          </div>
+	                          <div className="flex items-center gap-2">
+	                            <label className="btn btn-outline text-sm cursor-pointer">
+	                              Upload image
+	                              <input
+	                                type="file"
+	                                accept="image/*"
+	                                className="hidden"
+	                                onChange={(e) => {
+	                                  const file = e.target.files?.[0];
+	                                  if (!file) return;
+	                                  const prev = rep.pendingDivisionImagePreviewUrl;
+	                                  if (prev) URL.revokeObjectURL(prev);
+	                                  const preview = URL.createObjectURL(file);
+	                                  updateThemeMeta(group.key, {
+	                                    pendingDivisionImageFile: file,
+	                                    pendingDivisionImagePreviewUrl: preview,
+	                                  });
+	                                }}
+	                              />
+	                            </label>
+	                            <button
+	                              type="button"
+	                              className="btn btn-outline text-sm"
+	                              onClick={() => {
+	                                const prev = rep.pendingDivisionImagePreviewUrl;
+	                                if (prev) URL.revokeObjectURL(prev);
+	                                updateThemeMeta(group.key, {
+	                                  divisionImageKey: "",
+	                                  division_image_url: "",
+	                                  pendingDivisionImageFile: null,
+	                                  pendingDivisionImagePreviewUrl: "",
+	                                });
+	                              }}
+	                            >
+	                              Clear
+	                            </button>
+	                          </div>
+	                        </div>
+
+	                        {currentSrc ? (
+	                          <div className="mt-3 flex items-center gap-3">
+	                            <img
+	                              src={currentSrc}
+	                              alt="Division"
+	                              className="h-14 w-14 rounded-2xl border border-subtle bg-subtle-surface object-cover"
+	                            />
+	                            <p className="text-xs text-muted">Preview</p>
+	                          </div>
+	                        ) : (
+	                          <p className="mt-3 text-xs text-muted">No division image set yet. (It will fall back to a league image.)</p>
+	                        )}
+	                      </div>
+	                    );
+	                  })()}
 
                     <div className="flex flex-wrap gap-2">
                       <button className="btn btn-outline text-sm" type="button" onClick={() => addLeague(group)}>

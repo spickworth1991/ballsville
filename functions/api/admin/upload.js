@@ -179,6 +179,7 @@ function baseKeyForUpload({
   // =======
   if (section === "dynasty-updates") return `media/dynasty/updates_${season}`;
   if (section === "dynasty-league") return `media/dynasty/leagues/${season}/${leagueId}`;
+  if (section === "dynasty-division") return `media/dynasty/divisions/${season}/${divisionSlug}`;
 
   // =======
   // BIG GAME
@@ -306,6 +307,10 @@ export async function onRequest(context) {
 
     if (section === "dynasty-league" && !leagueId) {
       return json({ ok: false, error: "Missing leagueId" }, 400);
+    }
+
+    if (section === "dynasty-division" && !divisionSlug) {
+      return json({ ok: false, error: "Missing divisionSlug" }, 400);
     }
 
     if (section === "biggame-division" && !divisionSlug) {

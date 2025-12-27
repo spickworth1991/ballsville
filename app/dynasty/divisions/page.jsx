@@ -11,12 +11,9 @@ export default function DynastyDivisionsPage({ searchParams }) {
   const year = searchParams?.year;
   const division = searchParams?.division;
 
-  const yearNum = Number(year);
-  const season = Number.isFinite(yearNum) && yearNum > 0 ? yearNum : CURRENT_SEASON;
-
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-10">
-      <SectionManifestGate section="dynasty" season={season}>
+      <SectionManifestGate section="dynasty" season={CURRENT_SEASON}>
         <DynastyLeaguesClient year={year} division={division} />
       </SectionManifestGate>
     </main>
