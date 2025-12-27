@@ -20,7 +20,7 @@ export default function LeaderboardEmbed() {
       title="BALLSVILLE Leaderboards"
       loading="lazy"
       allowFullScreen
-      className="h-full w-full"
+      className="w-full h-[150vh] min-h-[600px] border-0"
     />
   );
 }
