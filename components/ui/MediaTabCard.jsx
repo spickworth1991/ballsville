@@ -25,6 +25,9 @@ export default function MediaTabCard({
   badgeRight,
   className = "",
   external = false,
+  // Next.js Link prefetch is on by default and can cause background requests.
+  // Allow callers to disable it per-card where needed.
+  prefetch = true,
 }) {
   const footer = footerLabel ?? footerText ?? "View";
   const safeHref = href || "#";
@@ -32,7 +35,7 @@ export default function MediaTabCard({
   const Wrapper = external ? "a" : Link;
   const wrapperProps = external
     ? { href: safeHref, target: "_blank", rel: "noreferrer" }
-    : { href: safeHref };
+    : { href: safeHref, prefetch };
 
   return (
     <Wrapper

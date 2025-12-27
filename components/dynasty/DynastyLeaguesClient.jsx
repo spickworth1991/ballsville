@@ -3,8 +3,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import MediaTabCard from "@/components/ui/MediaTabCard";
 
 const R2_ROWS_KEY = "data/dynasty/leagues.json";
+
+function slugify(s) {
+  return String(s || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
 
 /**
  * Transform raw rows into:
@@ -53,11 +62,16 @@ function transformLeagues(rows) {
   return { orphans, years, byYear };
 }
 
-function imageSrcForRow(row) {
+function imageSrcForRow(row, updatedAt) {
   const key = typeof row?.imageKey === "string" ? row.imageKey.trim() : "";
-  if (key) return `/r2/${key}`;
   const url = typeof row?.image_url === "string" ? row.image_url.trim() : "";
-  return url;
+  const base = url || (key ? `/r2/${key}` : "");
+  if (!base) return "";
+
+  const bust = updatedAt ? `v=${encodeURIComponent(updatedAt)}` : "";
+  if (!bust) return base;
+  if (base.includes("?")) return base;
+  return `${base}?${bust}`;
 }
 
 function PremiumSection({ title, subtitle, kicker, children, className = "" }) {
@@ -101,8 +115,16 @@ function EmptyState({ children }) {
   );
 }
 
-export default function DynastyLeaguesClient({ version = "0" }) {
+export default function DynastyLeaguesClient({
+  // Provided by SectionManifestGate; changes only when the section manifest
+  // says dynasty data has changed.
+  version = "0",
+  // Optional: render a single "division" (theme) instead of the index view.
+  division = "",
+  year,
+}) {
   const [rows, setRows] = useState([]);
+  const [updatedAt, setUpdatedAt] = useState("");
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -111,15 +133,21 @@ export default function DynastyLeaguesClient({ version = "0" }) {
 
     async function run() {
       try {
-        const bust = `v=${Date.now()}`;
-        const res = await fetch(`/r2/${R2_ROWS_KEY}?${bust}`, { cache: "no-store" });
+        // Cache-aware: SectionManifestGate only changes `version` when the
+        // section manifest says dynasty has changed. We use it as the cache
+        // key so unchanged visits hit browser/edge cache.
+        const bust = `v=${encodeURIComponent(version || "0")}`;
+        const res = await fetch(`/r2/${R2_ROWS_KEY}?${bust}`, { cache: "force-cache" });
         if (!res.ok) {
           if (!cancelled) setRows([]);
           return;
         }
         const data = await res.json();
         const list = Array.isArray(data?.rows) ? data.rows : Array.isArray(data) ? data : [];
-        if (!cancelled) setRows(list);
+        const stamp = data?.updatedAt || data?.updated_at || "";
+        if (cancelled) return;
+        setUpdatedAt(String(stamp || ""));
+        setRows(list.map(normalize));
       } catch (err) {
         console.error("Failed to load dynasty leagues from R2:", err);
         if (!cancelled) setErrorMsg("Unable to load leagues right now. Please refresh or try again later.");
@@ -132,9 +160,28 @@ export default function DynastyLeaguesClient({ version = "0" }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [version]);
 
   const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows]);
+
+  const divisionSlug = slugify(division);
+  const yearNum = Number(year);
+
+  const isDivisionView = Boolean(divisionSlug) && Number.isFinite(yearNum);
+  let divisionThemeName = "";
+  let divisionTheme = null;
+  if (isDivisionView) {
+    const y = byYear?.get ? byYear.get(yearNum) : null;
+    if (y?.themes) {
+      for (const [themeName, theme] of Object.entries(y.themes)) {
+        if (slugify(themeName) === divisionSlug) {
+          divisionThemeName = themeName;
+          divisionTheme = theme;
+          break;
+        }
+      }
+    }
+  }
   const hasOrphans = orphans.length > 0;
 
   if (loading) {
@@ -169,7 +216,6 @@ export default function DynastyLeaguesClient({ version = "0" }) {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {orphans.map((o, idx) => (
               <Link
-                prefetch={false}
                 key={o?.id || `${o?.year}-${o?.theme_name}-${o?.name}-${idx}`}
                 href={o?.sleeper_url || "#"}
                 className={[
@@ -252,87 +298,98 @@ export default function DynastyLeaguesClient({ version = "0" }) {
       >
         {years.length === 0 ? (
           <EmptyState>No leagues are configured yet.</EmptyState>
+        ) : isDivisionView ? (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <Link
+                href="/dynasty"
+                prefetch={false}
+                className="text-sm text-muted hover:text-foreground transition"
+              >
+                ← Back to Dynasty
+              </Link>
+              <p className="text-xs uppercase tracking-[0.25em] text-accent">{yearNum} Season</p>
+            </div>
+
+            {divisionTheme ? (
+              <>
+                <div className="text-center">
+                  <h3 className="text-2xl sm:text-3xl font-semibold text-foreground">
+                    {divisionThemeName} <span className="text-muted">– {yearNum}</span>
+                  </h3>
+                  {divisionTheme?.blurb ? (
+                    <p className="mt-2 text-sm text-muted max-w-4xl mx-auto">{divisionTheme.blurb}</p>
+                  ) : null}
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {divisionTheme.leagues.map((lg, idx) => {
+                    const img = imageSrcForRow(lg, updatedAt);
+                    const isFilling = lg?.status === "CURRENTLY FILLING" || lg?.status === "DRAFTING";
+
+                    return (
+                      <MediaTabCard
+                        key={lg?.id || `${yearNum}-${divisionThemeName}-${lg?.name}-${idx}`}
+                        href={lg?.sleeper_url || undefined}
+                        external={Boolean(lg?.sleeper_url)}
+                        prefetch={false}
+                        title={lg?.name || "League"}
+                        subtitle={`12-team SF · Division ${lg?.display_order ?? "–"}`}
+                        metaRight={lg?.status || "FULL & ACTIVE"}
+                        imageSrc={img}
+                        imageAlt={lg?.name || "League"}
+                        footerText={isFilling ? lg?.fill_note || lg?.note || "" : lg?.note || ""}
+                        className="h-full"
+                      />
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <EmptyState>Division not found.</EmptyState>
+            )}
+          </div>
         ) : (
           <div className="space-y-12">
-            {years.map((year) => {
-              const themeMap = byYear.get(year) || new Map();
+            {years.map((yr) => {
+              const themeMap = byYear.get(yr) || new Map();
               const themeNames = Array.from(themeMap.keys()).sort((a, b) => a.localeCompare(b));
               if (themeNames.length === 0) return null;
 
               return (
-                <div key={year} className="space-y-6">
+                <div key={yr} className="space-y-6">
                   <div className="flex items-center justify-center">
-                    <p className="text-xs uppercase tracking-[0.25em] text-accent">{year} Season</p>
+                    <p className="text-xs uppercase tracking-[0.25em] text-accent">{yr} Season</p>
                   </div>
 
-                  {themeNames.map((themeName) => {
-                    const leaguesInTheme = themeMap.get(themeName) || [];
-                    if (leaguesInTheme.length === 0) return null;
-                    const themeBlurb = leaguesInTheme[0]?.theme_blurb || "";
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {themeNames.map((themeName) => {
+                      const leaguesInTheme = themeMap.get(themeName) || [];
+                      if (leaguesInTheme.length === 0) return null;
+                      const first = [...leaguesInTheme].sort(
+                        (a, b) => Number(a?.display_order ?? 0) - Number(b?.display_order ?? 0)
+                      )[0];
+                      const img = first ? imageSrcForRow(first, updatedAt) : "";
+                      const themeBlurb = leaguesInTheme[0]?.theme_blurb || "";
 
-                    return (
-                      <div key={themeName} className="space-y-4">
-                        <div className="text-center">
-                          <h3 className="text-2xl sm:text-3xl font-semibold text-foreground">
-                            {themeName} <span className="text-muted">– {year}</span>
-                          </h3>
-                          {themeBlurb ? (
-                            <p className="mt-2 text-sm text-muted max-w-4xl mx-auto">{themeBlurb}</p>
-                          ) : null}
-                        </div>
-
-                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                          {leaguesInTheme.map((lg, idx) => {
-                            const isFilling = lg?.status === "CURRENTLY FILLING" || lg?.status === "DRAFTING";
-                            const img = imageSrcForRow(lg);
-
-                            return (
-                              <Link
-                                prefetch={false}
-                                key={lg?.id || `${year}-${themeName}-${lg?.name}-${idx}`}
-                                href={lg?.sleeper_url || "#"}
-                                className={[
-                                  "group rounded-2xl border border-subtle bg-card-surface p-4",
-                                  "hover:border-accent hover:-translate-y-0.5 transition",
-                                  "shadow-[0_0_0_1px_rgba(255,255,255,0.03)]",
-                                ].join(" ")}
-                              >
-                                <div className="flex items-center gap-3">
-                                  {img ? (
-                                    <img
-                                      src={img}
-                                      alt={lg?.name || "League"}
-                                      className="h-12 w-12 shrink-0 rounded-full border border-subtle bg-panel object-cover"
-                                    />
-                                  ) : null}
-
-                                  <div className="flex-1 flex items-center justify-between gap-2 min-w-0">
-                                    <div className="min-w-0">
-                                      <p className="text-sm font-semibold text-foreground truncate">{lg?.name}</p>
-                                      <p className="text-[11px] text-muted truncate">
-                                        12-team SF · Division {lg?.display_order ?? "–"}
-                                      </p>
-                                    </div>
-
-                                    <span className="shrink-0 rounded-full border border-subtle bg-panel px-2 py-1 text-[11px] tracking-wide uppercase">
-                                      {lg?.status || "FULL & ACTIVE"}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {isFilling && lg?.fill_note ? (
-                                  <p className="mt-2 text-[11px] text-accent text-center">{lg.fill_note}</p>
-                                ) : null}
-                                {lg?.note ? (
-                                  <p className="mt-1 text-[11px] text-muted text-center">{lg.note}</p>
-                                ) : null}
-                              </Link>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
+                      return (
+                        <MediaTabCard
+                          key={`${yr}-${themeName}`}
+                          href={`/dynasty/divisions?year=${encodeURIComponent(yr)}&division=${encodeURIComponent(
+                            slugify(themeName)
+                          )}`}
+                          prefetch={false}
+                          title={themeName}
+                          subtitle={themeBlurb || "View this season's 16 leagues"}
+                          metaLeft={`${leaguesInTheme.length} leagues`}
+                          badgeRight={String(yr)}
+                          imageSrc={img}
+                          imageAlt={themeName}
+                          className="h-full"
+                        />
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })}

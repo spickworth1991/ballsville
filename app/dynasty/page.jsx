@@ -206,7 +206,9 @@ export default function DynastyPage() {
         </PremiumFrame>
 
         {/* DYNAMIC LEAGUES / ORPHANS / DIRECTORY */}
-        <DynastyLeaguesClient />
+        <SectionManifestGate section="dynasty">
+          <DynastyLeaguesClient />
+        </SectionManifestGate>
 
         {/* ABOUT THE MANAGERS */}
         <PremiumFrame

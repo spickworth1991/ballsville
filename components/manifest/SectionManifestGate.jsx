@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 /**
  * Fetches a small per-section manifest from R2 once, then lets children build
@@ -70,8 +70,16 @@ export default function SectionManifestGate({ section, season, pollMs = 0, child
     return encodeURIComponent(v);
   }, [manifest]);
 
+  // Support render-prop usage (client components can pass a function)
   if (typeof children === "function") {
     return children({ manifest, version, error });
+  }
+
+  // Support passing a React element from a Server Component without a function prop.
+  // We inject `version` (and `manifest`/`error`) as props so downstream client fetches
+  // can re-run only when the manifest changes.
+  if (React.isValidElement(children)) {
+    return React.cloneElement(children, { version, manifest, error });
   }
 
   return children || null;
