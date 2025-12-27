@@ -6,7 +6,6 @@ import Link from "next/link";
 import MediaTabCard from "@/components/ui/MediaTabCard";
 
 const R2_ROWS_KEY = "data/dynasty/leagues.json";
-const FALLBACK_IMG = "/photos/dynasty/dynasty-v2.webp";
 
 function normalize(row) {
   const r = row && typeof row === "object" ? row : {};
@@ -42,7 +41,7 @@ function slugify(s) {
  * Transform raw rows into:
  * - orphans: list of orphan openings
  * - years: sorted list of years (desc)
- * - byYear: Map<year, Map<themeName, { themeName, themeBlurb, themeImageKey, themeImageUrl, leagues[] }>>
+ * - byYear: Map<year, Map<themeName, leagues[]>>
  */
 function transformLeagues(rows) {
   // Only show leagues marked active (or with null/undefined treated as active)
@@ -62,35 +61,20 @@ function transformLeagues(rows) {
 
     if (!byYear.has(year)) byYear.set(year, new Map());
     const themeMap = byYear.get(year);
-
-    if (!themeMap.has(themeName)) {
-      themeMap.set(themeName, {
-        themeName,
-        themeBlurb: (typeof lg?.theme_blurb === "string" && lg.theme_blurb.trim()) ? lg.theme_blurb.trim() : "",
-        themeImageKey: (typeof lg?.theme_imageKey === "string" && lg.theme_imageKey.trim()) ? lg.theme_imageKey.trim() : "",
-        themeImageUrl: (typeof lg?.theme_image_url === "string" && lg.theme_image_url.trim()) ? lg.theme_image_url.trim() : "",
-        leagues: [],
-      });
-    }
-
-    const bucket = themeMap.get(themeName);
-    // Prefer first non-empty values encountered
-    if (!bucket.themeBlurb && typeof lg?.theme_blurb === "string" && lg.theme_blurb.trim()) bucket.themeBlurb = lg.theme_blurb.trim();
-    if (!bucket.themeImageKey && typeof lg?.theme_imageKey === "string" && lg.theme_imageKey.trim()) bucket.themeImageKey = lg.theme_imageKey.trim();
-    if (!bucket.themeImageUrl && typeof lg?.theme_image_url === "string" && lg.theme_image_url.trim()) bucket.themeImageUrl = lg.theme_image_url.trim();
-    bucket.leagues.push(lg);
+    if (!themeMap.has(themeName)) themeMap.set(themeName, []);
+    themeMap.get(themeName).push(lg);
   }
 
   // sort leagues within each theme by display_order then name
   for (const [year, themeMap] of byYear.entries()) {
-    for (const [themeName, bucket] of themeMap.entries()) {
-      const sorted = (bucket?.leagues || []).slice().sort((a, b) => {
+    for (const [themeName, leagues] of themeMap.entries()) {
+      const sorted = leagues.slice().sort((a, b) => {
         const ao = a?.display_order ?? 9999;
         const bo = b?.display_order ?? 9999;
         if (ao !== bo) return ao - bo;
         return String(a?.name || "").localeCompare(String(b?.name || ""));
       });
-      themeMap.set(themeName, { ...bucket, leagues: sorted });
+      themeMap.set(themeName, sorted);
     }
     byYear.set(year, themeMap);
   }
@@ -100,28 +84,17 @@ function transformLeagues(rows) {
   return { orphans, years, byYear };
 }
 
-function imageSrcForRow(row, updatedAt, fallback = "") {
+function imageSrcForRow(row, updatedAt) {
   const key = typeof row?.imageKey === "string" ? row.imageKey.trim() : "";
   const url = typeof row?.image_url === "string" ? row.image_url.trim() : "";
   // Prefer R2 keys when present. In some older rows, image_url points to
   // local /public paths that may not exist in production.
   const base = (key ? `/r2/${key}` : "") || url;
-  if (!base) return fallback || "";
+  if (!base) return "";
 
   const bust = updatedAt ? `v=${encodeURIComponent(updatedAt)}` : "";
   if (!bust) return base;
-  if (base.includes("?")) return `${base}&${bust}`;
-  return `${base}?${bust}`;
-}
-
-
-function imageSrcForTheme(bucket, updatedAt) {
-  const key = typeof bucket?.themeImageKey === "string" ? bucket.themeImageKey.trim() : "";
-  const url = typeof bucket?.themeImageUrl === "string" ? bucket.themeImageUrl.trim() : "";
-  const base = (key ? `/r2/${key}` : "") || url || FALLBACK_IMG;
-  const bust = updatedAt ? `v=${encodeURIComponent(updatedAt)}` : "";
-  if (!bust) return base;
-  if (base.includes("?")) return `${base}&${bust}`;
+  if (base.includes("?")) return base;
   return `${base}?${bust}`;
 }
 
@@ -170,9 +143,7 @@ export default function DynastyLeaguesClient({
   // Provided by SectionManifestGate; changes only when the section manifest
   // says dynasty data has changed.
   version = "0",
-  // "divisions" => Division Directory (Dynasty home)
-  // "leagues" => show the 16 leagues inside a specific division
-  mode = "divisions",
+  // Optional: render a single "division" (theme) instead of the index view.
   division = "",
   year,
 }) {
@@ -180,6 +151,11 @@ export default function DynastyLeaguesClient({
   const [updatedAt, setUpdatedAt] = useState("");
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
+
+  // App Router searchParams can sometimes surface as string[] (e.g. repeated params).
+  // Normalize here so the division view reliably matches + renders leagues.
+  const divisionStr = Array.isArray(division) ? division[0] : division;
+  const yearStr = Array.isArray(year) ? year[0] : year;
 
   useEffect(() => {
     let cancelled = false;
@@ -217,42 +193,17 @@ export default function DynastyLeaguesClient({
 
   const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows]);
 
-  const divisionSlug = slugify(division);
+  const divisionSlug = slugify(divisionStr);
+  const yearNum = Number(yearStr || new Date().getFullYear());
 
-  // If the URL is missing/invalid year in league mode, fall back to the
-  // newest year we have data for so the page doesn't silently show the index.
-  const parsedYear = Number(year);
-  const yearNum = Number.isFinite(parsedYear) ? parsedYear : years[0];
-
-  const isLeagueView = mode === "leagues";
-
-  // Safety: if the server page didn't pass search params for some reason,
-  // fall back to reading them client-side so division links still work.
-  const [clientDivision, setClientDivision] = useState("");
-  const [clientYear, setClientYear] = useState("");
-
-  useEffect(() => {
-    if (!isLeagueView) return;
-    if (typeof window === "undefined") return;
-    const sp = new URLSearchParams(window.location.search || "");
-    const div = sp.get("division") || "";
-    const yr = sp.get("year") || "";
-    // Only fill missing server props; never override explicit props.
-    if (!division && div) setClientDivision(div);
-    if ((year == null || year === "") && yr) setClientYear(yr);
-  }, [isLeagueView, division, year]);
-
-  const effectiveDivisionSlug = slugify(division || clientDivision);
-  const effectiveYearNum = Number(year || clientYear);
-
-  const isDivisionView = isLeagueView && Boolean(effectiveDivisionSlug) && Number.isFinite(effectiveYearNum);
+  const isDivisionView = Boolean(divisionSlug) && Boolean(yearStr) && Number.isFinite(yearNum);
   let divisionThemeName = "";
   let divisionThemeLeagues = null;
   if (isDivisionView) {
-    const themeMap = byYear?.get ? byYear.get(effectiveYearNum) : null; // Map<themeName, leagues[]>
+    const themeMap = byYear?.get ? byYear.get(yearNum) : null; // Map<themeName, leagues[]>
     if (themeMap && typeof themeMap?.entries === "function") {
       for (const [themeName, leagues] of themeMap.entries()) {
-        if (slugify(themeName) === effectiveDivisionSlug) {
+        if (slugify(themeName) === divisionSlug) {
           divisionThemeName = themeName;
           divisionThemeLeagues = Array.isArray(leagues) ? leagues : [];
           break;
@@ -260,16 +211,11 @@ export default function DynastyLeaguesClient({
       }
     }
   }
-  const viewOrphans = useMemo(() => {
-    if (!isDivisionView) return orphans;
-    return orphans.filter((o) => {
-      const oy = Number(o?.year);
-      if (Number.isFinite(oy) && oy !== yearNum) return false;
-      const tn = (o?.theme_name || o?.kind || "").toString();
-      return slugify(tn) === divisionSlug;
-    });
-  }, [orphans, isDivisionView, yearNum, divisionSlug]);
-  const hasOrphans = viewOrphans.length > 0;
+  // On a division page, only show orphans for that division + year.
+  const scopedOrphans = isDivisionView
+    ? orphans.filter((o) => Number(o?.year) === yearNum && slugify(o?.theme_name || o?.kind || "") === divisionSlug)
+    : orphans;
+  const hasOrphans = scopedOrphans.length > 0;
 
   if (loading) {
     return (
@@ -287,28 +233,13 @@ export default function DynastyLeaguesClient({
     );
   }
 
-  // If this is the division/leagues page but we don't have valid params,
-  // don't fall back to the directory view (that makes it look like the click
-  // did nothing).
-  if (isLeagueView && !isDivisionView) {
-    return (
-      <PremiumSection title="Division" subtitle="That division link is missing required parameters.">
-        <EmptyState>Division not found. Please go back and pick a division again.</EmptyState>
-      </PremiumSection>
-    );
-  }
-
   return (
     <>
       {/* ORPHAN OPENINGS (TOP LIST) */}
       <PremiumSection
         kicker="Roster Availability"
-        title={isDivisionView ? "Orphan Openings – This Division" : "Orphan Openings"}
-        subtitle={
-          isDivisionView
-            ? "Open rosters inside this division. If a roster is available, it will show up here."
-            : "When a Dynasty Empire roster becomes available, it will appear here. These are rare and usually go fast."
-        }
+        title="Orphan Openings"
+        subtitle="When a Dynasty Empire roster becomes available, it will appear here. These are rare and usually go fast."
       >
         {!hasOrphans ? (
           <EmptyState>
@@ -316,7 +247,7 @@ export default function DynastyLeaguesClient({
           </EmptyState>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {viewOrphans.map((o, idx) => (
+            {scopedOrphans.map((o, idx) => (
               <Link
                 key={o?.id || `${o?.year}-${o?.theme_name}-${o?.name}-${idx}`}
                 href={o?.sleeper_url || "#"}
@@ -328,9 +259,9 @@ export default function DynastyLeaguesClient({
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    {imageSrcForRow(o, updatedAt, FALLBACK_IMG) ? (
+                    {imageSrcForRow(o) ? (
                       <img
-                        src={imageSrcForRow(o, updatedAt, FALLBACK_IMG)}
+                        src={imageSrcForRow(o)}
                         alt={o?.name || "Orphan team"}
                         className="h-12 w-12 shrink-0 rounded-full border border-subtle bg-panel object-cover"
                       />
@@ -357,15 +288,46 @@ export default function DynastyLeaguesClient({
         )}
       </PremiumSection>
 
+      {/* PAYOUTS */}
+      <PremiumSection
+        kicker="Money Stuff"
+        title="Payouts & Bonuses"
+        subtitle="Each league is a 12-team SF, 3WR build that ladders into the Dynasty Empire structure and shared Week 17 upside."
+      >
+        <div className="flex flex-wrap justify gap-3 text-xs sm:text-sm">
+          <span className="rounded-xl bg-panel border border-subtle px-3 py-2">
+            <span className="font-semibold text-foreground">$25</span> annually
+          </span>
+          <span className="rounded-xl bg-panel border border-subtle px-3 py-2">
+            Max payouts – <span className="font-semibold text-foreground">$2,300</span>
+          </span>
+          <span className="rounded-xl bg-panel border border-subtle px-3 py-2 text-center">
+            $1,500 possible wager pot + $200 wager BONUS + $250 🏆 Championship
+          </span>
+          <span className="rounded-xl bg-panel border border-subtle px-3 py-2 text-center">
+            + $100 🥈, + $50 🥉, + $125 league winner, + $225 EMPIRE win
+          </span>
+        </div>
+
+        <div className="mt-5 mx-auto max-w-4xl space-y-3">
+          <p className="text-sm text-muted">
+            These custom leagues play the season out with the same odds to win cash. In the championship round, you win $50 just for making it. You can
+            keep it, or push your $50 into the pot for a shot at big money.
+          </p>
+
+          <p className="text-sm text-muted">
+            There are <span className="font-semibold text-foreground">3 BONUS prizes</span>: $200 to the wager winner (most points in Week 17 among
+            wagering players), $100 to 2nd, and $50 to 3rd. A final passive bonus of $200 goes to the overall highest scorer among all league finalists,
+            regardless of wagering.
+          </p>
+        </div>
+      </PremiumSection>
+
       {/* DIRECTORY */}
       <PremiumSection
-        kicker={isDivisionView ? "Leagues" : "Divisions"}
-        title={isDivisionView ? "League Directory" : "Division Directory"}
-        subtitle={
-          isDivisionView
-            ? "All leagues for this division."
-            : "All full & active Dynasty Empire divisions, grouped by season. New seasons appear automatically once added in the admin dashboard."
-        }
+        kicker="All Leagues"
+        title="League Directory"
+        subtitle="All full & active Dynasty Empire leagues, grouped by season and theme. New seasons appear automatically once added in the admin dashboard."
       >
         {years.length === 0 ? (
           <EmptyState>No leagues are configured yet.</EmptyState>
@@ -395,7 +357,7 @@ export default function DynastyLeaguesClient({
 
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {divisionThemeLeagues.map((lg, idx) => {
-                    const img = imageSrcForRow(lg, updatedAt, FALLBACK_IMG);
+                    const img = imageSrcForRow(lg, updatedAt);
                     const isFilling = lg?.status === "CURRENTLY FILLING" || lg?.status === "DRAFTING";
 
                     return (
@@ -435,28 +397,21 @@ export default function DynastyLeaguesClient({
 
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {themeNames.map((themeName) => {
-                      const themeVal = themeMap.get(themeName);
-
-                      // themeVal can be either an array OR an object like { blurb, leagues }
-                      const leaguesInTheme = Array.isArray(themeVal)
-                        ? themeVal
-                        : Array.isArray(themeVal?.leagues)
-                        ? themeVal.leagues
-                        : [];
-
+                      const leaguesInTheme = themeMap.get(themeName) || [];
                       if (leaguesInTheme.length === 0) return null;
-
-                      const first = leaguesInTheme
-                        .slice()
-                        .sort((a, b) => Number(a?.display_order ?? 0) - Number(b?.display_order ?? 0))[0];
-
-                      const img = first ? imageSrcForRow(first, updatedAt) : "";
-
-                      const themeBlurb =
-                        (typeof themeVal === "object" && !Array.isArray(themeVal) && themeVal?.blurb) ||
-                        leaguesInTheme[0]?.theme_blurb ||
-                        "";
-
+                      const first = [...leaguesInTheme].sort(
+                        (a, b) => Number(a?.display_order ?? 0) - Number(b?.display_order ?? 0)
+                      )[0];
+                      const themeImgKey = typeof first?.theme_imageKey === "string" ? first.theme_imageKey.trim() : "";
+                      const themeImgUrl = typeof first?.theme_image_url === "string" ? first.theme_image_url.trim() : "";
+                      const img = themeImgKey
+                        ? `/r2/${themeImgKey}${updatedAt ? `?v=${encodeURIComponent(updatedAt)}` : ""}`
+                        : themeImgUrl
+                          ? themeImgUrl
+                          : first
+                            ? imageSrcForRow(first, updatedAt)
+                            : "";
+                      const themeBlurb = leaguesInTheme[0]?.theme_blurb || "";
 
                       return (
                         <MediaTabCard
