@@ -7,23 +7,34 @@ import MediaTabCard from "@/components/ui/MediaTabCard";
 
 const R2_ROWS_KEY = "data/dynasty/leagues.json";
 
+function normalize(row) {
+  const r = row && typeof row === "object" ? row : {};
+  const yearNum = Number(r.year ?? r.season);
+
+  // Backward compatible field names
+  return {
+    ...r,
+    id: r.id || r.ID || r.Id,
+    year: Number.isFinite(yearNum) ? yearNum : r.year,
+    name: r.name ?? r.league_name ?? "",
+    sleeper_url: r.sleeper_url ?? r.sleeperUrl ?? r.url ?? "",
+
+    // League image
+    imageKey: r.imageKey ?? r.image_key ?? r.league_image_key ?? "",
+    image_url: r.image_url ?? r.imageUrl ?? r.league_image_url ?? "",
+
+    // Theme (division) image
+    theme_imageKey: r.theme_imageKey ?? r.theme_image_key ?? r.division_image_key ?? "",
+    theme_image_url: r.theme_image_url ?? r.division_image_url ?? "",
+  };
+}
+
 function slugify(s) {
   return String(s || "")
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
-}
-
-function normalize(row) {
-  const r = row && typeof row === "object" ? { ...row } : {};
-  // Ensure key fields exist in predictable shapes
-  r.year = Number(r.year) || r.year;
-  r.display_order = r.display_order ?? r.displayOrder ?? r.order ?? null;
-  r.theme_name = (typeof r.theme_name === "string" && r.theme_name.trim()) ? r.theme_name.trim() : r.theme_name;
-  r.kind = (typeof r.kind === "string" && r.kind.trim()) ? r.kind.trim() : r.kind;
-  r.name = (typeof r.name === "string" && r.name.trim()) ? r.name.trim() : r.name;
-  return r;
 }
 
 /**
@@ -76,29 +87,15 @@ function transformLeagues(rows) {
 function imageSrcForRow(row, updatedAt) {
   const key = typeof row?.imageKey === "string" ? row.imageKey.trim() : "";
   const url = typeof row?.image_url === "string" ? row.image_url.trim() : "";
-  const base = url || (key ? `/r2/${key}` : "");
+  // Prefer R2 keys when present. In some older rows, image_url points to
+  // local /public paths that may not exist in production.
+  const base = (key ? `/r2/${key}` : "") || url;
   if (!base) return "";
 
   const bust = updatedAt ? `v=${encodeURIComponent(updatedAt)}` : "";
   if (!bust) return base;
   if (base.includes("?")) return base;
   return `${base}?${bust}`;
-}
-
-function imageSrcForTheme(leaguesInTheme, updatedAt) {
-  const first = Array.isArray(leaguesInTheme) ? leaguesInTheme[0] : null;
-  if (!first) return "";
-
-  // Prefer explicit theme/division image if admin set one
-  const divKey = typeof first?.divisionImageKey === "string" ? first.divisionImageKey.trim() : "";
-  const divUrl = typeof first?.division_image_url === "string" ? first.division_image_url.trim() : "";
-  if (divUrl || divKey) {
-    const base = divUrl || `/r2/${divKey}`;
-    const bust = updatedAt ? `v=${encodeURIComponent(updatedAt)}` : "";
-    return bust && !base.includes("?") ? `${base}?${bust}` : base;
-  }
-
-  return imageSrcForRow(first, updatedAt);
 }
 
 function PremiumSection({ title, subtitle, kicker, children, className = "" }) {
@@ -196,16 +193,14 @@ export default function DynastyLeaguesClient({
 
   const isDivisionView = Boolean(divisionSlug) && Number.isFinite(yearNum);
   let divisionThemeName = "";
-  let divisionLeagues = [];
-  let divisionBlurb = "";
-  if (isDivisionView && byYear?.get) {
-    const themeMap = byYear.get(yearNum);
-    if (themeMap && themeMap instanceof Map) {
+  let divisionThemeLeagues = null;
+  if (isDivisionView) {
+    const themeMap = byYear?.get ? byYear.get(yearNum) : null; // Map<themeName, leagues[]>
+    if (themeMap && typeof themeMap?.entries === "function") {
       for (const [themeName, leagues] of themeMap.entries()) {
         if (slugify(themeName) === divisionSlug) {
           divisionThemeName = themeName;
-          divisionLeagues = Array.isArray(leagues) ? leagues : [];
-          divisionBlurb = String(leagues?.[0]?.theme_blurb || "");
+          divisionThemeLeagues = Array.isArray(leagues) ? leagues : [];
           break;
         }
       }
@@ -340,19 +335,19 @@ export default function DynastyLeaguesClient({
               <p className="text-xs uppercase tracking-[0.25em] text-accent">{yearNum} Season</p>
             </div>
 
-            {divisionLeagues && divisionLeagues.length ? (
+            {divisionThemeLeagues ? (
               <>
                 <div className="text-center">
                   <h3 className="text-2xl sm:text-3xl font-semibold text-foreground">
                     {divisionThemeName} <span className="text-muted">– {yearNum}</span>
                   </h3>
-                  {divisionThemeBlurb ? (
-                    <p className="mt-2 text-sm text-muted max-w-4xl mx-auto">{divisionThemeBlurb}</p>
+                  {divisionThemeLeagues?.[0]?.theme_blurb ? (
+                    <p className="mt-2 text-sm text-muted max-w-4xl mx-auto">{divisionThemeLeagues[0].theme_blurb}</p>
                   ) : null}
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {divisionLeagues.map((lg, idx) => {
+                  {divisionThemeLeagues.map((lg, idx) => {
                     const img = imageSrcForRow(lg, updatedAt);
                     const isFilling = lg?.status === "CURRENTLY FILLING" || lg?.status === "DRAFTING";
 
@@ -398,16 +393,15 @@ export default function DynastyLeaguesClient({
                       const first = [...leaguesInTheme].sort(
                         (a, b) => Number(a?.display_order ?? 0) - Number(b?.display_order ?? 0)
                       )[0];
-                      // Prefer a theme/division image if configured, otherwise fall back to the first league image.
-                      const img = first
-                        ? imageSrcForRow(
-                            {
-                              imageKey: first?.divisionImageKey || first?.imageKey,
-                              image_url: first?.division_image_url || first?.image_url,
-                            },
-                            updatedAt
-                          )
-                        : "";
+                      const themeImgKey = typeof first?.theme_imageKey === "string" ? first.theme_imageKey.trim() : "";
+                      const themeImgUrl = typeof first?.theme_image_url === "string" ? first.theme_image_url.trim() : "";
+                      const img = themeImgKey
+                        ? `/r2/${themeImgKey}${updatedAt ? `?v=${encodeURIComponent(updatedAt)}` : ""}`
+                        : themeImgUrl
+                          ? themeImgUrl
+                          : first
+                            ? imageSrcForRow(first, updatedAt)
+                            : "";
                       const themeBlurb = leaguesInTheme[0]?.theme_blurb || "";
 
                       return (

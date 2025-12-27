@@ -85,12 +85,15 @@ function normalizeRow(r, idx = 0) {
     sleeper_url: safeStr(r?.sleeper_url).trim(),
     imageKey: safeStr(r?.imageKey).trim(),
     image_url: safeStr(r?.image_url).trim(),
-	    divisionImageKey: safeStr(r?.divisionImageKey).trim(),
-	    division_image_url: safeStr(r?.division_image_url).trim(),
+
+    // Optional: division/theme image (used for the division cards)
+    theme_imageKey: safeStr(r?.theme_imageKey || r?.theme_image_key).trim(),
+    theme_image_url: safeStr(r?.theme_image_url).trim(),
+    pendingThemeImageFile: null,
+    pendingThemeImagePreviewUrl: "",
+
     pendingImageFile: null,
     pendingImagePreviewUrl: "",
-	    pendingDivisionImageFile: null,
-	    pendingDivisionImagePreviewUrl: "",
     fill_note: safeStr(r?.fill_note).trim(),
     display_order,
     is_active: r?.is_active !== false,
@@ -159,6 +162,13 @@ export default function DynastyAdminClient() {
   });
 
   const groups = useMemo(() => groupByYearAndTheme(rows), [rows]);
+
+  const divisionGroupsForSeason = useMemo(() => {
+    const y = Number(pageSeason);
+    return groups
+      .filter((g) => Number(g.year) === y)
+      .sort((a, b) => String(a.themeName).localeCompare(String(b.themeName)));
+  }, [groups, pageSeason]);
 
   async function loadFromR2() {
     setErrorMsg("");
@@ -288,7 +298,7 @@ export default function DynastyAdminClient() {
     fd.append("file", file);
     fd.append("section", "dynasty-division");
     fd.append("season", String(year));
-    fd.append("divisionSlug", String(divisionSlug)); // deterministic key per year/division
+    fd.append("divisionSlug", String(divisionSlug)); // deterministic key
 
     const res = await fetch(`/api/admin/upload`, {
       method: "POST",
@@ -301,6 +311,30 @@ export default function DynastyAdminClient() {
     return out.key;
   }
 
+  function stageDivisionImage({ year, themeName, file }) {
+    const groupKey = `${year}::${slugify(themeName)}`;
+    const previewUrl = file ? URL.createObjectURL(file) : "";
+
+    setRows((prev) => {
+      let used = false;
+      return prev.map((r) => {
+        if (used) return r;
+        if (Number(r?.year) !== Number(year)) return r;
+        if (safeStr(r?.theme_name).trim() !== safeStr(themeName).trim()) return r;
+
+        // Replace staged preview on representative row
+        safeRevoke(r.pendingThemeImagePreviewUrl);
+        used = true;
+        return {
+          ...r,
+          pendingThemeImageFile: file || null,
+          pendingThemeImagePreviewUrl: previewUrl,
+          pendingThemeImageGroupKey: groupKey,
+        };
+      });
+    });
+  }
+
   async function saveAllToR2(nextRows = rows) {
     setErrorMsg("");
     setInfoMsg("");
@@ -309,53 +343,45 @@ export default function DynastyAdminClient() {
             const token = await getAccessToken();
             if (!token) throw new Error("Missing admin session token. Please sign in again.");
 
-            // ✅ 1) Upload any staged images first
+            // ✅ 0) Upload any staged DIVISION images first (theme cards)
             const staged = nextRows.map((r) => ({ ...r }));
 
-            // Theme/Division card images (upload once per year + theme)
-            const divUploads = new Map();
-            for (const r of staged) {
-              if (!r?.pendingDivisionImageFile) continue;
-              const yr = Number(r?.year) || pageSeason;
-              const theme = safeStr(r?.theme_name).trim();
-              if (!theme) continue;
-              const divSlug = slugify(theme);
-              const k = `${yr}__${divSlug}`;
-              if (!divUploads.has(k)) {
-                divUploads.set(k, {
-                  year: yr,
-                  theme,
-                  divisionSlug: divSlug,
-                  file: r.pendingDivisionImageFile,
-                });
-              }
+            // group by year + theme_name, but only upload once per group
+            const divKeys = new Map();
+            for (let i = 0; i < staged.length; i++) {
+              const r = staged[i];
+              if (!r?.pendingThemeImageFile) continue;
+              const themeName = safeStr(r?.theme_name).trim() || "Dynasty";
+              const divSlug = slugify(themeName);
+              const key = `${Number(r.year)}::${divSlug}`;
+              if (!divKeys.has(key)) divKeys.set(key, { year: Number(r.year), divSlug, themeName, repIndex: i });
             }
 
-            for (const info of divUploads.values()) {
-              const key = await uploadDynastyDivisionImage({
-                year: info.year,
-                divisionSlug: info.divisionSlug,
-                file: info.file,
+            for (const entry of divKeys.values()) {
+              const rep = staged[entry.repIndex];
+              const uploadedKey = await uploadDynastyDivisionImage({
+                year: entry.year,
+                divisionSlug: entry.divSlug,
+                file: rep.pendingThemeImageFile,
                 token,
               });
 
-              for (let i = 0; i < staged.length; i++) {
-                const r = staged[i];
-                const yr = Number(r?.year) || pageSeason;
-                if (yr !== info.year) continue;
-                if (slugify(r?.theme_name) !== info.divisionSlug) continue;
-
-                safeRevoke(r.pendingDivisionImagePreviewUrl);
-                staged[i] = {
-                  ...r,
-                  divisionImageKey: key,
-                  // Keep empty by default; public can read from /r2/<key>
-                  division_image_url: "",
-                  pendingDivisionImageFile: null,
-                  pendingDivisionImagePreviewUrl: "",
-                };
+              // apply the theme image to all rows in that year/theme
+              for (let j = 0; j < staged.length; j++) {
+                const r = staged[j];
+                const themeName = safeStr(r?.theme_name).trim() || "Dynasty";
+                if (Number(r.year) !== entry.year) continue;
+                if (themeName !== entry.themeName) continue;
+                r.theme_imageKey = uploadedKey;
+                r.theme_image_url = "";
               }
+
+              safeRevoke(rep.pendingThemeImagePreviewUrl);
+              rep.pendingThemeImageFile = null;
+              rep.pendingThemeImagePreviewUrl = "";
             }
+
+            // ✅ 1) Upload any staged LEAGUE images
 
             for (let i = 0; i < staged.length; i++) {
               const r = staged[i];
@@ -738,6 +764,66 @@ export default function DynastyAdminClient() {
         )}
       </div>
 
+      {/* Division / Theme Images */}
+      <div className="mt-6 rounded-2xl border border-subtle bg-card-surface p-5">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Division images (theme cards)</h2>
+            <p className="text-sm text-muted">
+              These images show on the public Dynasty page as the division/theme cards for <span className="font-semibold">{pageSeason}</span>.
+              Images upload when you click <span className="font-semibold">Save to R2</span>.
+            </p>
+          </div>
+        </div>
+
+        {divisionGroupsForSeason.length === 0 ? (
+          <p className="mt-3 text-sm text-muted">No themes found for this season yet.</p>
+        ) : (
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {divisionGroupsForSeason.map((g) => {
+              const rep = g.leagues?.[0] || {};
+              const img =
+                rep.pendingThemeImagePreviewUrl ||
+                (rep.theme_imageKey ? `/r2/${rep.theme_imageKey}` : rep.theme_image_url || "");
+              const fallback = rep.imageKey ? `/r2/${rep.imageKey}` : rep.image_url || "";
+              const shown = img || fallback;
+
+              return (
+                <div key={g.key} className="rounded-2xl border border-subtle bg-panel p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="h-12 w-12 rounded-xl border border-subtle bg-subtle-surface overflow-hidden shrink-0">
+                      {shown ? (
+                        <img src={shown} alt={g.theme_name} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="h-full w-full grid place-items-center text-xs text-muted">No img</div>
+                      )}
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate">{g.theme_name}</p>
+                      <p className="text-xs text-muted truncate">{g.leagues.length} leagues</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid gap-2">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        stageDivisionImage({ year: g.year, themeName: g.theme_name, file });
+                      }}
+                    />
+                    <p className="text-[11px] text-muted">Recommended: square (512×512+). WebP/PNG/JPG.</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Themes */}
       <div className="space-y-4">
         <h2 className="text-lg font-semibold">Existing themes &amp; leagues</h2>
@@ -787,75 +873,6 @@ export default function DynastyAdminClient() {
                         />
                       </label>
                     </div>
-
-	                  {/* Division / Theme card image (shown on the public Dynasty directory) */}
-	                  {(() => {
-	                    const rep = group.leagues[0] || {};
-	                    const currentSrc = rep.pendingDivisionImagePreviewUrl
-	                      || (rep.division_image_url ? rep.division_image_url : "")
-	                      || (rep.divisionImageKey ? `/r2/${rep.divisionImageKey}` : "");
-
-	                    return (
-	                      <div className="rounded-2xl border border-subtle bg-panel/30 p-4">
-	                        <div className="flex items-start justify-between gap-4 flex-wrap">
-	                          <div>
-	                            <p className="text-sm font-semibold">Division image</p>
-	                            <p className="text-xs text-muted">Used for the {group.year} {group.theme_name} card on /dynasty.</p>
-	                          </div>
-	                          <div className="flex items-center gap-2">
-	                            <label className="btn btn-outline text-sm cursor-pointer">
-	                              Upload image
-	                              <input
-	                                type="file"
-	                                accept="image/*"
-	                                className="hidden"
-	                                onChange={(e) => {
-	                                  const file = e.target.files?.[0];
-	                                  if (!file) return;
-	                                  const prev = rep.pendingDivisionImagePreviewUrl;
-	                                  if (prev) URL.revokeObjectURL(prev);
-	                                  const preview = URL.createObjectURL(file);
-	                                  updateThemeMeta(group.key, {
-	                                    pendingDivisionImageFile: file,
-	                                    pendingDivisionImagePreviewUrl: preview,
-	                                  });
-	                                }}
-	                              />
-	                            </label>
-	                            <button
-	                              type="button"
-	                              className="btn btn-outline text-sm"
-	                              onClick={() => {
-	                                const prev = rep.pendingDivisionImagePreviewUrl;
-	                                if (prev) URL.revokeObjectURL(prev);
-	                                updateThemeMeta(group.key, {
-	                                  divisionImageKey: "",
-	                                  division_image_url: "",
-	                                  pendingDivisionImageFile: null,
-	                                  pendingDivisionImagePreviewUrl: "",
-	                                });
-	                              }}
-	                            >
-	                              Clear
-	                            </button>
-	                          </div>
-	                        </div>
-
-	                        {currentSrc ? (
-	                          <div className="mt-3 flex items-center gap-3">
-	                            <img
-	                              src={currentSrc}
-	                              alt="Division"
-	                              className="h-14 w-14 rounded-2xl border border-subtle bg-subtle-surface object-cover"
-	                            />
-	                            <p className="text-xs text-muted">Preview</p>
-	                          </div>
-	                        ) : (
-	                          <p className="mt-3 text-xs text-muted">No division image set yet. (It will fall back to a league image.)</p>
-	                        )}
-	                      </div>
-	                    );
-	                  })()}
 
                     <div className="flex flex-wrap gap-2">
                       <button className="btn btn-outline text-sm" type="button" onClick={() => addLeague(group)}>
