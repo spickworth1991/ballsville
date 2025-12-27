@@ -197,6 +197,7 @@ export default function DynastyLeaguesClient({
   const yearNum = Number(yearStr || new Date().getFullYear());
 
   const isDivisionView = Boolean(divisionSlug) && Boolean(yearStr) && Number.isFinite(yearNum);
+  const isLeagueView = Boolean(divisionSlug) && Number.isFinite(yearNum);
   let divisionThemeName = "";
   let divisionThemeLeagues = null;
   if (isDivisionView) {
@@ -211,11 +212,18 @@ export default function DynastyLeaguesClient({
       }
     }
   }
-  // On a division page, only show orphans for that division + year.
-  const scopedOrphans = isDivisionView
-    ? orphans.filter((o) => Number(o?.year) === yearNum && slugify(o?.theme_name || o?.kind || "") === divisionSlug)
-    : orphans;
-  const hasOrphans = scopedOrphans.length > 0;
+      const scopedOrphans = useMemo(() => {
+      if (!isLeagueView) return orphans;
+
+      return orphans.filter((o) => {
+        const oy = Number(o?.year);
+        const od = slugify(o?.theme_name || o?.kind || "");
+        return oy === yearNum && od === divisionSlug;
+      });
+    }, [orphans, isLeagueView, yearNum, divisionSlug]);
+
+    const hasOrphans = scopedOrphans.length > 0;
+
 
   if (loading) {
     return (
