@@ -435,27 +435,28 @@ export default function DynastyLeaguesClient({
 
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {themeNames.map((themeName) => {
-                      const leaguesInTheme = themeMap.get(themeName) || [];
-                      if (leaguesInTheme.length === 0) return null;
-                      const first = [...leaguesInTheme].sort(
-                        (a, b) => Number(a?.display_order ?? 0) - Number(b?.display_order ?? 0)
-                      )[0];
-                      const themeImgKey = typeof first?.theme_imageKey === "string" ? first.theme_imageKey.trim() : "";
-                      const themeImgUrl = typeof first?.theme_image_url === "string" ? first.theme_image_url.trim() : "";
+                      const themeVal = themeMap.get(themeName);
 
-                      let img = "";
-                      if (themeImgUrl) {
-                        img = themeImgUrl;
-                        if (updatedAt) {
-                          const bust = `v=${encodeURIComponent(updatedAt)}`;
-                          img = img.includes("?") ? `${img}&${bust}` : `${img}?${bust}`;
-                        }
-                      } else if (themeImgKey) {
-                        img = `/r2/${themeImgKey}${updatedAt ? `?v=${encodeURIComponent(updatedAt)}` : ""}`;
-                      } else {
-                        img = first ? imageSrcForRow(first, updatedAt, FALLBACK_IMG) : FALLBACK_IMG;
-                      }
-                      const themeBlurb = leaguesInTheme[0]?.theme_blurb || "";
+                      // themeVal can be either an array OR an object like { blurb, leagues }
+                      const leaguesInTheme = Array.isArray(themeVal)
+                        ? themeVal
+                        : Array.isArray(themeVal?.leagues)
+                        ? themeVal.leagues
+                        : [];
+
+                      if (leaguesInTheme.length === 0) return null;
+
+                      const first = leaguesInTheme
+                        .slice()
+                        .sort((a, b) => Number(a?.display_order ?? 0) - Number(b?.display_order ?? 0))[0];
+
+                      const img = first ? imageSrcForRow(first, updatedAt) : "";
+
+                      const themeBlurb =
+                        (typeof themeVal === "object" && !Array.isArray(themeVal) && themeVal?.blurb) ||
+                        leaguesInTheme[0]?.theme_blurb ||
+                        "";
+
 
                       return (
                         <MediaTabCard
