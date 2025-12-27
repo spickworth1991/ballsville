@@ -75,6 +75,8 @@ function normalizeRow(r, idx = 0) {
   const display_order = safeNum(r?.display_order, idx + 1);
   const status = STATUS_OPTIONS.includes(safeStr(r?.status)) ? safeStr(r?.status) : "FULL & ACTIVE";
 
+  const isOrphanByStatus = status.toUpperCase().includes("ORPHAN");
+
   return {
     id,
     year,
@@ -97,7 +99,10 @@ function normalizeRow(r, idx = 0) {
     fill_note: safeStr(r?.fill_note).trim(),
     display_order,
     is_active: r?.is_active !== false,
-    is_orphan: !!r?.is_orphan || status === "ORPHAN OPEN",
+    // Orphan is controlled by Status (single source of truth).
+    // Keep the boolean for backward compatibility with older JSON,
+    // but do not rely on a separate checkbox going forward.
+    is_orphan: isOrphanByStatus,
   };
 }
 
@@ -596,7 +601,7 @@ export default function DynastyAdminClient() {
           fill_note: base_fill_note,
           display_order: idx + 1,
           is_active: true,
-          is_orphan: base_status === "ORPHAN OPEN",
+          is_orphan: String(base_status || "").toUpperCase().includes("ORPHAN"),
         },
         idx
       )
@@ -910,7 +915,6 @@ export default function DynastyAdminClient() {
                             <th className="px-3 py-2">Image</th>
                             <th className="px-3 py-2">Fill note</th>
                             <th className="px-3 py-2">Active</th>
-                            <th className="px-3 py-2">Orphan</th>
                             <th className="px-3 py-2"></th>
                           </tr>
                         </thead>
@@ -931,7 +935,7 @@ export default function DynastyAdminClient() {
                                   <input className="input w-[180px] max-w-[180px]" value={lg.name} onChange={(e) => updateLeague(lg.id, { name: e.target.value })} />
                                 </td>
                                 <td className="px-3 py-2">
-                                  <select className="input" value={lg.status} onChange={(e) => updateLeague(lg.id, { status: e.target.value, is_orphan: e.target.value === "ORPHAN OPEN" })}>
+                                  <select className="input" value={lg.status} onChange={(e) => updateLeague(lg.id, { status: e.target.value })}>
                                     {STATUS_OPTIONS.map((s) => (
                                       <option key={s} value={s}>
                                         {s}
@@ -1013,9 +1017,6 @@ export default function DynastyAdminClient() {
                                 </td>
                                 <td className="px-3 py-2">
                                   <input type="checkbox" checked={lg.is_active !== false} onChange={(e) => updateLeague(lg.id, { is_active: e.target.checked })} />
-                                </td>
-                                <td className="px-3 py-2">
-                                  <input type="checkbox" checked={!!lg.is_orphan} onChange={(e) => updateLeague(lg.id, { is_orphan: e.target.checked })} />
                                 </td>
                                 <td className="px-3 py-2">
                                   <button className="btn btn-outline text-xs" type="button" onClick={() => deleteLeague(lg.id)}>

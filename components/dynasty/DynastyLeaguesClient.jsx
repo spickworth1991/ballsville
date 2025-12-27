@@ -11,6 +11,14 @@ function normalize(row) {
   const r = row && typeof row === "object" ? row : {};
   const yearNum = Number(r.year ?? r.season);
 
+  // Normalize status early so orphan detection is reliable even if the admin UI
+  // only changes `status` (and older rows don't have `is_orphan`).
+  const statusRaw = r?.status ?? r?.STATUS ?? "";
+  const status = typeof statusRaw === "string" ? statusRaw.trim() : String(statusRaw || "").trim();
+  // Treat any status containing "ORPHAN" as an orphan opening.
+  // This avoids fragile exact-match logic (e.g. casing/spacing differences).
+  const isOrphanByStatus = status.toUpperCase().includes("ORPHAN");
+
   // Backward compatible field names
   return {
     ...r,
@@ -18,6 +26,10 @@ function normalize(row) {
     year: Number.isFinite(yearNum) ? yearNum : r.year,
     name: r.name ?? r.league_name ?? "",
     sleeper_url: r.sleeper_url ?? r.sleeperUrl ?? r.url ?? "",
+
+    status,
+    // If `is_orphan` is missing, infer it from status.
+    is_orphan: typeof r?.is_orphan === "boolean" ? r.is_orphan : isOrphanByStatus,
 
     // League image
     imageKey: r.imageKey ?? r.image_key ?? r.league_image_key ?? "",
@@ -47,10 +59,9 @@ function transformLeagues(rows) {
   // Only show leagues marked active (or with null/undefined treated as active)
   const active = (rows || []).filter((r) => r?.is_active !== false);
 
-    const orphans = active.filter((r) => {
-    const statusNorm = String(r?.status || "").trim().toUpperCase();
-    // Status is the source of truth. Keep backward compatibility if older rows still have is_orphan.
-    return statusNorm.includes("ORPHAN") || r?.is_orphan === true;
+  const orphans = active.filter((r) => {
+    const st = String(r?.status || "").trim().toUpperCase();
+    return r?.is_orphan === true || st.includes("ORPHAN");
   });
 
   // IMPORTANT: keep orphans in the main list too, so they still show in their theme
@@ -216,18 +227,19 @@ export default function DynastyLeaguesClient({
       }
     }
   }
-      const scopedOrphans = useMemo(() => {
-      if (!isLeagueView) return orphans;
+  const scopedOrphans = useMemo(() => {
+    // Main directory pages show all orphans.
+    if (!isLeagueView) return orphans;
 
-      return orphans.filter((o) => {
-        const oy = Number(o?.year);
-        const od = slugify(o?.theme_name || o?.kind || "");
-        return oy === yearNum && od === divisionSlug;
-      });
-    }, [orphans, isLeagueView, yearNum, divisionSlug]);
+    // Division (league list) page shows only orphans for this division + year.
+    return orphans.filter((o) => {
+      const oy = Number(o?.year);
+      const od = slugify(o?.theme_name || o?.kind || "");
+      return oy === yearNum && od === divisionSlug;
+    });
+  }, [orphans, isLeagueView, yearNum, divisionSlug]);
 
-    const hasOrphans = scopedOrphans.length > 0;
-
+  const hasOrphans = scopedOrphans.length > 0;
 
   if (loading) {
     return (
@@ -300,7 +312,6 @@ export default function DynastyLeaguesClient({
         )}
       </PremiumSection>
 
-      
       {/* DIRECTORY */}
       <PremiumSection
         kicker="All Leagues"
@@ -313,11 +324,11 @@ export default function DynastyLeaguesClient({
           <div className="space-y-6">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <Link
-                href="/dynasty"
+                href="/dynasty/divisions"
                 prefetch={false}
                 className="text-sm text-muted hover:text-foreground transition"
               >
-                ← Back to Dynasty
+                ← Back to Divisions
               </Link>
               <p className="text-xs uppercase tracking-[0.25em] text-accent">{yearNum} Season</p>
             </div>
@@ -325,12 +336,6 @@ export default function DynastyLeaguesClient({
             {divisionThemeLeagues ? (
               <>
                 <div className="text-center">
-                  <div className="mb-4 flex justify-center">
-                    <Link href="/dynasty" className="inline-flex items-center gap-2 rounded-xl border border-subtle bg-panel px-4 py-2 text-sm font-medium text-foreground hover:opacity-90">
-                      <span aria-hidden="true">←</span>
-                      Back to Dynasty
-                    </Link>
-                  </div>
                   <h3 className="text-2xl sm:text-3xl font-semibold text-foreground">
                     {divisionThemeName} <span className="text-muted">– {yearNum}</span>
                   </h3>
