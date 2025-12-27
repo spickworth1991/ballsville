@@ -73,6 +73,7 @@ export default function Page() {
 
             <div className="mt-7 flex flex-wrap gap-4">
               <Link
+                prefetch={false}
                 href="https://youtube.com/@theballsvillegame?si=AaqiZ31C1a1pjVMh"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -81,7 +82,7 @@ export default function Page() {
                 Check out our YouTube!
               </Link>
 
-              <Link href="/constitution" className="btn btn-outline rounded-xl">
+              <Link prefetch={false} href="/constitution" className="btn btn-outline rounded-xl">
                 View Code of Conduct
               </Link>
             </div>
@@ -111,6 +112,7 @@ export default function Page() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mt-8">
             <Link
+              prefetch={false}
               href="/big-game/"
               className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
             >
@@ -134,6 +136,7 @@ export default function Page() {
             </Link>
 
             <Link
+              prefetch={false}
               href="/redraft/"
               className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
             >
@@ -157,6 +160,7 @@ export default function Page() {
             </Link>
 
             <Link
+              prefetch={false}
               href="/dynasty"
               className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
             >
@@ -180,6 +184,7 @@ export default function Page() {
             </Link>
 
             <Link
+              prefetch={false}
               href="/gauntlet"
               className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
             >
@@ -203,7 +208,8 @@ export default function Page() {
             </Link>
 
             <Link
-              href="/games/mini"
+              prefetch={false}
+              href="/mini-leagues"
               className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
             >
               <div className="relative w-full aspect-square overflow-hidden bg-card-trans backdrop-blur-sm">
@@ -225,6 +231,7 @@ export default function Page() {
             </Link>
 
             <Link
+              prefetch={false}
               href="/news"
               className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
             >
@@ -274,6 +281,7 @@ export default function Page() {
 
           <div className="grid gap-8 md:grid-cols-2">
             <Link
+              prefetch={false}
               href="https://youtube.com/@theballsvillegame?si=AaqiZ31C1a1pjVMh"
               target="_blank"
               rel="noopener noreferrer"
@@ -310,6 +318,7 @@ export default function Page() {
             </Link>
 
             <Link
+              prefetch={false}
               href="https://youtube.com/@theballsvillegame?si=AaqiZ31C1a1pjVMh"
               target="_blank"
               rel="noopener noreferrer"
@@ -355,7 +364,7 @@ export default function Page() {
             History
           </p>
 
-          <Link href="/hall-of-fame" className="inline-block group">
+          <Link prefetch={false} href="/hall-of-fame" className="inline-block group">
             <picture>
               <source
                 type="image/webp"
@@ -376,10 +385,10 @@ export default function Page() {
           </h2>
 
           <div className="flex flex-wrap justify-center gap-3 text-sm">
-            <Link href="/hall-of-fame" className="btn btn-outline rounded-xl">
+            <Link prefetch={false} href="/hall-of-fame" className="btn btn-outline rounded-xl">
               View Hall of Fame →
             </Link>
-            <Link href="/news" className="btn btn-primary rounded-xl">
+            <Link prefetch={false} href="/news" className="btn btn-primary rounded-xl">
               Latest Updates →
             </Link>
           </div>

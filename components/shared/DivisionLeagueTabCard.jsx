@@ -27,6 +27,7 @@ export default function DivisionLeagueTabCard({
   return (
     <CardTag
       href={href || undefined}
+      prefetch={false}
       target={href && external ? target || "_blank" : undefined}
       rel={href && external ? rel || "noopener noreferrer" : undefined}
       className={

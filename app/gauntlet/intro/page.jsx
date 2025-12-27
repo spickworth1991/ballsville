@@ -268,10 +268,10 @@ export default function GauntletIntroPage() {
             </p>
 
             <div className="flex flex-wrap gap-3">
-              <Link href="/gauntlet/cash-doc" className="btn btn-primary">
+              <Link prefetch={false} href="/gauntlet/cash-doc" className="btn btn-primary">
                 💸 View the Gauntlet Cash Doc
               </Link>
-              <Link href="/gauntlet" className="btn btn-outline">
+              <Link prefetch={false} href="/gauntlet" className="btn btn-outline">
                 Back to Gauntlet
               </Link>
             </div>

@@ -272,13 +272,13 @@ useEffect(() => {
                 <p className="text-sm sm:text-base text-muted max-w-prose">{HERO_STATIC.subtitle}</p>
 
                 <div className="flex flex-wrap gap-3 pt-2">
-                  <Link href="/dynasty" className="btn btn-outline">
+                  <Link prefetch={false} href="/dynasty" className="btn btn-outline">
                     Dynasty
                   </Link>
-                  <Link href="/big-game" className="btn btn-outline">
+                  <Link prefetch={false} href="/big-game" className="btn btn-outline">
                     Big Game
                   </Link>
-                  <Link href="/hall-of-fame" className="btn btn-outline">
+                  <Link prefetch={false} href="/hall-of-fame" className="btn btn-outline">
                     Hall of Fame
                   </Link>
                 </div>

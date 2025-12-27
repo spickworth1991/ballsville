@@ -47,10 +47,10 @@ export default function DynastyRostersClient() {
               </p>
 
               <div className="flex flex-wrap gap-3 pt-2">
-                <Link href="/dynasty" className="btn btn-outline">
+                <Link prefetch={false} href="/dynasty" className="btn btn-outline">
                   ← Back to Dynasty
                 </Link>
-                <Link href="/dynasty/wagering-demo" className="btn btn-outline">
+                <Link prefetch={false} href="/dynasty/wagering-demo" className="btn btn-outline">
                   Wagering Demo
                 </Link>
               </div>

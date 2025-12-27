@@ -1,6 +1,5 @@
 // app/redraft/page.jsx
 import { siteConfig } from "@/app/config/siteConfig";
-import RedraftUpdatesClient from "./RedraftUpdatesClient";
 import RedraftLeaguesClient from "./RedraftLeaguesClient";
 import OwnerHeroBlock from "@/components/blocks/OwnerHeroBlock";
 import { CURRENT_SEASON } from "@/lib/season";

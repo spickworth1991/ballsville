@@ -631,10 +631,10 @@ export default function MiniLeaguesAdminClient() {
 
               <div className="flex flex-wrap gap-2">
                 
-                <Link href="/admin" className="btn btn-primary text-sm">
+                <Link prefetch={false} href="/admin" className="btn btn-primary text-sm">
                     Admin Home
                 </Link>
-                <Link className="btn btn-primary" href="/mini-leagues">
+                <Link prefetch={false} className="btn btn-primary" href="/mini-leagues">
                   View Page
                 </Link>
                 <button className="btn btn-primary" type="button" onClick={loadAll} disabled={!canAct}>

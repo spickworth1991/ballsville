@@ -132,10 +132,10 @@ export default function DynastyIntroPage() {
                 </p>
 
                 <div className="flex flex-wrap gap-3 pt-2">
-                  <Link href="/dynasty" className="btn btn-outline">
+                  <Link prefetch={false} href="/dynasty" className="btn btn-outline">
                     ← Back to Dynasty
                   </Link>
-                  <Link href="/dynasty/wagering-demo" className="btn btn-primary">
+                  <Link prefetch={false} href="/dynasty/wagering-demo" className="btn btn-primary">
                     Wagering Demo →
                   </Link>
                 </div>
@@ -243,6 +243,7 @@ export default function DynastyIntroPage() {
             <h2 className="text-2xl sm:text-3xl font-semibold">Next Steps</h2>
             <div className="mt-4 grid gap-4 md:grid-cols-3">
               <Link
+                prefetch={false}
                 href="/constitution/dynasty"
                 className="rounded-2xl border border-subtle bg-subtle-surface p-4 hover:border-accent transition"
               >
@@ -253,6 +254,7 @@ export default function DynastyIntroPage() {
               </Link>
 
               <Link
+                prefetch={false}
                 href="/dynasty/wagering-demo"
                 className="rounded-2xl border border-subtle bg-subtle-surface p-4 hover:border-accent transition"
               >
@@ -263,6 +265,7 @@ export default function DynastyIntroPage() {
               </Link>
 
               <Link
+                prefetch={false}
                 href="/dynasty/rosters"
                 className="rounded-2xl border border-subtle bg-subtle-surface p-4 hover:border-accent transition"
               >

@@ -19,6 +19,7 @@ export default function AdminHomePage() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Link
+              prefetch={false}
               href="/admin/posts"
               className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
             >
@@ -29,6 +30,7 @@ export default function AdminHomePage() {
             </Link>
 
             <Link
+              prefetch={false}
               href="/admin/dynasty"
               className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
             >
@@ -39,6 +41,7 @@ export default function AdminHomePage() {
             </Link>
 
             <Link
+              prefetch={false}
               href="/admin/big-game"
               className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
             >
@@ -47,6 +50,7 @@ export default function AdminHomePage() {
             </Link>
 
             <Link
+              prefetch={false}
               href="/admin/mini-leagues"
               className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
             >
@@ -55,6 +59,7 @@ export default function AdminHomePage() {
             </Link>
 
             <Link
+              prefetch={false}
               href="/admin/redraft"
               className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
             >
@@ -65,6 +70,7 @@ export default function AdminHomePage() {
             </Link>
 
             <Link
+              prefetch={false}
               href="/admin/gauntlet"
               className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
             >
@@ -73,6 +79,7 @@ export default function AdminHomePage() {
             </Link>
 
             <Link
+              prefetch={false}
               href="/admin/hall-of-fame"
               className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
             >

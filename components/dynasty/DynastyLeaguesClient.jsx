@@ -169,6 +169,7 @@ export default function DynastyLeaguesClient({ version = "0" }) {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {orphans.map((o, idx) => (
               <Link
+                prefetch={false}
                 key={o?.id || `${o?.year}-${o?.theme_name}-${o?.name}-${idx}`}
                 href={o?.sleeper_url || "#"}
                 className={[
@@ -287,6 +288,7 @@ export default function DynastyLeaguesClient({ version = "0" }) {
 
                             return (
                               <Link
+                                prefetch={false}
                                 key={lg?.id || `${year}-${themeName}-${lg?.name}-${idx}`}
                                 href={lg?.sleeper_url || "#"}
                                 className={[

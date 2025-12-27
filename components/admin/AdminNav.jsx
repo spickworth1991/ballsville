@@ -49,13 +49,14 @@ export default function AdminNav({
 
       <div className="flex flex-col items-end gap-2">
         {publicHref ? (
-          <Link href={publicHref} className="btn btn-primary text-sm">
+          <Link prefetch={false} href={publicHref} className="btn btn-primary text-sm">
             {publicLabel}
+            
           </Link>
         ) : null}
 
         {showAdminHome ? (
-          <Link href="/admin" className="btn btn-primary text-xs">
+          <Link prefetch={false} href="/admin" className="btn btn-primary text-xs">
             ← Admin Home
           </Link>
         ) : null}

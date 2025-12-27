@@ -56,10 +56,10 @@ export default function GauntletCashDocPage() {
             </div>
 
             <div className="mt-6 flex flex-wrap gap-3">
-              <Link href="/gauntlet" className="btn btn-outline">
+              <Link prefetch={false} href="/gauntlet" className="btn btn-outline">
                 ← Back to Gauntlet
               </Link>
-              <Link href="/gauntlet/intro" className="btn btn-outline">
+              <Link prefetch={false} href="/gauntlet/intro" className="btn btn-outline">
                 ⚔️ Game Intro
               </Link>
             </div>
@@ -326,7 +326,7 @@ export default function GauntletCashDocPage() {
 
         {/* FOOTER */}
         <footer className="pb-6">
-          <Link href="/gauntlet" className="btn btn-outline">
+          <Link prefetch={false} href="/gauntlet" className="btn btn-outline">
             ← Back to Gauntlet main page
           </Link>
         </footer>

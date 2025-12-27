@@ -75,10 +75,10 @@ export default function Page() {
                   >
                     Start Reading →
                   </a>
-                  <Link href="/leaderboards" className="btn btn-outline">
+                  <Link prefetch={false} href="/leaderboards" className="btn btn-outline">
                     Leaderboards
                   </Link>
-                  <Link href="/hall-of-fame" className="btn btn-outline">
+                  <Link prefetch={false} href="/hall-of-fame" className="btn btn-outline">
                     Hall of Fame
                   </Link>
                 </div>

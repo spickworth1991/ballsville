@@ -232,6 +232,7 @@ export default function Navbar() {
             <Link
               href="/"
               className="flex items-center flex-shrink-0"
+              prefetch={false}
               ref={logoRef}
               onClick={handleNavClick}
             >
@@ -278,10 +279,12 @@ export default function Navbar() {
                     {!hasChildren && (
                       <Link
                         href={item.to}
+                        prefetch={false}
                         className={`flex items-center space-x-1 transition-colors duration-200 ${
                           isActive
                             ? "text-primary font-semibold"
                             : "text-fg hover:text-accent"
+                            
                         }`}
                         onClick={handleNavClick}
                       >
@@ -319,6 +322,7 @@ export default function Navbar() {
                             {item.children.map((child) => (
                               <Link
                                 key={child.to}
+                                prefetch={false}
                                 href={child.to}
                                 className={`flex items-center px-4 py-2 text-sm transition-colors ${
                                   pathname === child.to
@@ -416,6 +420,7 @@ export default function Navbar() {
                 return (
                   <Link
                     key={item.id}
+                    prefetch={false}
                     href={item.to}
                     className={`flex items-center space-x-2 text-xl font-medium transition-colors duration-200 ${
                       isActive ? "text-accent" : "text-fg hover:text-primary"
@@ -457,6 +462,7 @@ export default function Navbar() {
                       {item.children.map((child) => (
                         <Link
                           key={child.to}
+                          prefetch={false}
                           href={child.to}
                           className={`block text-base transition-colors ${
                             pathname === child.to

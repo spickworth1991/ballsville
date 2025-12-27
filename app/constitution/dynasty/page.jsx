@@ -77,10 +77,10 @@ export default function Page() {
                   <a href="#waivers" className="btn btn-primary">
                     Start Reading →
                   </a>
-                  <Link href="/constitution" className="btn btn-outline">
+                  <Link prefetch={false} href="/constitution" className="btn btn-outline">
                     League Constitution
                   </Link>
-                  <Link href="/leaderboards" className="btn btn-outline">
+                  <Link prefetch={false} href="/leaderboards" className="btn btn-outline">
                     Leaderboards
                   </Link>
                 </div>

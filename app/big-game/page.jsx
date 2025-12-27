@@ -80,12 +80,14 @@ export default function BigGamePage() {
 
               <div className="pt-2 py-3 flex flex-wrap gap-3">
                 <Link
+                  prefetch={false}
                   href="/constitution"
                   className="inline-flex items-center gap-2 rounded-2xl border border-border/70 bg-surface/70 px-4 py-2.5 text-xs sm:text-sm font-medium text-muted hover:border-accent/80 hover:text-accent transition-colors"
                 >
                   📜 Code of Conduct
                 </Link>
                 <Link
+                  prefetch={false}
                   href="#divisions"
                   className="inline-flex items-center gap-2 rounded-2xl border border-cyan-500/40 bg-gradient-to-r from-cyan-600/20 via-sky-600/10 to-purple-600/10 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-lg shadow-cyan-900/30 hover:shadow-xl hover:shadow-cyan-900/40 hover:-translate-y-0.5 transition"
                 >
@@ -278,6 +280,7 @@ export default function BigGamePage() {
           <p className="text-sm text-muted">
             Trash talk is tolerated, but we do have a{" "}
             <Link
+              prefetch={false}
               href="/constitution"
               className="font-semibold text-accent underline underline-offset-2 hover:text-primary"
             >

@@ -271,10 +271,10 @@ export default function RedraftAdminClient() {
             <p className="text-muted mt-1 text-sm">Edits live content on /redraft from R2 (no divisions).</p>
           </div>
           <div className="flex gap-2">
-            <Link href="/redraft" className="btn btn-primary">
+            <Link prefetch={false} href="/redraft" className="btn btn-primary">
               View Page
             </Link>
-            <Link href="/admin" className="btn btn-primary">
+            <Link prefetch={false} href="/admin" className="btn btn-primary">
               Admin Home
             </Link>
           </div>
