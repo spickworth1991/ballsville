@@ -546,39 +546,45 @@ export default function BigGameAdminClient() {
     setRows((prev) => prev.filter((r) => r.id !== leagueRow.id));
   }
 
-  function moveDivisionToYear(group, targetYear) {
+  function rolloverDivisionToYear(group, targetYear) {
     const y = safeNum(targetYear, null);
     if (!Number.isFinite(y)) return;
-    setRows((prev) =>
-      prev.map((r) => {
-        if (Number(r.year) !== Number(group.year)) return r;
-        if (safeStr(r.division_slug) !== safeStr(group.division_slug)) return r;
-        return { ...r, year: y };
-      })
+    if (Number(y) === Number(group.year)) return;
+
+    const ok = window.confirm(
+      `Changing the year resets Sleeper URLs, then rolls "${group.division_name}" from ${group.year} to ${y}. Continue?`
     );
-    setInfoMsg(`Moved division "${group.division_name}" to year ${y} locally. Switch season + click "Save to R2" to publish.`);
-  }
+    if (!ok) return;
 
-  function duplicateDivisionToYear(group, targetYear) {
-    const y = safeNum(targetYear, null);
-    if (!Number.isFinite(y)) return;
+    setRows((prev) => {
+      const from = prev.filter(
+        (r) => Number(r.year) === Number(group.year) && safeStr(r.division_slug) === safeStr(group.division_slug)
+      );
+      if (!from.length) return prev;
 
-    const base = rows.filter((r) => Number(r.year) === Number(group.year) && safeStr(r.division_slug) === safeStr(group.division_slug));
-    if (!base.length) return;
+      // If the target year already has this division, replace it.
+      const withoutTarget = prev.filter(
+        (r) => !(Number(r.year) === Number(y) && safeStr(r.division_slug) === safeStr(group.division_slug))
+      );
 
-    const copies = base.map((r) => ({
-      ...r,
-      id: newId("bg"),
-      year: y,
-      // keep existing image keys/paths so it works immediately; you can re-upload later per-season if desired
-      _pending_division_file: null,
-      _pending_division_preview: "",
-      _pending_league_file: null,
-      _pending_league_preview: "",
-    }));
+      const copies = from.map((r) => ({
+        ...r,
+        id: newId("bg"),
+        year: y,
+        // rollover rule: clear sleeper urls
+        league_url: r?.is_division_header ? safeStr(r?.league_url || "") : "",
+        _pending_division_file: null,
+        _pending_division_preview: "",
+        _pending_league_file: null,
+        _pending_league_preview: "",
+      }));
 
-    setRows((prev) => [...prev, ...copies]);
-    setInfoMsg(`Duplicated division "${group.division_name}" to year ${y} locally. Switch season + click "Save to R2" to publish.`);
+      return [...withoutTarget, ...copies];
+    });
+
+    setInfoMsg(
+      `Rolled over division "${group.division_name}" to year ${y} locally (Sleeper URLs cleared). Switch Season to ${y} and click "Save to R2" to publish.`
+    );
   }
 
   if (loading) {
@@ -761,9 +767,9 @@ export default function BigGameAdminClient() {
                         <input
                           className="input w-28"
                           value={safeStr(header?.year ?? g.year)}
-                          onChange={(e) => moveDivisionToYear(g, e.target.value)}
+                          onChange={(e) => rolloverDivisionToYear(g, e.target.value)}
                         />
-                        <span className="text-[11px] text-muted">Tip: change year + update the public URL to start a new season.</span>
+                        <span className="text-[11px] text-muted">Rolling over will clear Sleeper URLs for this division.</span>
                       </label>
 
                       <label className="space-y-1">
@@ -849,18 +855,6 @@ export default function BigGameAdminClient() {
 
                       <button className="btn btn-outline text-sm" type="button" onClick={() => deleteDivision(g)}>
                         Delete division
-                      </button>
-
-                      <button
-                        className="btn btn-outline text-sm"
-                        type="button"
-                        onClick={() => {
-                          const y = window.prompt("Duplicate this division to what year?", String(Number(g.year) + 1));
-                          if (!y) return;
-                          duplicateDivisionToYear(g, y);
-                        }}
-                      >
-                        Duplicate to year
                       </button>
                     </div>
 
