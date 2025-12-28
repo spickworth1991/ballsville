@@ -1,4 +1,3 @@
-// app/admin/posts/page.jsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -13,27 +12,61 @@ function uid() {
   return `id_${Math.random().toString(16).slice(2)}_${Date.now()}`;
 }
 
+function safeStr(v) {
+  return typeof v === "string" ? v : v == null ? "" : String(v);
+}
+
+function normalizeTags(v) {
+  const tags = Array.isArray(v)
+    ? v.map(String)
+    : typeof v === "string"
+    ? v.split(",").map((s) => s.trim())
+    : [];
+  // de-dupe + remove blanks
+  const out = [];
+  const seen = new Set();
+  for (const t of tags) {
+    const k = String(t || "").trim();
+    if (!k) continue;
+    const key = k.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(k);
+  }
+  return out;
+}
+
 function normPost(p, idx) {
   const id = String(p?.id || idx);
   const created_at = typeof p?.created_at === "string" ? p.created_at : new Date().toISOString();
+
   const expires_at_raw = p?.expires_at ?? p?.expiresAt ?? null;
   const expires_at = typeof expires_at_raw === "string" && expires_at_raw.trim() ? expires_at_raw : null;
+
+  const pinned = Boolean(p?.pinned ?? p?.pin);
+  const is_coupon = Boolean(p?.is_coupon);
+
+  // Back/forward compat: media can be in image_url or imageUrl; key in imageKey
+  const imageKey = typeof p?.imageKey === "string" ? p.imageKey : "";
+  const imageUrl = typeof p?.imageUrl === "string" ? p.imageUrl : typeof p?.image_url === "string" ? p.image_url : "";
+
+  // Tags: ensure Mini Game tag appears in UI when is_coupon is true
+  let tags = normalizeTags(p?.tags);
+  const hasMini = tags.some((t) => t.toLowerCase() === "mini game");
+  if (is_coupon && !hasMini) tags = ["Mini Game", ...tags];
+  if (!is_coupon && hasMini) tags = tags.filter((t) => t.toLowerCase() !== "mini game");
 
   return {
     id,
     created_at,
-    title: String(p?.title || "").trim(),
-    body: String(p?.body || "").trim(),
-    tags: Array.isArray(p?.tags)
-      ? p.tags.map(String)
-      : typeof p?.tags === "string"
-      ? p.tags.split(",").map((s) => s.trim()).filter(Boolean)
-      : [],
-    pinned: Boolean(p?.pinned ?? p?.pin),
-    is_coupon: Boolean(p?.is_coupon),
+    title: safeStr(p?.title).trim(),
+    body: safeStr(p?.body).trim(),
+    tags,
+    pinned,
+    is_coupon,
     expires_at,
-    imageKey: typeof p?.imageKey === "string" ? p.imageKey : "",
-    imageUrl: typeof p?.imageUrl === "string" ? p.imageUrl : typeof p?.image_url === "string" ? p.image_url : "",
+    imageKey,
+    imageUrl,
   };
 }
 
@@ -53,8 +86,8 @@ function localInputToIso(v) {
 }
 
 function isVideoUrl(u) {
-  const url = String(u || "").toLowerCase();
-  return url.endsWith(".mp4") || url.endsWith(".webm") || url.endsWith(".ogg") || url.includes("video");
+  const url = safeStr(u).toLowerCase();
+  return url.endsWith(".mp4") || url.endsWith(".webm") || url.endsWith(".ogg");
 }
 
 export default function AdminPostsPage() {
@@ -112,19 +145,29 @@ function AdminPostsInner() {
     setSaving(true);
     try {
       const token = await getToken();
+
+      // IMPORTANT: persist tags[] and is_coupon separately. We also keep pin.
       const payload = {
-        posts: (nextPosts || []).map((p) => ({
-          id: String(p?.id || ""),
-          title: String(p?.title || "").trim(),
-          body: String(p?.body || ""),
-          tags: Array.isArray(p?.tags) ? p.tags : [],
-          pin: !!p?.pinned,
-          is_coupon: !!p?.is_coupon,
-          expires_at: p?.expires_at ? String(p.expires_at) : null,
-          created_at: p?.created_at ? String(p.created_at) : new Date().toISOString(),
-          imageKey: typeof p?.imageKey === "string" ? p.imageKey : "",
-          image_url: typeof p?.imageUrl === "string" ? p.imageUrl : "",
-        })),
+        posts: (nextPosts || []).map((p) => {
+          // ensure Mini Game tag sync
+          let tags = normalizeTags(p?.tags);
+          const hasMini = tags.some((t) => t.toLowerCase() === "mini game");
+          if (p?.is_coupon && !hasMini) tags = ["Mini Game", ...tags];
+          if (!p?.is_coupon && hasMini) tags = tags.filter((t) => t.toLowerCase() !== "mini game");
+
+          return {
+            id: String(p?.id || ""),
+            title: safeStr(p?.title).trim(),
+            body: safeStr(p?.body || ""),
+            tags,
+            pin: !!p?.pinned,
+            is_coupon: !!p?.is_coupon,
+            expires_at: p?.expires_at ? String(p.expires_at) : null,
+            created_at: p?.created_at ? String(p.created_at) : new Date().toISOString(),
+            imageKey: typeof p?.imageKey === "string" ? p.imageKey : "",
+            image_url: typeof p?.imageUrl === "string" ? p.imageUrl : "",
+          };
+        }),
       };
 
       const res = await fetch(`/api/admin/posts?season=${encodeURIComponent(String(season))}`, {
@@ -142,7 +185,7 @@ function AdminPostsInner() {
       }
 
       setOk("Saved.");
-      setPosts(nextPosts);
+      setPosts(nextPosts.map(normPost));
     } catch (e) {
       setErr(e?.message || "Failed to save posts.");
     } finally {
@@ -154,7 +197,7 @@ function AdminPostsInner() {
     setPosts((prev) => prev.map((p) => (p.id === selectedId ? { ...p, ...patch } : p)));
   }
 
-  async function uploadImage(file) {
+  async function uploadMedia(file) {
     if (!file || !selectedId) return;
     setErr("");
     setOk("");
@@ -163,7 +206,7 @@ function AdminPostsInner() {
       const token = await getToken();
       const form = new FormData();
       form.append("file", file);
-      form.append("section", "posts-image");
+      form.append("section", "posts-image"); // keep same section; backend can store videos too
       form.append("season", String(season));
       form.append("postId", selectedId);
 
@@ -173,10 +216,11 @@ function AdminPostsInner() {
         body: form,
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) throw new Error(data?.error || `Upload failed (${res.status})`);
 
       const key = String(data.key || "");
+      // Clear external URL if we uploaded
       updateSelected({ imageKey: key, imageUrl: "" });
       setOk("Media uploaded (remember to Save).");
     } catch (e) {
@@ -206,6 +250,7 @@ function AdminPostsInner() {
 
   function deleteSelected() {
     if (!selectedId) return;
+    if (!window.confirm("Delete this post?")) return;
     const next = posts.filter((p) => p.id !== selectedId);
     setPosts(next);
     setSelectedId(next[0]?.id || "");
@@ -216,11 +261,8 @@ function AdminPostsInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const mediaSrc = selected?.imageKey
-    ? `/r2/${selected.imageKey}?v=${encodeURIComponent(selected.imageKey)}`
-    : selected?.imageUrl || "";
-
-  const selectedIsClosed = !!(selected?.is_coupon && selected?.expires_at && new Date(selected.expires_at) < new Date());
+  const mediaSrc = selected?.imageKey ? `/r2/${selected.imageKey}` : safeStr(selected?.imageUrl || "");
+  const isMiniClosed = !!(selected?.is_coupon && selected?.expires_at && new Date(selected.expires_at) < new Date());
 
   return (
     <main className="section">
@@ -264,29 +306,23 @@ function AdminPostsInner() {
               ) : (
                 posts.map((p) => {
                   const closed = !!(p?.is_coupon && p?.expires_at && new Date(p.expires_at) < new Date());
-                  const disabled = closed && p.id !== selectedId;
 
+                  // ✅ Admin should STILL be able to click/edit expired posts
                   return (
                     <button
                       key={p.id}
                       type="button"
                       onClick={() => setSelectedId(p.id)}
-                      disabled={disabled}
-                      title={closed ? "Mini Game is closed (expired)" : undefined}
                       className={`w-full text-left rounded-xl border px-3 py-2 transition ${
                         p.id === selectedId
                           ? "border-primary/50 bg-subtle-surface/40"
-                          : disabled
-                          ? "border-subtle bg-card-trans opacity-60 grayscale cursor-not-allowed"
                           : "border-subtle bg-card-trans hover:bg-subtle-surface/20"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <div className="font-semibold text-sm truncate">{p.title || "(Untitled)"}</div>
-                          <div className="text-[11px] text-muted truncate">
-                            {p.created_at ? new Date(p.created_at).toLocaleString() : ""}
-                          </div>
+                          <div className="text-[11px] text-muted truncate">{p.created_at ? new Date(p.created_at).toLocaleString() : ""}</div>
                           {p.is_coupon && p.expires_at ? (
                             <div className="text-[11px] text-muted truncate">
                               Closes: {new Date(p.expires_at).toLocaleString()} {closed ? "(Closed)" : ""}
@@ -295,19 +331,9 @@ function AdminPostsInner() {
                         </div>
 
                         <div className="flex flex-col items-end gap-1">
-                          {p.pinned ? (
-                            <span className="text-[10px] px-2 py-1 rounded-full border border-primary/30 text-primary">PIN</span>
-                          ) : null}
-                          {p.is_coupon ? (
-                            <span className="text-[10px] px-2 py-1 rounded-full border border-subtle text-muted">
-                              MINI
-                            </span>
-                          ) : null}
-                          {closed ? (
-                            <span className="text-[10px] px-2 py-1 rounded-full border border-rose-400/30 text-rose-200">
-                              CLOSED
-                            </span>
-                          ) : null}
+                          {p.pinned ? <span className="text-[10px] px-2 py-1 rounded-full border border-primary/30 text-primary">PIN</span> : null}
+                          {p.is_coupon ? <span className="text-[10px] px-2 py-1 rounded-full border border-subtle text-muted">MINI</span> : null}
+                          {closed ? <span className="text-[10px] px-2 py-1 rounded-full border border-rose-400/30 text-rose-200">CLOSED</span> : null}
                         </div>
                       </div>
                     </button>
@@ -329,24 +355,22 @@ function AdminPostsInner() {
                   </button>
                 </div>
 
+                {selected.is_coupon ? (
+                  <div className={`rounded-xl border p-3 text-xs ${isMiniClosed ? "border-rose-400/30 bg-rose-500/10 text-rose-100" : "border-subtle bg-subtle-surface/30 text-muted"}`}>
+                    {isMiniClosed
+                      ? "This Mini Game is closed (expired). You can still edit it here."
+                      : "This post is marked as a Mini Game. Add an optional close time below."}
+                  </div>
+                ) : null}
+
                 <div className="grid gap-3">
                   <label className="text-xs text-muted">Title</label>
-                  <input
-                    className="input"
-                    value={selected.title}
-                    onChange={(e) => updateSelected({ title: e.target.value })}
-                    placeholder="Post title"
-                  />
+                  <input className="input" value={selected.title} onChange={(e) => updateSelected({ title: e.target.value })} placeholder="Post title" />
                 </div>
 
                 <div className="grid gap-3">
                   <label className="text-xs text-muted">Body (supports basic HTML)</label>
-                  <textarea
-                    className="input min-h-[160px] resize-y"
-                    value={selected.body}
-                    onChange={(e) => updateSelected({ body: e.target.value })}
-                    placeholder="Write your post…"
-                  />
+                  <textarea className="input min-h-[160px] resize-y" value={selected.body} onChange={(e) => updateSelected({ body: e.target.value })} placeholder="Write your post…" />
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -357,17 +381,16 @@ function AdminPostsInner() {
                       value={selected.tags.join(", ")}
                       onChange={(e) => updateSelected({ tags: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
                     />
+                    <div className="text-[11px] text-muted">
+                      Tip: “Mini Game” tag is handled automatically by the Mini Game checkbox.
+                    </div>
                   </div>
 
                   <div className="space-y-3">
                     <div>
                       <label className="text-xs text-muted">Pinned</label>
                       <div className="mt-2 flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={selected.pinned}
-                          onChange={(e) => updateSelected({ pinned: e.target.checked })}
-                        />
+                        <input type="checkbox" checked={selected.pinned} onChange={(e) => updateSelected({ pinned: e.target.checked })} />
                         <span className="text-sm text-muted">Show in pinned section</span>
                       </div>
                     </div>
@@ -378,7 +401,13 @@ function AdminPostsInner() {
                         <input
                           type="checkbox"
                           checked={selected.is_coupon}
-                          onChange={(e) => updateSelected({ is_coupon: e.target.checked, expires_at: e.target.checked ? selected.expires_at : null })}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            updateSelected({
+                              is_coupon: checked,
+                              expires_at: checked ? selected.expires_at : null,
+                            });
+                          }}
                         />
                         <span className="text-sm text-muted">Treat this post as a Mini Game</span>
                       </div>
@@ -387,15 +416,10 @@ function AdminPostsInner() {
                         <div className="mt-3">
                           <label className="text-xs text-muted">Sign-up close time</label>
                           <div className="mt-2 flex flex-col gap-2">
-                            <input
-                              className="input"
-                              type="datetime-local"
-                              value={isoToLocalInput(selected.expires_at)}
-                              onChange={(e) => updateSelected({ expires_at: localInputToIso(e.target.value) })}
-                            />
+                            <input className="input" type="datetime-local" value={isoToLocalInput(selected.expires_at)} onChange={(e) => updateSelected({ expires_at: localInputToIso(e.target.value) })} />
                             {selected.expires_at ? (
-                              <div className={`text-xs ${selectedIsClosed ? "text-rose-200" : "text-muted"}`}>
-                                {selectedIsClosed ? "Closed" : "Closes"}: {new Date(selected.expires_at).toLocaleString()}
+                              <div className={`text-xs ${isMiniClosed ? "text-rose-200" : "text-muted"}`}>
+                                {isMiniClosed ? "Closed" : "Closes"}: {new Date(selected.expires_at).toLocaleString()}
                               </div>
                             ) : (
                               <div className="text-xs text-muted">Optional — leave blank to keep it open.</div>
@@ -411,7 +435,7 @@ function AdminPostsInner() {
                   <label className="text-xs text-muted">Media (upload or paste external URL)</label>
 
                   <div className="flex flex-wrap gap-2 items-center">
-                    <input type="file" accept="image/*,video/*" onChange={(e) => uploadImage(e.target.files?.[0])} disabled={saving} />
+                    <input type="file" accept="image/*,video/*" onChange={(e) => uploadMedia(e.target.files?.[0])} disabled={saving} />
                     <span className="text-xs text-muted">Uploads replace existing media for this post.</span>
                   </div>
 
@@ -423,7 +447,7 @@ function AdminPostsInner() {
                   />
 
                   {mediaSrc ? (
-                    <div className="relative w-full max-w-[720px] rounded-2xl overflow-hidden border border-subtle bg-black/10">
+                    <div className="w-full max-w-[720px] rounded-2xl overflow-hidden border border-subtle bg-black/10">
                       {isVideoUrl(mediaSrc) ? (
                         <div className="w-full aspect-[16/9]">
                           <video className="w-full h-full object-contain" controls playsInline preload="metadata">
