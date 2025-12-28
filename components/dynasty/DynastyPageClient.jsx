@@ -169,7 +169,7 @@ export default function DynastyPageClient({ season = CURRENT_SEASON, version = "
           </div>
 
           <div className="mt-6">
-            <OwnerHeroBlock mode="dynasty" season={season} title="Owner Updates" version={version} />
+            <OwnerHeroBlock mode="dynasty" season={season} title="Owner Updates" version={version} manifest={manifest} />
           </div>
         </section>
 

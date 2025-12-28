@@ -30,6 +30,7 @@ export default function OwnerHeroBlock({
   // Provided by SectionManifestGate (or left as "0" if you don't use it).
   // When this changes, we allow a refetch + refresh.
   version = "0",
+  manifest = null,
 }) {
   const m = safeMode(mode);
   const [cfg, setCfg] = useState(DEFAULT);
@@ -53,7 +54,14 @@ export default function OwnerHeroBlock({
       setErr("");
       setLoading(true);
 
-      if (!m) {
+            // Avoid an initial fetch with version=0 before the section manifest has loaded.
+      // SectionManifestGate will re-render this component once `manifest` is available.
+      if (manifest === null) {
+        setLoading(true);
+        return;
+      }
+
+if (!m) {
         setCfg({ ...DEFAULT, season });
         setLoading(false);
         return;
@@ -134,7 +142,7 @@ export default function OwnerHeroBlock({
     return () => {
       cancelled = true;
     };
-  }, [m, season, version]);
+  }, [m, season, version, manifest]);
 
   if (loading) {
     return (
