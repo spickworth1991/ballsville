@@ -2,6 +2,11 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 
+// In-memory cache so multiple SectionManifestGate instances on the same client session
+// don't refetch the same manifest repeatedly.
+const __MANIFEST_CACHE = new Map();
+
+
 /**
  * Fetches a small per-section manifest from R2 once, then lets children build
  * versioned URLs for data/images. When admin updates content, the manifest's
@@ -30,6 +35,14 @@ export default function SectionManifestGate({ section, season, pollMs = 0, child
   async function load() {
     try {
       setError(null);
+
+      const cacheKey = `${section}:${season || ""}`;
+      const cached = __MANIFEST_CACHE.get(cacheKey);
+      if (cached && cached.manifest) {
+        setManifest(cached.manifest);
+        return;
+      }
+
       // Let normal browser caching apply (Cloudflare sends must-revalidate + ETag).
       // We want 304s when unchanged, not forced 200s.
       let out = null;

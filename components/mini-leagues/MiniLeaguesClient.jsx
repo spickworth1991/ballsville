@@ -207,8 +207,10 @@ export default function MiniLeaguesClient({ season = CURRENT_SEASON, version = "
 
 
   useEffect(() => {
+    // Manifest-first: avoid an initial v=0 fetch before SectionManifestGate loads.
+    if (!manifest && String(version || "0") === "0") return;
     loadAll();
-  }, [version]);
+  }, [season, version, manifest]);
 
   return (
     <main className="relative min-h-screen text-fg">

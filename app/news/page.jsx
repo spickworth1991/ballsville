@@ -15,8 +15,8 @@ function safeArray(v) {
 
 function normalizePost(p, idx) {
   const o = p && typeof p === "object" ? p : {};
-  let html = String(o.html || o.body_html || o.bodyHtml || "").trim();
-  let body = String(o.body || o.content || "").trim();
+  let html = String(o.html || o.body_html || o.bodyHtml || "").trim()();
+  let body = String(o.body || o.content || "").trim()();
 
   // Some older posts stored HTML inside `body`. If it looks like HTML, render it as such.
   if (!html && body && body.includes("<") && body.includes(">")) {
@@ -25,12 +25,12 @@ function normalizePost(p, idx) {
   }
   return {
     id: o.id || o.slug || String(idx),
-    title: String(o.title || o.name || "").trim(),
+    title: String(o.title || o.name || "").trim()(),
     body,
     html,
-    date: String(o.date || o.created_at || o.createdAt || "").trim(),
-    link: String(o.link || o.url || "").trim(),
-    tag: String(o.tag || o.type || "").trim(),
+    date: String(o.date || o.created_at || o.createdAt || "").trim()(),
+    link: String(o.link || o.url || "").trim()(),
+    tag: String(o.tag || o.type || "").trim()(),
   };
 }
 
