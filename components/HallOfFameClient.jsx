@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 
 const FALLBACK = {
@@ -169,11 +169,10 @@ function HOFCard({ entry, onOpenImage }) {
   );
 }
 
-export default function HallOfFameClient({ version = "0" }) {
+export default function HallOfFameClient({ version = "0", manifest = null }) {
   const [data, setData] = useState(FALLBACK);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const bust = useMemo(() => `v=${Date.now()}`, []);
 
   // Lightbox / modal
   const [activeEntry, setActiveEntry] = useState(null);
@@ -196,17 +195,51 @@ export default function HallOfFameClient({ version = "0" }) {
 
   useEffect(() => {
     let cancelled = false;
+
+    // Manifest-first: avoid an initial v=0 fetch before SectionManifestGate loads.
+    // If a caller passes a real version but no manifest, we still proceed.
+    if (!manifest && String(version || "0") === "0") {
+      setLoading(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     async function load() {
       setErr("");
       setLoading(true);
       try {
-        const res = await fetch(`/r2/data/hall-of-fame/hall_of_fame.json?${bust}`, {
-          cache: "no-store",
-        });
+        const v = String(version || "0");
+        const cacheKeyV = "halloffame:version";
+        const cacheKeyData = "halloffame:data";
+
+        // If we already have this exact version in sessionStorage, use it and skip network.
+        try {
+          const cachedV = sessionStorage.getItem(cacheKeyV);
+          if (cachedV && cachedV === v) {
+            const cached = sessionStorage.getItem(cacheKeyData);
+            if (cached) {
+              const parsed = JSON.parse(cached);
+              if (!cancelled && parsed && typeof parsed === "object") {
+                setData(parsed);
+                setLoading(false);
+                return;
+              }
+            }
+          }
+        } catch {
+          // ignore storage errors
+        }
+
+        const res = await fetch(
+          `/r2/data/hall-of-fame/hall_of_fame.json?v=${encodeURIComponent(v)}`,
+          { cache: "default" }
+        );
         if (!res.ok) {
           if (!cancelled) setData(FALLBACK);
           return;
         }
+
         const json = await res.json();
         const title = String(json?.title || FALLBACK.title);
         const list = Array.isArray(json?.entries)
@@ -215,18 +248,31 @@ export default function HallOfFameClient({ version = "0" }) {
           ? json
           : [];
         const entries = list.map(normalizeEntry).sort((a, b) => a.order - b.order);
-        if (!cancelled) setData({ title, entries });
+        const next = { title, entries };
+
+        if (!cancelled) setData(next);
+
+        try {
+          sessionStorage.setItem(cacheKeyV, v);
+          sessionStorage.setItem(cacheKeyData, JSON.stringify(next));
+        } catch {
+          // ignore storage errors
+        }
       } catch (e) {
-        if (!cancelled) setErr(e?.message || "Failed to load Hall of Fame.");
+        if (!cancelled) {
+          setErr(e?.message || "Failed to load Hall of Fame.");
+          setData(FALLBACK);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
+
     load();
     return () => {
       cancelled = true;
     };
-  }, [bust]);
+  }, [version, manifest]);
 
   return (
     <main className="relative min-h-screen text-fg">

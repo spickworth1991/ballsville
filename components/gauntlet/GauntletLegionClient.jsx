@@ -19,8 +19,7 @@ function safeStr(v) {
 function resolveImageSrc({ imagePath, imageKey, updatedAt }) {
   const p = safeStr(imagePath).trim();
   const k = safeStr(imageKey).trim();
-  const bust = updatedAt ? `v=${encodeURIComponent(updatedAt)}` : `v=${Date.now()}`;
-
+  
   // If we already stored a full URL (/r2/... or https://...), just ensure it has a cache-bust.
   if (p) {
     if (p.includes("?")) return p;
@@ -76,8 +75,9 @@ function buildIndex(rows) {
 }
 
 async function fetchLeagues(season) {
-  const url = `/r2/data/gauntlet/leagues_${season}.json?cachebust=${Date.now()}`;
-  const res = await fetch(url, { cache: "no-store" });
+  const v = String(version || "0");
+    const url = `/r2/data/gauntlet/leagues_${season}.json?v=${encodeURIComponent(v)}`;
+  const res = await fetch(url, { cache: "default" });
   if (!res.ok) throw new Error(`Failed to load gauntlet leagues (${res.status})`);
   const data = await res.json();
   return { rows: data?.rows || [], updated_at: data?.updated_at || "" };
@@ -86,13 +86,16 @@ async function fetchLeagues(season) {
 // NOTE: `version` is an optional prop used as a manual cache-bust signal.
 // Not required for manifest-based caching, but keeping it prevents undefined
 // reference issues and allows parent components to force a refetch if desired.
-export default function GauntletLegionClient({ season = 2025, legionKey = "", titleOverride = "", version = "0" }) {
+export default function GauntletLegionClient({ season = 2025, legionKey = "", titleOverride = "", version = "0", manifest = null }) {
   const [rows, setRows] = useState(null);
   const [updatedAt, setUpdatedAt] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
+
+    // Manifest-first: avoid an initial v=0 fetch before SectionManifestGate loads.
+    if (!manifest) return () => { cancelled = true; };
     setError("");
     setRows(null);
 

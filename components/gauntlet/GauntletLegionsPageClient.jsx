@@ -36,5 +36,9 @@ export default function GauntletLegionsPageClient() {
     );
   }
 
-  return <GauntletLegionClient legionKey={legion} year={year} />;
+  return (
+    <SectionManifestGate section="gauntlet" season={year}>
+      <GauntletLegionClient season={year} legionKey={legion} />
+    </SectionManifestGate>
+  );
 }

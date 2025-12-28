@@ -99,7 +99,91 @@ export async function onRequest({ request, params, env }) {
     }
   }
 
-  // ✅ 2) Fallback to public r2.dev proxy (keeps Gauntlet working)
+  
+  // If a section manifest is missing, synthesize it from the underlying data file.
+  // This prevents "manifest 404" from breaking the manifest-first caching strategy
+  // for legacy sections that don't have a manifest written yet.
+  if (bucket && key.startsWith("data/manifests/") && key.endsWith(".json")) {
+    try {
+      const file = key.split("/").pop() || "";
+      const m = file.match(/^([a-z0-9-]+?)(?:_(\d{4}))?\.json$/i);
+      if (m) {
+        const section = (m[1] || "").toLowerCase();
+        const season = m[2] ? String(m[2]) : "";
+
+        // Map manifest section => a deterministic data JSON that always exists for that section.
+        const candidates = [];
+        if (section === "gauntlet") {
+          // Gauntlet directory data
+          candidates.push(season ? `data/gauntlet/leagues_${season}.json` : `data/gauntlet/leagues_${new Date().getFullYear()}.json`);
+        } else if (section === "posts" || section === "news") {
+          // News/Posts feed
+          candidates.push("data/posts/posts.json");
+        } else if (section === "hall-of-fame" || section === "hall_of_fame") {
+          candidates.push("data/hall-of-fame/hall_of_fame.json");
+        }
+
+        for (const sourceKey of candidates) {
+          const src = await bucket.get(sourceKey);
+          if (!src) continue;
+
+          let updatedAt = "";
+          try {
+            const raw = await src.text();
+            const parsed = JSON.parse(raw);
+            updatedAt = String(parsed?.updatedAt || parsed?.updated_at || parsed?.lastUpdated || "");
+          } catch {
+            // ignore parse errors
+          }
+
+          // Fallback to last modified time if no timestamp inside JSON
+          if (!updatedAt) {
+            updatedAt = src.httpMetadata?.lastModified
+              ? new Date(src.httpMetadata.lastModified).toISOString()
+              : "";
+          }
+
+          const body = JSON.stringify(
+            {
+              section,
+              season: season ? Number(season) : undefined,
+              updatedAt: updatedAt || null,
+              sourceKey,
+            },
+            null,
+            2
+          );
+
+          const headers = new Headers();
+          headers.set("content-type", "application/json; charset=utf-8");
+          headers.set("cache-control", cacheControlForKey(key));
+
+          // Reuse the source ETag/Last-Modified so the manifest 304s alongside the source.
+          const et = src.etag ? `"${String(src.etag).replace(/"/g, "")}"` : "";
+          if (et) headers.set("etag", et);
+          const lm = src.httpMetadata?.lastModified ? new Date(src.httpMetadata.lastModified).toUTCString() : "";
+          if (lm) headers.set("last-modified", lm);
+
+          const inm = request.headers.get("if-none-match");
+          const ims = request.headers.get("if-modified-since");
+          const notModifiedByEtag = !!(et && inm && inm.split(",").some((t) => t.trim() === et));
+          const notModifiedByDate =
+            !!(lm && ims && !Number.isNaN(Date.parse(ims)) && Date.parse(ims) >= Date.parse(lm));
+          const notModified = notModifiedByEtag || notModifiedByDate;
+
+          if (request.method === "HEAD") {
+            return new Response(null, { status: notModified ? 304 : 200, headers });
+          }
+          if (notModified) return new Response(null, { status: 304, headers });
+          return new Response(body, { status: 200, headers });
+        }
+      }
+    } catch {
+      // ignore synth errors and fall through
+    }
+  }
+
+// ✅ 2) Fallback to public r2.dev proxy (keeps Gauntlet working)
   const base =
     env.GAUNTLET_R2_PUBLIC_BASE ||
     env.R2_PUBLIC_BASE ||

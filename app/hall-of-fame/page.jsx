@@ -20,5 +20,9 @@ export const metadata = {
 };
 
 export default function HallOfFamePage() {
-  return <HallOfFameClient />;
+  return (
+    <SectionManifestGate section="hall-of-fame">
+      <HallOfFameClient />
+    </SectionManifestGate>
+  );
 }
