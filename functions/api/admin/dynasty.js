@@ -109,6 +109,17 @@ function asStr(v) {
 function asBool(v, d = false) {
   if (v === true) return true;
   if (v === false) return false;
+  // Be liberal in what we accept, since admin UIs (or older data) can
+  // serialize booleans as strings/numbers.
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (s === "true" || s === "1" || s === "yes" || s === "y" || s === "on") return true;
+    if (s === "false" || s === "0" || s === "no" || s === "n" || s === "off") return false;
+  }
+  if (typeof v === "number") {
+    if (v === 1) return true;
+    if (v === 0) return false;
+  }
   return d;
 }
 
@@ -118,7 +129,10 @@ function asNum(v, d = null) {
 }
 
 function normalizeRow(r, idx) {
-  const status = asStr(r?.status || "FULL & ACTIVE").trim() || "FULL & ACTIVE";
+  // Status is the source of truth for orphan openings.
+  // Accept a few legacy field names just in case older admin payloads used them.
+  const status = asStr(r?.status || r?.base_status || r?.availability_status || "FULL & ACTIVE").trim() || "FULL & ACTIVE";
+  const statusNorm = status.trim().toUpperCase();
   const year = asNum(r?.year, new Date().getFullYear());
   const id = asStr(r?.id || r?._localId || `r2_${year}_${idx}_${Date.now()}`).trim();
 
@@ -147,7 +161,9 @@ function normalizeRow(r, idx) {
     note: asStr(r?.note || "").trim() || null,
     display_order: asNum(r?.display_order, null),
     is_active: asBool(r?.is_active, true),
-    is_orphan: asBool(r?.is_orphan, status === "ORPHAN OPEN"),
+    // Orphan openings are controlled by status, not a separate boolean.
+    // Keep backward compat by OR-ing any existing boolean-ish values.
+    is_orphan: statusNorm.includes("ORPHAN") || asBool(r?.is_orphan, false),
   };
 }
 
