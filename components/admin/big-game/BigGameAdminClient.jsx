@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabaseClient";
 import { CURRENT_SEASON } from "@/lib/season";
 
-const DEFAULT_SEASON = CURRENT_SEASON;
 const R2_KEY_FOR = (season) => `data/biggame/leagues_${season}.json`;
 
 const DEFAULT_PAGE_EDITABLE = {
@@ -61,7 +60,7 @@ async function getAccessToken() {
   return data?.session?.access_token || "";
 }
 
-function normalizeRow(r, idx = 0, season = DEFAULT_SEASON) {
+function normalizeRow(r, idx = 0, season = CURRENT_SEASON) {
   const year = safeNum(r?.year, season);
   const isHeader = !!r?.is_division_header;
 
@@ -121,7 +120,7 @@ function groupByDivision(rows) {
   const map = new Map();
 
   for (const r of rows) {
-    const year = Number(r.year) || DEFAULT_SEASON;
+    const year = Number(r.year) || CURRENT_SEASON;
     const div = safeStr(r.division_slug || slugify(r.division_name) || "").trim();
     if (!div) continue;
     const key = `${year}::${div}`;
@@ -166,6 +165,15 @@ function groupByDivision(rows) {
   return groups;
 }
 
+function uniqueYearsFromRows(rows) {
+  const set = new Set();
+  for (const r of rows) {
+    const y = Number(r?.year);
+    if (Number.isFinite(y)) set.add(y);
+  }
+  return Array.from(set).sort((a, b) => b - a);
+}
+
 async function uploadBigGameImage({ file, section, season, divisionSlug, leagueOrder, token }) {
   const fd = new FormData();
   fd.append("file", file);
@@ -186,8 +194,8 @@ async function uploadBigGameImage({ file, section, season, divisionSlug, leagueO
 }
 
 export default function BigGameAdminClient() {
-  const [season, setSeason] = useState(DEFAULT_SEASON);
   const [rows, setRows] = useState([]);
+  const [years, setYears] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [pageCfg, setPageCfg] = useState(DEFAULT_PAGE_EDITABLE);
@@ -201,30 +209,9 @@ export default function BigGameAdminClient() {
 
   const [pageLoading, setPageLoading] = useState(true);
 
-  const groups = useMemo(() => groupByDivision(rows.filter((r) => Number(r.year) === Number(season))), [rows, season]);
+  const groups = useMemo(() => groupByDivision(rows), [rows]);
 
-  async function loadFromR2(nextSeason = season) {
-    setErrorMsg("");
-    setInfoMsg("");
-    setLoading(true);
-    try {
-      const bust = `v=${Date.now()}`;
-      const res = await fetch(`/r2/${R2_KEY_FOR(nextSeason)}?${bust}`, { cache: "no-store" });
-      if (!res.ok) {
-        setRows([]);
-        return;
-      }
-      const data = await res.json();
-      const list = Array.isArray(data?.rows) ? data.rows : Array.isArray(data) ? data : [];
-      setRows(list.map((r, idx) => normalizeRow(r, idx, nextSeason)));
-    } catch (e) {
-      setErrorMsg(e?.message || "Failed to load Big Game data from R2.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadPageConfig(nextSeason = season) {
+  async function loadPageConfig(nextSeason) {
     setPageLoading(true);
     setErrorMsg("");
     try {
@@ -246,14 +233,14 @@ export default function BigGameAdminClient() {
           updatesHtml: hero.updatesHtml ?? DEFAULT_PAGE_EDITABLE.hero.updatesHtml,
         },
       });
-    } catch (e) {
+    } catch {
       setPageCfg(DEFAULT_PAGE_EDITABLE);
     } finally {
       setPageLoading(false);
     }
   }
 
-  async function savePageConfig(nextSeason = season) {
+  async function savePageConfig(nextSeason) {
     setErrorMsg("");
     setInfoMsg("");
     setPageSaving(true);
@@ -276,19 +263,71 @@ export default function BigGameAdminClient() {
   }
 
   useEffect(() => {
-    loadFromR2(season);
-    loadPageConfig(season);
+    let cancelled = false;
+
+    async function loadAllYears() {
+      setErrorMsg("");
+      setInfoMsg("");
+      setLoading(true);
+
+      try {
+        // Auto-discover existing year files around CURRENT_SEASON.
+        // No code change needed each year.
+        const candidates = [];
+        for (let y = CURRENT_SEASON - 3; y <= CURRENT_SEASON + 3; y++) candidates.push(y);
+
+        const loadedRows = [];
+        const foundYears = [];
+
+        for (const y of candidates) {
+          const bust = `v=${Date.now()}`;
+          const res = await fetch(`/r2/${R2_KEY_FOR(y)}?${bust}`, { cache: "no-store" });
+          if (!res.ok) continue;
+
+          const data = await res.json().catch(() => null);
+          if (!data) continue;
+
+          const list = Array.isArray(data?.rows) ? data.rows : Array.isArray(data) ? data : [];
+          if (!list.length) continue;
+
+          foundYears.push(y);
+          loadedRows.push(...list.map((r, idx) => normalizeRow(r, idx, y)));
+        }
+
+        if (cancelled) return;
+
+        foundYears.sort((a, b) => b - a);
+
+        setRows(loadedRows);
+        setYears(foundYears);
+
+        const heroYear = foundYears[0] ?? CURRENT_SEASON;
+        await loadPageConfig(heroYear);
+      } catch (e) {
+        if (!cancelled) setErrorMsg(e?.message || "Failed to load Big Game data.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    loadAllYears();
+
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [season]);
+  }, []);
 
   async function uploadOwnerUpdatesImage(file) {
     const token = await getAccessToken();
     if (!token) throw new Error("Not logged in.");
 
+    const targetSeason = years?.[0] ?? CURRENT_SEASON;
+
     const out = await uploadBigGameImage({
       file,
       section: "biggame-updates",
-      season,
+      season: targetSeason,
       divisionSlug: "updates",
       token,
     });
@@ -303,7 +342,7 @@ export default function BigGameAdminClient() {
     }));
   }
 
-  async function saveAllToR2(nextRows = rows, nextSeason = season) {
+  async function saveAllToR2(nextRows, nextSeason) {
     setErrorMsg("");
     setInfoMsg("");
     setSaving(true);
@@ -392,9 +431,13 @@ export default function BigGameAdminClient() {
       if (!res.ok || !out?.ok) throw new Error(out?.error || `Save failed (${res.status})`);
 
       // Keep rows from other seasons in memory so we can do cross-season edits/copies.
-      // (Save to R2 only writes the selected season file.)
       const others = updated.filter((r) => Number(r.year) !== Number(nextSeason));
       setRows([...others, ...clean]);
+
+      // keep years list fresh
+      const nextYears = uniqueYearsFromRows([...others, ...clean]);
+      setYears(nextYears.length ? nextYears : years);
+
       setInfoMsg(`Saved Big Game divisions to R2 (season ${nextSeason}).`);
     } catch (e) {
       setErrorMsg(e?.message || "Failed to save Big Game data.");
@@ -410,10 +453,13 @@ export default function BigGameAdminClient() {
       const supabase = getSupabase();
       if (!supabase) throw new Error("Supabase client not available.");
 
+      const pickYear = safeNum(window.prompt("Import which year from Supabase?", String(years?.[0] ?? CURRENT_SEASON)), null);
+      if (!Number.isFinite(pickYear)) return;
+
       const { data, error } = await supabase
         .from("biggame_leagues")
         .select("*")
-        .eq("year", season)
+        .eq("year", pickYear)
         .order("division_order", { ascending: true })
         .order("is_division_header", { ascending: false })
         .order("display_order", { ascending: true });
@@ -430,12 +476,23 @@ export default function BigGameAdminClient() {
             league_image_key: "",
           },
           idx,
-          season
+          pickYear
         )
       );
 
-      setRows(imported);
-      setInfoMsg(`Imported ${imported.length} rows from Supabase. Review, then click "Save to R2".`);
+      // merge into existing rows (don’t nuke other years)
+      setRows((prev) => {
+        const others = prev.filter((r) => Number(r.year) !== Number(pickYear));
+        return [...others, ...imported];
+      });
+
+      setYears((prev) => {
+        const next = new Set(prev);
+        next.add(pickYear);
+        return Array.from(next).sort((a, b) => b - a);
+      });
+
+      setInfoMsg(`Imported ${imported.length} rows from Supabase (year ${pickYear}). Review, then click “Save Season ${pickYear}”.`);
     } catch (e) {
       setErrorMsg(e?.message || "Failed to import from Supabase.");
     }
@@ -474,7 +531,7 @@ export default function BigGameAdminClient() {
         is_active: true,
       },
       0,
-      season
+      group.year
     );
 
     setRows((prev) => [...prev, { ...header, ...patch }]);
@@ -484,13 +541,17 @@ export default function BigGameAdminClient() {
     const baseName = window.prompt("Division name?") || "";
     const name = baseName.trim();
     if (!name) return;
+
+    const y = safeNum(window.prompt("Year for this new division?", String(years?.[0] ?? CURRENT_SEASON)), null);
+    if (!Number.isFinite(y)) return;
+
     const divSlug = slugify(name);
 
     // header
     const header = normalizeRow(
       {
         id: newId("bg"),
-        year: season,
+        year: y,
         division_name: name,
         division_slug: divSlug,
         division_status: "FILLING",
@@ -499,7 +560,7 @@ export default function BigGameAdminClient() {
         is_active: true,
       },
       0,
-      season
+      y
     );
 
     // 8 leagues
@@ -507,7 +568,7 @@ export default function BigGameAdminClient() {
       normalizeRow(
         {
           id: newId("bg"),
-          year: season,
+          year: y,
           division_name: name,
           division_slug: divSlug,
           division_status: header.division_status,
@@ -519,12 +580,17 @@ export default function BigGameAdminClient() {
           is_active: true,
         },
         i,
-        season
+        y
       )
     );
 
     setRows((prev) => [...prev, header, ...leagues]);
-    setInfoMsg(`Added division "${name}" locally. Click "Save to R2" to publish.`);
+    setYears((prev) => {
+      const next = new Set(prev);
+      next.add(y);
+      return Array.from(next).sort((a, b) => b - a);
+    });
+    setInfoMsg(`Added division "${name}" locally for year ${y}. Click “Save Season ${y}” to publish.`);
   }
 
   function deleteDivision(group) {
@@ -538,13 +604,12 @@ export default function BigGameAdminClient() {
       return next;
     });
 
-    setInfoMsg(`Division "${group.division_name}" removed locally. Click "Save to R2" to publish.`);
+    setInfoMsg(`Division "${group.division_name}" removed locally. Click “Save Season ${group.year}” to publish.`);
   }
 
   function deleteLeague(leagueRow) {
     if (!leagueRow?.id) return;
     if (!window.confirm("Delete this league row?")) return;
-    // revoke local preview blob if present
     safeRevoke(leagueRow._pending_league_preview);
     setRows((prev) => prev.filter((r) => r.id !== leagueRow.id));
   }
@@ -555,7 +620,7 @@ export default function BigGameAdminClient() {
     if (Number(y) === Number(group.year)) return;
 
     const ok = window.confirm(
-      `Change division year from ${group.year} to ${y}?\n\nThis will clear Sleeper URLs for all leagues in this division.\n\nYou can review, then click “Save to R2” to publish.`
+      `Change division year from ${group.year} to ${y}?\n\nThis will clear Sleeper URLs for all leagues in this division.\n\nYou can review, then click “Save Season ${y}” to publish.`
     );
     if (!ok) return;
 
@@ -566,7 +631,6 @@ export default function BigGameAdminClient() {
       prev.map((r) => {
         if (Number(r.year) !== Number(group.year)) return r;
         if (safeStr(r.division_slug) !== safeStr(group.division_slug)) return r;
-        // rollover rule: clear league sleeper URLs
         if (!r.is_division_header) {
           return { ...r, year: y, league_url: "" };
         }
@@ -590,10 +654,22 @@ export default function BigGameAdminClient() {
       return next;
     });
 
-    setInfoMsg(
-      `Rolled division "${group.division_name}" to year ${y} locally (Sleeper URLs cleared). Switch season to ${y} and click “Save to R2” to publish.`
-    );
+    setYears((prev) => {
+      const next = new Set(prev);
+      next.add(y);
+      return Array.from(next).sort((a, b) => b - a);
+    });
+
+    setInfoMsg(`Rolled division "${group.division_name}" to year ${y} locally (Sleeper URLs cleared). Click “Save Season ${y}” to publish.`);
   }
+
+  const yearSections = useMemo(() => {
+    const fromRows = uniqueYearsFromRows(rows);
+    const base = years?.length ? years : fromRows;
+    return base.length ? base : [CURRENT_SEASON];
+  }, [rows, years]);
+
+  const heroSeason = yearSections?.[0] ?? CURRENT_SEASON;
 
   if (loading) {
     return <p className="text-sm text-muted">Loading Big Game divisions…</p>;
@@ -611,25 +687,12 @@ export default function BigGameAdminClient() {
       <div className="rounded-2xl border border-subtle bg-card-surface p-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold">Big Game data source: R2</p>
-          <p className="text-xs text-muted">Reads/writes: /r2/{R2_KEY_FOR(season)}</p>
+          <p className="text-xs text-muted">Per-season writes: /r2/{R2_KEY_FOR("{YEAR}")}</p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <label className="text-xs text-muted flex items-center gap-2">
-            Season
-            <input className="input w-24" value={season} onChange={(e) => setSeason(safeNum(e.target.value, season) || season)} />
-          </label>
-
-          <button className="btn btn-outline text-sm" type="button" onClick={() => loadFromR2(season)} disabled={saving}>
-            Reload from R2
-          </button>
-
           <button className="btn btn-outline text-sm" type="button" onClick={importFromSupabase} disabled={saving}>
             Import from Supabase
-          </button>
-
-          <button className="btn btn-primary text-sm" type="button" onClick={() => saveAllToR2(rows, season)} disabled={saving}>
-            {saving ? "Saving…" : "Save to R2"}
           </button>
 
           <button className="btn btn-primary text-sm" type="button" onClick={addDivision} disabled={saving}>
@@ -642,14 +705,9 @@ export default function BigGameAdminClient() {
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <p className="text-sm font-semibold">Owner Updates (Hero)</p>
-            <p className="text-xs text-muted">This image + text renders in the hero section on the public Big Game page.</p>
+            <p className="text-xs text-muted">This image + text renders in the hero section on the public Big Game page (season {heroSeason}).</p>
           </div>
-          <button
-            className="btn btn-primary text-sm"
-            type="button"
-            onClick={() => savePageConfig(season)}
-            disabled={pageSaving || pageLoading}
-          >
+          <button className="btn btn-primary text-sm" type="button" onClick={() => savePageConfig(heroSeason)} disabled={pageSaving || pageLoading}>
             {pageSaving ? "Saving…" : "Save Owner Updates"}
           </button>
         </div>
@@ -659,12 +717,7 @@ export default function BigGameAdminClient() {
             <p className="text-xs text-muted">Promo image</p>
             <div className="rounded-xl border border-subtle bg-black/20 overflow-hidden">
               {pageCfg.hero.promoImageKey ? (
-                <img
-                  src={`/r2/${pageCfg.hero.promoImageKey}`}
-                  alt="Owner promo"
-                  className="w-full h-auto block"
-                  loading="lazy"
-                />
+                <img src={`/r2/${pageCfg.hero.promoImageKey}`} alt="Owner promo" className="w-full h-auto block" loading="lazy" />
               ) : (
                 <div className="p-6 text-sm text-muted">No image uploaded.</div>
               )}
@@ -707,326 +760,319 @@ export default function BigGameAdminClient() {
         {groups.length === 0 ? (
           <p className="text-sm text-muted">No Big Game rows in R2 yet. Use “Import from Supabase” or “Add division”.</p>
         ) : (
-          groups.map((g) => {
-            const isOpen = open.has(g.key);
-            const header = g.header;
-
-            const divisionImageSrc = header?._pending_division_preview
-              ? header._pending_division_preview
-              : header?.division_image_key
-              ? `/r2/${header.division_image_key}`
-              : header?.division_image_path
-              ? header.division_image_path
-              : "";
+          yearSections.map((yr) => {
+            const yearGroups = groups.filter((g) => Number(g.year) === Number(yr));
+            if (!yearGroups.length) return null;
 
             return (
-              <div key={g.key} className="rounded-2xl border border-subtle bg-card-surface overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => toggleGroup(g.key)}
-                  className="w-full flex items-center justify-between gap-3 px-5 py-4 border-b border-subtle"
-                >
-                  <div className="min-w-0 text-left">
-                    <p className="text-sm font-semibold truncate">
-                      {g.division_name} · {g.year}
-                    </p>
-                    <p className="text-xs text-muted truncate">{g.leagues.length} leagues</p>
-                  </div>
-                  <span className="text-xs text-muted">{isOpen ? "Hide" : "Edit"} →</span>
-                </button>
+              <div key={yr} className="space-y-3">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <h3 className="text-base font-semibold">Season {yr}</h3>
+                  <button className="btn btn-primary text-sm" type="button" onClick={() => saveAllToR2(rows, yr)} disabled={saving}>
+                    {saving ? "Saving…" : `Save Season ${yr} to R2`}
+                  </button>
+                </div>
 
-                {isOpen && (
-                  <div className="p-5 space-y-4">
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <label className="space-y-1">
-                        <span className="text-xs text-muted">Division name</span>
-                        <input
-                          className="input"
-                          value={safeStr(header?.division_name || g.division_name)}
-                          onChange={(e) => {
-                            const nextName = e.target.value;
-                            // update all rows in division
-                            setRows((prev) =>
-                              prev.map((r) => {
-                                if (Number(r.year) !== Number(g.year)) return r;
-                                if (safeStr(r.division_slug) !== safeStr(g.division_slug)) return r;
-                                return {
-                                  ...r,
-                                  division_name: nextName,
-                                  division_slug: slugify(nextName) || r.division_slug,
-                                };
-                              })
-                            );
-                          }}
-                        />
-                      </label>
+                <div className="space-y-3">
+                  {yearGroups.map((g) => {
+                    const isOpen = open.has(g.key);
+                    const header = g.header;
 
-                      <label className="space-y-1">
-                        <span className="text-xs text-muted">Division order (small numbers show first)</span>
-                        <input
-                          className="input w-28"
-                          value={safeStr(header?.division_order ?? "")}
-                          onChange={(e) => {
-                            const nextOrder = safeNum(e.target.value, null);
-                            setRows((prev) =>
-                              prev.map((r) => {
-                                if (Number(r.year) !== Number(g.year)) return r;
-                                if (safeStr(r.division_slug) !== safeStr(g.division_slug)) return r;
-                                return { ...r, division_order: nextOrder };
-                              })
-                            );
-                          }}
-                        />
-                      </label>
+                    const divisionImageSrc = header?._pending_division_preview
+                      ? header._pending_division_preview
+                      : header?.division_image_key
+                      ? `/r2/${header.division_image_key}`
+                      : header?.division_image_path
+                      ? header.division_image_path
+                      : "";
 
-                      <label className="space-y-1">
-                        <span className="text-xs text-muted">Rollover year</span>
-                        <div className="flex items-center gap-2">
-                          <input
-                            className="input w-28"
-                            value={safeStr(divisionYearDraft[g.key] ?? header?.year ?? g.year)}
-                            onChange={(e) => setDivisionYearDraft((prev) => ({ ...prev, [g.key]: e.target.value }))}
-                          />
-                          <button
-                            type="button"
-                            className="btn btn-outline text-xs"
-                            onClick={() => rolloverDivisionToYear(g, divisionYearDraft[g.key] ?? header?.year ?? g.year)}
-                          >
-                            Rollover
-                          </button>
-                        </div>
-                        <span className="text-[11px] text-muted">Rollover sets the division year and clears Sleeper URLs. Nothing saves until you click “Save to R2”.</span>
-                      </label>
-
-                      <label className="space-y-1">
-                        <span className="text-xs text-muted">Division status</span>
-                        <select
-                          className="input"
-                          value={safeStr(header?.division_status || "FULL")}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setRows((prev) =>
-                              prev.map((r) => {
-                                if (Number(r.year) !== Number(g.year)) return r;
-                                if (safeStr(r.division_slug) !== safeStr(g.division_slug)) return r;
-                                // keep division_status mirrored in all rows (matches current schema)
-                                return { ...r, division_status: v };
-                              })
-                            );
-                          }}
+                    return (
+                      <div key={g.key} className="rounded-2xl border border-subtle bg-card-surface overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => toggleGroup(g.key)}
+                          className="w-full flex items-center justify-between gap-3 px-5 py-4 border-b border-subtle"
                         >
-                          {DIVISION_STATUS_OPTIONS.map((s) => (
-                            <option key={s} value={s}>
-                              {s}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                          <div className="min-w-0 text-left">
+                            <p className="text-sm font-semibold truncate">
+                              {g.division_name} · {g.year}
+                            </p>
+                            <p className="text-xs text-muted truncate">{g.leagues.length} leagues</p>
+                          </div>
+                          <span className="text-xs text-muted">{isOpen ? "Hide" : "Edit"} →</span>
+                        </button>
 
-                      <label className="space-y-1">
-                        <span className="text-xs text-muted">Division blurb (optional)</span>
-                        <input
-                          className="input"
-                          value={safeStr(header?.division_blurb || "")}
-                          onChange={(e) => setDivisionHeader(g, { division_blurb: e.target.value })}
-                        />
-                      </label>
-                    </div>
+                        {isOpen && (
+                          <div className="p-5 space-y-4">
+                            <div className="grid gap-3 md:grid-cols-2">
+                              <label className="space-y-1">
+                                <span className="text-xs text-muted">Division name</span>
+                                <input
+                                  className="input"
+                                  value={safeStr(header?.division_name || g.division_name)}
+                                  onChange={(e) => {
+                                    const nextName = e.target.value;
+                                    setRows((prev) =>
+                                      prev.map((r) => {
+                                        if (Number(r.year) !== Number(g.year)) return r;
+                                        if (safeStr(r.division_slug) !== safeStr(g.division_slug)) return r;
+                                        return {
+                                          ...r,
+                                          division_name: nextName,
+                                          division_slug: slugify(nextName) || r.division_slug,
+                                        };
+                                      })
+                                    );
+                                  }}
+                                />
+                              </label>
 
-                    <div className="flex flex-wrap items-center gap-4">
-                      <div className="flex items-center gap-3">
-                        <label className="btn btn-outline text-xs cursor-pointer">
-                          Upload division image
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (!file) return;
-                              const preview = URL.createObjectURL(file);
+                              <label className="space-y-1">
+                                <span className="text-xs text-muted">Division order (small numbers show first)</span>
+                                <input
+                                  className="input w-28"
+                                  value={safeStr(header?.division_order ?? "")}
+                                  onChange={(e) => {
+                                    const nextOrder = safeNum(e.target.value, null);
+                                    setRows((prev) =>
+                                      prev.map((r) => {
+                                        if (Number(r.year) !== Number(g.year)) return r;
+                                        if (safeStr(r.division_slug) !== safeStr(g.division_slug)) return r;
+                                        return { ...r, division_order: nextOrder };
+                                      })
+                                    );
+                                  }}
+                                />
+                              </label>
 
-                              // store on header row
-                              const headerId = header?.id;
-                              if (!headerId) {
-                                setDivisionHeader(g, { _pending_division_file: file, _pending_division_preview: preview });
-                              } else {
-                                setRows((prev) =>
-                                  prev.map((r) => {
-                                    if (r.id !== headerId) return r;
-                                    safeRevoke(r._pending_division_preview);
-                                    return { ...r, _pending_division_file: file, _pending_division_preview: preview };
-                                  })
-                                );
-                              }
+                              <label className="space-y-1">
+                                <span className="text-xs text-muted">Rollover year</span>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    className="input w-28"
+                                    value={safeStr(divisionYearDraft[g.key] ?? header?.year ?? g.year)}
+                                    onChange={(e) => setDivisionYearDraft((prev) => ({ ...prev, [g.key]: e.target.value }))}
+                                  />
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline text-xs"
+                                    onClick={() => rolloverDivisionToYear(g, divisionYearDraft[g.key] ?? header?.year ?? g.year)}
+                                  >
+                                    Rollover
+                                  </button>
+                                </div>
+                                <span className="text-[11px] text-muted">
+                                  Rollover sets the division year and clears Sleeper URLs. Nothing saves until you click “Save Season {g.year}”.
+                                </span>
+                              </label>
 
-                              e.target.value = "";
-                            }}
-                          />
-                        </label>
+                              <label className="space-y-1">
+                                <span className="text-xs text-muted">Division status</span>
+                                <select
+                                  className="input"
+                                  value={safeStr(header?.division_status || "FULL")}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    setRows((prev) =>
+                                      prev.map((r) => {
+                                        if (Number(r.year) !== Number(g.year)) return r;
+                                        if (safeStr(r.division_slug) !== safeStr(g.division_slug)) return r;
+                                        return { ...r, division_status: v };
+                                      })
+                                    );
+                                  }}
+                                >
+                                  {DIVISION_STATUS_OPTIONS.map((s) => (
+                                    <option key={s} value={s}>
+                                      {s}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
 
-                        {divisionImageSrc ? (
-                          <img
-                            src={divisionImageSrc}
-                            alt="Division preview"
-                            className="h-12 w-20 object-cover rounded-lg border border-subtle"
-                          />
-                        ) : (
-                          <span className="text-xs text-muted">No image</span>
+                              <label className="space-y-1">
+                                <span className="text-xs text-muted">Division blurb (optional)</span>
+                                <input className="input" value={safeStr(header?.division_blurb || "")} onChange={(e) => setDivisionHeader(g, { division_blurb: e.target.value })} />
+                              </label>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-4">
+                              <div className="flex items-center gap-3">
+                                <label className="btn btn-outline text-xs cursor-pointer">
+                                  Upload division image
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0];
+                                      if (!file) return;
+                                      const preview = URL.createObjectURL(file);
+
+                                      const headerId = header?.id;
+                                      if (!headerId) {
+                                        setDivisionHeader(g, { _pending_division_file: file, _pending_division_preview: preview });
+                                      } else {
+                                        setRows((prev) =>
+                                          prev.map((r) => {
+                                            if (r.id !== headerId) return r;
+                                            safeRevoke(r._pending_division_preview);
+                                            return { ...r, _pending_division_file: file, _pending_division_preview: preview };
+                                          })
+                                        );
+                                      }
+
+                                      e.target.value = "";
+                                    }}
+                                  />
+                                </label>
+
+                                {divisionImageSrc ? (
+                                  <img src={divisionImageSrc} alt="Division preview" className="h-12 w-20 object-cover rounded-lg border border-subtle" />
+                                ) : (
+                                  <span className="text-xs text-muted">No image</span>
+                                )}
+
+                                <span className="text-[11px] text-muted">
+                                  {header?.division_image_key
+                                    ? `R2: ${safeStr(header.division_image_key).split("/").slice(-1)[0]}`
+                                    : header?.division_image_path
+                                    ? "URL"
+                                    : "—"}
+                                </span>
+                              </div>
+
+                              <button className="btn btn-outline text-sm" type="button" onClick={() => deleteDivision(g)}>
+                                Delete division
+                              </button>
+
+                              <button
+                                className="btn btn-outline text-sm"
+                                type="button"
+                                onClick={() => {
+                                  const y = window.prompt("Rollover this division to what year?", String(Number(g.year) + 1));
+                                  if (!y) return;
+                                  setDivisionYearDraft((prev) => ({ ...prev, [g.key]: y }));
+                                  rolloverDivisionToYear(g, y);
+                                }}
+                              >
+                                Rollover to year
+                              </button>
+                            </div>
+
+                            <div className="overflow-x-auto rounded-2xl border border-subtle">
+                              <table className="min-w-[980px] w-full text-sm">
+                                <thead className="bg-subtle-surface">
+                                  <tr className="text-left">
+                                    <th className="px-3 py-2 w-[70px]">#</th>
+                                    <th className="px-3 py-2 w-[280px]">Name</th>
+                                    <th className="px-3 py-2 w-[140px]">Status</th>
+                                    <th className="px-3 py-2">Sleeper URL</th>
+                                    <th className="px-3 py-2 w-[220px]">Image</th>
+                                    <th className="px-3 py-2 w-[140px]">Spots</th>
+                                    <th className="px-3 py-2 w-[70px]">Active</th>
+                                    <th className="px-3 py-2 w-[90px]"></th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {g.leagues
+                                    .slice()
+                                    .sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999))
+                                    .map((lg) => {
+                                      const leagueImg = lg._pending_league_preview
+                                        ? lg._pending_league_preview
+                                        : lg.league_image_key
+                                        ? `/r2/${lg.league_image_key}`
+                                        : lg.league_image_path
+                                        ? lg.league_image_path
+                                        : "";
+
+                                      return (
+                                        <tr key={lg.id} className="border-t border-subtle">
+                                          <td className="px-3 py-2">
+                                            <input
+                                              className="input w-16"
+                                              value={safeStr(lg.display_order ?? "")}
+                                              onChange={(e) => upsertRow(lg.id, { display_order: safeNum(e.target.value, null) })}
+                                            />
+                                          </td>
+                                          <td className="px-3 py-2">
+                                            <input className="input w-72" value={safeStr(lg.league_name)} onChange={(e) => upsertRow(lg.id, { league_name: e.target.value })} />
+                                          </td>
+                                          <td className="px-3 py-2">
+                                            <select className="input w-36" value={safeStr(lg.league_status || "FULL")} onChange={(e) => upsertRow(lg.id, { league_status: e.target.value })}>
+                                              {LEAGUE_STATUS_OPTIONS.map((s) => (
+                                                <option key={s} value={s}>
+                                                  {s}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </td>
+                                          <td className="px-3 py-2">
+                                            <input className="input w-[320px]" value={safeStr(lg.league_url)} onChange={(e) => upsertRow(lg.id, { league_url: e.target.value })} />
+                                          </td>
+                                          <td className="px-3 py-2">
+                                            <div className="flex items-center gap-2">
+                                              <label className="btn btn-outline text-xs cursor-pointer">
+                                                Upload
+                                                <input
+                                                  type="file"
+                                                  accept="image/*"
+                                                  onChange={(e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (!file) return;
+                                                    const preview = URL.createObjectURL(file);
+                                                    setRows((prev) =>
+                                                      prev.map((r) => {
+                                                        if (r.id !== lg.id) return r;
+                                                        safeRevoke(r._pending_league_preview);
+                                                        return { ...r, _pending_league_file: file, _pending_league_preview: preview };
+                                                      })
+                                                    );
+                                                    e.target.value = "";
+                                                  }}
+                                                />
+                                              </label>
+
+                                              {leagueImg ? (
+                                                <img src={leagueImg} alt="League preview" className="h-10 w-16 object-cover rounded-lg border border-subtle" />
+                                              ) : (
+                                                <span className="text-xs text-muted">No image</span>
+                                              )}
+
+                                              <span className="text-[11px] text-muted truncate max-w-[120px]">
+                                                {lg.league_image_key ? `R2: ${safeStr(lg.league_image_key).split("/").slice(-1)[0]}` : lg.league_image_path ? "URL" : "—"}
+                                              </span>
+                                            </div>
+                                          </td>
+                                          <td className="px-3 py-2">
+                                            <input className="input w-24" value={safeStr(lg.spots_available ?? "")} onChange={(e) => upsertRow(lg.id, { spots_available: safeNum(e.target.value, null) })} />
+                                          </td>
+                                          <td className="px-3 py-2">
+                                            <input type="checkbox" checked={lg.is_active !== false} onChange={(e) => upsertRow(lg.id, { is_active: e.target.checked })} />
+                                          </td>
+                                          <td className="px-3 py-2">
+                                            <button className="btn btn-outline text-xs" type="button" onClick={() => deleteLeague(lg)}>
+                                              Delete
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            <div className="flex justify-end">
+                              <button className="btn btn-primary" type="button" onClick={() => saveAllToR2(rows, g.year)} disabled={saving}>
+                                {saving ? "Saving…" : `Save Season ${g.year} to R2`}
+                              </button>
+                            </div>
+                          </div>
                         )}
-
-                        <span className="text-[11px] text-muted">
-                          {header?.division_image_key ? `R2: ${safeStr(header.division_image_key).split("/").slice(-1)[0]}` : header?.division_image_path ? "URL" : "—"}
-                        </span>
                       </div>
-
-                      <button className="btn btn-outline text-sm" type="button" onClick={() => deleteDivision(g)}>
-                        Delete division
-                      </button>
-
-                      <button
-                        className="btn btn-outline text-sm"
-                        type="button"
-                        onClick={() => {
-                          const y = window.prompt("Rollover this division to what year?", String(Number(g.year) + 1));
-                          if (!y) return;
-                          setDivisionYearDraft((prev) => ({ ...prev, [g.key]: y }));
-                          rolloverDivisionToYear(g, y);
-                        }}
-                      >
-                        Rollover to year
-                      </button>
-                    </div>
-
-                    <div className="overflow-x-auto rounded-2xl border border-subtle">
-                      <table className="min-w-[980px] w-full text-sm">
-                        <thead className="bg-subtle-surface">
-                          <tr className="text-left">
-                            <th className="px-3 py-2 w-[70px]">#</th>
-                            <th className="px-3 py-2 w-[280px]">Name</th>
-                            <th className="px-3 py-2 w-[140px]">Status</th>
-                            <th className="px-3 py-2">Sleeper URL</th>
-                            <th className="px-3 py-2 w-[220px]">Image</th>
-                            <th className="px-3 py-2 w-[140px]">Spots</th>
-                            <th className="px-3 py-2 w-[70px]">Active</th>
-                            <th className="px-3 py-2 w-[90px]"></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {g.leagues
-                            .slice()
-                            .sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999))
-                            .map((lg) => {
-                              const leagueImg = lg._pending_league_preview
-                                ? lg._pending_league_preview
-                                : lg.league_image_key
-                                ? `/r2/${lg.league_image_key}`
-                                : lg.league_image_path
-                                ? lg.league_image_path
-                                : "";
-
-                              return (
-                                <tr key={lg.id} className="border-t border-subtle">
-                                  <td className="px-3 py-2">
-                                    <input
-                                      className="input w-16"
-                                      value={safeStr(lg.display_order ?? "")}
-                                      onChange={(e) => upsertRow(lg.id, { display_order: safeNum(e.target.value, null) })}
-                                    />
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <input
-                                      className="input w-72"
-                                      value={safeStr(lg.league_name)}
-                                      onChange={(e) => upsertRow(lg.id, { league_name: e.target.value })}
-                                    />
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <select
-                                      className="input w-36"
-                                      value={safeStr(lg.league_status || "FULL")}
-                                      onChange={(e) => upsertRow(lg.id, { league_status: e.target.value })}
-                                    >
-                                      {LEAGUE_STATUS_OPTIONS.map((s) => (
-                                        <option key={s} value={s}>
-                                          {s}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <input
-                                      className="input w-[320px]"
-                                      value={safeStr(lg.league_url)}
-                                      onChange={(e) => upsertRow(lg.id, { league_url: e.target.value })}
-                                    />
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <div className="flex items-center gap-2">
-                                      <label className="btn btn-outline text-xs cursor-pointer">
-                                        Upload
-                                        <input
-                                          type="file"
-                                          accept="image/*"
-                                          onChange={(e) => {
-                                            const file = e.target.files?.[0];
-                                            if (!file) return;
-                                            const preview = URL.createObjectURL(file);
-                                            setRows((prev) =>
-                                              prev.map((r) => {
-                                                if (r.id !== lg.id) return r;
-                                                safeRevoke(r._pending_league_preview);
-                                                return { ...r, _pending_league_file: file, _pending_league_preview: preview };
-                                              })
-                                            );
-                                            e.target.value = "";
-                                          }}
-                                        />
-                                      </label>
-
-                                      {leagueImg ? (
-                                        <img src={leagueImg} alt="League preview" className="h-10 w-16 object-cover rounded-lg border border-subtle" />
-                                      ) : (
-                                        <span className="text-xs text-muted">No image</span>
-                                      )}
-
-                                      <span className="text-[11px] text-muted truncate max-w-[120px]">
-                                        {lg.league_image_key ? `R2: ${safeStr(lg.league_image_key).split("/").slice(-1)[0]}` : lg.league_image_path ? "URL" : "—"}
-                                      </span>
-                                    </div>
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <input
-                                      className="input w-24"
-                                      value={safeStr(lg.spots_available ?? "")}
-                                      onChange={(e) => upsertRow(lg.id, { spots_available: safeNum(e.target.value, null) })}
-                                    />
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <input type="checkbox" checked={lg.is_active !== false} onChange={(e) => upsertRow(lg.id, { is_active: e.target.checked })} />
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <button
-                                      className="btn btn-outline text-xs"
-                                      type="button"
-                                      onClick={() => deleteLeague(lg)}
-                                    >
-                                      Delete
-                                    </button>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <div className="flex justify-end">
-                      <button className="btn btn-primary" type="button" onClick={() => saveAllToR2(rows, season)} disabled={saving}>
-                        {saving ? "Saving…" : "Save to R2"}
-                      </button>
-                    </div>
-                  </div>
-                )}
+                    );
+                  })}
+                </div>
               </div>
             );
           })
