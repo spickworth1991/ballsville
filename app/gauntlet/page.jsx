@@ -1,8 +1,7 @@
 // src/app/gauntlet/page.jsx
 import Link from "next/link";
 import SectionManifestGate from "@/components/manifest/SectionManifestGate";
-import GauntletLegionsClient from "@/components/gauntlet/GauntletLegionsClient";
-import OwnerHeroBlock from "@/components/blocks/OwnerHeroBlock";
+import GauntletDynamicBlocks from "@/components/gauntlet/GauntletDynamicBlocks";
 import { CURRENT_SEASON } from "@/lib/season";
 
 const DOC_EMBED_SRC =
@@ -112,8 +111,10 @@ export default function GauntletPage() {
               </div>
               
             </div>
-            <OwnerHeroBlock mode="gauntlet" season={CURRENT_SEASON} title="Owner Updates" />
-          </div>
+          <SectionManifestGate section="gauntlet" season={CURRENT_SEASON}>
+            <GauntletDynamicBlocks season={CURRENT_SEASON} />
+          </SectionManifestGate>
+</div>
 
           {/* right: owner block + rules doc */}
           <div className="space-y-4">
@@ -282,10 +283,7 @@ export default function GauntletPage() {
               Three Legions — Egyptians, Greeks, and Romans — each with four Gods and 24 teams per God.
               Join a God, fill your league, and fight your way toward the Gauntlet.
             </p>
-          </header>
-
-          <GauntletLegionsClient embedded season={CURRENT_SEASON} />
-        </section>
+          </header></section>
       </div>
     </main>
   );

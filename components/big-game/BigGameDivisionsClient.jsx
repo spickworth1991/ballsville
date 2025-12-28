@@ -16,108 +16,68 @@ function safeNum(v, fallback = null) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-function slugify(input) {
-  return safeStr(input)
+function slugify(s) {
+  return String(s || "")
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 64);
+    .replace(/(^-|-$)/g, "");
 }
 
-function normalizeRow(r, idx = 0) {
-  const year = safeNum(r?.year, DEFAULT_SEASON);
-  const division_name = safeStr(r?.division_name || r?.theme_name || "Division").trim();
-  const division_slug = safeStr(r?.division_slug || slugify(division_name));
+/**
+ * Input json shape:
+ * { updatedAt, rows: [{ theme_name (division), name (league), ... }] }
+ *
+ * We build a division directory from the leagues feed.
+ */
+function buildDivisionsFromRows(rows) {
+  const map = new Map(); // divisionSlug -> { id, division_name, division_order, division_image, leagues[] }
 
-  // R2-admin schema:
-  // - header rows: is_division_header=true, division_* fields, division_status
-  // - league rows: is_division_header=false, league_* fields, league_status
-  // Legacy/supabase rows may still provide generic `status` and `name/url`.
-  const is_division_header = !!r?.is_division_header;
-  const division_status = safeStr(r?.division_status || r?.status || "TBD").trim() || "TBD";
-  const league_status = safeStr(r?.league_status || r?.status || "TBD").trim() || "TBD";
+  for (const r of rows || []) {
+    const divisionName = safeStr(r?.theme_name || r?.division_name || r?.division || "").trim();
+    if (!divisionName) continue;
 
-  const division_order = safeNum(r?.division_order, null);
-
-  return {
-    id: safeStr(r?.id || `${year}_${division_slug}_${idx}`),
-    year,
-    division_name,
-    division_slug,
-    is_division_header,
-    division_status,
-    league_status,
-    division_order,
-    theme: safeStr(r?.theme || ""),
-    is_active: r?.is_active !== false,
-
-    // images
-    division_image_key: safeStr(r?.division_image_key || ""),
-    division_image_path: safeStr(r?.division_image_path || r?.division_image_url || ""),
-    league_image_key: safeStr(r?.league_image_key || ""),
-    league_image_path: safeStr(r?.league_image_path || r?.league_image_url || ""),
-
-    // league
-    name: safeStr(r?.league_name || r?.name || "").trim(),
-    sleeper_url: safeStr(r?.league_url || r?.sleeper_url || r?.url || "").trim(),
-    display_order: safeNum(r?.display_order, idx + 1),
-    fill_note: safeStr(r?.fill_note || "").trim(),
-  };
-}
-
-function r2ImgSrc(key, fallbackUrl) {
-  if (key) return `/r2/${key}?v=${encodeURIComponent(key)}`;
-  return fallbackUrl || "";
-}
-
-function transformDivisions(rows, season) {
-  const divisionsMap = new Map();
-
-  for (const row of rows) {
-    if (!row || row.is_active === false) continue;
-    if (Number(row.year) !== Number(season)) continue;
-
-    const divKey = row.division_slug || slugify(row.division_name) || "division";
-
-    if (!divisionsMap.has(divKey)) {
-      divisionsMap.set(divKey, {
-        id: divKey,
-        division_slug: divKey,
-        division_name: row.division_name,
-        status: row.division_status || "TBD",
-        division_order: null,
-        division_image: r2ImgSrc(row.division_image_key, row.division_image_path),
+    const divisionSlug = slugify(divisionName);
+    if (!map.has(divisionSlug)) {
+      map.set(divisionSlug, {
+        id: divisionSlug,
+        division_slug: divisionSlug,
+        division_name: divisionName,
+        division_order: safeNum(r?.theme_order ?? r?.division_order, null),
+        division_image: safeStr(r?.theme_image_url || r?.theme_image_url || r?.division_image_url || r?.division_image || "").trim(),
+        division_image_key: safeStr(r?.theme_imageKey || r?.theme_image_key || r?.division_image_key || "").trim(),
+        status: safeStr(r?.theme_status || r?.division_status || "").trim(),
         leagues: [],
       });
     }
 
-    const div = divisionsMap.get(divKey);
+    const div = map.get(divisionSlug);
 
-    // Prefer header row as the source of division meta
-    if (row.is_division_header) {
-      div.division_name = row.division_name || div.division_name;
-      div.status = row.division_status || div.status || "TBD";
-      div.division_order = Number.isFinite(row.division_order) ? row.division_order : div.division_order;
-      div.division_image = r2ImgSrc(row.division_image_key, row.division_image_path) || div.division_image;
-      continue;
-    }
+    // Best available division image (first league row usually has it)
+    const nextDivKey = safeStr(r?.theme_imageKey || r?.theme_image_key || r?.division_image_key || "").trim();
+    const nextDivUrl = safeStr(r?.theme_image_url || r?.division_image_url || r?.division_image || "").trim();
+    if (!div.division_image_key && nextDivKey) div.division_image_key = nextDivKey;
+    if (!div.division_image && nextDivUrl) div.division_image = nextDivUrl;
 
+    // League entry
     div.leagues.push({
-      name: safeStr(row.name).trim(),
-      sleeper_url: safeStr(row.sleeper_url).trim(),
-      status: safeStr(row.league_status || row.division_status || "TBD").trim(),
-      display_order: safeNum(row.display_order, null),
-      spots_available: safeNum(row.spots_available, null),
-      fill_note: safeStr(row.fill_note).trim(),
-      league_image: r2ImgSrc(row.league_image_key, row.league_image_path),
+      id: r?.id || r?.ID || r?.Id || `${divisionSlug}:${safeStr(r?.name)}`,
+      name: safeStr(r?.name || r?.league_name || "").trim(),
+      status: safeStr(r?.status || "").trim(),
+      url: safeStr(r?.sleeper_url || r?.sleeperUrl || r?.url || "").trim(),
+      order: safeNum(r?.display_order ?? r?.league_order, null),
     });
   }
 
-  const divisions = Array.from(divisionsMap.values());
-  for (const d of divisions) {
-    d.leagues.sort((a, b) => (a.display_order ?? 9999) - (b.display_order ?? 9999));
-  }
+  const divisions = Array.from(map.values());
+  divisions.forEach((d) => {
+    d.leagues.sort((a, b) => {
+      const ao = a.order ?? 9999;
+      const bo = b.order ?? 9999;
+      if (ao !== bo) return ao - bo;
+      return safeStr(a.name).localeCompare(safeStr(b.name));
+    });
+  });
 
   divisions.sort((a, b) => {
     const ao = a.division_order;
@@ -127,36 +87,83 @@ function transformDivisions(rows, season) {
     if (!Number.isFinite(ao) && Number.isFinite(bo)) return 1;
     return safeStr(a.division_name).localeCompare(safeStr(b.division_name));
   });
+
   return divisions;
 }
 
-export default function BigGameDivisionsClient({ year = DEFAULT_SEASON }) {
+function resolveDivisionImage(div, updatedAt) {
+  const key = safeStr(div?.division_image_key).trim();
+  const url = safeStr(div?.division_image).trim();
+  const base = key ? `/r2/${key}` : url;
+  if (!base) return "";
+  if (!updatedAt) return base;
+  return base.includes("?") ? base : `${base}?v=${encodeURIComponent(updatedAt)}`;
+}
+
+export default function BigGameDivisionsClient({ year = DEFAULT_SEASON, version = "0", manifest = null }) {
+  const season = safeNum(year, DEFAULT_SEASON);
+
   const [divisions, setDivisions] = useState([]);
+  const [updatedAt, setUpdatedAt] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  const season = useMemo(() => Number(year) || DEFAULT_SEASON, [year]);
-  const bust = useMemo(() => `v=${Date.now()}` , []);
 
   useEffect(() => {
     let alive = true;
 
+    // Manifest-first: don't fetch the heavy json until the section manifest exists.
+    if (manifest === null) return () => {};
+
     async function load() {
-      setLoading(true);
-      setError("");
       try {
-        const res = await fetch(`/r2/${R2_KEY_FOR(season)}?${bust}`);
-        if (!res.ok) {
-          if (!alive) return;
-          setDivisions([]);
-          return;
+        setError("");
+        setLoading(true);
+
+        const v = String(version || "0");
+        const cacheKeyV = `biggame:divisions:${season}:version`;
+        const cacheKeyData = `biggame:divisions:${season}:data`;
+        const cacheKeyUpdated = `biggame:divisions:${season}:updatedAt`;
+
+        // Session cache gated by manifest version
+        try {
+          const cachedV = sessionStorage.getItem(cacheKeyV);
+          if (cachedV && cachedV === v) {
+            const cachedData = sessionStorage.getItem(cacheKeyData);
+            const cachedUpdated = sessionStorage.getItem(cacheKeyUpdated);
+            if (cachedData) {
+              const parsed = JSON.parse(cachedData);
+              if (alive && Array.isArray(parsed)) {
+                setDivisions(parsed);
+                setUpdatedAt(String(cachedUpdated || ""));
+                setLoading(false);
+                return;
+              }
+            }
+          }
+        } catch {
+          // ignore storage errors
         }
-        const data = await res.json();
-        const list = Array.isArray(data?.rows) ? data.rows : Array.isArray(data) ? data : [];
-        const normalized = list.map(normalizeRow);
-        const divs = transformDivisions(normalized, season);
+
+        const res = await fetch(`/r2/${R2_KEY_FOR(season)}?v=${encodeURIComponent(v)}`, { cache: "default" });
+        if (!res.ok) throw new Error(`Failed to load Big Game data (${res.status})`);
+
+        const json = await res.json();
+        const rows = Array.isArray(json?.rows) ? json.rows : Array.isArray(json) ? json : [];
+        const stamp = safeStr(json?.updatedAt || json?.updated_at || "");
+
+        const nextDivisions = buildDivisionsFromRows(rows);
+
         if (!alive) return;
-        setDivisions(divs);
+        setDivisions(nextDivisions);
+        setUpdatedAt(stamp);
+
+        try {
+          sessionStorage.setItem(cacheKeyV, v);
+          sessionStorage.setItem(cacheKeyUpdated, stamp);
+          sessionStorage.setItem(cacheKeyData, JSON.stringify(nextDivisions));
+        } catch {
+          // ignore storage errors
+        }
       } catch (e) {
         if (!alive) return;
         setError(e?.message || "Failed to load Big Game data.");
@@ -169,28 +176,16 @@ export default function BigGameDivisionsClient({ year = DEFAULT_SEASON }) {
     return () => {
       alive = false;
     };
-  }, [season, bust]);
+  }, [season, version, manifest]);
 
-  if (loading) {
-    return <p className="text-sm text-muted">Loading divisions…</p>;
-  }
-
-  if (error) {
-    return <p className="text-sm text-muted">{error}</p>;
-  }
-
-  if (!divisions.length) {
-    return <p className="text-sm text-muted">No divisions published yet.</p>;
-  }
+  if (loading) return <p className="text-sm text-muted">Loading divisions…</p>;
+  if (error) return <p className="text-sm text-danger">{error}</p>;
 
   return (
-    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {divisions.map((d) => {
-        // NOTE: this site is deployed as a static export.
-        // Keep the drill-down on the same /big-game/divisions page using query params.
-        const href = `/big-game/divisions?division=${encodeURIComponent(
-          d.division_slug
-        )}&year=${encodeURIComponent(String(season))}`;
+        const href = `/big-game/divisions?division=${encodeURIComponent(d.division_slug)}&year=${encodeURIComponent(season)}`;
+        const img = resolveDivisionImage(d, updatedAt);
 
         return (
           <MediaTabCard
@@ -199,7 +194,7 @@ export default function BigGameDivisionsClient({ year = DEFAULT_SEASON }) {
             title={d.division_name}
             subtitle={`${d.leagues.length} leagues`}
             metaRight={<span className="badge">{safeStr(d.status || "TBD")}</span>}
-            imageSrc={d.division_image || ""}
+            imageSrc={img}
             imageAlt="Division"
             footerText="View division"
           />

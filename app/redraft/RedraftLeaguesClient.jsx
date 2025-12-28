@@ -14,128 +14,156 @@ const STATUS_LABEL = {
   tbd: "TBD",
 };
 
-const STATUS_BADGE = {
-  full: "bg-emerald-500/15 text-emerald-200 border-emerald-400/20",
-  filling: "bg-amber-500/15 text-amber-200 border-amber-400/20",
-  drafting: "bg-sky-500/15 text-sky-200 border-sky-400/20",
-  tbd: "bg-zinc-500/15 text-zinc-200 border-zinc-400/20",
-};
-
-function normLeague(l, idx) {
-  return {
-    name: String(l?.name || `League ${idx + 1}`),
-    url: String(l?.url || ""),
-    status: ["full", "filling", "drafting", "tbd"].includes(l?.status) ? l.status : "tbd",
-    active: l?.active !== false,
-    order: Number.isFinite(Number(l?.order)) ? Number(l.order) : idx + 1,
-    imageKey: String(l?.imageKey || ""),
-    imageUrl: String(l?.imageUrl || ""),
-  };
+function safeStr(v) {
+  return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
-export default function RedraftLeaguesClient({ version = "0" }) {
+function statusBadge(raw) {
+  const s = safeStr(raw).trim().toUpperCase();
+  if (s.includes("DRAFT")) return STATUS_LABEL.drafting;
+  if (s.includes("FILL")) return STATUS_LABEL.filling;
+  if (s.includes("TBD")) return STATUS_LABEL.tbd;
+  return STATUS_LABEL.full;
+}
+
+function leagueImageSrc(l, updatedAt) {
+  const key = safeStr(l?.imageKey || l?.image_key || "").trim();
+  const url = safeStr(l?.image_url || l?.imageUrl || "").trim();
+  const base = key ? `/r2/${key}` : url;
+  if (!base) return "";
+  if (!updatedAt) return base;
+  return base.includes("?") ? base : `${base}?v=${encodeURIComponent(updatedAt)}`;
+}
+
+export default function RedraftLeaguesClient({ version = "0", manifest = null }) {
   const [leagues, setLeagues] = useState([]);
+  const [updatedAt, setUpdatedAt] = useState("");
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-
-  const bust = useMemo(() => `v=${Date.now()}`, []);
-
-  async function loadLeagues() {
-    setErr("");
-    setLoading(true);
-    try {
-      const leaguesRes = await fetch(`/r2/data/redraft/leagues_${SEASON}.json?${bust}`, { cache: "no-store" });
-      if (leaguesRes.ok) {
-        const data = await leaguesRes.json();
-        const list = Array.isArray(data?.leagues) ? data.leagues : Array.isArray(data) ? data : [];
-        const normalized = list.map(normLeague).filter((x) => x.active !== false);
-        normalized.sort((a, b) => a.order - b.order);
-        setLeagues(normalized);
-      } else {
-        setLeagues([]);
-      }
-    } catch (e) {
-      setErr(e?.message || "Failed to load Redraft leagues.");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    loadLeagues();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    let cancelled = false;
 
-  if (loading) {
-    return (
-      <section className="rounded-3xl border border-subtle bg-card-surface p-6 md:p-8">
-        <p className="text-muted">Loading redraft leagues…</p>
-      </section>
-    );
-  }
+    // Manifest-first: avoid fetching the heavy JSON with v=0 before the manifest resolves.
+    if (manifest === null) return () => {};
 
-  if (err) {
-    return (
-      <section className="rounded-3xl border border-subtle bg-card-surface p-6 md:p-8">
-        <p className="text-muted">{err}</p>
-      </section>
-    );
-  }
+    async function run() {
+      try {
+        setError("");
+        setLoading(true);
+
+        const v = String(version || "0");
+        const cacheKeyV = `redraft:leagues:${SEASON}:version`;
+        const cacheKeyData = `redraft:leagues:${SEASON}:data`;
+        const cacheKeyUpdated = `redraft:leagues:${SEASON}:updatedAt`;
+
+        try {
+          const cachedV = sessionStorage.getItem(cacheKeyV);
+          if (cachedV && cachedV === v) {
+            const cachedData = sessionStorage.getItem(cacheKeyData);
+            const cachedUpdated = sessionStorage.getItem(cacheKeyUpdated);
+            if (cachedData) {
+              const parsed = JSON.parse(cachedData);
+              if (!cancelled && Array.isArray(parsed)) {
+                setLeagues(parsed);
+                setUpdatedAt(String(cachedUpdated || ""));
+                setLoading(false);
+                return;
+              }
+            }
+          }
+        } catch {
+          // ignore storage errors
+        }
+
+        const leaguesRes = await fetch(`/r2/data/redraft/leagues_${SEASON}.json?v=${encodeURIComponent(v)}`, { cache: "default" });
+        if (!leaguesRes.ok) throw new Error(`Failed to load Redraft leagues (${leaguesRes.status})`);
+
+        const json = await leaguesRes.json();
+        const rows = Array.isArray(json?.rows) ? json.rows : Array.isArray(json) ? json : [];
+        const stamp = safeStr(json?.updatedAt || json?.updated_at || "");
+
+        if (cancelled) return;
+        setLeagues(rows);
+        setUpdatedAt(stamp);
+
+        try {
+          sessionStorage.setItem(cacheKeyV, v);
+          sessionStorage.setItem(cacheKeyUpdated, stamp);
+          sessionStorage.setItem(cacheKeyData, JSON.stringify(rows));
+        } catch {
+          // ignore storage errors
+        }
+      } catch (e) {
+        if (!cancelled) setError(e?.message || "Failed to load leagues.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [version, manifest]);
+
+  const sorted = useMemo(() => {
+    return [...leagues].sort((a, b) => {
+      const ao = Number(a?.display_order ?? a?.order ?? 9999);
+      const bo = Number(b?.display_order ?? b?.order ?? 9999);
+      if (ao !== bo) return ao - bo;
+      return safeStr(a?.name).localeCompare(safeStr(b?.name));
+    });
+  }, [leagues]);
+
+  if (loading) return <p className="text-sm text-muted">Loading leagues…</p>;
+  if (error) return <p className="text-sm text-danger">{error}</p>;
 
   return (
-    <section className="rounded-3xl border border-subtle bg-card-surface p-6 md:p-8">
-      <div className="flex items-end justify-between gap-4 flex-wrap">
-        <div>
-          <h2 className="h3">Redraft Leagues</h2>
-          <p className="text-sm text-muted mt-1">Live list maintained by admins (no divisions).</p>
-        </div>
-        <div className="text-xs text-muted">{leagues.length} leagues</div>
-      </div>
+    <section className="mt-8">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {sorted.map((l, idx) => {
+          const href = safeStr(l?.url || l?.sleeper_url || l?.sleeperUrl || "").trim();
+          const badge = statusBadge(l?.status);
+          const img = leagueImageSrc(l, updatedAt);
 
-      {leagues.length === 0 ? (
-        <div className="mt-6 rounded-2xl border border-subtle bg-subtle-surface p-5">
-          <p className="text-sm text-muted">No leagues published yet.</p>
-        </div>
-      ) : (
-        <div className="mt-6 grid gap-4 sm:grid-cols-2">
-          {leagues.map((l) => {
-            const badgeCls = STATUS_BADGE[l.status] || STATUS_BADGE.tbd;
-            const label = STATUS_LABEL[l.status] || "TBD";
-            const imgSrc = l.imageKey ? `/r2/${l.imageKey}` : l.imageUrl || "";
-
-            return (
-              <a
-                key={`${l.order}-${l.name}`}
-                href={l.url || "#"}
-                target={l.url ? "_blank" : undefined}
-                rel={l.url ? "noreferrer" : undefined}
-                className="group rounded-2xl border border-subtle bg-subtle-surface p-5 hover:border-accent/60 transition"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-fg truncate">{l.name}</p>
-                    <p className="text-xs text-muted mt-1">League #{l.order}</p>
-                  </div>
-                  <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badgeCls}`}>
-                    {label}
-                  </span>
-                </div>
-
-                {imgSrc ? (
-                  <div className="mt-4 relative w-full aspect-[16/9] rounded-xl overflow-hidden border border-subtle bg-black/20">
-                    <Image src={imgSrc} alt="League image" fill sizes="(max-width: 640px) 100vw, 420px" className="object-cover" />
+          return (
+            <a
+              key={l?.id || `${l?.name}-${idx}`}
+              href={href || "#"}
+              target={href ? "_blank" : undefined}
+              rel={href ? "noreferrer" : undefined}
+              className="group rounded-2xl border border-subtle bg-card-surface p-4 hover:border-accent hover:-translate-y-0.5 transition"
+            >
+              <div className="flex items-start gap-4">
+                {img ? (
+                  <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-subtle bg-panel">
+                    <Image src={img} alt={safeStr(l?.name || "League")} fill className="object-cover" />
                   </div>
                 ) : null}
 
-                <div className="mt-4 text-xs text-muted flex items-center justify-between">
-                  <span className="truncate">{l.url ? "Open in Sleeper" : "Link not set"}</span>
-                  <span className="opacity-0 group-hover:opacity-100 transition">→</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-foreground truncate">{safeStr(l?.name || "League")}</h3>
+                    <span className="rounded-full border border-subtle bg-panel px-2 py-0.5 text-[11px] text-muted">
+                      {badge}
+                    </span>
+                  </div>
+
+                  {safeStr(l?.note).trim() ? (
+                    <p className="mt-1 text-xs text-muted line-clamp-2">{safeStr(l.note)}</p>
+                  ) : null}
+
+                  <div className="mt-4 text-xs text-muted flex items-center justify-between">
+                    <span className="truncate">{href ? "Open in Sleeper" : "Link not set"}</span>
+                    <span className="opacity-0 group-hover:opacity-100 transition">→</span>
+                  </div>
                 </div>
-              </a>
-            );
-          })}
-        </div>
-      )}
+              </div>
+            </a>
+          );
+        })}
+      </div>
     </section>
   );
 }

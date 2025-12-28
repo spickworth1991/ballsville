@@ -1,5 +1,7 @@
 import { siteConfig } from "@/app/config/siteConfig";
 import MiniLeaguesClient from "../../components/mini-leagues/MiniLeaguesClient";
+import SectionManifestGate from "@/components/manifest/SectionManifestGate";
+import { CURRENT_SEASON } from "@/lib/season";
 
 const pageTitle = `Mini-Leagues | ${siteConfig.shortName}`;
 const pageUrl = `${siteConfig.domain}/mini-leagues`;
@@ -19,5 +21,9 @@ export const metadata = {
 };
 
 export default function Page() {
-  return <MiniLeaguesClient />;
+  return (
+    <SectionManifestGate section="mini-leagues" season={CURRENT_SEASON}>
+      <MiniLeaguesClient season={CURRENT_SEASON} />
+    </SectionManifestGate>
+  );
 }

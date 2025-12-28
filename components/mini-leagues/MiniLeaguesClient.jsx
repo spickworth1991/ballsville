@@ -5,8 +5,8 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import OwnerHeroBlock from "@/components/blocks/OwnerHeroBlock";
+import { CURRENT_SEASON } from "@/lib/season";
 
-const SEASON = 2025;
 
 // ==============================
 // HARD-CODED (non-editable) copy
@@ -22,7 +22,7 @@ const HERO_STATIC = {
 // ONLY THESE ARE EDITABLE IN CMS
 // ==============================
 const DEFAULT_EDITABLE = {
-  season: SEASON,
+  season: CURRENT_SEASON,
   hero: {
     promoImageKey: "",
     promoImageUrl: "/photos/minileagues-v2.webp",
@@ -124,10 +124,9 @@ function InlineNotice({ children }) {
   );
 }
 
-export default function MiniLeaguesClient() {
+export default function MiniLeaguesClient({ season = CURRENT_SEASON, version = "0", manifest = null }) {
   const [editable, setEditable] = useState(DEFAULT_EDITABLE);
   const [divisions, setDivisions] = useState([]);
-  const [version, setVersion] = useState("0");
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
@@ -151,7 +150,7 @@ export default function MiniLeaguesClient() {
 
     try {
       // 1) editable blocks
-      const pageRes = await fetch(`/r2/content/mini-leagues/page_${SEASON}.json?${bust}`);
+      const pageRes = await fetch(`/r2/content/mini-leagues/page_${season}.json?${bust}`);
       if (pageRes.ok) {
         const pageData = await pageRes.json();
 
@@ -188,7 +187,7 @@ export default function MiniLeaguesClient() {
       }
 
       // 2) divisions
-      const divRes = await fetch(`/r2/data/mini-leagues/divisions_${SEASON}.json?${bust}`);
+      const divRes = await fetch(`/r2/data/mini-leagues/divisions_${season}.json?${bust}`);
       if (divRes.ok) {
         const divData = await divRes.json();
         const list = Array.isArray(divData?.divisions) ? divData.divisions : Array.isArray(divData) ? divData : [];
@@ -204,33 +203,6 @@ export default function MiniLeaguesClient() {
       setLoading(false);
     }
   }
-useEffect(() => {
-  let cancelled = false;
-
-  async function check() {
-    try {
-      // Try season-scoped manifest first, then fall back to non-season.
-      const primary = await fetch(`/r2/data/manifests/mini-leagues_${SEASON}.json`);
-      let res = primary;
-      if (primary.status === 404) {
-        res = await fetch(`/r2/data/manifests/mini-leagues.json`);
-      }
-      if (!res.ok) return;
-      const m = await res.json();
-      const next = m?.updatedAt ? String(m.updatedAt) : "0";
-      if (!cancelled && next) setVersion(next);
-    } catch {
-      // ignore — fallback to version "0"
-    }
-  }
-
-  check();
-  const t = setInterval(check, 60_000);
-  return () => {
-    cancelled = true;
-    clearInterval(t);
-  };
-}, []);
 
 
 
@@ -290,7 +262,7 @@ useEffect(() => {
                     <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
                       Quick Facts
                     </span>
-                    <span className="text-[11px] text-muted">{SEASON}</span>
+                    <span className="text-[11px] text-muted">{season}</span>
                   </div>
 
                   <div className="p-4 space-y-3 text-sm">
@@ -320,7 +292,7 @@ useEffect(() => {
               </aside>
             </div>
 
-            <OwnerHeroBlock mode="mini-leagues" season={SEASON} title="Owner Updates" version={version} />
+            <OwnerHeroBlock mode="mini-leagues" season={season} title="Owner Updates" version={version} manifest={manifest} />
           </header>
 
           {/* CONTENT (wrapped so headings never float on background) */}

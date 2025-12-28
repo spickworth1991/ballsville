@@ -11,7 +11,7 @@ function safeStr(v) {
 function resolveImageSrc({ imagePath, imageKey, updatedAt }) {
   const p = safeStr(imagePath).trim();
   const k = safeStr(imageKey).trim();
-  const bust = updatedAt ? `v=${encodeURIComponent(updatedAt)}` : `v=${Date.now()}`;
+  const bust = updatedAt ? `v=${encodeURIComponent(updatedAt)}` : version ? `v=${encodeURIComponent(String(version))}` : `v=0`;
 
   if (p) {
     if (p.includes("?")) return p;
@@ -50,7 +50,7 @@ function fmtSpots(openSpots) {
 // NOTE: `version` is an optional prop some pages use as a manual cache-bust signal.
 // With the manifest-based caching it usually isn't needed, but keeping it here
 // prevents build-time ReferenceErrors if a parent still uses it.
-export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedded = false, version = "0" }) {
+export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedded = false, version = "0", manifest = null }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -58,29 +58,70 @@ export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedde
 
   useEffect(() => {
     let cancelled = false;
+
+    // Manifest-first: avoid fetching the heavy JSON until the section manifest exists.
+    if (manifest === null) return () => {};
+
     async function run() {
       setError("");
       setLoading(true);
       try {
+        const v = String(version || "0");
+        const cacheKeyV = `gauntlet:legions:${season}:version`;
+        const cacheKeyRows = `gauntlet:legions:${season}:rows`;
+        const cacheKeyUpdated = `gauntlet:legions:${season}:updatedAt`;
+
+        // Session cache gated by manifest version
+        try {
+          const cachedV = sessionStorage.getItem(cacheKeyV);
+          if (cachedV && cachedV === v) {
+            const cachedRows = sessionStorage.getItem(cacheKeyRows);
+            const cachedUpdated = sessionStorage.getItem(cacheKeyUpdated);
+            if (cachedRows) {
+              const parsed = JSON.parse(cachedRows);
+              if (!cancelled && Array.isArray(parsed)) {
+                setRows(parsed);
+                setUpdatedAt(String(cachedUpdated || ""));
+                setLoading(false);
+                return;
+              }
+            }
+          }
+        } catch {
+          // ignore storage errors
+        }
+
         const r2Base = process.env.NEXT_PUBLIC_ADMIN_R2_PROXY_BASE || "/r2";
-        const url = `${r2Base}/data/gauntlet/leagues_${season}.json?v=${Date.now()}`;
-        const res = await fetch(url, { cache: "no-store" });
+        const url = `${r2Base}/data/gauntlet/leagues_${season}.json?v=${encodeURIComponent(v)}`;
+        const res = await fetch(url, { cache: "default" });
         if (!res.ok) throw new Error(`Failed to load gauntlet data (${res.status})`);
         const json = await res.json();
         if (cancelled) return;
-        setRows(Array.isArray(json?.rows) ? json.rows : []);
-        setUpdatedAt(String(json?.updated_at || ""));
+
+        const nextRows = Array.isArray(json?.rows) ? json.rows : [];
+        const stamp = String(json?.updated_at || json?.updatedAt || "");
+        setRows(nextRows);
+        setUpdatedAt(stamp);
+
+        try {
+          sessionStorage.setItem(cacheKeyV, v);
+          sessionStorage.setItem(cacheKeyRows, JSON.stringify(nextRows));
+          sessionStorage.setItem(cacheKeyUpdated, stamp);
+        } catch {
+          // ignore storage errors
+        }
       } catch (e) {
         if (!cancelled) setError(e?.message || "Failed to load gauntlet legions");
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
+
     run();
     return () => {
       cancelled = true;
     };
-  }, [season, version]);
+  }, [season, version, manifest]);
 
   const legions = useMemo(() => {
     const headers = rows.filter((r) => r?.is_legion_header);

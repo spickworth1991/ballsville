@@ -1,8 +1,7 @@
 // app/big-game/page.jsx
 import Link from "next/link";
 import SectionManifestGate from "@/components/manifest/SectionManifestGate";
-import BigGameDivisionsClient from "@/components/big-game/BigGameDivisionsClient";
-import OwnerHeroBlock from "@/components/blocks/OwnerHeroBlock";
+import BigGameDynamicBlocks from "@/components/big-game/BigGameDynamicBlocks";
 import { CURRENT_SEASON } from "@/lib/season";
 
 export const metadata = {
@@ -130,8 +129,10 @@ export default function BigGamePage() {
               </div>
             </aside>
           </div>
-          <OwnerHeroBlock mode="biggame" season={CURRENT_SEASON} title="Owner Updates" />
-        </section>
+          <SectionManifestGate section="biggame" season={CURRENT_SEASON}>
+            <BigGameDynamicBlocks season={CURRENT_SEASON} />
+          </SectionManifestGate>
+</section>
 
         {/* ESSENTIALLY / ODDS */}
         <section className="grid gap-6 lg:grid-cols-[1.1fr_minmax(0,1fr)] items-start">
@@ -302,9 +303,7 @@ export default function BigGamePage() {
         </section>
 
         {/* DIVISIONS GRID (now dynamic from Supabase) */}
-        <section id="divisions">
-          <BigGameDivisionsClient />
-        </section>
+        <section id="divisions"></section>
       </div>
     </main>
   );
