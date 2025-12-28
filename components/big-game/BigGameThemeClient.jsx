@@ -2,8 +2,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import Image from "next/image";
 import MediaTabCard from "@/components/ui/MediaTabCard";
 import { CURRENT_SEASON } from "@/lib/season";
 

@@ -2,6 +2,7 @@
 import { siteConfig } from "@/app/config/siteConfig";
 import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import RedraftDynamicBlocks from "./RedraftDynamicBlocks";
+import RedraftOwnersBlockClient from "./RedraftOwnersBlockClient";
 import { CURRENT_SEASON } from "@/lib/season";
 
 const pageTitle = `The Redraft Game | ${siteConfig.shortName}`;
@@ -123,15 +124,20 @@ export default function RedraftPage() {
               </div>
             </aside>
           </div>
-           <SectionManifestGate section="redraft" season={CURRENT_SEASON}>
-            <RedraftDynamicBlocks />
+                  {/* Admin-managed updates (R2) /> */}
+          <SectionManifestGate section="redraft" season={CURRENT_SEASON}>
+            <RedraftDynamicBlocks season={CURRENT_SEASON} showLeagues={false} />
           </SectionManifestGate>
+          
+           
         </section>
 
-        {/* Admin-managed updates (R2)
-        <RedraftUpdatesClient /> */}
+
 
         {/* Live leagues (R2) */}{/* League description */}
+        <SectionManifestGate section="redraft" >
+            <RedraftDynamicBlocks season={CURRENT_SEASON} showOwner={false} showLeagues embeddedLegions={false} />
+          </SectionManifestGate>
         <article
           id="how-it-works"
           className="bg-card-surface rounded-3xl border border-subtle p-6 md:p-8 grid gap-6 md:grid-cols-2 items-center"

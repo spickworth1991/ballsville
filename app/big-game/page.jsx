@@ -130,12 +130,18 @@ export default function BigGamePage() {
 
             </aside>
           </div>
-        </section>
-
-        {/* Owner updates (manifest-gated for cache efficiency) */}
+          {/* Owner updates (manifest-gated for cache efficiency) */}
         <SectionManifestGate section="biggame" season={CURRENT_SEASON}>
           <BigGameDynamicBlocks season={CURRENT_SEASON} showDivisions={false} />
         </SectionManifestGate>
+        </section>
+        {/* DIVISIONS GRID (now dynamic from Supabase) */}
+        <section id="divisions">
+          <SectionManifestGate section="biggame" season={CURRENT_SEASON}>
+            <BigGameDynamicBlocks season={CURRENT_SEASON} showOwner={false} />
+          </SectionManifestGate>
+        </section>
+        
 
         {/* ESSENTIALLY / ODDS */}
         <section className="grid gap-6 lg:grid-cols-[1.1fr_minmax(0,1fr)] items-start">
@@ -305,12 +311,7 @@ export default function BigGamePage() {
           </p>
         </section>
 
-        {/* DIVISIONS GRID (now dynamic from Supabase) */}
-        <section id="divisions">
-          <SectionManifestGate section="biggame" season={CURRENT_SEASON}>
-            <BigGameDynamicBlocks season={CURRENT_SEASON} showOwner={false} />
-          </SectionManifestGate>
-        </section>
+        
       </div>
     </main>
   );

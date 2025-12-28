@@ -114,17 +114,7 @@ export default function GauntletPage() {
           </div>
 
           {/* right: owner block + rules doc */}
-          <div className="space-y-4">
-
-            {/* Owner updates (keep near hero, but manifest-gated for cache efficiency) */}
-            <SectionManifestGate section="gauntlet" season={CURRENT_SEASON}>
-              <GauntletDynamicBlocks
-                season={CURRENT_SEASON}
-                showLegions={false}
-              />
-            </SectionManifestGate>
-            
-
+          <div className="space-y-4 py-4">
             {/* framed doc embed like a “panel” */}
             <div className="rounded-2xl border border-border/60 bg-card-trans backdrop-blur-sm overflow-hidden shadow-xl shadow-black/40">
               <div className="px-4 py-3 border-b border-border/60 flex items-center justify-between gap-3">
@@ -150,7 +140,7 @@ export default function GauntletPage() {
               </div>
 
               {/* shorter embed */}
-              <div className="h-[360px] sm:h-[420px] lg:h-[460px]">
+              <div className="h-[300px] sm:h-[240px] lg:h-[300px]">
                 <iframe
                   src={DOC_EMBED_SRC}
                   title="Gauntlet Rules Doc"
@@ -167,12 +157,27 @@ export default function GauntletPage() {
           </div>
 
         </div>
-      </header>
-
-      {/* Owner updates (keep out of the hero layout; manifest-gated for cache efficiency) */}
+        {/* Owner updates (keep out of the hero layout; manifest-gated for cache efficiency) */}
       <SectionManifestGate section="gauntlet" season={CURRENT_SEASON}>
         <GauntletDynamicBlocks season={CURRENT_SEASON} showLegions={false} />
       </SectionManifestGate>
+      </header>
+
+      {/* LEGIONS */}
+        <section className="space-y-4 relative overflow-hidden rounded-3xl border border-border/70 bg-card-surface shadow-2xl shadow-black/40 p-6 md:p-10">
+          <header>
+            <h2 className="h2">The Legions</h2>
+            <p className="text-sm text-muted mt-2 max-w-2xl">
+              Three Legions — Egyptians, Greeks, and Romans — each with four Gods and 24 teams per God.
+              Join a God, fill your league, and fight your way toward the Gauntlet.
+            </p>
+          </header>
+
+          <SectionManifestGate section="gauntlet" season={CURRENT_SEASON}>
+            <GauntletDynamicBlocks season={CURRENT_SEASON} showOwner={false} showLegions embeddedLegions={false} />
+          </SectionManifestGate>
+        </section>
+      
 
 
         {/* PAYOUTS + BONUSES MINI CHART */}
@@ -285,20 +290,7 @@ export default function GauntletPage() {
       </Card>
 
 
-        {/* LEGIONS */}
-        <section className="space-y-4 relative overflow-hidden rounded-3xl border border-border/70 bg-card-surface shadow-2xl shadow-black/40 p-6 md:p-10">
-          <header>
-            <h2 className="h2">The Legions</h2>
-            <p className="text-sm text-muted mt-2 max-w-2xl">
-              Three Legions — Egyptians, Greeks, and Romans — each with four Gods and 24 teams per God.
-              Join a God, fill your league, and fight your way toward the Gauntlet.
-            </p>
-          </header>
-
-          <SectionManifestGate section="gauntlet" season={CURRENT_SEASON}>
-            <GauntletDynamicBlocks season={CURRENT_SEASON} showOwner={false} showLegions embeddedLegions={false} />
-          </SectionManifestGate>
-        </section>
+        
       </div>
     </main>
   );

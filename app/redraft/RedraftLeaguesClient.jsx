@@ -35,7 +35,7 @@ function leagueImageSrc(l, updatedAt) {
   return base.includes("?") ? base : `${base}?v=${encodeURIComponent(updatedAt)}`;
 }
 
-export default function RedraftLeaguesClient({ version = "0", manifest = null }) {
+export default function RedraftLeaguesClient({ season = CURRENT_SEASON, embedded = false, version = "0", manifest = null }) {
   const [leagues, setLeagues] = useState([]);
   const [updatedAt, setUpdatedAt] = useState("");
   const [loading, setLoading] = useState(true);
