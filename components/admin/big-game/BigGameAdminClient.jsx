@@ -195,6 +195,9 @@ export default function BigGameAdminClient() {
   const [errorMsg, setErrorMsg] = useState("");
   const [infoMsg, setInfoMsg] = useState("");
   const [open, setOpen] = useState(() => new Set());
+  // local-only drafts so inputs can be typed without triggering immediate mutations
+  // key: `${year}::${division_slug}` => string
+  const [divisionYearDraft, setDivisionYearDraft] = useState(() => ({}));
 
   const [pageLoading, setPageLoading] = useState(true);
 
@@ -546,44 +549,49 @@ export default function BigGameAdminClient() {
     setRows((prev) => prev.filter((r) => r.id !== leagueRow.id));
   }
 
-  function rolloverDivisionToYear(group, targetYear) {
-    const y = safeNum(targetYear, null);
+  function rolloverDivisionToYear(group, targetYearRaw) {
+    const y = safeNum(targetYearRaw, null);
     if (!Number.isFinite(y)) return;
     if (Number(y) === Number(group.year)) return;
 
     const ok = window.confirm(
-      `Changing the year resets Sleeper URLs, then rolls "${group.division_name}" from ${group.year} to ${y}. Continue?`
+      `Change division year from ${group.year} to ${y}?\n\nThis will clear Sleeper URLs for all leagues in this division.\n\nYou can review, then click “Save to R2” to publish.`
     );
     if (!ok) return;
 
-    setRows((prev) => {
-      const from = prev.filter(
-        (r) => Number(r.year) === Number(group.year) && safeStr(r.division_slug) === safeStr(group.division_slug)
-      );
-      if (!from.length) return prev;
+    const oldKey = group.key;
+    const newKey = `${y}::${safeStr(group.division_slug)}`;
 
-      // If the target year already has this division, replace it.
-      const withoutTarget = prev.filter(
-        (r) => !(Number(r.year) === Number(y) && safeStr(r.division_slug) === safeStr(group.division_slug))
-      );
+    setRows((prev) =>
+      prev.map((r) => {
+        if (Number(r.year) !== Number(group.year)) return r;
+        if (safeStr(r.division_slug) !== safeStr(group.division_slug)) return r;
+        // rollover rule: clear league sleeper URLs
+        if (!r.is_division_header) {
+          return { ...r, year: y, league_url: "" };
+        }
+        return { ...r, year: y };
+      })
+    );
 
-      const copies = from.map((r) => ({
-        ...r,
-        id: newId("bg"),
-        year: y,
-        // rollover rule: clear sleeper urls
-        league_url: r?.is_division_header ? safeStr(r?.league_url || "") : "",
-        _pending_division_file: null,
-        _pending_division_preview: "",
-        _pending_league_file: null,
-        _pending_league_preview: "",
-      }));
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(oldKey)) {
+        next.delete(oldKey);
+        next.add(newKey);
+      }
+      return next;
+    });
 
-      return [...withoutTarget, ...copies];
+    setRolloverDraft((prev) => {
+      const next = { ...prev };
+      delete next[oldKey];
+      next[newKey] = String(y);
+      return next;
     });
 
     setInfoMsg(
-      `Rolled over division "${group.division_name}" to year ${y} locally (Sleeper URLs cleared). Switch Season to ${y} and click "Save to R2" to publish.`
+      `Rolled division "${group.division_name}" to year ${y} locally (Sleeper URLs cleared). Switch season to ${y} and click “Save to R2” to publish.`
     );
   }
 
@@ -758,18 +766,36 @@ export default function BigGameAdminClient() {
                         <input
                           className="input w-28"
                           value={safeStr(header?.division_order ?? "")}
-                          onChange={(e) => setDivisionHeader(g, { division_order: safeNum(e.target.value, null) })}
+                          onChange={(e) => {
+                            const nextOrder = safeNum(e.target.value, null);
+                            setRows((prev) =>
+                              prev.map((r) => {
+                                if (Number(r.year) !== Number(g.year)) return r;
+                                if (safeStr(r.division_slug) !== safeStr(g.division_slug)) return r;
+                                return { ...r, division_order: nextOrder };
+                              })
+                            );
+                          }}
                         />
                       </label>
 
                       <label className="space-y-1">
-                        <span className="text-xs text-muted">Division year</span>
-                        <input
-                          className="input w-28"
-                          value={safeStr(header?.year ?? g.year)}
-                          onChange={(e) => rolloverDivisionToYear(g, e.target.value)}
-                        />
-                        <span className="text-[11px] text-muted">Rolling over will clear Sleeper URLs for this division.</span>
+                        <span className="text-xs text-muted">Rollover year</span>
+                        <div className="flex items-center gap-2">
+                          <input
+                            className="input w-28"
+                            value={safeStr(rolloverDraft[g.key] ?? header?.year ?? g.year)}
+                            onChange={(e) => setRolloverDraft((prev) => ({ ...prev, [g.key]: e.target.value }))}
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-outline text-xs"
+                            onClick={() => rolloverDivision(g, rolloverDraft[g.key] ?? header?.year ?? g.year)}
+                          >
+                            Rollover
+                          </button>
+                        </div>
+                        <span className="text-[11px] text-muted">Rollover sets the division year and clears Sleeper URLs. Nothing saves until you click “Save to R2”.</span>
                       </label>
 
                       <label className="space-y-1">
@@ -855,6 +881,20 @@ export default function BigGameAdminClient() {
 
                       <button className="btn btn-outline text-sm" type="button" onClick={() => deleteDivision(g)}>
                         Delete division
+                      </button>
+
+                      <button
+                        className="btn btn-outline text-sm"
+                        type="button"
+                        onClick={() => {
+                          // keep this action explicit so we never mutate rows on keystroke
+                          const y = window.prompt("Rollover this division to what year?", String(Number(g.year) + 1));
+                          if (!y) return;
+                          setRolloverDraft((prev) => ({ ...prev, [g.key]: y }));
+                          rolloverDivision(g, y);
+                        }}
+                      >
+                        Rollover to year
                       </button>
                     </div>
 
