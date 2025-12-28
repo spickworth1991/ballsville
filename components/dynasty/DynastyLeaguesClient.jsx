@@ -7,6 +7,12 @@ import MediaTabCard from "@/components/ui/MediaTabCard";
 
 const R2_ROWS_KEY = "data/dynasty/leagues.json";
 
+// Client-side cache to avoid refetching the full leagues JSON when the
+// section manifest hasn't changed. SectionManifestGate bumps `version`
+// when dynasty content updates.
+const DYNASTY_CACHE_VERSION_KEY = "ballsville_dynasty_leagues_version";
+const DYNASTY_CACHE_ROWS_KEY = "ballsville_dynasty_leagues_rows";
+
 function normalize(row) {
   const r = row && typeof row === "object" ? row : {};
   const yearNum = Number(r.year ?? r.season);
@@ -179,8 +185,26 @@ export default function DynastyLeaguesClient({
       try {
         // Cache-aware: SectionManifestGate only changes `version` when the
         // section manifest says dynasty has changed. We use it as the cache
-        // key so unchanged visits hit browser/edge cache.
-        const bust = `v=${encodeURIComponent(version || "0")}`;
+        // key so unchanged visits can reuse client-side cached data.
+        const v = String(version || "0");
+        const bust = `v=${encodeURIComponent(v)}`;
+
+        // If the manifest hasn't changed since our last successful fetch, reuse
+        // the cached rows and avoid another leagues.json request.
+        try {
+          const cachedV = sessionStorage.getItem(DYNASTY_CACHE_VERSION_KEY);
+          const cachedRows = sessionStorage.getItem(DYNASTY_CACHE_ROWS_KEY);
+          if (cachedV === v && cachedRows) {
+            const parsed = JSON.parse(cachedRows);
+            const list = Array.isArray(parsed) ? parsed : [];
+            if (!cancelled) {
+              setRows(list.map(normalize));
+            }
+            return;
+          }
+        } catch {
+          // ignore cache parse errors and fall back to fetching
+        }
 
         // IMPORTANT:
         // Do NOT use `force-cache` here.
@@ -196,8 +220,18 @@ export default function DynastyLeaguesClient({
         const list = Array.isArray(data?.rows) ? data.rows : Array.isArray(data) ? data : [];
         const stamp = data?.updatedAt || data?.updated_at || "";
         if (cancelled) return;
+
         setUpdatedAt(String(stamp || ""));
-        setRows(list.map(normalize));
+        const normalized = list.map(normalize);
+        setRows(normalized);
+
+        // Store for next visit (manifest-versioned)
+        try {
+          sessionStorage.setItem(DYNASTY_CACHE_VERSION_KEY, v);
+          sessionStorage.setItem(DYNASTY_CACHE_ROWS_KEY, JSON.stringify(normalized));
+        } catch {
+          // ignore quota / private mode issues
+        }
       } catch (err) {
         console.error("Failed to load dynasty leagues from R2:", err);
         if (!cancelled) setErrorMsg("Unable to load leagues right now. Please refresh or try again later.");
