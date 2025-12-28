@@ -140,7 +140,7 @@ function MediaBlock({ src, updatedAt, forceVideo = false }) {
 
   return (
     <div className="relative w-full aspect-[16/9] bg-black/20">
-      <img src={finalSrc} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+      <img src={finalSrc} alt="" className="absolute inset-0 w-full h-full object-contain" loading="lazy" />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-black/0 to-black/10" />
     </div>
   );
@@ -171,10 +171,10 @@ function CornerRibbon({ label, variant = "mini" }) {
 
   const pos =
     variant === "expired"
-      ? "-top-3 -right-14 rotate-45"   // stick out more
+      ? "top-10 -right-10 rotate-45"   // stick out more
       : variant === "mini"
-      ? "-top-3 -left-14 -rotate-45"  // stick out more
-      : "-top-3 -right-14 rotate-45";
+      ? "top-10 -left-10 -rotate-45"  // stick out more
+      : "top-10 -right-10 rotate-45";
 
   const cls =
     variant === "expired"
@@ -479,7 +479,7 @@ function PostCard({ p, updatedAt }) {
 
   return (
     <Wrapper>
-      <div className="relative overflow-visible">
+      <div className="relative overflow-hidden">
         {/* Ribbons */}
         {p.is_coupon ? <CornerRibbon label="Mini Game" variant="mini" /> : null}
         {isExpiredMini ? <CornerRibbon label="Expired" variant="expired" /> : null}
