@@ -14,11 +14,13 @@
 //    "dynasty-league"
 //    "biggame-division"
 //    "biggame-league"
+//    "about-managers"
 // - season: "2025" (required for all sections in this endpoint)
 // - divisionCode: "100" (required for mini-leagues-division and mini-leagues-league)
 // - leagueOrder: "1" (required for mini-leagues-league and redraft-league and biggame-league)
 // - leagueId: "<string>" (required for dynasty-league)
 // - divisionSlug: "<string>" (required for biggame-division and biggame-league)
+// - managerId: "<string>" (required for about-managers)
 //
 // Behavior:
 // - Always writes to a deterministic R2 key for that section.
@@ -154,6 +156,7 @@ function baseKeyForUpload({
   legionCode,
   postId,
   entryId,
+  managerId,
 }) {
   // ============
   // MINI-LEAGUES
@@ -210,6 +213,14 @@ function baseKeyForUpload({
   if (section === "hall-of-fame-entry") {
     if (!entryId) return "";
     return `media/hall-of-fame/${season}/${entryId}`;
+  }
+
+  // =====
+  // ABOUT
+  // =====
+  if (section === "about-managers") {
+    if (!managerId) return "";
+    return `media/about/managers/${season}/${managerId}`;
   }
 
   return "";
@@ -289,6 +300,7 @@ export async function onRequest(context) {
 
     const postId = cleanLooseId(form.get("postId"));
     const entryId = cleanLooseId(form.get("entryId"));
+    const managerId = cleanLooseId(form.get("managerId"));
 
     if (!section) return json({ ok: false, error: "Missing section" }, 400);
     if (!season) return json({ ok: false, error: "Missing season" }, 400);
@@ -335,6 +347,10 @@ export async function onRequest(context) {
       return json({ ok: false, error: "Missing entryId" }, 400);
     }
 
+    if (section === "about-managers" && !managerId) {
+      return json({ ok: false, error: "Missing managerId" }, 400);
+    }
+
     if (section === "posts-image" && !postId) {
       return json({ ok: false, error: "Missing postId" }, 400);
     }
@@ -343,7 +359,18 @@ export async function onRequest(context) {
       return json({ ok: false, error: "Missing entryId" }, 400);
     }
 
-    const baseKey = baseKeyForUpload({ section, season, divisionCode, leagueOrder, leagueId, divisionSlug, legionCode, postId, entryId });
+    const baseKey = baseKeyForUpload({
+      section,
+      season,
+      divisionCode,
+      leagueOrder,
+      leagueId,
+      divisionSlug,
+      legionCode,
+      postId,
+      entryId,
+      managerId,
+    });
     if (!baseKey) return json({ ok: false, error: "Invalid section" }, 400);
 
     const ext = extFromFile(file);
@@ -372,6 +399,9 @@ export async function onRequest(context) {
 
       // Mini Leagues
       if (section.startsWith("mini-leagues-")) return "mini-leagues";
+
+      // About
+      if (section.startsWith("about-")) return "about-managers";
 
       // Dynasty
       if (section.startsWith("dynasty-")) return "dynasty";

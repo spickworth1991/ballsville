@@ -86,6 +86,17 @@ export default function AdminHomePage() {
               <h2 className="text-lg font-semibold text-primary">Hall Of Fame Management</h2>
               <p className="mt-1 text-sm text-muted">Manage Hall of Fame entries.</p>
             </Link>
+
+            <Link
+              prefetch={false}
+              href="/admin/about-managers"
+              className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
+            >
+              <h2 className="text-lg font-semibold text-primary">Meet our managers</h2>
+              <p className="mt-1 text-sm text-muted">
+                Update manager profiles shown on the About page. Includes photos, bullets, and a modal bio.
+              </p>
+            </Link>
           </div>
         </div>
       </section>

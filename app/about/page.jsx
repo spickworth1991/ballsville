@@ -1,6 +1,9 @@
 // app/about/page.jsx 
 import LiteYouTube from "@/components/LiteYouTube";
+import ManagersSection from "@/components/about/ManagersSection";
+import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import { siteConfig } from "@/app/config/siteConfig";
+import { CURRENT_SEASON } from "@/lib/season";
 
 const pageTitle = `About | ${siteConfig.shortName}`;
 
@@ -145,6 +148,11 @@ export default function Page() {
             .
           </p>
         </article>
+
+        {/* MEET OUR MANAGERS */}
+        <SectionManifestGate section="about-managers" season={CURRENT_SEASON}>
+          <ManagersSection season={CURRENT_SEASON} />
+        </SectionManifestGate>
       </div>
     </main>
   );
