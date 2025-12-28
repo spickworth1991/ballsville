@@ -179,7 +179,7 @@ export default function DynastyPage() {
             </div>
           </div>
 
-          <OwnerHeroBlock mode="dynasty" season={CURRENT_SEASON} title="Owner Updates" />
+          <OwnerHeroBlock mode="dynasty" season={CURRENT_SEASON} title="Owner Updates" version={version} />
         </section>
 
         {/* DOCS / CORE DOCUMENTS */}
@@ -206,9 +206,7 @@ export default function DynastyPage() {
         </PremiumFrame>
 
         {/* DYNAMIC LEAGUES / ORPHANS / DIRECTORY */}
-        <SectionManifestGate section="dynasty" season={CURRENT_SEASON}>
-        <DynastyLeaguesClient mode="divisions" />
-        </SectionManifestGate>
+        <DynastyLeaguesClient mode="divisions" version={version} manifest={manifest} />
 
         {/* ABOUT THE MANAGERS */}
         <PremiumFrame
@@ -239,7 +237,9 @@ export default function DynastyPage() {
             ))}
           </div>
         </PremiumFrame>
-      </div>
+          </div>
+        )}
+      </SectionManifestGate>
     </main>
   );
 }

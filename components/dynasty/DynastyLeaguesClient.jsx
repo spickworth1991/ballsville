@@ -7,23 +7,9 @@ import MediaTabCard from "@/components/ui/MediaTabCard";
 
 const R2_ROWS_KEY = "data/dynasty/leagues.json";
 
-// Client-side cache to avoid refetching the full leagues JSON when the
-// section manifest hasn't changed. SectionManifestGate bumps `version`
-// when dynasty content updates.
-const DYNASTY_CACHE_VERSION_KEY = "ballsville_dynasty_leagues_version";
-const DYNASTY_CACHE_ROWS_KEY = "ballsville_dynasty_leagues_rows";
-
 function normalize(row) {
   const r = row && typeof row === "object" ? row : {};
   const yearNum = Number(r.year ?? r.season);
-
-  // Normalize status early so orphan detection is reliable even if the admin UI
-  // only changes `status` (and older rows don't have `is_orphan`).
-  const statusRaw = r?.status ?? r?.STATUS ?? "";
-  const status = typeof statusRaw === "string" ? statusRaw.trim() : String(statusRaw || "").trim();
-  // Treat any status containing "ORPHAN" as an orphan opening.
-  // This avoids fragile exact-match logic (e.g. casing/spacing differences).
-  const isOrphanByStatus = status.toUpperCase().includes("ORPHAN");
 
   // Backward compatible field names
   return {
@@ -32,10 +18,6 @@ function normalize(row) {
     year: Number.isFinite(yearNum) ? yearNum : r.year,
     name: r.name ?? r.league_name ?? "",
     sleeper_url: r.sleeper_url ?? r.sleeperUrl ?? r.url ?? "",
-
-    status,
-    // If `is_orphan` is missing, infer it from status.
-    is_orphan: typeof r?.is_orphan === "boolean" ? r.is_orphan : isOrphanByStatus,
 
     // League image
     imageKey: r.imageKey ?? r.image_key ?? r.league_image_key ?? "",
@@ -65,10 +47,7 @@ function transformLeagues(rows) {
   // Only show leagues marked active (or with null/undefined treated as active)
   const active = (rows || []).filter((r) => r?.is_active !== false);
 
-  const orphans = active.filter((r) => {
-    const st = String(r?.status || "").trim().toUpperCase();
-    return r?.is_orphan === true || st.includes("ORPHAN");
-  });
+  const orphans = active.filter((r) => r?.is_orphan || r?.status === "ORPHAN OPEN");
 
   // IMPORTANT: keep orphans in the main list too, so they still show in their theme
   const byYear = new Map();
@@ -164,6 +143,7 @@ export default function DynastyLeaguesClient({
   // Provided by SectionManifestGate; changes only when the section manifest
   // says dynasty data has changed.
   version = "0",
+  manifest = null,
   // Optional: render a single "division" (theme) instead of the index view.
   division = "",
   year,
@@ -176,61 +156,62 @@ export default function DynastyLeaguesClient({
   // App Router searchParams can sometimes surface as string[] (e.g. repeated params).
   // Normalize here so the division view reliably matches + renders leagues.
   const divisionStr = Array.isArray(division) ? division[0] : division;
-  const yearStr = Array.isArray(year) ? year[0] : year;
-
-  useEffect(() => {
+  const yearStr = Array.isArray(year) ? useEffect(() => {
     let cancelled = false;
+
+    // Avoid a pointless initial fetch with v=0 before the manifest loads.
+    if (!manifest) return () => {};
+
+    const seasonKey = String(season || "");
+    const cacheKeyVersion = `dynasty:leagues:${seasonKey}:version`;
+    const cacheKeyRows = `dynasty:leagues:${seasonKey}:rows`;
+    const cacheKeyUpdatedAt = `dynasty:leagues:${seasonKey}:updatedAt`;
 
     async function run() {
       try {
-        // Cache-aware: SectionManifestGate only changes `version` when the
-        // section manifest says dynasty has changed. We use it as the cache
-        // key so unchanged visits can reuse client-side cached data.
         const v = String(version || "0");
-        const bust = `v=${encodeURIComponent(v)}`;
 
-        // If the manifest hasn't changed since our last successful fetch, reuse
-        // the cached rows and avoid another leagues.json request.
+        // If we already have this exact version in sessionStorage, use it and skip network.
         try {
-          const cachedV = sessionStorage.getItem(DYNASTY_CACHE_VERSION_KEY);
-          const cachedRows = sessionStorage.getItem(DYNASTY_CACHE_ROWS_KEY);
-          if (cachedV === v && cachedRows) {
-            const parsed = JSON.parse(cachedRows);
-            const list = Array.isArray(parsed) ? parsed : [];
-            if (!cancelled) {
-              setRows(list.map(normalize));
+          const cachedV = sessionStorage.getItem(cacheKeyVersion);
+          if (cachedV && cachedV === v) {
+            const cachedRows = sessionStorage.getItem(cacheKeyRows);
+            const cachedUpdatedAt = sessionStorage.getItem(cacheKeyUpdatedAt);
+            if (cachedRows) {
+              const parsed = JSON.parse(cachedRows);
+              if (!cancelled && Array.isArray(parsed)) {
+                setUpdatedAt(String(cachedUpdatedAt || ""));
+                setRows(parsed.map(normalize));
+                return;
+              }
             }
-            return;
           }
         } catch {
-          // ignore cache parse errors and fall back to fetching
+          // ignore storage errors
         }
 
-        // IMPORTANT:
-        // Do NOT use `force-cache` here.
-        // Dynasty content is edited via the admin CMS and must refresh reliably.
-        // Using `no-cache` still allows caching, but forces revalidation so users
-        // don't have to disable DevTools cache to see updates.
-        const res = await fetch(`/r2/${R2_ROWS_KEY}?${bust}`, { cache: "no-cache" });
+        const bust = `v=${encodeURIComponent(v)}`;
+        const res = await fetch(`/r2/${R2_ROWS_KEY}?${bust}`, { cache: "default" });
         if (!res.ok) {
           if (!cancelled) setRows([]);
           return;
         }
+
         const data = await res.json();
         const list = Array.isArray(data?.rows) ? data.rows : Array.isArray(data) ? data : [];
         const stamp = data?.updatedAt || data?.updated_at || "";
+
         if (cancelled) return;
-
         setUpdatedAt(String(stamp || ""));
-        const normalized = list.map(normalize);
-        setRows(normalized);
+        setRows(list.map(normalize));
 
-        // Store for next visit (manifest-versioned)
+        // Persist for subsequent navigations without refetching unless manifest changes.
         try {
-          sessionStorage.setItem(DYNASTY_CACHE_VERSION_KEY, v);
-          sessionStorage.setItem(DYNASTY_CACHE_ROWS_KEY, JSON.stringify(normalized));
+          sessionStorage.setItem(cacheKeyVersion, v);
+          sessionStorage.setItem(cacheKeyUpdatedAt, String(stamp || ""));
+          sessionStorage.setItem(cacheKeyRows, JSON.stringify(list));
         } catch {
-          // ignore quota / private mode issues
+          // ignore storage errors
         }
       } catch (err) {
         console.error("Failed to load dynasty leagues from R2:", err);
@@ -244,6 +225,13 @@ export default function DynastyLeaguesClient({
     return () => {
       cancelled = true;
     };
+  }, [version, manifest, season]) : yearStr;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    // Avoid a pointless initial fetch with v=0 before the manifest loads.
+    if (!manifest) return () => {};
   }, [version]);
 
   const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows]);
@@ -267,19 +255,18 @@ export default function DynastyLeaguesClient({
       }
     }
   }
-  const scopedOrphans = useMemo(() => {
-    // Main directory pages show all orphans.
-    if (!isLeagueView) return orphans;
+      const scopedOrphans = useMemo(() => {
+      if (!isLeagueView) return orphans;
 
-    // Division (league list) page shows only orphans for this division + year.
-    return orphans.filter((o) => {
-      const oy = Number(o?.year);
-      const od = slugify(o?.theme_name || o?.kind || "");
-      return oy === yearNum && od === divisionSlug;
-    });
-  }, [orphans, isLeagueView, yearNum, divisionSlug]);
+      return orphans.filter((o) => {
+        const oy = Number(o?.year);
+        const od = slugify(o?.theme_name || o?.kind || "");
+        return oy === yearNum && od === divisionSlug;
+      });
+    }, [orphans, isLeagueView, yearNum, divisionSlug]);
 
-  const hasOrphans = scopedOrphans.length > 0;
+    const hasOrphans = scopedOrphans.length > 0;
+
 
   if (loading) {
     return (
@@ -352,6 +339,41 @@ export default function DynastyLeaguesClient({
         )}
       </PremiumSection>
 
+      {/* PAYOUTS */}
+      <PremiumSection
+        kicker="Money Stuff"
+        title="Payouts & Bonuses"
+        subtitle="Each league is a 12-team SF, 3WR build that ladders into the Dynasty Empire structure and shared Week 17 upside."
+      >
+        <div className="flex flex-wrap justify gap-3 text-xs sm:text-sm">
+          <span className="rounded-xl bg-panel border border-subtle px-3 py-2">
+            <span className="font-semibold text-foreground">$25</span> annually
+          </span>
+          <span className="rounded-xl bg-panel border border-subtle px-3 py-2">
+            Max payouts – <span className="font-semibold text-foreground">$2,300</span>
+          </span>
+          <span className="rounded-xl bg-panel border border-subtle px-3 py-2 text-center">
+            $1,500 possible wager pot + $200 wager BONUS + $250 🏆 Championship
+          </span>
+          <span className="rounded-xl bg-panel border border-subtle px-3 py-2 text-center">
+            + $100 🥈, + $50 🥉, + $125 league winner, + $225 EMPIRE win
+          </span>
+        </div>
+
+        <div className="mt-5 mx-auto max-w-4xl space-y-3">
+          <p className="text-sm text-muted">
+            These custom leagues play the season out with the same odds to win cash. In the championship round, you win $50 just for making it. You can
+            keep it, or push your $50 into the pot for a shot at big money.
+          </p>
+
+          <p className="text-sm text-muted">
+            There are <span className="font-semibold text-foreground">3 BONUS prizes</span>: $200 to the wager winner (most points in Week 17 among
+            wagering players), $100 to 2nd, and $50 to 3rd. A final passive bonus of $200 goes to the overall highest scorer among all league finalists,
+            regardless of wagering.
+          </p>
+        </div>
+      </PremiumSection>
+
       {/* DIRECTORY */}
       <PremiumSection
         kicker="All Leagues"
@@ -364,11 +386,11 @@ export default function DynastyLeaguesClient({
           <div className="space-y-6">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <Link
-                href="/dynasty/divisions"
+                href="/dynasty"
                 prefetch={false}
                 className="text-sm text-muted hover:text-foreground transition"
               >
-                ← Back to Divisions
+                ← Back to Dynasty
               </Link>
               <p className="text-xs uppercase tracking-[0.25em] text-accent">{yearNum} Season</p>
             </div>

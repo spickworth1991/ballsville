@@ -58,11 +58,34 @@ export default function OwnerHeroBlock({
       }
 
       try {
+        const v = String(version || "0");
+        const cacheKeyV = `ownerhero:${m}:${season}:version`;
+        const cacheKeyCfg = `ownerhero:${m}:${season}:cfg`;
+
+        // Skip network entirely if this exact version is already cached for this session.
+        try {
+          const cachedV = sessionStorage.getItem(cacheKeyV);
+          if (cachedV && cachedV === v) {
+            const cachedCfg = sessionStorage.getItem(cacheKeyCfg);
+            if (cachedCfg) {
+              const parsed = JSON.parse(cachedCfg);
+              if (!cancelled && parsed && typeof parsed === "object") {
+                setCfg({ ...DEFAULT, season, ...parsed });
+                setLoading(false);
+                return;
+              }
+            }
+          }
+        } catch {
+          // ignore storage errors
+        }
+
+{
         // Let the /r2 proxy handle caching + ETag revalidation.
         // Some sections may not be season-scoped yet; fall back to page.json if page_{season}.json is missing.
-        let res = await fetch(`/r2/content/${m}/page_${season}.json`, { cache: "default" });
+        let res = await fetch(`/r2/content/${m}/page_${season}.json?v=${encodeURIComponent(String(version || "0"))}`, { cache: "default" });
         if (res.status === 404) {
-          res = await fetch(`/r2/content/${m}/page.json`, { cache: "default" });
+          res = await fetch(`/r2/content/${m}/page.json?v=${encodeURIComponent(String(version || "0"))}`, { cache: "default" });
         }
 
         if (!res.ok) {
@@ -85,6 +108,14 @@ export default function OwnerHeroBlock({
         };
 
         if (!cancelled) setCfg(next);
+
+        try {
+          const v = String(version || "0");
+          sessionStorage.setItem(`ownerhero:${m}:${season}:version`, v);
+          sessionStorage.setItem(`ownerhero:${m}:${season}:cfg`, JSON.stringify(next));
+        } catch {
+          // ignore storage errors
+        }
       } catch (e) {
         if (!cancelled) {
           setErr(e?.message || "Failed to load updates block.");
