@@ -142,6 +142,14 @@ function extFromFile(file) {
   return /^[a-z0-9]{2,5}$/.test(ext) ? ext : "bin";
 }
 
+function mediaTypeFromFile(file) {
+  const t = String(file?.type || "").toLowerCase();
+  if (t.startsWith("video/")) return "video";
+  if (t.startsWith("image/")) return "image";
+  return "unknown";
+}
+
+
 /**
  * Deterministic base key (NO extension) for each section.
  * We’ll delete all known image extensions for that base before putting the new one.
@@ -375,6 +383,8 @@ export async function onRequest(context) {
 
     const ext = extFromFile(file);
     const key = `${baseKey}.${ext}`;
+    const media_type = mediaTypeFromFile(file);
+
 
     // Enforce “only one image per section”
     await deleteOtherExtVariants(r2.bucket, baseKey);
@@ -427,7 +437,7 @@ export async function onRequest(context) {
     // cache-bust for immediate preview
     const url = `/r2/${key}?v=${Date.now()}`;
 
-    return json({ ok: true, key, url });
+    return json({ ok: true, key, url, media_type });
   } catch (e) {
     return json(
       {

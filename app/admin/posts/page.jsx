@@ -39,6 +39,8 @@ function normalizeTags(v) {
 function normPost(p, idx) {
   const id = String(p?.id || idx);
   const created_at = typeof p?.created_at === "string" ? p.created_at : new Date().toISOString();
+  const media_type = typeof p?.media_type === "string" ? p.media_type : typeof p?.mediaType === "string" ? p.mediaType : "";
+  const is_video = Boolean(p?.is_video ?? p?.isVideo);
 
   const expires_at_raw = p?.expires_at ?? p?.expiresAt ?? null;
   const expires_at = typeof expires_at_raw === "string" && expires_at_raw.trim() ? expires_at_raw : null;
@@ -67,6 +69,8 @@ function normPost(p, idx) {
     expires_at,
     imageKey,
     imageUrl,
+    media_type,
+    is_video,
   };
 }
 
@@ -220,9 +224,18 @@ function AdminPostsInner() {
       if (!res.ok || !data?.ok) throw new Error(data?.error || `Upload failed (${res.status})`);
 
       const key = String(data.key || "");
+      const media_type = String(data.media_type || "").toLowerCase(); // "video" | "image" | "unknown"
+
       // Clear external URL if we uploaded
-      updateSelected({ imageKey: key, imageUrl: "" });
+      updateSelected({
+        imageKey: key,
+        imageUrl: "",
+        media_type: media_type === "video" || media_type === "image" ? media_type : "",
+        is_video: media_type === "video",
+      });
+
       setOk("Media uploaded (remember to Save).");
+
     } catch (e) {
       setErr(e?.message || "Upload failed.");
     } finally {
@@ -243,6 +256,8 @@ function AdminPostsInner() {
       expires_at: null,
       imageKey: "",
       imageUrl: "",
+      media_type: "",
+      is_video: false,
     };
     setPosts((prev) => [p, ...prev]);
     setSelectedId(id);

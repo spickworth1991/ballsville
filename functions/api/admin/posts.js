@@ -162,6 +162,8 @@ export async function onRequest(context) {
         const title = String(p?.title || "").trim();
         const bodyText = String(p?.body || "");
         const tags = Array.isArray(p?.tags) ? p.tags.map((t) => String(t).trim()).filter(Boolean) : [];
+        const media_type = String(p?.media_type || p?.mediaType || "").trim().toLowerCase();
+        const is_video = !!(p?.is_video ?? p?.isVideo);
 
         return {
           id,
@@ -174,6 +176,8 @@ export async function onRequest(context) {
           created_at: p?.created_at ? String(p.created_at) : new Date().toISOString(),
           imageKey: typeof p?.imageKey === "string" ? p.imageKey : "",
           image_url: typeof p?.image_url === "string" ? p.image_url : "",
+          media_type: media_type === "video" || media_type === "image" ? media_type : "",
+          is_video,
         };
       });
 

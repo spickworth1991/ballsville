@@ -6,7 +6,7 @@ import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import { CURRENT_SEASON } from "@/lib/season";
 
 const cardBase =
-  "card bg-card-surface border border-subtle rounded-2xl shadow-md overflow-hidden transition";
+  "card bg-card-surface border border-subtle rounded-2xl shadow-md transition";
 
 const cardHover = "hover:border-accent hover:-translate-y-0.5";
 
@@ -79,6 +79,9 @@ function normalizePost(p, idx) {
   const hasMini = tags.some((t) => t.toLowerCase() === "mini game");
   if (is_coupon && !hasMini) tags = ["Mini Game", ...tags];
 
+  const media_type = safeStr(o.media_type || o.mediaType || "").toLowerCase(); // "video" or "image" if you add later
+  const is_video = Boolean(o.is_video ?? o.isVideo);
+
   return {
     id: o.id || o.slug || String(idx),
     title: safeStr(o.title || o.name || "").trim(),
@@ -91,10 +94,13 @@ function normalizePost(p, idx) {
     is_coupon,
     expires_at,
     mediaSrc: safeStr(mediaSrc).trim(),
+    media_type,
+    is_video,
   };
 }
 
-function MediaBlock({ src, updatedAt }) {
+function MediaBlock({ src, updatedAt, forceVideo = false }) {
+
   const s = safeStr(src).trim();
   if (!s) return null;
 
@@ -113,7 +119,7 @@ function MediaBlock({ src, updatedAt }) {
   // ✅ Try video when:
   // - looks like video by extension OR
   // - it's an R2 proxied object (many of your keys won't have extensions)
-  const shouldTryVideo = isVideoUrl(finalSrc) || finalSrc.startsWith("/r2/");
+  const shouldTryVideo = forceVideo || isVideoUrl(finalSrc);
 
   if (shouldTryVideo) {
     return (
@@ -161,15 +167,14 @@ function TagPill({ active, onClick, children }) {
 function CornerRibbon({ label, variant = "mini" }) {
   // variant: "mini" | "expired" | "pinned"
   const base =
-    "absolute px-10 py-1 text-[10px] uppercase tracking-[0.25em] font-semibold shadow-md border pointer-events-none";
+    "absolute z-30 px-12 py-1 text-[10px] uppercase tracking-[0.25em] font-semibold shadow-md border pointer-events-none flex items-center justify-center";
 
-  // positions
   const pos =
     variant === "expired"
-      ? "top-2 -right-10 rotate-45"     // top-right ribbon
+      ? "-top-3 -right-14 rotate-45"   // stick out more
       : variant === "mini"
-      ? "top-2 -left-10 -rotate-45"     // top-left ribbon
-      : "top-2 -right-10 rotate-45";    // pinned can share right if you still use it
+      ? "-top-3 -left-14 -rotate-45"  // stick out more
+      : "-top-3 -right-14 rotate-45";
 
   const cls =
     variant === "expired"
@@ -178,12 +183,9 @@ function CornerRibbon({ label, variant = "mini" }) {
       ? `${base} ${pos} bg-primary/80 text-white border-primary/30`
       : `${base} ${pos} bg-emerald-500/80 text-white border-emerald-300/30`;
 
-  return (
-    <div className="absolute inset-0 z-20 overflow-hidden rounded-2xl">
-      <div className={cls}>{label}</div>
-    </div>
-  );
+  return <div className={cls}>{label}</div>;
 }
+
 
 
 function msToCountdown(ms) {
@@ -477,14 +479,24 @@ function PostCard({ p, updatedAt }) {
 
   return (
     <Wrapper>
-      <div className="relative">
+      <div className="relative overflow-visible">
         {/* Ribbons */}
         {p.is_coupon ? <CornerRibbon label="Mini Game" variant="mini" /> : null}
         {isExpiredMini ? <CornerRibbon label="Expired" variant="expired" /> : null}
         {p.pinned ? <CornerRibbon label="Pinned" variant="pinned" /> : null}
 
         {/* Media */}
-        {p.mediaSrc ? <MediaBlock src={p.mediaSrc} updatedAt={updatedAt} /> : null}
+        {p.mediaSrc ? (
+          <div className="rounded-2xl overflow-hidden">
+            <MediaBlock
+              src={p.mediaSrc}
+              updatedAt={updatedAt}
+              forceVideo={p.is_video || p.media_type === "video"}
+            />
+          </div>
+        ) : null}
+
+
       </div>
 
       <div className="p-5">
