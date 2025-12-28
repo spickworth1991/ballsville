@@ -691,9 +691,7 @@ export default function BigGameAdminClient() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <button className="btn btn-outline text-sm" type="button" onClick={importFromSupabase} disabled={saving}>
-            Import from Supabase
-          </button>
+          
 
           <button className="btn btn-primary text-sm" type="button" onClick={addDivision} disabled={saving}>
             + Add division
@@ -758,7 +756,7 @@ export default function BigGameAdminClient() {
         <h2 className="text-lg font-semibold">Divisions</h2>
 
         {groups.length === 0 ? (
-          <p className="text-sm text-muted">No Big Game rows in R2 yet. Use “Import from Supabase” or “Add division”.</p>
+          <p className="text-sm text-muted">No Big Game rows in R2 yet. Use  “Add division”.</p>
         ) : (
           yearSections.map((yr) => {
             const yearGroups = groups.filter((g) => Number(g.year) === Number(yr));

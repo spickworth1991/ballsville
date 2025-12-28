@@ -18,20 +18,21 @@ function normPost(p, idx) {
   const created_at = typeof p?.created_at === "string" ? p.created_at : new Date().toISOString();
   const expires_at_raw = p?.expires_at ?? p?.expiresAt ?? null;
   const expires_at = typeof expires_at_raw === "string" && expires_at_raw.trim() ? expires_at_raw : null;
+
   return {
     id,
     created_at,
     title: String(p?.title || "").trim(),
     body: String(p?.body || "").trim(),
-    tags: Array.isArray(p?.tags) ? p.tags.map(String) : typeof p?.tags === "string" ? p.tags.split(",").map((s) => s.trim()).filter(Boolean) : [],
-    // Back-compat: older data used `pin`, UI uses `pinned`.
+    tags: Array.isArray(p?.tags)
+      ? p.tags.map(String)
+      : typeof p?.tags === "string"
+      ? p.tags.split(",").map((s) => s.trim()).filter(Boolean)
+      : [],
     pinned: Boolean(p?.pinned ?? p?.pin),
-    // Mini-game flag (used by /news to separate “Mini Games”)
     is_coupon: Boolean(p?.is_coupon),
-    // Optional close time for Mini Games
     expires_at,
     imageKey: typeof p?.imageKey === "string" ? p.imageKey : "",
-    // Back-compat: data stored as image_url
     imageUrl: typeof p?.imageUrl === "string" ? p.imageUrl : typeof p?.image_url === "string" ? p.image_url : "",
   };
 }
@@ -51,6 +52,11 @@ function localInputToIso(v) {
   return d.toISOString();
 }
 
+function isVideoUrl(u) {
+  const url = String(u || "").toLowerCase();
+  return url.endsWith(".mp4") || url.endsWith(".webm") || url.endsWith(".ogg") || url.includes("video");
+}
+
 export default function AdminPostsPage() {
   return (
     <AdminGuard>
@@ -68,7 +74,6 @@ function AdminPostsInner() {
   const [ok, setOk] = useState("");
 
   const [selectedId, setSelectedId] = useState("");
-
   const selected = useMemo(() => posts.find((p) => p.id === selectedId) || null, [posts, selectedId]);
 
   async function getToken() {
@@ -91,7 +96,6 @@ function AdminPostsInner() {
       const data = await res.json();
       const list = Array.isArray(data?.posts) ? data.posts : [];
       const normalized = list.map(normPost);
-      // Newest first
       normalized.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
       setPosts(normalized);
       if (!selectedId && normalized.length) setSelectedId(normalized[0].id);
@@ -108,7 +112,6 @@ function AdminPostsInner() {
     setSaving(true);
     try {
       const token = await getToken();
-      // Backend expects snake_case fields for the public /news page.
       const payload = {
         posts: (nextPosts || []).map((p) => ({
           id: String(p?.id || ""),
@@ -123,7 +126,8 @@ function AdminPostsInner() {
           image_url: typeof p?.imageUrl === "string" ? p.imageUrl : "",
         })),
       };
-      const res = await fetch(`/api/admin/posts`, {
+
+      const res = await fetch(`/api/admin/posts?season=${encodeURIComponent(String(season))}`, {
         method: "PUT",
         headers: {
           "content-type": "application/json",
@@ -131,10 +135,12 @@ function AdminPostsInner() {
         },
         body: JSON.stringify(payload),
       });
+
       if (!res.ok) {
         const t = await res.text();
         throw new Error(`Save failed (${res.status}): ${t}`);
       }
+
       setOk("Saved.");
       setPosts(nextPosts);
     } catch (e) {
@@ -166,14 +172,15 @@ function AdminPostsInner() {
         headers: token ? { authorization: `Bearer ${token}` } : undefined,
         body: form,
       });
+
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || `Upload failed (${res.status})`);
 
       const key = String(data.key || "");
       updateSelected({ imageKey: key, imageUrl: "" });
-      setOk("Image uploaded (remember to Save)." );
+      setOk("Media uploaded (remember to Save).");
     } catch (e) {
-      setErr(e?.message || "Image upload failed.");
+      setErr(e?.message || "Upload failed.");
     } finally {
       setSaving(false);
     }
@@ -209,14 +216,13 @@ function AdminPostsInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const imageSrc = selected?.imageKey
+  const mediaSrc = selected?.imageKey
     ? `/r2/${selected.imageKey}?v=${encodeURIComponent(selected.imageKey)}`
     : selected?.imageUrl || "";
 
   const selectedIsClosed = !!(selected?.is_coupon && selected?.expires_at && new Date(selected.expires_at) < new Date());
 
   return (
-    
     <main className="section">
       <div className="container-site space-y-6">
         <AdminNav
@@ -249,6 +255,7 @@ function AdminPostsInner() {
               <div className="text-sm font-semibold">All Posts</div>
               <div className="text-xs text-muted">{posts.length}</div>
             </div>
+
             <div className="mt-3 space-y-2 max-h-[70vh] overflow-auto pr-1">
               {loading ? (
                 <div className="text-sm text-muted">Loading…</div>
@@ -257,7 +264,6 @@ function AdminPostsInner() {
               ) : (
                 posts.map((p) => {
                   const closed = !!(p?.is_coupon && p?.expires_at && new Date(p.expires_at) < new Date());
-                  // Keep closed posts unclickable (matches public behavior), but allow the currently-selected one to remain editable.
                   const disabled = closed && p.id !== selectedId;
 
                   return (
@@ -278,7 +284,9 @@ function AdminPostsInner() {
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <div className="font-semibold text-sm truncate">{p.title || "(Untitled)"}</div>
-                          <div className="text-[11px] text-muted truncate">{p.created_at ? new Date(p.created_at).toLocaleString() : ""}</div>
+                          <div className="text-[11px] text-muted truncate">
+                            {p.created_at ? new Date(p.created_at).toLocaleString() : ""}
+                          </div>
                           {p.is_coupon && p.expires_at ? (
                             <div className="text-[11px] text-muted truncate">
                               Closes: {new Date(p.expires_at).toLocaleString()} {closed ? "(Closed)" : ""}
@@ -350,6 +358,7 @@ function AdminPostsInner() {
                       onChange={(e) => updateSelected({ tags: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
                     />
                   </div>
+
                   <div className="space-y-3">
                     <div>
                       <label className="text-xs text-muted">Pinned</label>
@@ -399,36 +408,41 @@ function AdminPostsInner() {
                 </div>
 
                 <div className="grid gap-3">
-                  <label className="text-xs text-muted">Image (upload or paste external URL)</label>
+                  <label className="text-xs text-muted">Media (upload or paste external URL)</label>
 
                   <div className="flex flex-wrap gap-2 items-center">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => uploadImage(e.target.files?.[0])}
-                      disabled={saving}
-                    />
-                    <span className="text-xs text-muted">Uploads replace existing image for this post.</span>
+                    <input type="file" accept="image/*,video/*" onChange={(e) => uploadImage(e.target.files?.[0])} disabled={saving} />
+                    <span className="text-xs text-muted">Uploads replace existing media for this post.</span>
                   </div>
 
                   <input
                     className="input"
                     value={selected.imageUrl}
                     onChange={(e) => updateSelected({ imageUrl: e.target.value, imageKey: "" })}
-                    placeholder="https://... (optional external image URL)"
+                    placeholder="https://... (optional external image/video URL)"
                   />
 
-                  {imageSrc ? (
-                    <div className="relative w-full max-w-[720px] h-[240px] rounded-2xl overflow-hidden border border-subtle bg-black/10">
-                      <Image src={imageSrc} alt="Post image" fill className="object-contain p-2" />
+                  {mediaSrc ? (
+                    <div className="relative w-full max-w-[720px] rounded-2xl overflow-hidden border border-subtle bg-black/10">
+                      {isVideoUrl(mediaSrc) ? (
+                        <div className="w-full aspect-[16/9]">
+                          <video className="w-full h-full object-contain" controls playsInline preload="metadata">
+                            <source src={mediaSrc} />
+                          </video>
+                        </div>
+                      ) : (
+                        <div className="relative w-full h-[240px]">
+                          <Image src={mediaSrc} alt="Post media" fill className="object-contain p-2" />
+                        </div>
+                      )}
                     </div>
                   ) : (
-                    <div className="text-xs text-muted">No image.</div>
+                    <div className="text-xs text-muted">No media.</div>
                   )}
                 </div>
 
                 <div className="text-xs text-muted">
-                  Stored image path (if uploaded): <span className="font-mono">{selected.imageKey || "(none)"}</span>
+                  Stored media key (if uploaded): <span className="font-mono">{selected.imageKey || "(none)"}</span>
                 </div>
               </div>
             )}
