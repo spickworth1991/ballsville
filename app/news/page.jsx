@@ -5,8 +5,10 @@ import Link from "next/link";
 import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import { CURRENT_SEASON } from "@/lib/season";
 
-const cardCls =
-  "card bg-card-surface border border-subtle rounded-2xl shadow-md overflow-hidden transition hover:border-accent hover:-translate-y-0.5";
+const cardBase =
+  "card bg-card-surface border border-subtle rounded-2xl shadow-md overflow-hidden transition";
+
+const cardHover = "hover:border-accent hover:-translate-y-0.5";
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
@@ -58,10 +60,9 @@ function normalizePost(p, idx) {
   const is_coupon = Boolean(o.is_coupon);
   const expires_at = safeStr(o.expires_at || o.expiresAt || "").trim();
 
-  // tags[] are your real filterable categories
   let tags = normalizeTags(o.tags);
 
-  // Mini Game tag should appear if is_coupon is set, even if tags[] missing it
+  // Ensure "Mini Game" appears as a tag for filtering + display, but still keep is_coupon as the true flag.
   const hasMini = tags.some((t) => t.toLowerCase() === "mini game");
   if (is_coupon && !hasMini) tags = ["Mini Game", ...tags];
 
@@ -120,6 +121,74 @@ function TagPill({ active, onClick, children }) {
     >
       {children}
     </button>
+  );
+}
+
+// Corner ribbon that overlaps the card edges at an angle
+function CornerRibbon({ label, variant = "mini" }) {
+  // variant: "mini" | "expired" | "pinned"
+  const base =
+    "absolute -top-2 -right-10 rotate-45 px-12 py-1 text-[10px] uppercase tracking-[0.25em] font-semibold shadow-md border";
+
+  const cls =
+    variant === "expired"
+      ? `${base} bg-rose-500/20 text-rose-100 border-rose-300/30`
+      : variant === "pinned"
+      ? `${base} bg-primary/15 text-primary border-primary/30`
+      : `${base} bg-accent/15 text-accent border-accent/30`;
+
+  return (
+    <div className="pointer-events-none absolute top-0 right-0 z-20">
+      <div className={cls}>{label}</div>
+    </div>
+  );
+}
+
+function msToCountdown(ms) {
+  if (ms <= 0) return "00:00:00";
+  const totalSec = Math.floor(ms / 1000);
+  const s = totalSec % 60;
+  const totalMin = Math.floor(totalSec / 60);
+  const m = totalMin % 60;
+  const totalHr = Math.floor(totalMin / 60);
+  const h = totalHr % 24;
+  const d = Math.floor(totalHr / 24);
+
+  const pad = (n) => String(n).padStart(2, "0");
+  if (d > 0) return `${d}d ${pad(h)}:${pad(m)}:${pad(s)}`;
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
+
+function useNowTick(active) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [active]);
+  return now;
+}
+
+function MiniGameTimer({ expiresAt }) {
+  const exp = expiresAt ? new Date(expiresAt).getTime() : NaN;
+  const now = useNowTick(Boolean(expiresAt));
+  if (!expiresAt || Number.isNaN(exp)) return null;
+
+  const remaining = exp - now;
+  const closed = remaining <= 0;
+
+  return (
+    <div className="mt-3 rounded-xl border border-subtle bg-panel/60 px-3 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[11px] uppercase tracking-[0.2em] text-muted">
+          {closed ? "Closed" : "Closes in"}
+        </div>
+        <div className={`text-xs font-semibold ${closed ? "text-rose-100" : "text-foreground"}`}>
+          {closed ? "00:00:00" : msToCountdown(remaining)}
+        </div>
+      </div>
+      <div className="mt-1 text-[11px] text-muted">Closes: {fmtDate(expiresAt)}</div>
+    </div>
   );
 }
 
@@ -232,14 +301,11 @@ function NewsInner({ version = "0", manifest = null }) {
     return ["ALL", ...Array.from(set.values()).sort((a, b) => a.localeCompare(b))];
   }, [posts]);
 
+  // NOTE: we no longer hide expired mini games globally — we show them greyed out + unclickable.
   const filtered = useMemo(() => {
-    const now = Date.now();
+    if (miniOnly && activeTag === "ALL") return posts.filter((p) => p.is_coupon);
+
     return posts.filter((p) => {
-      // hide expired mini games on public page
-      if (p.is_coupon && p.expires_at) {
-        const t = new Date(p.expires_at).getTime();
-        if (!Number.isNaN(t) && t < now) return false;
-      }
       if (miniOnly && !p.is_coupon) return false;
       if (activeTag === "ALL") return true;
       const want = activeTag.toLowerCase();
@@ -259,15 +325,24 @@ function NewsInner({ version = "0", manifest = null }) {
       </div>
 
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-12 space-y-8">
-        <header className="text-center space-y-2">
-          <p className="text-xs uppercase tracking-[0.35em] text-accent">BALLSVILLE</p>
+        {/* Header bubble (readable) */}
+        <header className="rounded-2xl border border-subtle bg-card-surface/70 backdrop-blur p-6 text-center space-y-2 shadow-sm">
+          <p className="inline-flex mx-auto text-xs uppercase tracking-[0.35em] text-accent rounded-full border border-subtle bg-panel/60 px-3 py-1">
+            BALLSVILLE
+          </p>
           <h1 className="text-3xl sm:text-4xl font-semibold">{title}</h1>
-          <p className="text-sm text-muted">Announcements, updates, and important posts from the admin team.</p>
-          {updatedAt ? <p className="text-[11px] text-muted">Updated: {fmtDate(updatedAt)}</p> : null}
+          <p className="text-sm text-muted">
+            Announcements, updates, and important posts from the admin team.
+          </p>
+          {updatedAt ? (
+            <p className="inline-flex mx-auto text-[11px] text-muted rounded-full border border-subtle bg-panel/60 px-3 py-1">
+              Updated: {fmtDate(updatedAt)}
+            </p>
+          ) : null}
         </header>
 
-        {/* Premium filter bar */}
-        <div className="rounded-2xl border border-subtle bg-card-surface/60 backdrop-blur px-4 py-3 flex flex-col gap-3">
+        {/* Premium filter bar (bubble) */}
+        <div className="rounded-2xl border border-subtle bg-card-surface/60 backdrop-blur px-4 py-3 flex flex-col gap-3 shadow-sm">
           <div className="flex flex-wrap items-center justify-center gap-2">
             {tagOptions.map((t) => (
               <TagPill key={t} active={activeTag === t} onClick={() => setActiveTag(t)}>
@@ -312,44 +387,15 @@ function NewsInner({ version = "0", manifest = null }) {
             {pinned.length ? (
               <section className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-foreground">Pinned</h2>
+                  <h2 className="inline-flex items-center gap-2 text-sm font-semibold text-foreground rounded-full border border-subtle bg-panel/60 px-3 py-1">
+                    Pinned
+                  </h2>
                   <span className="text-[11px] text-muted">{pinned.length}</span>
                 </div>
-                <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+
+                <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-2">
                   {pinned.map((p) => (
-                    <article key={p.id} className={cardCls}>
-                      {p.mediaSrc ? <MediaBlock src={p.mediaSrc} updatedAt={updatedAt} /> : null}
-                      <div className="p-5">
-                        <div className="flex items-start justify-between gap-2">
-                          <h3 className="text-sm font-semibold text-foreground leading-snug">{p.title || "Post"}</h3>
-                          <span className="shrink-0 text-[10px] uppercase tracking-[0.2em] px-2 py-1 rounded-full border border-primary/30 text-primary bg-primary/10">
-                            PINNED
-                          </span>
-                        </div>
-                        {p.date ? <p className="mt-1 text-[11px] text-muted">{fmtDate(p.date)}</p> : null}
-
-                        {p.html ? (
-                          <div className="mt-3 prose prose-invert max-w-none text-xs text-muted" dangerouslySetInnerHTML={{ __html: p.html }} />
-                        ) : p.body ? (
-                          <p className="mt-3 text-xs text-muted line-clamp-6 whitespace-pre-line">{p.body}</p>
-                        ) : null}
-
-                        <div className="mt-4 flex items-center justify-between">
-                          {p.link ? (
-                            <Link href={p.link} target="_blank" rel="noreferrer" className="inline-flex text-xs text-accent hover:underline">
-                              Read more →
-                            </Link>
-                          ) : (
-                            <span />
-                          )}
-                          {p.is_coupon ? (
-                            <span className="text-[10px] px-2 py-1 rounded-full border border-subtle text-muted bg-panel">
-                              MINI GAME
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-                    </article>
+                    <PostCard key={p.id} p={p} updatedAt={updatedAt} />
                   ))}
                 </div>
               </section>
@@ -357,50 +403,15 @@ function NewsInner({ version = "0", manifest = null }) {
 
             <section className="space-y-3">
               <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-foreground">{pinned.length ? "Latest" : "Posts"}</h2>
+                <h2 className="inline-flex items-center gap-2 text-sm font-semibold text-foreground rounded-full border border-subtle bg-panel/60 px-3 py-1">
+                  {pinned.length ? "Latest" : "Posts"}
+                </h2>
                 <span className="text-[11px] text-muted">{regular.length}</span>
               </div>
-              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+
+              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-2">
                 {regular.map((p) => (
-                  <article key={p.id} className={cardCls}>
-                    {p.mediaSrc ? <MediaBlock src={p.mediaSrc} updatedAt={updatedAt} /> : null}
-
-                    <div className="p-5">
-                      <div className="flex items-start justify-between gap-2">
-                        <h3 className="text-sm font-semibold text-foreground leading-snug">{p.title || "Post"}</h3>
-                        {p.is_coupon ? (
-                          <span className="shrink-0 text-[10px] uppercase tracking-[0.2em] px-2 py-1 rounded-full border border-subtle bg-panel text-muted">
-                            MINI GAME
-                          </span>
-                        ) : null}
-                      </div>
-
-                      {p.date ? <p className="mt-1 text-[11px] text-muted">{fmtDate(p.date)}</p> : null}
-
-                      {p.html ? (
-                        <div className="mt-3 prose prose-invert max-w-none text-xs text-muted" dangerouslySetInnerHTML={{ __html: p.html }} />
-                      ) : p.body ? (
-                        <p className="mt-3 text-xs text-muted line-clamp-6 whitespace-pre-line">{p.body}</p>
-                      ) : null}
-
-                      <div className="mt-4 flex items-center justify-between">
-                        {p.link ? (
-                          <Link href={p.link} target="_blank" rel="noreferrer" className="inline-flex text-xs text-accent hover:underline">
-                            Read more →
-                          </Link>
-                        ) : (
-                          <span />
-                        )}
-
-                        {p.tags?.length ? (
-                          <div className="text-[10px] text-muted truncate max-w-[60%]">
-                            {p.tags.slice(0, 2).join(" · ")}
-                            {p.tags.length > 2 ? " · …" : ""}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  </article>
+                  <PostCard key={p.id} p={p} updatedAt={updatedAt} />
                 ))}
               </div>
             </section>
@@ -408,6 +419,87 @@ function NewsInner({ version = "0", manifest = null }) {
         )}
       </div>
     </main>
+  );
+}
+
+function PostCard({ p, updatedAt }) {
+  const now = Date.now();
+  const expMs = p.expires_at ? new Date(p.expires_at).getTime() : NaN;
+  const isExpiredMini = Boolean(p.is_coupon && p.expires_at && !Number.isNaN(expMs) && expMs < now);
+
+  const disabled = isExpiredMini;
+
+  // If expired, kill hover lift + add grayscale/opacity + prevent clicking
+  const cardCls = `${cardBase} ${disabled ? "opacity-60 grayscale cursor-not-allowed" : cardHover}`;
+
+  const Wrapper = ({ children }) => {
+    if (disabled) return <article className={cardCls}>{children}</article>;
+    return <article className={cardCls}>{children}</article>;
+  };
+
+  return (
+    <Wrapper>
+      <div className="relative">
+        {/* Ribbons */}
+        {p.is_coupon ? <CornerRibbon label="Mini Game" variant="mini" /> : null}
+        {isExpiredMini ? <CornerRibbon label="Expired" variant="expired" /> : null}
+        {p.pinned ? <CornerRibbon label="Pinned" variant="pinned" /> : null}
+
+        {/* Media */}
+        {p.mediaSrc ? <MediaBlock src={p.mediaSrc} updatedAt={updatedAt} /> : null}
+      </div>
+
+      <div className="p-5">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="text-sm font-semibold text-foreground leading-snug">{p.title || "Post"}</h3>
+        </div>
+
+        {p.date ? (
+          <div className="mt-2">
+            <span className="inline-flex text-[11px] text-muted rounded-full border border-subtle bg-panel/60 px-3 py-1">
+              {fmtDate(p.date)}
+            </span>
+          </div>
+        ) : null}
+
+        {p.is_coupon ? <MiniGameTimer expiresAt={p.expires_at} /> : null}
+
+        {p.html ? (
+          <div className="mt-3 prose prose-invert max-w-none text-xs text-muted" dangerouslySetInnerHTML={{ __html: p.html }} />
+        ) : p.body ? (
+          <p className="mt-3 text-xs text-muted line-clamp-6 whitespace-pre-line">{p.body}</p>
+        ) : null}
+
+        <div className="mt-4 flex items-center justify-between">
+          {p.link ? (
+            disabled ? (
+              <span className="inline-flex text-xs text-muted">Closed</span>
+            ) : (
+              <Link href={p.link} target="_blank" rel="noreferrer" className="inline-flex text-xs text-accent hover:underline">
+                Read more →
+              </Link>
+            )
+          ) : (
+            <span />
+          )}
+
+          {p.tags?.length ? (
+            <div className="text-[10px] text-muted truncate max-w-[60%]">
+              {p.tags.slice(0, 2).join(" · ")}{p.tags.length > 2 ? " · …" : ""}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Click blocker overlay (so links/video controls still work only if NOT disabled) */}
+      {disabled ? (
+        <div
+          className="absolute inset-0 z-10"
+          aria-hidden="true"
+          title="This Mini Game is expired"
+        />
+      ) : null}
+    </Wrapper>
   );
 }
 
