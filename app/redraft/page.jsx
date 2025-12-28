@@ -2,7 +2,6 @@
 import { siteConfig } from "@/app/config/siteConfig";
 import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import RedraftDynamicBlocks from "./RedraftDynamicBlocks";
-import RedraftOwnersBlockClient from "./RedraftOwnersBlockClient";
 import { CURRENT_SEASON } from "@/lib/season";
 
 const pageTitle = `The Redraft Game | ${siteConfig.shortName}`;
@@ -135,7 +134,7 @@ export default function RedraftPage() {
 
 
         {/* Live leagues (R2) */}{/* League description */}
-        <SectionManifestGate section="redraft" >
+        <SectionManifestGate section="redraft" season={CURRENT_SEASON}>
             <RedraftDynamicBlocks season={CURRENT_SEASON} showOwner={false} showLeagues embeddedLegions={false} />
           </SectionManifestGate>
         <article

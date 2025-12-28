@@ -33,24 +33,31 @@ export default function SectionManifestGate({ section, season, pollMs = 0, child
   const [error, setError] = useState(null);
 
   async function load() {
-    try {
-      setError(null);
+  try {
+    setError(null);
 
-      const cacheKey = `${section}:${season || ""}`;
-      const cached = __MANIFEST_CACHE.get(cacheKey);
-      if (cached && cached.manifest) {
-        setManifest(cached.manifest);
-        return;
-      }
+    const cacheKey = `${section}:${season || ""}`;
 
-      // Let normal browser caching apply (Cloudflare sends must-revalidate + ETag).
-      // We want 304s when unchanged, not forced 200s.
+    // Dedupe concurrent loads by caching the in-flight promise immediately.
+    const existing = __MANIFEST_CACHE.get(cacheKey);
+    if (existing?.manifest) {
+      setManifest(existing.manifest);
+      return;
+    }
+    if (existing?.promise) {
+      const man = await existing.promise;
+      setManifest(man);
+      return;
+    }
+
+    const fetchPromise = (async () => {
       let out = null;
 
       // Try season-scoped manifest first.
       if (season) {
         const r1 = await tryFetchJson(manifestUrl(section, season));
         if (r1.ok) out = r1.data;
+
         // Fall back to non-season manifest if the season-scoped one doesn't exist.
         if (!out && r1.status === 404) {
           const r2 = await tryFetchJson(manifestUrl(section));
@@ -62,15 +69,25 @@ export default function SectionManifestGate({ section, season, pollMs = 0, child
       }
 
       // If manifest doesn't exist yet (404), still render with a stable fallback.
-      setManifest(out || { updatedAt: 0, section, season });
-    } catch (e) {
-      setError(e);
-      // still render children with a stable fallback version so the page works
-      setManifest((m) => m || { updatedAt: 0, section, season });
-    }
-  }
+      return out || { updatedAt: 0, section, season };
+    })();
 
-  useEffect(() => {
+    __MANIFEST_CACHE.set(cacheKey, { promise: fetchPromise });
+
+    const man = await fetchPromise;
+    __MANIFEST_CACHE.set(cacheKey, { manifest: man });
+
+    setManifest(man);
+  } catch (e) {
+    setError(e);
+    // still render children with a stable fallback version so the page works
+    const fallback = { updatedAt: 0, section, season };
+    setManifest((m) => m || fallback);
+    __MANIFEST_CACHE.set(`${section}:${season || ""}`, { manifest: fallback });
+  }
+}
+
+useEffect(() => {
     load();
     if (!pollMs) return;
     const id = setInterval(load, pollMs);
