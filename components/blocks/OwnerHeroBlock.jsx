@@ -24,9 +24,11 @@ const DEFAULT = {
 
 export default function OwnerHeroBlock({
   mode,
-  season = CURRENT_SEASON, // used only to determine... which JSON we fetch
+  season = CURRENT_SEASON,
   title = "Owner Updates",
   subtitle,
+  // Provided by SectionManifestGate (or left as "0" if you don't use it).
+  // When this changes, we allow a refetch + refresh.
   version = "0",
 }) {
   const m = safeMode(mode);
@@ -35,7 +37,7 @@ export default function OwnerHeroBlock({
   const [err, setErr] = useState("");
 
   const imgVer = useMemo(() => {
-    // If the admin saved the page after changing the image, updated_at changes.
+    // If the admin saved after changing the image, updated_at changes.
     // This makes the promo image URL effectively versioned so it can be cached long-term.
     return cfg?.updated_at || cfg?.hero?.promoImageKey || "";
   }, [cfg?.updated_at, cfg?.hero?.promoImageKey]);
@@ -80,16 +82,19 @@ export default function OwnerHeroBlock({
           // ignore storage errors
         }
 
-{
         // Let the /r2 proxy handle caching + ETag revalidation.
         // Some sections may not be season-scoped yet; fall back to page.json if page_{season}.json is missing.
-        let res = await fetch(`/r2/content/${m}/page_${season}.json?v=${encodeURIComponent(String(version || "0"))}`, { cache: "default" });
+        let res = await fetch(
+          `/r2/content/${m}/page_${season}.json?v=${encodeURIComponent(v)}`,
+          { cache: "default" }
+        );
+
         if (res.status === 404) {
-          res = await fetch(`/r2/content/${m}/page.json?v=${encodeURIComponent(String(version || "0"))}`, { cache: "default" });
+          res = await fetch(`/r2/content/${m}/page.json?v=${encodeURIComponent(v)}`, { cache: "default" });
         }
 
         if (!res.ok) {
-          // 404 just means the owner block hasn't been configured for this section yet.
+          // 404 just means this block hasn't been configured yet.
           if (!cancelled) setCfg({ ...DEFAULT, season });
           return;
         }
@@ -110,9 +115,8 @@ export default function OwnerHeroBlock({
         if (!cancelled) setCfg(next);
 
         try {
-          const v = String(version || "0");
-          sessionStorage.setItem(`ownerhero:${m}:${season}:version`, v);
-          sessionStorage.setItem(`ownerhero:${m}:${season}:cfg`, JSON.stringify(next));
+          sessionStorage.setItem(cacheKeyV, v);
+          sessionStorage.setItem(cacheKeyCfg, JSON.stringify(next));
         } catch {
           // ignore storage errors
         }
@@ -163,38 +167,37 @@ export default function OwnerHeroBlock({
 
       <div className="p-4 grid gap-4">
         {imgSrc ? (
-        <div className="relative w-full overflow-hidden rounded-xl border border-subtle bg-black/20">
-          <div
-            className="relative mx-auto flex items-center justify-center w-full"
-            style={{
-              height: "clamp(180px, 22vw, 240px)", // never taller than 240px
-              maxWidth: "560px",                  // keeps it from becoming a full-width billboard
-            }}
-          >
-            {/* background polish */}
-            <div className="pointer-events-none absolute inset-0">
-              <div className="absolute -top-16 -left-16 h-44 w-44 rounded-full bg-cyan-400/10 blur-3xl" />
-              <div className="absolute -bottom-16 -right-16 h-44 w-44 rounded-full bg-purple-500/10 blur-3xl" />
-              <div className="absolute inset-0 bg-gradient-to-b from-white/5 via-transparent to-black/20" />
-            </div>
-
-            <Image
-              src={imgSrc}
-              alt={`${title} image`}
-              width={1600}
-              height={900}
-              sizes="(max-width: 1024px) 100vw, 560px"
-              className="relative z-10 object-contain p-2"
+          <div className="relative w-full overflow-hidden rounded-xl border border-subtle bg-black/20">
+            <div
+              className="relative mx-auto flex items-center justify-center w-full"
               style={{
-                maxHeight: "100%",  // cannot exceed the frame height
-                maxWidth: "100%",   // cannot exceed the frame width
-                width: "auto",
-                height: "auto",
+                height: "clamp(180px, 22vw, 240px)",
+                maxWidth: "560px",
               }}
-            />
+            >
+              <div className="pointer-events-none absolute inset-0">
+                <div className="absolute -top-16 -left-16 h-44 w-44 rounded-full bg-cyan-400/10 blur-3xl" />
+                <div className="absolute -bottom-16 -right-16 h-44 w-44 rounded-full bg-purple-500/10 blur-3xl" />
+                <div className="absolute inset-0 bg-gradient-to-b from-white/5 via-transparent to-black/20" />
+              </div>
+
+              <Image
+                src={imgSrc}
+                alt={`${title} image`}
+                width={1600}
+                height={900}
+                sizes="(max-width: 1024px) 100vw, 560px"
+                className="relative z-10 object-contain p-2"
+                style={{
+                  maxHeight: "100%",
+                  maxWidth: "100%",
+                  width: "auto",
+                  height: "auto",
+                }}
+              />
+            </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
 
         <div
           className="prose prose-invert max-w-none text-sm text-muted"
