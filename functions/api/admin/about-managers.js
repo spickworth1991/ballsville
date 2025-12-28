@@ -10,9 +10,42 @@
 // - data/manifests/about-managers_<season>.json (updated on every PUT)
 
 import { getCurrentNflSeason } from "../../_lib/season";
-import { requireAdmin } from "../_adminAuth";
+
 
 const DEFAULT_SEASON = getCurrentNflSeason();
+
+async function requireAdmin(request, env) {
+  const auth = request.headers.get("authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (!token) return { ok: false, status: 401, error: "Missing Authorization Bearer token." };
+
+  const supabaseUrl = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnon = env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnon) {
+    return { ok: false, status: 500, error: "Missing SUPABASE_URL or SUPABASE_ANON_KEY." };
+  }
+
+  const admins = String(env.ADMIN_EMAILS || env.NEXT_PUBLIC_ADMIN_EMAILS || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (!admins.length) return { ok: false, status: 403, error: "No ADMIN_EMAILS configured." };
+
+  const r = await fetch(`${supabaseUrl.replace(/\/$/, "")}/auth/v1/user`, {
+    headers: { apikey: supabaseAnon, authorization: `Bearer ${token}` },
+  });
+
+  if (!r.ok) return { ok: false, status: 401, error: "Invalid session token." };
+
+  const user = await r.json();
+  const email = String(user?.email || "").toLowerCase();
+  if (!admins.includes(email)) return { ok: false, status: 403, error: "Not an admin." };
+
+  return { ok: true, email };
+}
+
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -114,10 +147,12 @@ export async function onRequest(context) {
     if (!r2.ok) return json({ ok: false, error: r2.error }, r2.status);
 
     const gate = await requireAdmin(request, env);
-    if (!gate.ok) return gate.response;
+    if (!gate.ok) return json({ ok: false, error: gate.error }, gate.status);
+
 
     const url = new URL(request.url);
-    const season = Number(url.searchParams.get("season") || DEFAULT_SEASON);
+    const seasonParam = url.searchParams.get("season");
+    const season = Number(seasonParam ? seasonParam : DEFAULT_SEASON);
     if (!Number.isFinite(season) || season < 2000) {
       return json({ ok: false, error: "Missing/invalid season" }, 400);
     }
