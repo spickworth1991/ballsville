@@ -90,15 +90,32 @@ function MediaBlock({ src, updatedAt }) {
       ? (s.includes("?") ? s : `${s}?v=${encodeURIComponent(updatedAt)}`)
       : s;
 
-  if (isVideoUrl(finalSrc)) {
-    return (
-      <div className="relative w-full aspect-[16/9] bg-black/30">
-        <video className="absolute inset-0 w-full h-full object-contain" controls playsInline preload="metadata">
-          <source src={finalSrc} />
-        </video>
-      </div>
-    );
-  }
+    if (isVideoUrl(finalSrc)) {
+      const lower = finalSrc.toLowerCase();
+      const type = lower.endsWith(".webm")
+        ? "video/webm"
+        : lower.endsWith(".ogg")
+        ? "video/ogg"
+        : "video/mp4";
+
+      return (
+        <div className="relative w-full aspect-[16/9] bg-black/30">
+          <video
+            className="absolute inset-0 w-full h-full object-contain"
+            controls
+            playsInline
+            muted
+            preload="metadata"
+            crossOrigin="anonymous"
+          >
+            <source src={finalSrc} type={type} />
+            {/* fallback */}
+            Your browser does not support the video tag.
+          </video>
+        </div>
+      );
+    }
+
 
   return (
     <div className="relative w-full aspect-[16/9] bg-black/20">
