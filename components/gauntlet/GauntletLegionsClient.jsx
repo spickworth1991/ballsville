@@ -8,10 +8,14 @@ function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
-function resolveImageSrc({ imagePath, imageKey, updatedAt }) {
+function resolveImageSrc({ imagePath, imageKey, updatedAt, bustVersion }) {
   const p = safeStr(imagePath).trim();
   const k = safeStr(imageKey).trim();
-  const bust = updatedAt ? `v=${encodeURIComponent(updatedAt)}` : version ? `v=${encodeURIComponent(String(version))}` : `v=0`;
+  const bust = updatedAt
+    ? `v=${encodeURIComponent(String(updatedAt))}`
+    : bustVersion
+      ? `v=${encodeURIComponent(String(bustVersion))}`
+      : `v=0`;
 
   if (p) {
     if (p.includes("?")) return p;
@@ -166,6 +170,7 @@ export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedde
               imagePath: l.legion_image_path,
               imageKey: l.legion_image_key,
               updatedAt,
+              bustVersion: version,
             })}
             imageAlt={l.legion_name || "Legion"}
             metaLeft={

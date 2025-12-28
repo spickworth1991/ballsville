@@ -111,13 +111,18 @@ export default function GauntletPage() {
               </div>
               
             </div>
-          <SectionManifestGate section="gauntlet" season={CURRENT_SEASON}>
-            <GauntletDynamicBlocks season={CURRENT_SEASON} />
-          </SectionManifestGate>
-</div>
+          </div>
 
           {/* right: owner block + rules doc */}
           <div className="space-y-4">
+
+            {/* Owner updates (keep near hero, but manifest-gated for cache efficiency) */}
+            <SectionManifestGate section="gauntlet" season={CURRENT_SEASON}>
+              <GauntletDynamicBlocks
+                season={CURRENT_SEASON}
+                showLegions={false}
+              />
+            </SectionManifestGate>
             
 
             {/* framed doc embed like a “panel” */}
@@ -163,6 +168,11 @@ export default function GauntletPage() {
 
         </div>
       </header>
+
+      {/* Owner updates (keep out of the hero layout; manifest-gated for cache efficiency) */}
+      <SectionManifestGate section="gauntlet" season={CURRENT_SEASON}>
+        <GauntletDynamicBlocks season={CURRENT_SEASON} showLegions={false} />
+      </SectionManifestGate>
 
 
         {/* PAYOUTS + BONUSES MINI CHART */}
@@ -283,7 +293,12 @@ export default function GauntletPage() {
               Three Legions — Egyptians, Greeks, and Romans — each with four Gods and 24 teams per God.
               Join a God, fill your league, and fight your way toward the Gauntlet.
             </p>
-          </header></section>
+          </header>
+
+          <SectionManifestGate section="gauntlet" season={CURRENT_SEASON}>
+            <GauntletDynamicBlocks season={CURRENT_SEASON} showOwner={false} showLegions embeddedLegions={false} />
+          </SectionManifestGate>
+        </section>
       </div>
     </main>
   );

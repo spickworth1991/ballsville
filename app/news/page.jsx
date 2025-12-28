@@ -15,10 +15,19 @@ function safeArray(v) {
 
 function normalizePost(p, idx) {
   const o = p && typeof p === "object" ? p : {};
+  let html = String(o.html || o.body_html || o.bodyHtml || "").trim();
+  let body = String(o.body || o.content || "").trim();
+
+  // Some older posts stored HTML inside `body`. If it looks like HTML, render it as such.
+  if (!html && body && body.includes("<") && body.includes(">")) {
+    html = body;
+    body = "";
+  }
   return {
     id: o.id || o.slug || String(idx),
     title: String(o.title || o.name || "").trim(),
-    body: String(o.body || o.html || o.content || "").trim(),
+    body,
+    html,
     date: String(o.date || o.created_at || o.createdAt || "").trim(),
     link: String(o.link || o.url || "").trim(),
     tag: String(o.tag || o.type || "").trim(),
@@ -153,7 +162,13 @@ function NewsInner({ version = "0", manifest = null }) {
                   <p className="mt-1 text-[11px] text-muted">{p.date}</p>
                 ) : null}
 
-                {p.body ? (
+                {p.html ? (
+                  <div
+                    className="mt-3 prose prose-invert max-w-none text-xs text-muted"
+                    // Admin-controlled HTML; this mirrors how OwnerHeroBlock renders updatesHtml.
+                    dangerouslySetInnerHTML={{ __html: p.html }}
+                  />
+                ) : p.body ? (
                   <p className="mt-3 text-xs text-muted line-clamp-6 whitespace-pre-line">{p.body}</p>
                 ) : null}
 
