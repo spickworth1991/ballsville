@@ -583,7 +583,7 @@ export default function BigGameAdminClient() {
       return next;
     });
 
-    setRolloverDraft((prev) => {
+    setDivisionYearDraft((prev) => {
       const next = { ...prev };
       delete next[oldKey];
       next[newKey] = String(y);
@@ -784,13 +784,13 @@ export default function BigGameAdminClient() {
                         <div className="flex items-center gap-2">
                           <input
                             className="input w-28"
-                            value={safeStr(rolloverDraft[g.key] ?? header?.year ?? g.year)}
-                            onChange={(e) => setRolloverDraft((prev) => ({ ...prev, [g.key]: e.target.value }))}
+                            value={safeStr(divisionYearDraft[g.key] ?? header?.year ?? g.year)}
+                            onChange={(e) => setDivisionYearDraft((prev) => ({ ...prev, [g.key]: e.target.value }))}
                           />
                           <button
                             type="button"
                             className="btn btn-outline text-xs"
-                            onClick={() => rolloverDivision(g, rolloverDraft[g.key] ?? header?.year ?? g.year)}
+                            onClick={() => rolloverDivisionToYear(g, divisionYearDraft[g.key] ?? header?.year ?? g.year)}
                           >
                             Rollover
                           </button>
@@ -887,11 +887,10 @@ export default function BigGameAdminClient() {
                         className="btn btn-outline text-sm"
                         type="button"
                         onClick={() => {
-                          // keep this action explicit so we never mutate rows on keystroke
                           const y = window.prompt("Rollover this division to what year?", String(Number(g.year) + 1));
                           if (!y) return;
-                          setRolloverDraft((prev) => ({ ...prev, [g.key]: y }));
-                          rolloverDivision(g, y);
+                          setDivisionYearDraft((prev) => ({ ...prev, [g.key]: y }));
+                          rolloverDivisionToYear(g, y);
                         }}
                       >
                         Rollover to year
