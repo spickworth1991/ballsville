@@ -75,10 +75,10 @@ export default function GauntletPage() {
             </div>
 
             <div className="flex flex-wrap gap-3 pt-2">
-              <Link href="/gauntlet/intro" className="btn btn-primary">
+              <Link prefetch={false} href="/gauntlet/intro" className="btn btn-primary">
                 ⚔️ Gauntlet Game Intro
               </Link>
-              <Link href="/gauntlet/cash-doc" className="btn btn-outline">
+              <Link prefetch={false} href="/gauntlet/cash-doc" className="btn btn-outline">
                 💸 View Cash Doc
               </Link>
             </div>
@@ -191,7 +191,7 @@ export default function GauntletPage() {
               </p>
             </div>
 
-            <Link href="/gauntlet/cash-doc" className="btn btn-outline">
+            <Link prefetch={false} href="/gauntlet/cash-doc" className="btn btn-outline">
               CASH DOC →
             </Link>
           </header>
@@ -231,7 +231,7 @@ export default function GauntletPage() {
 
           <p className="mt-4 text-xs text-muted">
             For the full breakdown of every payout, BONUS, and conditional upside, read the{" "}
-            <Link href="/gauntlet/cash-doc" className="text-accent hover:underline underline-offset-2">
+            <Link prefetch={false} href="/gauntlet/cash-doc" className="text-accent hover:underline underline-offset-2">
               Gauntlet Cash Doc
             </Link>
             .
@@ -251,6 +251,7 @@ export default function GauntletPage() {
         <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
           {/* CLICKABLE LIVE BRACKET CARD */}
           <Link
+            prefetch={false}
             href="/gauntlet/leaderboard"
             className="group block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
