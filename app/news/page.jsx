@@ -24,8 +24,21 @@ function fmtDate(iso) {
 }
 function isVideoUrl(u) {
   const url = safeStr(u).toLowerCase();
-  return url.endsWith(".mp4") || url.endsWith(".webm") || url.endsWith(".ogg");
+
+  // extension check
+  if (url.endsWith(".mp4") || url.endsWith(".webm") || url.endsWith(".ogg")) return true;
+
+  // ✅ if it's an R2 proxied key (no extension), treat as video if it includes common hints
+  // (your uploader section is "posts-image" but the file is video/*, and the key often won't have extension)
+  if (url.startsWith("/r2/")) {
+    // If you ever embed a hint in key names (recommended), catch it:
+    if (url.includes(".mp4") || url.includes(".webm") || url.includes(".ogg")) return true;
+    // Otherwise we can’t know by URL alone — we’ll rely on a runtime fallback below (see MediaBlock)
+  }
+
+  return false;
 }
+
 function normalizeTags(v) {
   const tags = Array.isArray(v) ? v.map(String) : typeof v === "string" ? v.split(",").map((s) => s.trim()) : [];
   const out = [];
@@ -90,32 +103,34 @@ function MediaBlock({ src, updatedAt }) {
       ? (s.includes("?") ? s : `${s}?v=${encodeURIComponent(updatedAt)}`)
       : s;
 
-    if (isVideoUrl(finalSrc)) {
-      const lower = finalSrc.toLowerCase();
-      const type = lower.endsWith(".webm")
-        ? "video/webm"
-        : lower.endsWith(".ogg")
-        ? "video/ogg"
-        : "video/mp4";
+  const lower = finalSrc.toLowerCase();
+  const inferredType = lower.endsWith(".webm")
+    ? "video/webm"
+    : lower.endsWith(".ogg")
+    ? "video/ogg"
+    : "video/mp4";
 
-      return (
-        <div className="relative w-full aspect-[16/9] bg-black/30">
-          <video
-            className="absolute inset-0 w-full h-full object-contain"
-            controls
-            playsInline
-            muted
-            preload="metadata"
-            crossOrigin="anonymous"
-          >
-            <source src={finalSrc} type={type} />
-            {/* fallback */}
-            Your browser does not support the video tag.
-          </video>
-        </div>
-      );
-    }
+  // ✅ Try video when:
+  // - looks like video by extension OR
+  // - it's an R2 proxied object (many of your keys won't have extensions)
+  const shouldTryVideo = isVideoUrl(finalSrc) || finalSrc.startsWith("/r2/");
 
+  if (shouldTryVideo) {
+    return (
+      <div className="relative w-full aspect-[16/9] bg-black/30">
+        <video
+          className="absolute inset-0 w-full h-full object-contain"
+          controls
+          playsInline
+          muted
+          preload="metadata"
+          crossOrigin="anonymous"
+        >
+          <source src={finalSrc} type={inferredType} />
+        </video>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full aspect-[16/9] bg-black/20">
@@ -124,6 +139,7 @@ function MediaBlock({ src, updatedAt }) {
     </div>
   );
 }
+
 
 function TagPill({ active, onClick, children }) {
   return (
@@ -145,21 +161,30 @@ function TagPill({ active, onClick, children }) {
 function CornerRibbon({ label, variant = "mini" }) {
   // variant: "mini" | "expired" | "pinned"
   const base =
-    "absolute -top-2 -right-10 rotate-45 px-12 py-1 text-[10px] uppercase tracking-[0.25em] font-semibold shadow-md border";
+    "absolute px-10 py-1 text-[10px] uppercase tracking-[0.25em] font-semibold shadow-md border pointer-events-none";
+
+  // positions
+  const pos =
+    variant === "expired"
+      ? "top-2 -right-10 rotate-45"     // top-right ribbon
+      : variant === "mini"
+      ? "top-2 -left-10 -rotate-45"     // top-left ribbon
+      : "top-2 -right-10 rotate-45";    // pinned can share right if you still use it
 
   const cls =
     variant === "expired"
-      ? `${base} bg-rose-500/20 text-rose-100 border-rose-300/30`
+      ? `${base} ${pos} bg-rose-600 text-white border-rose-300/40 filter-none`
       : variant === "pinned"
-      ? `${base} bg-primary/15 text-primary border-primary/30`
-      : `${base} bg-accent/15 text-accent border-accent/30`;
+      ? `${base} ${pos} bg-primary/80 text-white border-primary/30`
+      : `${base} ${pos} bg-emerald-500/80 text-white border-emerald-300/30`;
 
   return (
-    <div className="pointer-events-none absolute top-0 right-0 z-20">
+    <div className="absolute inset-0 z-20 overflow-hidden rounded-2xl">
       <div className={cls}>{label}</div>
     </div>
   );
 }
+
 
 function msToCountdown(ms) {
   if (ms <= 0) return "00:00:00";
@@ -343,7 +368,7 @@ function NewsInner({ version = "0", manifest = null }) {
 
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-12 space-y-8">
         {/* Header bubble (readable) */}
-        <header className="rounded-2xl border border-subtle bg-card-surface/70 backdrop-blur p-6 text-center space-y-2 shadow-sm">
+        <header className="rounded-2xl border border-subtle bg-card-surface backdrop-blur p-6 text-center space-y-2 shadow-sm">
           <p className="inline-flex mx-auto text-xs uppercase tracking-[0.35em] text-accent rounded-full border border-subtle bg-panel/60 px-3 py-1">
             BALLSVILLE
           </p>
@@ -351,11 +376,7 @@ function NewsInner({ version = "0", manifest = null }) {
           <p className="text-sm text-muted">
             Announcements, updates, and important posts from the admin team.
           </p>
-          {updatedAt ? (
-            <p className="inline-flex mx-auto text-[11px] text-muted rounded-full border border-subtle bg-panel/60 px-3 py-1">
-              Updated: {fmtDate(updatedAt)}
-            </p>
-          ) : null}
+          
         </header>
 
         {/* Premium filter bar (bubble) */}
@@ -509,13 +530,7 @@ function PostCard({ p, updatedAt }) {
       </div>
 
       {/* Click blocker overlay (so links/video controls still work only if NOT disabled) */}
-      {disabled ? (
-        <div
-          className="absolute inset-0 z-10"
-          aria-hidden="true"
-          title="This Mini Game is expired"
-        />
-      ) : null}
+      
     </Wrapper>
   );
 }

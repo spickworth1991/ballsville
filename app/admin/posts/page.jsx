@@ -450,9 +450,16 @@ function AdminPostsInner() {
                     <div className="w-full max-w-[720px] rounded-2xl overflow-hidden border border-subtle bg-black/10">
                       {isVideoUrl(mediaSrc) ? (
                         <div className="w-full aspect-[16/9]">
-                          <video className="w-full h-full object-contain" controls playsInline preload="metadata">
+                          <video
+                            key={mediaSrc}                 // ✅ forces remount when src changes
+                            className="w-full h-full object-contain"
+                            controls
+                            playsInline
+                            preload="metadata"
+                          >
                             <source src={mediaSrc} />
                           </video>
+
                         </div>
                       ) : (
                         <div className="relative w-full h-[240px]">
