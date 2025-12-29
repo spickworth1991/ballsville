@@ -18,7 +18,7 @@ function json(data, status = 200) {
 }
 
 function ensureR2(env) {
-  const b = env.ADMIN.BUCKET || env;
+  const b = env.ADMIN_BUCKET || env;
   if (!b?.get || !b?.put) throw new Error("Missing R2 binding: admin_bucket");
   return b;
 }
