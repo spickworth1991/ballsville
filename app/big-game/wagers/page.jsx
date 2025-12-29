@@ -1,5 +1,6 @@
 import Link from "next/link";
 import BigGameWagerTracker from "@/components/big-game/BigGameWagerTracker";
+import { CURRENT_SEASON } from "@/lib/season";
 
 export const metadata = {
   title: "Big Game Wager Tracker | Ballsville",
@@ -46,7 +47,7 @@ export default function BigGameWagersPage() {
           </div>
         </header>
 
-        <BigGameWagerTracker />
+        <BigGameWagerTracker season={CURRENT_SEASON} />
       </div>
     </main>
   );

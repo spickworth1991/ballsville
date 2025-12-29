@@ -18,7 +18,6 @@ function entryKey(p) {
   const ownerName = safeStr(p?.ownerName || "").trim();
   return `${division}|||${leagueName}|||${ownerName}`;
 }
-
 function nowIso() {
   return new Date().toISOString();
 }
@@ -67,15 +66,14 @@ function buildEmptyState(season) {
       resolvedAt: "",
       byDivisionWinner: [], // [{ entryKey, ownerName, division, wager }]
       points: {},
-      pools: {
-        main: { threshold: 50, pool: 0, winner: "", winnerKey: "" },
-        side1: { threshold: 100, pool: 0, winner: "", winnerKey: "" },
-        side2: { threshold: 150, pool: 0, winner: "", winnerKey: "" },
-      },
-      pool: 0,
       winner: "",
       winnerKey: "",
-      wouldHaveWon: { ownerName: "", entryKey: "" },
+      // Editable bonus added to the MAIN pot (defaults to $200)
+      bonus: 200,
+
+      // Computed values (saved so the public page can render without recomputing)
+      poolWagers: 0, // sum of wagers actually placed
+      pool: 0, // poolWagers + bonus
     },
   };
 }
@@ -96,16 +94,11 @@ function computeLeagueWinnersFromLeaderboard(leaderboardsJson, season, upToWeek 
     const key = `${division}|||${leagueName}`;
     const prev = byDivLeague.get(key);
     if (!prev || total > prev.total) {
-      byDivLeague.set(key, {
-        ownerName,
-        leagueName,
-        division,
-        total,
-      });
+      byDivLeague.set(key, { ownerName, leagueName, division, total });
     }
   }
 
-  // flatten -> by division
+  // flatten -> by division (DO NOT sort here; UI will sort by display_order)
   const byDivision = {};
   for (const w of byDivLeague.values()) {
     if (!byDivision[w.division]) byDivision[w.division] = [];
@@ -122,11 +115,13 @@ function getWeekPointsFromLeaderboard(leaderboardsJson, season, week) {
   for (const o of owners) {
     const name = safeStr(o?.ownerName).trim();
     if (!name) continue;
+
     const k = entryKey({
       division: safeStr(o?.division).trim(),
       leagueName: safeStr(o?.leagueName).trim(),
       ownerName: name,
     });
+
     const v = o?.weekly?.[String(week)] ?? o?.weekly?.[week];
     const n = typeof v === "number" ? v : parseFloat(v);
     points[k] = Number.isNaN(n) ? 0 : Math.round(n * 100) / 100;
@@ -139,8 +134,8 @@ function PrimaryButton({ children, onClick, disabled, tone = "accent" }) {
     tone === "danger"
       ? "bg-rose-500/15 border-rose-400/30 text-rose-100 hover:bg-rose-500/20"
       : tone === "muted"
-        ? "bg-panel border-subtle text-foreground hover:border-accent/40"
-        : "bg-accent/15 border-accent/30 text-accent hover:bg-accent/20";
+      ? "bg-panel border-subtle text-foreground hover:border-accent/40"
+      : "bg-accent/15 border-accent/30 text-accent hover:bg-accent/20";
 
   return (
     <button
@@ -172,24 +167,46 @@ function Divider() {
 
 function buildLeagueOrderIndex(bigGameMeta) {
   const rows = safeArray(bigGameMeta?.rows);
-
-  // key: "division|||leagueName" (lowercased) -> order number
   const map = new Map();
+
   for (const r of rows) {
     const div = safeStr(r?.theme_name).trim(); // division
     const leagueName = safeStr(r?.name).trim(); // league name
     if (!div || !leagueName) continue;
-    const orderRaw = r?.display_order ?? r?.displayOrder ?? r?.league_order ?? r?.order;
-    const orderNum = Number.isFinite(Number(orderRaw)) ? Number(orderRaw) : 999999;
+
+    const raw =
+      r?.display_order ??
+      r?.displayOrder ??
+      r?.league_order ??
+      r?.order ??
+      r?.leagueOrder ??
+      r?.displayorder;
+
+    const n = Number(raw);
+    const orderNum = Number.isFinite(n) ? n : 999999;
     map.set(`${div}|||${leagueName}`.toLowerCase(), orderNum);
   }
+
   return map;
 }
 
-function orderForLeague(leagueOrderIndex, div, leagueName) {
-  const k = `${safeStr(div).trim()}|||${safeStr(leagueName).trim()}`.toLowerCase();
-  const v = leagueOrderIndex?.get?.(k);
-  return Number.isFinite(Number(v)) ? Number(v) : 999999;
+function sortEligByDisplayOrder(elig, div, leagueOrderIndex) {
+  return safeArray(elig)
+    .slice()
+    .sort((a, b) => {
+      const aLeague = safeStr(a?.leagueName).trim();
+      const bLeague = safeStr(b?.leagueName).trim();
+
+      const ao = leagueOrderIndex.get(`${div}|||${aLeague}`.toLowerCase()) ?? 999999;
+      const bo = leagueOrderIndex.get(`${div}|||${bLeague}`.toLowerCase()) ?? 999999;
+
+      if (ao !== bo) return ao - bo;
+
+      const ln = aLeague.localeCompare(bLeague);
+      if (ln !== 0) return ln;
+
+      return safeStr(a?.ownerName).trim().localeCompare(safeStr(b?.ownerName).trim());
+    });
 }
 
 export default function BigGameWagersAdminClient({ season }) {
@@ -199,7 +216,7 @@ export default function BigGameWagersAdminClient({ season }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
-  // Load Big Game page config (division names, league cards, images) so the tracker can feel native.
+  // Load Big Game page config (division names, league cards, images)
   useEffect(() => {
     let cancelled = false;
     async function run() {
@@ -219,8 +236,6 @@ export default function BigGameWagersAdminClient({ season }) {
     };
   }, [season]);
 
-  const leagueOrderIndex = useMemo(() => buildLeagueOrderIndex(bigGameMeta), [bigGameMeta]);
-
   // Load wager state
   useEffect(() => {
     let cancelled = false;
@@ -232,18 +247,12 @@ export default function BigGameWagersAdminClient({ season }) {
           cache: "no-store",
         });
         const saved = res.ok ? await res.json() : null;
-        // Server normally responds as { ok: true, data: <full doc|null> }.
-        // Older clients/servers may have returned the raw doc.
         const data = saved && typeof saved === "object" && "data" in saved ? saved.data : saved;
+
         if (!cancelled) {
           setState(() => {
             const base = buildEmptyState(season);
-            const merged = { ...base, ...(data || {}), season: Number(season) };
-            // ensure new fields exist
-            merged.championship = merged.championship || base.championship;
-            merged.championship.pools = merged.championship.pools || base.championship.pools;
-            merged.championship.wouldHaveWon = merged.championship.wouldHaveWon || base.championship.wouldHaveWon;
-            return merged;
+            return { ...base, ...(data || {}), season: Number(season) };
           });
         }
       } catch (e) {
@@ -258,31 +267,34 @@ export default function BigGameWagersAdminClient({ season }) {
     };
   }, [season]);
 
+  const leagueOrderIndex = useMemo(() => buildLeagueOrderIndex(bigGameMeta), [bigGameMeta]);
+
   const eligibilityByDivision = state?.eligibility?.byDivision || {};
   const wagersByDivision = state?.divisionWagers?.byDivision || {};
 
   const derived = useMemo(() => {
     const entryFee = Number(state?.divisionWagers?.entryFee || 25);
+
     const out = {
       divisions: {},
       championship: {
         pool: Number(state?.championship?.pool || 0),
-        pools: state?.championship?.pools || buildEmptyState(season).championship.pools,
-        wouldHaveWon: state?.championship?.wouldHaveWon || { ownerName: "", entryKey: "" },
+        winner: safeStr(state?.championship?.winner).trim(),
       },
     };
 
-    for (const div of Object.keys(eligibilityByDivision)) {
+    for (const div of Object.keys(eligibilityByDivision || {})) {
       const elig = safeArray(eligibilityByDivision[div]);
       const w = wagersByDivision?.[div] || {};
       const pot1Entrants = w?.pot1?.entrants || {};
       const pot2Entrants = w?.pot2?.entrants || {};
 
       const pot1Keys = elig
-        .map((e) => ({ e, k: entryKey({ division: div, leagueName: e?.leagueName, ownerName: e?.ownerName }) }))
+        .map((e) => ({ e, k: entryKey(e) }))
         .filter(({ e, k }) => pot1Entrants && (pot1Entrants[k] || pot1Entrants[e.ownerName]));
+
       const pot2Keys = elig
-        .map((e) => ({ e, k: entryKey({ division: div, leagueName: e?.leagueName, ownerName: e?.ownerName }) }))
+        .map((e) => ({ e, k: entryKey(e) }))
         .filter(({ e, k }) => pot2Entrants && (pot2Entrants[k] || pot2Entrants[e.ownerName]));
 
       const pot1Pool = pot1Keys.length * entryFee;
@@ -300,28 +312,28 @@ export default function BigGameWagersAdminClient({ season }) {
     }
 
     return out;
-  }, [eligibilityByDivision, wagersByDivision, season, state?.championship, state?.divisionWagers?.entryFee]);
+  }, [state, eligibilityByDivision, wagersByDivision]);
 
   async function save(next) {
     setSaving(true);
     setMsg("");
     try {
-      const payload = {
-        ...next,
-        season: Number(season),
-        updatedAt: nowIso(),
-      };
+      const payload = { ...next, season: Number(season), updatedAt: nowIso() };
+
       const res = await fetch(`/api/admin/biggame-wagers?season=${encodeURIComponent(season)}`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
+
       if (!res.ok) {
         const t = await res.text().catch(() => "");
         throw new Error(t || `Save failed (${res.status})`);
       }
+
       const saved = await res.json().catch(() => payload);
       const doc = saved && typeof saved === "object" && "data" in saved ? saved.data : saved;
+
       setState((prev) => ({ ...prev, ...(doc || payload) }));
       setMsg("Saved.");
     } catch (e) {
@@ -353,16 +365,9 @@ export default function BigGameWagersAdminClient({ season }) {
       const byDivision = computeLeagueWinnersFromLeaderboard(data, season, 15);
 
       const next = structuredClone(state);
-      next.source = {
-        leaderboardUrl: url,
-        lastFetchedAt: nowIso(),
-        leaderboardEtag: etag,
-      };
-      next.eligibility = {
-        computedAt: nowIso(),
-        week: 15,
-        byDivision,
-      };
+
+      next.source = { leaderboardUrl: url, lastFetchedAt: nowIso(), leaderboardEtag: etag };
+      next.eligibility = { computedAt: nowIso(), week: 15, byDivision };
 
       next.divisionWagers = next.divisionWagers || { week: 16, entryFee: 25, resolvedAt: "", byDivision: {} };
       next.divisionWagers.week = 16;
@@ -375,6 +380,7 @@ export default function BigGameWagersAdminClient({ season }) {
         const pot2 = existing.pot2 || { entrants: {}, points: {}, winner: "", winnerKey: "", pool: 0, resolvedAt: "" };
 
         const eligList = safeArray(byDivision[div]);
+
         const keyCountsByOwner = new Map();
         for (const e of eligList) {
           const n = safeStr(e?.ownerName).trim();
@@ -383,7 +389,9 @@ export default function BigGameWagersAdminClient({ season }) {
         }
 
         const eligibleKeys = new Set(
-          eligList.map((e) => entryKey({ division: div, leagueName: e.leagueName, ownerName: e.ownerName }))
+          eligList.map((e) =>
+            entryKey({ division: div, leagueName: safeStr(e.leagueName).trim(), ownerName: safeStr(e.ownerName).trim() })
+          )
         );
 
         const migrateAndPrune = (obj) => {
@@ -398,6 +406,7 @@ export default function BigGameWagersAdminClient({ season }) {
 
             const owner = safeStr(k).trim();
             if (!owner) continue;
+
             if ((keyCountsByOwner.get(owner) || 0) === 1) {
               const match = eligList.find((e) => safeStr(e?.ownerName).trim() === owner);
               if (match) {
@@ -413,7 +422,7 @@ export default function BigGameWagersAdminClient({ season }) {
         pot2.entrants = migrateAndPrune(pot2.entrants);
 
         // enforce pot2 => pot1
-        for (const k of Object.keys(pot2.entrants)) pot1.entrants[k] = true;
+        for (const k of Object.keys(pot2.entrants || {})) pot1.entrants[k] = true;
 
         next.divisionWagers.byDivision[div] = { ...existing, pot1, pot2 };
       }
@@ -429,9 +438,11 @@ export default function BigGameWagersAdminClient({ season }) {
   function toggleEntrant(div, pot, entry, checked) {
     const k = entryKey({ division: div, leagueName: entry?.leagueName, ownerName: entry?.ownerName });
     const legacyName = safeStr(entry?.ownerName).trim();
+
     const next = structuredClone(state);
     next.divisionWagers = next.divisionWagers || { week: 16, entryFee: 25, resolvedAt: "", byDivision: {} };
     next.divisionWagers.byDivision = next.divisionWagers.byDivision || {};
+
     const d = next.divisionWagers.byDivision[div] || {};
     const p = d[pot] || { entrants: {}, points: {}, winner: "", winnerKey: "", pool: 0, resolvedAt: "" };
 
@@ -439,7 +450,6 @@ export default function BigGameWagersAdminClient({ season }) {
     if (checked) p.entrants[k] = true;
     else delete p.entrants[k];
 
-    // Clean up any legacy key for this entry if it exists
     if (legacyName) delete p.entrants[legacyName];
 
     // enforce pot2 => pot1
@@ -450,7 +460,7 @@ export default function BigGameWagersAdminClient({ season }) {
       if (legacyName) delete d.pot1.entrants[legacyName];
     }
 
-    // and if pot1 unchecked -> pot2 must also be removed
+    // if pot1 unchecked -> pot2 must also be removed
     if (pot === "pot1" && !checked) {
       d.pot2 = d.pot2 || { entrants: {}, points: {}, winner: "", winnerKey: "", pool: 0, resolvedAt: "" };
       d.pot2.entrants = d.pot2.entrants || {};
@@ -476,23 +486,17 @@ export default function BigGameWagersAdminClient({ season }) {
       const week16Points = getWeekPointsFromLeaderboard(data, season, 16);
 
       const next = structuredClone(state);
-      next.source = {
-        leaderboardUrl: url,
-        lastFetchedAt: nowIso(),
-        leaderboardEtag: etag,
-      };
+
+      next.source = { leaderboardUrl: url, lastFetchedAt: nowIso(), leaderboardEtag: etag };
 
       next.divisionWagers = next.divisionWagers || { week: 16, entryFee: 25, resolvedAt: "", byDivision: {} };
       next.divisionWagers.week = 16;
       next.divisionWagers.resolvedAt = nowIso();
-
       const entryFee = Number(next.divisionWagers.entryFee || 25);
 
       for (const div of Object.keys(next.eligibility?.byDivision || {})) {
         const elig = safeArray(next.eligibility.byDivision[div]);
-        const keyToEntry = new Map(
-          elig.map((e) => [entryKey({ division: div, leagueName: e?.leagueName, ownerName: e?.ownerName }), e])
-        );
+        const keyToEntry = new Map(elig.map((e) => [entryKey({ division: div, leagueName: e?.leagueName, ownerName: e?.ownerName }), e]));
         const keysInOrder = elig.map((e) => entryKey({ division: div, leagueName: e?.leagueName, ownerName: e?.ownerName }));
 
         next.divisionWagers.byDivision = next.divisionWagers.byDivision || {};
@@ -526,6 +530,7 @@ export default function BigGameWagersAdminClient({ season }) {
 
         pot1.winnerKey = pickWinnerKey(pot1Entrants);
         pot2.winnerKey = pickWinnerKey(pot2Entrants);
+
         pot1.winner = safeStr(keyToEntry.get(pot1.winnerKey)?.ownerName || "").trim();
         pot2.winner = safeStr(keyToEntry.get(pot2.winnerKey)?.ownerName || "").trim();
 
@@ -535,7 +540,7 @@ export default function BigGameWagersAdminClient({ season }) {
         next.divisionWagers.byDivision[div] = { ...d, pot1, pot2 };
       }
 
-      // Auto-seed championship entrants from pot1 winners (roster-instance keyed)
+      // Auto-seed championship entrants from pot1 winners (entryKey keyed)
       const seeded = [];
       for (const [div, d] of Object.entries(next.divisionWagers.byDivision || {})) {
         const winKey = safeStr(d?.pot1?.winnerKey).trim();
@@ -544,21 +549,18 @@ export default function BigGameWagersAdminClient({ season }) {
         seeded.push({ entryKey: winKey, ownerName, division: div, wager: 0 });
       }
 
-      next.championship = next.championship || buildEmptyState(season).championship;
+      next.championship = next.championship || { week: 17, resolvedAt: "", byDivisionWinner: [], points: {}, winner: "", winnerKey: "", pool: 0 };
       next.championship.week = 17;
 
-      // preserve existing wagers for the same roster instance
       const prevWagers = new Map(
         safeArray(next.championship.byDivisionWinner).map((r) => [safeStr(r.entryKey || r.ownerName), Number(r.wager || 0)])
       );
 
       next.championship.byDivisionWinner = seeded.map((r) => ({ ...r, wager: prevWagers.get(r.entryKey) || 0 }));
       next.championship.points = {};
-      next.championship.pools = buildEmptyState(season).championship.pools;
-      next.championship.pool = 0;
       next.championship.winner = "";
       next.championship.winnerKey = "";
-      next.championship.wouldHaveWon = { ownerName: "", entryKey: "" };
+      next.championship.pool = 0;
       next.championship.resolvedAt = "";
 
       await save(next);
@@ -571,16 +573,27 @@ export default function BigGameWagersAdminClient({ season }) {
 
   function setChampWager(entryKeyStr, wager) {
     const next = structuredClone(state);
-    next.championship = next.championship || buildEmptyState(season).championship;
+    next.championship = next.championship || { week: 17, resolvedAt: "", byDivisionWinner: [], points: {}, winner: "", winnerKey: "", pool: 0 };
     next.championship.byDivisionWinner = safeArray(next.championship.byDivisionWinner).map((r) =>
-      r.entryKey === entryKeyStr ? { ...r, wager } : r
+      safeStr(r.entryKey).trim() === entryKeyStr ? { ...r, wager } : r
     );
+    setState(next);
+  }
+
+  function setChampionshipBonus(bonus) {
+    const next = structuredClone(state);
+    next.championship = next.championship || { week: 17, resolvedAt: "", byDivisionWinner: [], points: {}, winner: "", winnerKey: "", bonus: 200, poolWagers: 0, pool: 0 };
+    const n = Number(bonus);
+    next.championship.bonus = Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
+    // Keep displayed total in sync if wagers already resolved.
+    const wagers = Number(next.championship.poolWagers || 0);
+    next.championship.pool = wagers + Number(next.championship.bonus || 0);
     setState(next);
   }
 
   async function resolveChampionshipWeek17() {
     const ok = window.confirm(
-      "Resolve Big Game Championship using Week 17 scores?\n\nThis will:\n- pull Week 17 points\n- determine winners for: Main Pot ($50), Side Pot 1 (+$50), Side Pot 2 (+$50)\n- record pools + winners\n\nNote: If someone did NOT wager, they are NOT eligible to win a pot (but we will still show if they would've won for fun)."
+      "Resolve Big Game Championship using Week 17 scores?\n\nThis will:\n- pull Week 17 points\n- determine the overall champion among seeded division winners\n- compute the pool from wagers and record the winner\n\nYou can re-run this later; it overwrites championship resolution fields."
     );
     if (!ok) return;
 
@@ -591,86 +604,49 @@ export default function BigGameWagersAdminClient({ season }) {
       const week17Points = getWeekPointsFromLeaderboard(data, season, 17);
 
       const next = structuredClone(state);
-      next.source = {
-        leaderboardUrl: url,
-        lastFetchedAt: nowIso(),
-        leaderboardEtag: etag,
-      };
 
-      next.championship = next.championship || buildEmptyState(season).championship;
+      next.source = { leaderboardUrl: url, lastFetchedAt: nowIso(), leaderboardEtag: etag };
+
+      next.championship = next.championship || { week: 17, resolvedAt: "", byDivisionWinner: [], points: {}, winner: "", winnerKey: "", pool: 0 };
       next.championship.week = 17;
 
-      const entrantsAll = safeArray(next.championship.byDivisionWinner).filter((r) => safeStr(r?.ownerName).trim());
-      const points = {}; // keyed by entryKey
+      const entrants = safeArray(next.championship.byDivisionWinner).filter((r) => safeStr(r?.ownerName).trim());
+      const points = {};
+      let poolWagers = 0;
 
-      for (const r of entrantsAll) {
+      for (const r of entrants) {
         const name = safeStr(r.ownerName).trim();
-        const k = safeStr(r.entryKey).trim() || entryKey({ division: r.division, leagueName: r.leagueName, ownerName: name });
-        points[k] = Number(week17Points?.[k] ?? 0);
-        r.entryKey = k;
-        // enforce increments of 50, clamp 0–150
+        const k = safeStr(r.entryKey).trim();
         const w = Number(r.wager || 0);
-        const wNorm = Math.max(0, Math.min(150, Math.round(w / 50) * 50));
+
+        const wNorm = Math.max(0, Math.round(w / 50) * 50);
+        poolWagers += wNorm;
+
+        points[k] = Number(week17Points?.[k] ?? 0);
         r.wager = wNorm;
       }
 
-      // would-have-won (includes non-bettors)
-      let wouldName = "";
-      let wouldKey = "";
-      let bestAny = -Infinity;
-      for (const r of entrantsAll) {
+      let winner = "";
+      let winnerKey = "";
+      let best = -Infinity;
+
+      for (const r of entrants) {
         const k = safeStr(r.entryKey).trim();
         const pts = Number(points[k] ?? 0);
-        if (pts > bestAny) {
-          bestAny = pts;
-          wouldName = safeStr(r.ownerName).trim();
-          wouldKey = k;
+        if (pts > best) {
+          best = pts;
+          winner = safeStr(r.ownerName).trim();
+          winnerKey = k;
         }
       }
 
-      const pickPotWinner = (threshold) => {
-        const participants = entrantsAll.filter((r) => Number(r.wager || 0) >= threshold);
-        let winner = "";
-        let winnerKey = "";
-        let best = -Infinity;
-        for (const r of participants) {
-          const k = safeStr(r.entryKey).trim();
-          const pts = Number(points[k] ?? 0);
-          if (pts > best) {
-            best = pts;
-            winner = safeStr(r.ownerName).trim();
-            winnerKey = k;
-          }
-        }
-        return {
-          threshold,
-          participants,
-          pool: participants.length * 50,
-          winner,
-          winnerKey,
-        };
-      };
-
-      const main = pickPotWinner(50);
-      const side1 = pickPotWinner(100);
-      const side2 = pickPotWinner(150);
-
-      const totalPool = Number(main.pool || 0) + Number(side1.pool || 0) + Number(side2.pool || 0);
-
-      next.championship.byDivisionWinner = entrantsAll;
+      next.championship.byDivisionWinner = entrants;
       next.championship.points = points;
-      next.championship.pools = {
-        main: { threshold: 50, pool: main.pool, winner: main.winner, winnerKey: main.winnerKey },
-        side1: { threshold: 100, pool: side1.pool, winner: side1.winner, winnerKey: side1.winnerKey },
-        side2: { threshold: 150, pool: side2.pool, winner: side2.winner, winnerKey: side2.winnerKey },
-      };
-      next.championship.pool = totalPool;
-
-      // "winner" is just the main pot winner (most prominent)
-      next.championship.winner = main.winner;
-      next.championship.winnerKey = main.winnerKey;
-
-      next.championship.wouldHaveWon = { ownerName: wouldName, entryKey: wouldKey };
+      const bonus = Number(next.championship?.bonus || 0) || 0;
+      next.championship.poolWagers = poolWagers;
+      next.championship.pool = poolWagers + bonus;
+      next.championship.winner = winner;
+      next.championship.winnerKey = winnerKey;
       next.championship.resolvedAt = nowIso();
 
       await save(next);
@@ -699,7 +675,7 @@ export default function BigGameWagersAdminClient({ season }) {
               {state?.updatedAt ? <SmallBadge>Updated {new Date(state.updatedAt).toLocaleString()}</SmallBadge> : null}
             </div>
             <p className="text-sm text-muted">
-              Manual work: just check who entered each wager. Everything else can be pulled from the leaderboard JSON.
+              This page is designed so the only manual work is checking who entered each wager. Everything else can be pulled from the leaderboard JSON with a button press.
             </p>
             <div className="text-xs text-muted">
               Leaderboard feed: <span className="text-foreground">{LEADERBOARD_URL_BY_SEASON(season)}</span>
@@ -730,7 +706,7 @@ export default function BigGameWagersAdminClient({ season }) {
           <div className="rounded-2xl border border-subtle bg-panel/40 p-4">
             <div className="text-[11px] uppercase tracking-[0.25em] text-muted">Step 1</div>
             <div className="mt-1 font-semibold">Import Week 15 league winners</div>
-            <p className="mt-2 text-xs text-muted">Pulls Week 1–15 totals and picks the top total in each league.</p>
+            <p className="mt-2 text-xs text-muted">Pulls Week 1–15 totals from the leaderboard and picks the highest total in each league.</p>
             <div className="mt-3">
               <PrimaryButton onClick={importEligibilityWeek15} disabled={saving}>
                 Import Week 15 Eligibility
@@ -743,8 +719,8 @@ export default function BigGameWagersAdminClient({ season }) {
 
           <div className="rounded-2xl border border-subtle bg-panel/40 p-4">
             <div className="text-[11px] uppercase tracking-[0.25em] text-muted">Step 2</div>
-            <div className="mt-1 font-semibold">Mark division wager entries</div>
-            <p className="mt-2 text-xs text-muted">Pot #2 requires Pot #1. Checking Pot #2 auto-checks Pot #1.</p>
+            <div className="mt-1 font-semibold">Mark wager entries</div>
+            <p className="mt-2 text-xs text-muted">Pot #2 requires Pot #1. Checking Pot #2 will automatically check Pot #1.</p>
             <div className="mt-3 text-xs text-muted">
               Entry fee: <span className="text-foreground">{fmtMoney(state?.divisionWagers?.entryFee || 25)}</span> per pot.
             </div>
@@ -753,9 +729,7 @@ export default function BigGameWagersAdminClient({ season }) {
           <div className="rounded-2xl border border-subtle bg-panel/40 p-4">
             <div className="text-[11px] uppercase tracking-[0.25em] text-muted">Step 3</div>
             <div className="mt-1 font-semibold">Resolve Week 16 & Week 17</div>
-            <p className="mt-2 text-xs text-muted">
-              Week 16 resolves division pots. Week 17 resolves championship pots ($50 tiers).
-            </p>
+            <p className="mt-2 text-xs text-muted">Week 16 determines division pot winners. Week 17 determines the overall Big Game champion.</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <PrimaryButton onClick={resolveDivisionWagersWeek16} disabled={saving || !canResolveW16}>
                 Resolve Week 16
@@ -780,8 +754,7 @@ export default function BigGameWagersAdminClient({ season }) {
         </div>
 
         <p className="mt-2 text-sm text-muted">
-          Each division shows eligible league winners (Week 1–15 totals). Toggle who entered Pot #1 and Pot #2. Eligible
-          leagues are ordered by your Big Game page <span className="text-foreground">display_order</span>.
+          Each division shows eligible league winners (based on Week 1–15 totals). Toggle who entered Pot #1 and Pot #2. Resolving Week 16 locks in points + winners.
         </p>
 
         <div className="mt-5 space-y-10">
@@ -793,13 +766,7 @@ export default function BigGameWagersAdminClient({ season }) {
             Object.keys(eligibilityByDivision)
               .sort((a, b) => a.localeCompare(b))
               .map((div) => {
-                const eligRaw = safeArray(eligibilityByDivision[div]);
-                const elig = [...eligRaw].sort((a, b) => {
-                  const ao = orderForLeague(leagueOrderIndex, div, a?.leagueName);
-                  const bo = orderForLeague(leagueOrderIndex, div, b?.leagueName);
-                  if (ao !== bo) return ao - bo;
-                  return safeStr(a?.leagueName).localeCompare(safeStr(b?.leagueName));
-                });
+                const elig = sortEligByDisplayOrder(eligibilityByDivision[div], div, leagueOrderIndex);
 
                 const d = wagersByDivision?.[div] || {};
                 const pot1 = d?.pot1 || {};
@@ -905,15 +872,12 @@ export default function BigGameWagersAdminClient({ season }) {
           <h2 className="text-base font-semibold">Big Game Championship</h2>
           <div className="flex items-center gap-2 text-xs text-muted">
             <SmallBadge>Week 17</SmallBadge>
-            {state?.championship?.resolvedAt ? (
-              <SmallBadge>Resolved {new Date(state.championship.resolvedAt).toLocaleString()}</SmallBadge>
-            ) : null}
+            {state?.championship?.resolvedAt ? <SmallBadge>Resolved {new Date(state.championship.resolvedAt).toLocaleString()}</SmallBadge> : null}
           </div>
         </div>
 
         <p className="mt-2 text-sm text-muted">
-          Seeds from each division&apos;s <span className="text-foreground">Pot #1 winner</span>. Wagers are in increments of $50
-          (0–$150). Each $50 tier is its own pot: <span className="text-foreground">Main</span>, <span className="text-foreground">Side 1</span>, <span className="text-foreground">Side 2</span>.
+          By default, this seeds from each division&apos;s <span className="text-foreground">Pot #1 winner</span>. Each winner may wager in increments of $50 (0–$150). Resolve Week 17 to lock the champion + pool.
         </p>
 
         <div className="mt-4 overflow-x-auto">
@@ -937,7 +901,7 @@ export default function BigGameWagersAdminClient({ season }) {
                 safeArray(state?.championship?.byDivisionWinner).map((r) => {
                   const name = safeStr(r?.ownerName);
                   const div = safeStr(r?.division);
-                  const k = safeStr(r?.entryKey) || entryKey({ division: div, leagueName: r?.leagueName, ownerName: name });
+                  const k = safeStr(r?.entryKey) || "";
                   const pts = state?.championship?.points?.[k];
                   const ptsNum = typeof pts === "number" ? pts : parseFloat(pts);
 
@@ -952,9 +916,13 @@ export default function BigGameWagersAdminClient({ season }) {
                               key={amt}
                               type="button"
                               onClick={() => setChampWager(k, amt)}
-                              className={`rounded-lg border px-2 py-1 text-xs transition ${Number(r?.wager || 0) === amt ? "border-accent/60 bg-accent/10 text-accent" : "border-subtle bg-panel text-muted hover:border-accent/40"}`}
+                              className={`rounded-lg border px-2 py-1 text-xs transition ${
+                                Number(r?.wager || 0) === amt
+                                  ? "border-accent/60 bg-accent/10 text-accent"
+                                  : "border-subtle bg-panel text-muted hover:border-accent/40"
+                              }`}
                             >
-                              {amt === 0 ? "No Bet" : fmtMoney(amt)}
+                              {amt === 0 ? "—" : fmtMoney(amt)}
                             </button>
                           ))}
                         </div>
@@ -968,53 +936,33 @@ export default function BigGameWagersAdminClient({ season }) {
           </table>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <div className="rounded-2xl border border-subtle bg-panel/40 p-4">
-            <div className="text-[11px] uppercase tracking-[0.25em] text-muted">Main Pot</div>
-            <div className="mt-1 text-sm text-muted">$50 entry</div>
-            <div className="mt-2 text-sm">
-              Pool: <span className="font-semibold text-foreground">{fmtMoney(state?.championship?.pools?.main?.pool || 0)}</span>
-            </div>
-            <div className="mt-1 text-sm">
-              Winner: <span className="font-semibold text-foreground">{safeStr(state?.championship?.pools?.main?.winner) || "—"}</span>
-            </div>
-          </div>
-          <div className="rounded-2xl border border-subtle bg-panel/40 p-4">
-            <div className="text-[11px] uppercase tracking-[0.25em] text-muted">Side Pot 1</div>
-            <div className="mt-1 text-sm text-muted">+$50 (bet ≥ $100)</div>
-            <div className="mt-2 text-sm">
-              Pool: <span className="font-semibold text-foreground">{fmtMoney(state?.championship?.pools?.side1?.pool || 0)}</span>
-            </div>
-            <div className="mt-1 text-sm">
-              Winner: <span className="font-semibold text-foreground">{safeStr(state?.championship?.pools?.side1?.winner) || "—"}</span>
-            </div>
-          </div>
-          <div className="rounded-2xl border border-subtle bg-panel/40 p-4">
-            <div className="text-[11px] uppercase tracking-[0.25em] text-muted">Side Pot 2</div>
-            <div className="mt-1 text-sm text-muted">+$50 (bet ≥ $150)</div>
-            <div className="mt-2 text-sm">
-              Pool: <span className="font-semibold text-foreground">{fmtMoney(state?.championship?.pools?.side2?.pool || 0)}</span>
-            </div>
-            <div className="mt-1 text-sm">
-              Winner: <span className="font-semibold text-foreground">{safeStr(state?.championship?.pools?.side2?.winner) || "—"}</span>
-            </div>
-          </div>
-        </div>
+	        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+	          <div className="space-y-2">
+	            <div className="text-sm text-muted">
+	              Main Pot: <span className="text-foreground font-semibold">{fmtMoney(state?.championship?.poolWagers || 0)}</span>
+	              <span className="text-muted"> + </span>
+	              <span className="text-foreground font-semibold">{fmtMoney(state?.championship?.bonus || 0)}</span>
+	              <span className="text-muted"> bonus</span>
+	              <span className="text-muted"> = </span>
+	              <span className="text-foreground font-semibold">{fmtMoney(state?.championship?.pool || 0)}</span>
+	              <span className="text-muted"> total</span>
+	              <span className="text-muted"> · Winner: </span>
+	              <span className="text-foreground font-semibold">{safeStr(state?.championship?.winner) || "—"}</span>
+	            </div>
 
-        {safeStr(state?.championship?.wouldHaveWon?.ownerName).trim() &&
-        safeStr(state?.championship?.pools?.main?.winner).trim() &&
-        safeStr(state?.championship?.wouldHaveWon?.ownerName).trim() !== safeStr(state?.championship?.pools?.main?.winner).trim() ? (
-          <div className="mt-4 rounded-2xl border border-subtle bg-panel/50 p-4 text-sm">
-            <span className="text-muted">For fun:</span>{" "}
-            <span className="text-foreground font-semibold">{safeStr(state?.championship?.wouldHaveWon?.ownerName)}</span>{" "}
-            <span className="text-muted">would have won Week 17 overall (including non-bettors).</span>
-          </div>
-        ) : null}
-
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm text-muted">
-            Total pool (all pots): <span className="text-foreground font-semibold">{fmtMoney(state?.championship?.pool || 0)}</span>
-          </div>
+	            <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+	              <span className="uppercase tracking-[0.25em]">Championship bonus</span>
+	              <input
+	                type="number"
+	                min={0}
+	                step={50}
+	                value={Number(state?.championship?.bonus || 0)}
+	                onChange={(e) => setChampionshipBonus(e.target.value)}
+	                className="w-24 rounded-lg border border-subtle bg-panel px-3 py-2 text-xs text-foreground"
+	              />
+	              <span className="text-muted">(shows as +{fmtMoney(state?.championship?.bonus || 0)} in the pool)</span>
+	            </div>
+	          </div>
 
           <div className="flex gap-2">
             <PrimaryButton onClick={() => save(state)} disabled={saving} tone="muted">

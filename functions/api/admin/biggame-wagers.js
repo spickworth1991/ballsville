@@ -18,11 +18,10 @@ function json(data, status = 200) {
 }
 
 function ensureR2(env) {
-  // IMPORTANT: binding name is ADMIN_BUCKET (ALL CAPS)
-  const b = env?.ADMIN_BUCKET;
-  if (!b || typeof b.get !== "function" || typeof b.put !== "function") {
-    throw new Error("Missing R2 binding: ADMIN_BUCKET");
-  }
+  // IMPORTANT: this project uses ADMIN_BUCKET (all caps) for the Pages R2 binding.
+  // We still allow env.admin_bucket for backwards-compat, but prefer ADMIN_BUCKET.
+  const b = env.ADMIN_BUCKET || env.admin_bucket;
+  if (!b?.get || !b?.put) throw new Error("Missing R2 binding: ADMIN_BUCKET");
   return b;
 }
 
