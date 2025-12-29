@@ -86,12 +86,12 @@ function getMiniLeaguesRoot(leaderboardsJson, season) {
 
   // Try several historical keys so this doesn't break if the generator changes naming.
   const candidates = [
-    seasonObj.mini_leagues,
-    seasonObj["mini-leagues"],
-    seasonObj.miniLeagues,
-    seasonObj.minileagues,
-    seasonObj.mini_league,
-    seasonObj["mini_league"],
+    seasonObj.mini_game,
+    seasonObj["mini-game"],
+    seasonObj.minigame,
+    seasonObj.minigame,
+    seasonObj.mini_game,
+    seasonObj["mini_game"],
   ].filter(Boolean);
 
   return candidates[0] || null;
