@@ -171,14 +171,14 @@ function CornerRibbon({ label, variant = "mini" }) {
 
   const pos =
     variant === "expired"
-  ? `${base} ${pos} bg-rose-600 text-white border-rose-300/40 filter-none opacity-100`
+      ? "top-6 -right-10 rotate-45"   // stick out more
       : variant === "mini"
       ? "top-10 -left-10 -rotate-45"  // stick out more
       : "top-10 -right-6 rotate-45";
 
   const cls =
     variant === "expired"
-      ? `${base} ${pos} bg-rose-600 text-white border-rose-300/40 filter-none`
+      ? `${base} ${pos} bg-rose-600 text-white border-rose-300/40 filter-none opacity-100`
       : variant === "pinned"
       ? `${base} ${pos} bg-primary/80 text-white border-primary/30`
       : `${base} ${pos} bg-emerald-500/80 text-white border-emerald-300/30`;
