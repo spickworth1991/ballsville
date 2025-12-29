@@ -102,14 +102,24 @@ function computeLeagueWinnersFromLeaderboard(leaderboardsJson, season, upToWeek 
 function getWeekPointsFromLeaderboard(leaderboardsJson, season, week) {
   const bigGame = leaderboardsJson?.[String(season)]?.big_game;
   const owners = safeArray(bigGame?.owners);
+
+  // key: "division::leagueName::ownerName" -> points
   const points = {};
+
   for (const o of owners) {
-    const name = safeStr(o?.ownerName).trim();
-    if (!name) continue;
+    const ownerName = safeStr(o?.ownerName).trim();
+    const leagueName = safeStr(o?.leagueName).trim();
+    const division = safeStr(o?.division).trim();
+    if (!ownerName || !leagueName || !division) continue;
+
     const v = o?.weekly?.[String(week)] ?? o?.weekly?.[week];
     const n = typeof v === "number" ? v : parseFloat(v);
-    points[name] = Number.isNaN(n) ? 0 : Math.round(n * 100) / 100;
+    const pts = Number.isNaN(n) ? 0 : Math.round(n * 100) / 100;
+
+    const entryId = `${division}::${leagueName}::${ownerName}`;
+    points[entryId] = pts;
   }
+
   return points;
 }
 
@@ -512,7 +522,8 @@ export default function BigGameWagersAdminClient({ season }) {
           const scored = (entrantEntries || [])
             .map((e) => {
               const owner = safeStr(e.ownerName);
-              const pts = Number(week16Points?.[owner] ?? 0);
+              const entryId = safeStr(e.entryId);
+              const pts = Number(week16Points?.[entryId] ?? 0);
               return {
                 entryId: safeStr(e.entryId),
                 ownerName: owner,
@@ -533,11 +544,11 @@ export default function BigGameWagersAdminClient({ season }) {
 
         pot1.points = {};
         for (const e of pot1Entrants) {
-          pot1.points[e.entryId] = Number(week16Points?.[safeStr(e.ownerName)] ?? 0);
+          pot1.points[e.entryId] = Number(week16Points?.[safeStr(e.entryId)] ?? 0);
         }
         pot2.points = {};
         for (const e of pot2Entrants) {
-          pot2.points[e.entryId] = Number(week16Points?.[safeStr(e.ownerName)] ?? 0);
+          pot2.points[e.entryId] = Number(week16Points?.[safeStr(e.entryId)] ?? 0);
         }
 
         pot1.pool = pot1Entrants.length * entryFee;
@@ -763,27 +774,27 @@ export default function BigGameWagersAdminClient({ season }) {
               .sort((a, b) => a.localeCompare(b))
               .map((div) => {
                 const elig = safeArray(eligibilityByDivision[div])
-                  .slice()
-                  .sort((a, b) => {
-                    const aDiv = safeStr(a?.division || div).trim();
-                    const bDiv = safeStr(b?.division || div).trim();
-                    const aLeague = safeStr(a?.leagueName).trim();
-                    const bLeague = safeStr(b?.leagueName).trim();
+                .slice()
+                .sort((a, b) => {
+                  const aDiv = safeStr(a?.division || div).trim();
+                  const bDiv = safeStr(b?.division || div).trim();
+                  const aLeague = safeStr(a?.leagueName).trim();
+                  const bLeague = safeStr(b?.leagueName).trim();
 
-                    const aKey = `${aDiv}|||${aLeague}`.toLowerCase();
-                    const bKey = `${bDiv}|||${bLeague}`.toLowerCase();
+                  const aKey = `${aDiv}|||${aLeague}`.toLowerCase();
+                  const bKey = `${bDiv}|||${bLeague}`.toLowerCase();
 
-                    const ao = leagueOrderIndex.get(aKey) ?? 999999;
-                    const bo = leagueOrderIndex.get(bKey) ?? 999999;
+                  const ao = leagueOrderIndex.get(aKey) ?? 999999;
+                  const bo = leagueOrderIndex.get(bKey) ?? 999999;
 
-                    if (ao !== bo) return ao - bo;
+                  if (ao !== bo) return ao - bo;
 
-                    // tie-breakers
-                    const ln = aLeague.localeCompare(bLeague);
-                    if (ln !== 0) return ln;
+                  // tie-breakers
+                  const ln = aLeague.localeCompare(bLeague);
+                  if (ln !== 0) return ln;
 
-                    return safeStr(a?.ownerName).trim().localeCompare(safeStr(b?.ownerName).trim());
-                  });
+                  return safeStr(a?.ownerName).trim().localeCompare(safeStr(b?.ownerName).trim());
+                });
 
 
                 const d = wagersByDivision?.[div] || {};
