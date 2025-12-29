@@ -479,13 +479,14 @@ function PostCard({ p, updatedAt }) {
       {/* ✅ CLEAN wrapper: ribbons live here, not affected by dim */}
       <div className="relative overflow-hidden">
         {/* Ribbons (NOT greyed) */}
-        {p.is_coupon ? <CornerRibbon label="Mini Game" variant="mini" /> : null}
+        
         {isExpiredMini ? <CornerRibbon label="Expired" variant="expired" /> : null}
         {p.pinned ? <CornerRibbon label="Pinned" variant="pinned" /> : null}
 
         {/* ✅ Grey ONLY the media */}
         {p.mediaSrc ? (
           <div className={`rounded-2xl overflow-hidden ${dimCls}`}>
+            {p.is_coupon ? <CornerRibbon label="Mini Game" variant="mini" /> : null}
             <MediaBlock
               src={p.mediaSrc}
               updatedAt={updatedAt}
