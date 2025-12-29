@@ -71,6 +71,19 @@ function buildEmptyState(season) {
       // Editable bonus added to the MAIN pot (defaults to $200)
       bonus: 200,
 
+      // Per-$50 pots (winner must have that $50 in play to win that pot)
+      // - main: everyone who wagered >= 50
+      // - side1: everyone who wagered >= 100 (their 2nd $50)
+      // - side2: everyone who wagered >= 150 (their 3rd $50)
+      pots: {
+        main: { entrants: 0, pool: 0, winner: "", winnerKey: "" },
+        side1: { entrants: 0, pool: 0, winner: "", winnerKey: "" },
+        side2: { entrants: 0, pool: 0, winner: "", winnerKey: "" },
+      },
+
+      // Fun: if a non-bettor would have been the overall points winner
+      wouldHaveWonNoBet: { ownerName: "", division: "", points: 0 },
+
       // Computed values (saved so the public page can render without recomputing)
       poolWagers: 0, // sum of wagers actually placed
       pool: 0, // poolWagers + bonus
@@ -215,8 +228,6 @@ export default function BigGameWagersAdminClient({ season }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
-  const [viewMode, setViewMode] = useState("current"); // "current" | "backup"
-  const [backupInfo, setBackupInfo] = useState({ hasBackup: false, meta: null });
 
   // Load Big Game page config (division names, league cards, images)
   useEffect(() => {
@@ -238,35 +249,18 @@ export default function BigGameWagersAdminClient({ season }) {
     };
   }, [season]);
 
-  async function refreshBackupInfo() {
-    try {
-      const res = await fetch(`/api/admin/biggame-wagers-backup?season=${encodeURIComponent(season)}`, {
-        cache: "no-store",
-      });
-      const j = res.ok ? await res.json() : null;
-      const hasBackup = Boolean(j?.data);
-      setBackupInfo({ hasBackup, meta: j?.meta || null });
-    } catch {
-      setBackupInfo({ hasBackup: false, meta: null });
-    }
-  }
-
-  // Load wager state (current or backup)
+  // Load wager state
   useEffect(() => {
     let cancelled = false;
-    async function run(mode = "current") {
+    async function run() {
       setLoading(true);
       setMsg("");
       try {
-        const url =
-          mode === "backup"
-            ? `/api/admin/biggame-wagers-backup?season=${encodeURIComponent(season)}`
-            : `/api/admin/biggame-wagers?season=${encodeURIComponent(season)}`;
-
-        const res = await fetch(url, { cache: "no-store" });
+        const res = await fetch(`/api/admin/biggame-wagers?season=${encodeURIComponent(season)}`, {
+          cache: "no-store",
+        });
         const saved = res.ok ? await res.json() : null;
-        const raw = saved && typeof saved === "object" && "data" in saved ? saved.data : saved;
-        const data = mode === "backup" ? (saved?.data ?? null) : raw;
+        const data = saved && typeof saved === "object" && "data" in saved ? saved.data : saved;
 
         if (!cancelled) {
           setState(() => {
@@ -280,78 +274,11 @@ export default function BigGameWagersAdminClient({ season }) {
         if (!cancelled) setLoading(false);
       }
     }
-    // Always start in current mode on season change.
-    setViewMode("current");
-    run("current");
-    refreshBackupInfo();
+    run();
     return () => {
       cancelled = true;
     };
   }, [season]);
-
-  async function loadCurrent() {
-    setViewMode("current");
-    setLoading(true);
-    setMsg("");
-    try {
-      const res = await fetch(`/api/admin/biggame-wagers?season=${encodeURIComponent(season)}`, { cache: "no-store" });
-      const saved = res.ok ? await res.json() : null;
-      const data = saved && typeof saved === "object" && "data" in saved ? saved.data : saved;
-      setState(() => {
-        const base = buildEmptyState(season);
-        return { ...base, ...(data || {}), season: Number(season) };
-      });
-    } catch (e) {
-      setMsg(e?.message || "Failed to load wager tracker state.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadBackup() {
-    setViewMode("backup");
-    setLoading(true);
-    setMsg("");
-    try {
-      const res = await fetch(`/api/admin/biggame-wagers-backup?season=${encodeURIComponent(season)}`, { cache: "no-store" });
-      const j = res.ok ? await res.json() : null;
-      const data = j?.data || null;
-      setState(() => {
-        const base = buildEmptyState(season);
-        return { ...base, ...(data || {}), season: Number(season) };
-      });
-      if (!data) setMsg("No Week 15 backup exists yet.");
-    } catch (e) {
-      setMsg(e?.message || "Failed to load Week 15 backup.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function restoreBackup() {
-    if (!backupInfo.hasBackup) {
-      setMsg("No Week 15 backup exists to restore.");
-      return;
-    }
-    setSaving(true);
-    setMsg("");
-    try {
-      const res = await fetch(`/api/admin/biggame-wagers-backup?season=${encodeURIComponent(season)}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "restore" }),
-      });
-      const j = res.ok ? await res.json() : null;
-      if (!res.ok) throw new Error(j?.error || `Restore failed (${res.status})`);
-      setMsg("Restored Week 15 backup to current wagers.");
-      await refreshBackupInfo();
-      await loadCurrent();
-    } catch (e) {
-      setMsg(e?.message || "Failed to restore Week 15 backup.");
-    } finally {
-      setSaving(false);
-    }
-  }
 
   const leagueOrderIndex = useMemo(() => buildLeagueOrderIndex(bigGameMeta), [bigGameMeta]);
 
@@ -696,43 +623,106 @@ export default function BigGameWagersAdminClient({ season }) {
       next.championship = next.championship || { week: 17, resolvedAt: "", byDivisionWinner: [], points: {}, winner: "", winnerKey: "", pool: 0 };
       next.championship.week = 17;
 
-      const entrants = safeArray(next.championship.byDivisionWinner).filter((r) => safeStr(r?.ownerName).trim());
-      const points = {};
-      let poolWagers = 0;
+      const seeded = safeArray(next.championship.byDivisionWinner).filter((r) => safeStr(r?.ownerName).trim());
 
-      for (const r of entrants) {
-        const name = safeStr(r.ownerName).trim();
+      // Normalize wagers (0/50/100/150) and compute points for *all* seeded entrants.
+      const points = {};
+      for (const r of seeded) {
         const k = safeStr(r.entryKey).trim();
         const w = Number(r.wager || 0);
-
-        const wNorm = Math.max(0, Math.round(w / 50) * 50);
-        poolWagers += wNorm;
-
+        r.wager = Math.max(0, Math.round(w / 50) * 50);
         points[k] = Number(week17Points?.[k] ?? 0);
-        r.wager = wNorm;
       }
 
-      let winner = "";
-      let winnerKey = "";
-      let best = -Infinity;
-
-      for (const r of entrants) {
-        const k = safeStr(r.entryKey).trim();
-        const pts = Number(points[k] ?? 0);
-        if (pts > best) {
-          best = pts;
-          winner = safeStr(r.ownerName).trim();
-          winnerKey = k;
+      // Helper: winner among a given participant list (by entryKey)
+      const pickWinnerKey = (keys) => {
+        let bestKey = "";
+        let bestPts = -Infinity;
+        for (const k of keys) {
+          const pts = Number(points[k] ?? 0);
+          if (pts > bestPts) {
+            bestPts = pts;
+            bestKey = k;
+          }
         }
-      }
+        return bestKey;
+      };
 
-      next.championship.byDivisionWinner = entrants;
-      next.championship.points = points;
+      // Pot membership rules:
+      // - MAIN POT: everyone who bet >= $50
+      // - SIDE POT 1: everyone who bet >= $100 (their *second* $50)
+      // - SIDE POT 2: everyone who bet >= $150 (their *third* $50)
+      const mainKeys = seeded.filter((r) => Number(r.wager || 0) >= 50).map((r) => safeStr(r.entryKey).trim());
+      const side1Keys = seeded.filter((r) => Number(r.wager || 0) >= 100).map((r) => safeStr(r.entryKey).trim());
+      const side2Keys = seeded.filter((r) => Number(r.wager || 0) >= 150).map((r) => safeStr(r.entryKey).trim());
+
       const bonus = Number(next.championship?.bonus || 0) || 0;
+      const poolMain = mainKeys.length * 50 + bonus;
+      const poolSide1 = side1Keys.length * 50;
+      const poolSide2 = side2Keys.length * 50;
+
+      const mainWinnerKey = pickWinnerKey(mainKeys);
+      const side1WinnerKey = pickWinnerKey(side1Keys);
+      const side2WinnerKey = pickWinnerKey(side2Keys);
+
+      const seededByKey = new Map(seeded.map((r) => [safeStr(r.entryKey).trim(), r]));
+      const mainWinnerName = safeStr(seededByKey.get(mainWinnerKey)?.ownerName).trim();
+      const side1WinnerName = safeStr(seededByKey.get(side1WinnerKey)?.ownerName).trim();
+      const side2WinnerName = safeStr(seededByKey.get(side2WinnerKey)?.ownerName).trim();
+
+      // Fun: show who would have won if "No Bet" entrants were allowed.
+      const allKeys = seeded.map((r) => safeStr(r.entryKey).trim());
+      const bestOverallKey = pickWinnerKey(allKeys);
+      const bestOverall = seededByKey.get(bestOverallKey) || null;
+      const wouldHaveWonNoBet =
+        bestOverall && !mainKeys.includes(bestOverallKey)
+          ? {
+              entryKey: bestOverallKey,
+              ownerName: safeStr(bestOverall?.ownerName).trim(),
+              division: safeStr(bestOverall?.division).trim(),
+              points: Number(points[bestOverallKey] ?? 0),
+            }
+          : null;
+
+      next.championship.byDivisionWinner = seeded;
+      next.championship.points = points;
+
+      // Keep a simple sum too (helps older UI/logic).
+      const poolWagers = poolMain + poolSide1 + poolSide2 - bonus;
       next.championship.poolWagers = poolWagers;
       next.championship.pool = poolWagers + bonus;
-      next.championship.winner = winner;
-      next.championship.winnerKey = winnerKey;
+
+      next.championship.pots = {
+        main: {
+          label: "Main Pot",
+          minWager: 50,
+          entrants: mainKeys,
+          pool: poolMain,
+          winnerKey: mainWinnerKey,
+          winner: mainWinnerName,
+        },
+        side1: {
+          label: "Side Pot 1",
+          minWager: 100,
+          entrants: side1Keys,
+          pool: poolSide1,
+          winnerKey: side1WinnerKey,
+          winner: side1WinnerName,
+        },
+        side2: {
+          label: "Side Pot 2",
+          minWager: 150,
+          entrants: side2Keys,
+          pool: poolSide2,
+          winnerKey: side2WinnerKey,
+          winner: side2WinnerName,
+        },
+      };
+
+      // The overall "winner" shown at the top should be the MAIN POT winner.
+      next.championship.winner = mainWinnerName;
+      next.championship.winnerKey = mainWinnerKey;
+      next.championship.wouldHaveWonNoBet = wouldHaveWonNoBet;
       next.championship.resolvedAt = nowIso();
 
       await save(next);
@@ -776,37 +766,11 @@ export default function BigGameWagersAdminClient({ season }) {
               ← Big Game Admin
             </Link>
 
-            {backupInfo?.exists ? (
-              <>
-                <PrimaryButton
-                  disabled={saving}
-                  onClick={() => (viewMode === "backup" ? loadCurrent() : loadBackup())}
-                  tone="muted"
-                >
-                  {viewMode === "backup" ? "View Current" : "View Week 15 Backup"}
-                </PrimaryButton>
-
-                <PrimaryButton disabled={saving || viewMode === "backup"} onClick={restoreBackup} tone="muted">
-                  Restore Backup
-                </PrimaryButton>
-              </>
-            ) : null}
-
             <PrimaryButton disabled={saving} onClick={() => save(state)} tone="muted">
               Save
             </PrimaryButton>
           </div>
         </div>
-
-        {viewMode === "backup" ? (
-          <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-            You are viewing the <span className="font-semibold">Week 15 snapshot</span>.
-            {backupInfo?.meta?.backedUpAt ? (
-              <span className="text-amber-200"> Backed up {new Date(backupInfo.meta.backedUpAt).toLocaleString()}.</span>
-            ) : null}
-            <span className="text-amber-200"> Changes here will not publish unless you restore this backup.</span>
-          </div>
-        ) : null}
 
         {msg ? (
           <div className="mt-4 rounded-xl border border-subtle bg-panel/50 px-4 py-3 text-sm text-foreground">{msg}</div>
@@ -1034,7 +998,7 @@ export default function BigGameWagersAdminClient({ season }) {
                                   : "border-subtle bg-panel text-muted hover:border-accent/40"
                               }`}
                             >
-                              {amt === 0 ? "—" : fmtMoney(amt)}
+                              {amt === 0 ? "No Bet" : fmtMoney(amt)}
                             </button>
                           ))}
                         </div>
@@ -1048,33 +1012,75 @@ export default function BigGameWagersAdminClient({ season }) {
           </table>
         </div>
 
-	        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-	          <div className="space-y-2">
-	            <div className="text-sm text-muted">
-	              Main Pot: <span className="text-foreground font-semibold">{fmtMoney(state?.championship?.poolWagers || 0)}</span>
-	              <span className="text-muted"> + </span>
-	              <span className="text-foreground font-semibold">{fmtMoney(state?.championship?.bonus || 0)}</span>
-	              <span className="text-muted"> bonus</span>
-	              <span className="text-muted"> = </span>
-	              <span className="text-foreground font-semibold">{fmtMoney(state?.championship?.pool || 0)}</span>
-	              <span className="text-muted"> total</span>
-	              <span className="text-muted"> · Winner: </span>
-	              <span className="text-foreground font-semibold">{safeStr(state?.championship?.winner) || "—"}</span>
-	            </div>
 
-	            <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-	              <span className="uppercase tracking-[0.25em]">Championship bonus</span>
-	              <input
-	                type="number"
-	                min={0}
-	                step={50}
-	                value={Number(state?.championship?.bonus || 0)}
-	                onChange={(e) => setChampionshipBonus(e.target.value)}
-	                className="w-24 rounded-lg border border-subtle bg-panel px-3 py-2 text-xs text-foreground"
-	              />
-	              <span className="text-muted">(shows as +{fmtMoney(state?.championship?.bonus || 0)} in the pool)</span>
-	            </div>
-	          </div>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-3">
+            <div className="grid gap-2 md:grid-cols-3">
+              <div className="rounded-2xl border border-subtle bg-panel/40 p-4">
+                <div className="text-[11px] uppercase tracking-[0.25em] text-muted">Main Pot</div>
+                <div className="mt-1 text-sm text-muted">
+                  <span className="text-foreground font-semibold">{fmtMoney(state?.championship?.pots?.main?.pool || 0)}</span>
+                  <span className="text-muted"> (includes +{fmtMoney(state?.championship?.bonus || 0)} bonus)</span>
+                </div>
+                <div className="mt-1 text-xs text-muted">
+                  Winner: <span className="text-foreground font-semibold">{safeStr(state?.championship?.pots?.main?.winner) || "—"}</span>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-subtle bg-panel/40 p-4">
+                <div className="text-[11px] uppercase tracking-[0.25em] text-muted">Side Pot 1</div>
+                <div className="mt-1 text-sm text-muted">
+                  <span className="text-foreground font-semibold">{fmtMoney(state?.championship?.pots?.side1?.pool || 0)}</span>
+                </div>
+                <div className="mt-1 text-xs text-muted">
+                  Winner: <span className="text-foreground font-semibold">{safeStr(state?.championship?.pots?.side1?.winner) || "—"}</span>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-subtle bg-panel/40 p-4">
+                <div className="text-[11px] uppercase tracking-[0.25em] text-muted">Side Pot 2</div>
+                <div className="mt-1 text-sm text-muted">
+                  <span className="text-foreground font-semibold">{fmtMoney(state?.championship?.pots?.side2?.pool || 0)}</span>
+                </div>
+                <div className="mt-1 text-xs text-muted">
+                  Winner: <span className="text-foreground font-semibold">{safeStr(state?.championship?.pots?.side2?.winner) || "—"}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 text-sm text-muted">
+              <div>
+                Total Pool: <span className="text-foreground font-semibold">{fmtMoney(state?.championship?.pool || 0)}</span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                <span className="uppercase tracking-[0.25em]">Championship bonus</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={50}
+                  value={Number(state?.championship?.bonus || 0)}
+                  onChange={(e) => setChampionshipBonus(e.target.value)}
+                  className="w-24 rounded-lg border border-subtle bg-panel px-3 py-2 text-xs text-foreground"
+                />
+                <span className="text-muted">(added to the Main Pot)</span>
+              </div>
+            </div>
+
+            {state?.championship?.wouldHaveWonNoBet?.ownerName ? (
+              <div className="text-xs text-muted">
+                Fun: <span className="text-foreground font-semibold">{safeStr(state.championship.wouldHaveWonNoBet.ownerName)}</span>
+                {state.championship.wouldHaveWonNoBet.division ? (
+                  <>
+                    <span className="text-muted"> (</span>
+                    <span className="text-foreground">{safeStr(state.championship.wouldHaveWonNoBet.division)}</span>
+                    <span className="text-muted">)</span>
+                  </>
+                ) : null}{" "}
+                would have won on points, but did not wager.
+              </div>
+            ) : null}
+          </div>
 
           <div className="flex gap-2">
             <PrimaryButton onClick={() => save(state)} disabled={saving} tone="muted">

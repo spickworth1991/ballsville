@@ -1,11 +1,14 @@
 // functions/api/admin/biggame-wagers.js
-// Stores wager tracker state for The Big Game.
 //
-// GET  /api/admin/biggame-wagers?season=2025
-// PUT  /api/admin/biggame-wagers?season=2025  (JSON body)
+// GET  /api/admin/biggame-wagers?season=2025[&variant=backup]
+// PUT  /api/admin/biggame-wagers?season=2025   (body = full wagers doc)
 //
-// Public read happens via R2 proxy:
-//   /r2/data/biggame/wagers_<season>.json
+// Behavior:
+// - Current doc always saved at:   data/biggame/wagers_<season>.json
+// - On Week 15 import (eligibility.week===15), snapshot the *previous* current doc to:
+//     data/biggame/wagers_<season>_wk15_backup.json
+//   but only when the incoming eligibility.computedAt differs from the stored one.
+// - Backup key is deterministic (overwrites), so no indefinite growth.
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -17,155 +20,137 @@ function json(data, status = 200) {
   });
 }
 
+function bad(msg, status = 400) {
+  return json({ ok: false, error: msg }, status);
+}
+
 function ensureR2(env) {
-  // IMPORTANT: this project uses ADMIN_BUCKET (all caps) for the Pages R2 binding.
-  // We still allow env.admin_bucket for backwards-compat, but prefer ADMIN_BUCKET.
-  const b = env.ADMIN_BUCKET || env.admin_bucket;
-  if (!b?.get || !b?.put) throw new Error("Missing R2 binding: ADMIN_BUCKET");
+  const b = env.ADMIN_BUCKET || env;
+  if (!b || typeof b.get !== "function" || typeof b.put !== "function") {
+    throw new Error("R2 bucket binding not found. Expected env.ADMIN_BUCKET (or env) to be an R2 binding.");
+  }
   return b;
 }
 
-function getSeason(url) {
-  const u = new URL(url);
-  const season = u.searchParams.get("season") || "";
-  return String(season || "").trim();
+function keyForSeason(season) {
+  const s = String(season).trim();
+  return {
+    current: `data/biggame/wagers_${s}.json`,
+    backup: `data/biggame/wagers_${s}_wk15_backup.json`,
+    backupMeta: `data/biggame/wagers_${s}_wk15_backup_meta.json`,
+  };
 }
 
-function r2KeyFor(season) {
-  return `data/biggame/wagers_${season}.json`;
+async function readJsonFromR2(bucket, key) {
+  const obj = await bucket.get(key);
+  if (!obj) return null;
+  try {
+    const text = await obj.text();
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
-function r2BackupKeyFor(season) {
-  // Single deterministic backup (overwritten each Week 15 import)
-  return `data/biggame/wagers_${season}_backup.json`;
+function safeStr(v) {
+  return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
-function r2BackupMetaKeyFor(season) {
-  return `data/biggame/wagers_${season}_backup_meta.json`;
-}
-
-async function touchManifest(env, season) {
-  const bucket = ensureR2(env);
-  const key = `data/manifests/biggame-wagers_${season}.json`;
-  await bucket.put(key, JSON.stringify({ updatedAt: new Date().toISOString() }, null, 2), {
-    httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "no-store" },
-  });
-}
-
-function validatePayload(season, body) {
-  const o = body && typeof body === "object" ? body : null;
-  if (!o) return { ok: false, msg: "Body must be JSON." };
-
-  // Keep validation light on purpose (admin UI is the source of truth)
-  const s = Number(o.season ?? season);
-  if (!Number.isFinite(s)) return { ok: false, msg: "Invalid season." };
-
-  return { ok: true, season: String(s) };
+function nowIso() {
+  return new Date().toISOString();
 }
 
 export async function onRequest(context) {
   try {
     const { request, env } = context;
-    const season = getSeason(request.url);
-    if (!season) return json({ ok: false, error: "Missing season." }, 400);
+    const url = new URL(request.url);
 
+    const season = url.searchParams.get("season");
+    if (!season) return bad("Missing ?season=", 400);
+
+    const variant = (url.searchParams.get("variant") || "").toLowerCase(); // optional
     const bucket = ensureR2(env);
-    const key = r2KeyFor(season);
+    const keys = keyForSeason(season);
 
     if (request.method === "GET") {
-      const obj = await bucket.get(key);
-      if (!obj) return json({ ok: true, data: null });
-      const text = await obj.text();
-      try {
-        return json({ ok: true, data: JSON.parse(text) });
-      } catch {
-        // If file is malformed, still return raw so admin can overwrite.
-        return json({ ok: true, data: { _raw: text } });
-      }
+      const which = variant === "backup" ? keys.backup : keys.current;
+      const data = await readJsonFromR2(bucket, which);
+      if (!data) return json({ ok: true, data: null, key: which }, 200);
+      return json({ ok: true, data, key: which }, 200);
     }
 
     if (request.method === "PUT") {
-      let body = null;
+      let body;
       try {
         body = await request.json();
       } catch {
-        return json({ ok: false, error: "Invalid JSON body." }, 400);
+        return bad("Invalid JSON body", 400);
+      }
+      if (!body || typeof body !== "object") return bad("Body must be a JSON object", 400);
+
+      // Read current doc (so we can snapshot it if needed)
+      const currentDoc = await readJsonFromR2(bucket, keys.current);
+
+      const incomingEligWeek = Number(body?.eligibility?.week || 0);
+      const incomingEligComputedAt = safeStr(body?.eligibility?.computedAt).trim();
+
+      const storedEligComputedAt = safeStr(currentDoc?.eligibility?.computedAt).trim();
+
+      // Snapshot rule:
+      // - only when importing Week 15 eligibility
+      // - only when computedAt is present AND different from what we already have
+      // - only if there *is* an existing current doc to snapshot
+      const shouldSnapshot =
+        incomingEligWeek === 15 &&
+        incomingEligComputedAt &&
+        incomingEligComputedAt !== storedEligComputedAt &&
+        currentDoc;
+
+      let snapshotInfo = null;
+
+      if (shouldSnapshot) {
+        const snapshotAt = nowIso();
+
+        // Save the previous current doc as the Week 15 backup (deterministic key overwrites)
+        await bucket.put(keys.backup, JSON.stringify(currentDoc, null, 2), {
+          httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "no-store" },
+        });
+
+        // Small meta (helps you verify which import created the backup)
+        const meta = {
+          season: Number(season) || season,
+          snapshotAt,
+          fromUpdatedAt: safeStr(currentDoc?.updatedAt).trim(),
+          fromEligibilityComputedAt: storedEligComputedAt || "",
+          toEligibilityComputedAt: incomingEligComputedAt || "",
+          note: "Auto-snapshot taken when Week 15 eligibility was imported.",
+        };
+
+        await bucket.put(keys.backupMeta, JSON.stringify(meta, null, 2), {
+          httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "no-store" },
+        });
+
+        snapshotInfo = meta;
       }
 
-      const v = validatePayload(season, body);
-      if (!v.ok) return json({ ok: false, error: v.msg }, 400);
-
-      const toWrite = {
-        ...body,
-        season: Number(v.season),
-        updatedAt: new Date().toISOString(),
-      };
-
-      // --- Week 15 import backup behavior ---
-      // The admin UI imports Week 15 eligibility by setting eligibility.computedAt.
-      // When that timestamp changes, we snapshot the *previous* doc to a deterministic backup
-      // so you can swap/restore if something goes wrong.
-      // Week 16/17 updates simply overwrite the main doc.
-      try {
-        const newComputedAt = typeof toWrite?.eligibility?.computedAt === "string" ? toWrite.eligibility.computedAt : "";
-        if (newComputedAt) {
-          const prevObj = await bucket.get(key);
-          if (prevObj) {
-            const prevText = await prevObj.text();
-            let prevDoc = null;
-            try {
-              prevDoc = JSON.parse(prevText);
-            } catch {
-              prevDoc = { _raw: prevText };
-            }
-
-            const prevComputedAt = typeof prevDoc?.eligibility?.computedAt === "string" ? prevDoc.eligibility.computedAt : "";
-            const shouldBackup = prevText && prevComputedAt !== newComputedAt;
-            if (shouldBackup) {
-              const backupKey = r2BackupKeyFor(v.season);
-              const metaKey = r2BackupMetaKeyFor(v.season);
-              const backedUpAt = new Date().toISOString();
-
-              await bucket.put(backupKey, JSON.stringify(prevDoc, null, 2), {
-                httpMetadata: {
-                  contentType: "application/json; charset=utf-8",
-                  cacheControl: "no-store",
-                },
-              });
-
-              const meta = {
-                season: Number(v.season),
-                backedUpAt,
-                reason: "week15_import",
-                fromUpdatedAt: typeof prevDoc?.updatedAt === "string" ? prevDoc.updatedAt : "",
-                fromEligibilityComputedAt: prevComputedAt,
-                newEligibilityComputedAt: newComputedAt,
-                backupKey,
-              };
-
-              await bucket.put(metaKey, JSON.stringify(meta, null, 2), {
-                httpMetadata: {
-                  contentType: "application/json; charset=utf-8",
-                  cacheControl: "no-store",
-                },
-              });
-            }
-          }
-        }
-      } catch {
-        // Backup is best-effort; never block saving.
-      }
-
-      await bucket.put(key, JSON.stringify(toWrite, null, 2), {
+      // Always overwrite the current doc
+      await bucket.put(keys.current, JSON.stringify(body, null, 2), {
         httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "no-store" },
       });
 
-      await touchManifest(env, season);
-      return json({ ok: true, data: toWrite });
+      return json(
+        {
+          ok: true,
+          data: body,
+          savedKey: keys.current,
+          snapshot: snapshotInfo,
+        },
+        200
+      );
     }
 
-    return json({ ok: false, error: "Method not allowed." }, 405);
+    return bad(`Method not allowed: ${request.method}`, 405);
   } catch (e) {
-    return json({ ok: false, error: e?.message || "Server error" }, 500);
+    return json({ ok: false, error: e?.message || String(e) }, 500);
   }
 }
