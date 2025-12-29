@@ -2,6 +2,7 @@
 import Link from "next/link";
 import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import BigGameDynamicBlocks from "@/components/big-game/BigGameDynamicBlocks";
+import BigGameWagerTracker from "@/components/big-game/BigGameWagerTracker";
 import { CURRENT_SEASON } from "@/lib/season";
 
 export const metadata = {
@@ -135,13 +136,18 @@ export default function BigGamePage() {
           <BigGameDynamicBlocks season={CURRENT_SEASON} showDivisions={false} />
         </SectionManifestGate>
         </section>
+
+        {/* WAGER TRACKER (manifest-gated for cache efficiency) */}
+        <section id="wagers" className="scroll-mt-24">
+          <BigGameWagerTracker />
+        </section>
+
         {/* DIVISIONS GRID (now dynamic from Supabase) */}
         <section id="divisions">
           <SectionManifestGate section="biggame" season={CURRENT_SEASON}>
             <BigGameDynamicBlocks season={CURRENT_SEASON} showOwner={false} />
           </SectionManifestGate>
         </section>
-        
 
         {/* ESSENTIALLY / ODDS */}
         <section className="grid gap-6 lg:grid-cols-[1.1fr_minmax(0,1fr)] items-start">
