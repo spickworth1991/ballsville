@@ -13,6 +13,8 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+
+
 const LEADERBOARD_URL_BY_SEASON = (season) =>
   `https://ballsville-leaderboard.pages.dev/data/leaderboards_${encodeURIComponent(season)}.json`;
 
@@ -186,6 +188,31 @@ export default function BigGameWagersAdminClient({ season }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  const DRAFT_KEY = `biggame-wagers-draft:${season}`;
+
+
+
+  // Load local draft once (after first render)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const draft = JSON.parse(raw);
+      if (draft && Number(draft.season) === Number(season)) {
+        setState((prev) => ({ ...prev, ...draft }));
+        setMsg("Loaded local draft (unsaved).");
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [season]);
+
+  // Persist draft on every change (so refresh never loses work)
+  useEffect(() => {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(state));
+    } catch {}
+  }, [state, season]);
+
 
   // Load Big Game page config (division names, league cards, images) so the tracker can feel native.
   useEffect(() => {
@@ -322,6 +349,7 @@ export default function BigGameWagersAdminClient({ season }) {
       const doc = saved && typeof saved === "object" && "data" in saved ? saved.data : saved;
       setState((prev) => ({ ...prev, ...(doc || payload) }));
       setMsg("Saved.");
+      try { localStorage.removeItem(DRAFT_KEY); } catch {}
     } catch (e) {
       setMsg(e?.message || "Failed to save.");
     } finally {
@@ -567,10 +595,38 @@ export default function BigGameWagersAdminClient({ season }) {
 
       // Auto-seed championship entrants from pot1 winners
       const seeded = [];
-      for (const [div, d] of Object.entries(next.divisionWagers.byDivision || {})) {
-        const win = safeStr(d?.pot1?.winner).trim();
-        if (win) seeded.push({ ownerName: win, division: div, wager: 0 });
-      }
+        for (const [div, d] of Object.entries(next.divisionWagers.byDivision || {})) {
+          const pot1 = d?.pot1 || {};
+          const winnerName = safeStr(pot1?.winner).trim();
+          if (!winnerName) continue;
+
+          // Find which eligibility entry (league) that winner came from (highest wk16 among winnerName in pot1 entrants)
+          const elig = safeArray(next.eligibility?.byDivision?.[div]).map((e) => ({
+            ...e,
+            entryId: safeStr(e?.entryId || `${safeStr(e?.division || div)}::${safeStr(e?.leagueName)}::${safeStr(e?.ownerName)}`),
+          }));
+
+          const pot1EntrantEntries = elig.filter((e) => pot1?.entrants?.[safeStr(e.entryId)]);
+          const winnerEntries = pot1EntrantEntries.filter((e) => safeStr(e.ownerName).trim() === winnerName);
+
+          // pick the entry with the best recorded wk16 (fallback: first)
+          winnerEntries.sort((a, b) => {
+            const pa = Number(pot1?.points?.[safeStr(a.entryId)] ?? 0);
+            const pb = Number(pot1?.points?.[safeStr(b.entryId)] ?? 0);
+            return pb - pa;
+          });
+
+          const winnerEntry = winnerEntries[0] || null;
+
+          seeded.push({
+            division: div,
+            ownerName: winnerName,
+            leagueName: winnerEntry ? safeStr(winnerEntry.leagueName) : "",
+            entryId: winnerEntry ? safeStr(winnerEntry.entryId) : `${div}::${winnerName}`, // fallback but should almost always exist
+            wager: 0,
+          });
+        }
+
       next.championship = next.championship || { week: 17, resolvedAt: "", byDivisionWinner: [], points: {}, winner: "", pool: 0 };
       next.championship.week = 17;
       // preserve existing wagers if the same owner is still present
@@ -608,46 +664,49 @@ export default function BigGameWagersAdminClient({ season }) {
     setMsg("");
     try {
       const { data, etag, url } = await fetchLeaderboardJson();
-      const week17Points = getWeekPointsFromLeaderboard(data, season, 17);
+      const week17Points = getWeekPointsFromLeaderboard(data, season, 17); // this returns entryId -> pts already
 
-      const next = structuredClone(state);
-      next.source = {
-        leaderboardUrl: url,
-        lastFetchedAt: nowIso(),
-        leaderboardEtag: etag,
-      };
-
-      next.championship = next.championship || { week: 17, resolvedAt: "", byDivisionWinner: [], points: {}, winner: "", pool: 0 };
-      next.championship.week = 17;
-
-      const entrants = safeArray(next.championship.byDivisionWinner).filter((r) => safeStr(r?.ownerName).trim());
+      const entrants = safeArray(next.championship.byDivisionWinner).filter((r) => safeStr(r?.entryId).trim());
       const points = {};
       let pool = 0;
 
       for (const r of entrants) {
-        const name = safeStr(r.ownerName).trim();
+        const entryId = safeStr(r.entryId).trim();
+        const ownerName = safeStr(r.ownerName).trim();
+
         const w = Number(r.wager || 0);
-        // enforce increments of 50
         const wNorm = Math.max(0, Math.round(w / 50) * 50);
-        pool += wNorm;
-        points[name] = Number(week17Points?.[name] ?? 0);
         r.wager = wNorm;
+
+        pool += wNorm;
+
+        // store points by entryId (stable even if names duplicate)
+        points[entryId] = Number(week17Points?.[entryId] ?? 0);
+
+        // keep ownerName present for display
+        r.ownerName = ownerName;
       }
 
-      let winner = "";
+
+      let winnerEntryId = "";
       let best = -Infinity;
-      for (const [name, pts] of Object.entries(points)) {
+
+      for (const [entryId, pts] of Object.entries(points)) {
         if (pts > best) {
           best = pts;
-          winner = name;
+          winnerEntryId = entryId;
         }
       }
 
+      // store both winnerEntryId and winner name for display
+      const winnerRow = entrants.find((r) => safeStr(r.entryId).trim() === winnerEntryId);
+      next.championship.winnerEntryId = winnerEntryId;
+      next.championship.winner = winnerRow ? safeStr(winnerRow.ownerName) : "";
       next.championship.byDivisionWinner = entrants;
       next.championship.points = points;
       next.championship.pool = pool;
-      next.championship.winner = winner;
       next.championship.resolvedAt = nowIso();
+
 
       await save(next);
     } catch (e) {
@@ -935,11 +994,12 @@ export default function BigGameWagersAdminClient({ season }) {
                 safeArray(state?.championship?.byDivisionWinner).map((r) => {
                   const name = safeStr(r?.ownerName);
                   const div = safeStr(r?.division);
-                  const pts = state?.championship?.points?.[name];
+                  const entryId = safeStr(r?.entryId);
+                  const pts = state?.championship?.points?.[entryId];
                   const ptsNum = typeof pts === "number" ? pts : parseFloat(pts);
 
                   return (
-                    <tr key={`${div}:${name}`} className="border-t border-subtle/70">
+                    <tr key={entryId} className="border-t border-subtle/70">
                       <td className="py-2 pr-3 text-muted whitespace-nowrap">{div}</td>
                       <td className="py-2 pr-3 font-medium text-foreground whitespace-nowrap">{name}</td>
                       <td className="py-2 pr-3 text-right tabular-nums">
