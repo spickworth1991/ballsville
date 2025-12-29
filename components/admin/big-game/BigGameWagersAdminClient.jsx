@@ -489,8 +489,9 @@ export default function BigGameWagersAdminClient({ season }) {
         const pot1 = d.pot1 || { entrants: {}, points: {}, winner: "", pool: 0, resolvedAt: "" };
         const pot2 = d.pot2 || { entrants: {}, points: {}, winner: "", pool: 0, resolvedAt: "" };
 
-        const pot1Entrants = namesInOrder.filter((n) => pot1?.entrants?.[n]);
-        const pot2Entrants = namesInOrder.filter((n) => pot2?.entrants?.[n]);
+        const pot1Entrants = entriesInOrder.filter((e) => pot1?.entrants?.[safeStr(e.entryId)]);
+        const pot2Entrants = entriesInOrder.filter((e) => pot2?.entrants?.[safeStr(e.entryId)]);
+
 
         const pickWinner = (entrantEntries) => {
           const scored = (entrantEntries || [])
@@ -791,20 +792,23 @@ export default function BigGameWagersAdminClient({ season }) {
                             const entryId = safeStr(
                               e.entryId || `${safeStr(e.division || div)}::${safeStr(e.leagueName)}::${safeStr(e.ownerName)}`
                             );
-                            const wk16 = pot1?.points?.[name] ?? pot2?.points?.[name];
+
+                            const wk16 = pot1?.points?.[entryId] ?? pot2?.points?.[entryId];
                             const wk16Num = typeof wk16 === "number" ? wk16 : parseFloat(wk16);
                             const wk16Show = Number.isNaN(wk16Num) ? "" : wk16Num.toFixed(2);
 
                             return (
-                              <tr key={`${div}:${e.leagueName}:${name}`} className="border-t border-subtle/70">
+                              <tr key={entryId} className="border-t border-subtle/70">
                                 <td className="py-2 pr-3 text-muted whitespace-nowrap">{e.leagueName}</td>
                                 <td className="py-2 pr-3 font-medium text-foreground whitespace-nowrap">{name}</td>
-                                <td className="py-2 pr-3 text-right tabular-nums text-muted">{Number(e.total || 0).toFixed(2)}</td>
+                                <td className="py-2 pr-3 text-right tabular-nums text-muted">
+                                  {Number(e.total || 0).toFixed(2)}
+                                </td>
 
                                 <td className="py-2 px-2 text-center">
                                   <input
                                     type="checkbox"
-                                    checked={Boolean(pot1?.entrants?.[name])}
+                                    checked={Boolean(pot1?.entrants?.[entryId])}
                                     onChange={(ev) => toggleEntrant(div, "pot1", entryId, ev.target.checked)}
                                   />
                                 </td>
@@ -812,7 +816,7 @@ export default function BigGameWagersAdminClient({ season }) {
                                 <td className="py-2 px-2 text-center">
                                   <input
                                     type="checkbox"
-                                    checked={Boolean(pot2?.entrants?.[name])}
+                                    checked={Boolean(pot2?.entrants?.[entryId])}
                                     onChange={(ev) => toggleEntrant(div, "pot2", entryId, ev.target.checked)}
                                   />
                                 </td>
@@ -821,6 +825,7 @@ export default function BigGameWagersAdminClient({ season }) {
                               </tr>
                             );
                           })}
+
                         </tbody>
                       </table>
                     </div>
@@ -885,7 +890,7 @@ export default function BigGameWagersAdminClient({ season }) {
                   const ptsNum = typeof pts === "number" ? pts : parseFloat(pts);
 
                   return (
-                    <tr key={`${div}:${entryId}`} className="border-t border-subtle/70">
+                    <tr key={`${div}:${name}`} className="border-t border-subtle/70">
                       <td className="py-2 pr-3 text-muted whitespace-nowrap">{div}</td>
                       <td className="py-2 pr-3 font-medium text-foreground whitespace-nowrap">{name}</td>
                       <td className="py-2 pr-3 text-right tabular-nums">
