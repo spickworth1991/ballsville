@@ -97,6 +97,15 @@ export default function AdminHomePage() {
                 Update manager profiles shown on the About page. Includes photos, bullets, and a modal bio.
               </p>
             </Link>
+
+            <Link
+              prefetch={false}
+              href="/admin/wager-trackers"
+              className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
+            >
+              <h2 className="text-lg font-semibold text-primary">Wager Trackers</h2>
+              <p className="mt-1 text-sm text-muted">Manage Big Game + Mini Leagues wager tracking.</p>
+            </Link>
           </div>
         </div>
       </section>

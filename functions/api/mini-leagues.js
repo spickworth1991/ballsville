@@ -30,14 +30,14 @@ export async function onRequest({ env, request }) {
         ],
         wagering: {
           withoutWager: [
+            "Keep your $30 (🪙)",
             "Eligible to win your Division Bonus (+$30)",
             "Eligible to win the Championship Bonus (+$100)",
           ],
           withWager: [
-            "Eligible to win all wagers (big upside)",
-            "Eligible for both bonuses above",
-            "Eligible for the Wager Bonus (+$60)",
-            "Bonuses stack",
+            "Pool your $30 (🪙) with other wagers",
+            "Winner takes the entire wager pool",
+            "Plus the Wager Bonus (+$60)",
           ],
         },
         cash: [
