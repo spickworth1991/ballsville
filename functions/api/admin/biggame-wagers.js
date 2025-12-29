@@ -35,6 +35,15 @@ function r2KeyFor(season) {
   return `data/biggame/wagers_${season}.json`;
 }
 
+function r2BackupKeyFor(season) {
+  // Single deterministic backup (overwritten each Week 15 import)
+  return `data/biggame/wagers_${season}_backup.json`;
+}
+
+function r2BackupMetaKeyFor(season) {
+  return `data/biggame/wagers_${season}_backup_meta.json`;
+}
+
 async function touchManifest(env, season) {
   const bucket = ensureR2(env);
   const key = `data/manifests/biggame-wagers_${season}.json`;
@@ -91,6 +100,61 @@ export async function onRequest(context) {
         season: Number(v.season),
         updatedAt: new Date().toISOString(),
       };
+
+      // --- Week 15 import backup behavior ---
+      // The admin UI imports Week 15 eligibility by setting eligibility.computedAt.
+      // When that timestamp changes, we snapshot the *previous* doc to a deterministic backup
+      // so you can swap/restore if something goes wrong.
+      // Week 16/17 updates simply overwrite the main doc.
+      try {
+        const newComputedAt = typeof toWrite?.eligibility?.computedAt === "string" ? toWrite.eligibility.computedAt : "";
+        if (newComputedAt) {
+          const prevObj = await bucket.get(key);
+          if (prevObj) {
+            const prevText = await prevObj.text();
+            let prevDoc = null;
+            try {
+              prevDoc = JSON.parse(prevText);
+            } catch {
+              prevDoc = { _raw: prevText };
+            }
+
+            const prevComputedAt = typeof prevDoc?.eligibility?.computedAt === "string" ? prevDoc.eligibility.computedAt : "";
+            const shouldBackup = prevText && prevComputedAt !== newComputedAt;
+            if (shouldBackup) {
+              const backupKey = r2BackupKeyFor(v.season);
+              const metaKey = r2BackupMetaKeyFor(v.season);
+              const backedUpAt = new Date().toISOString();
+
+              await bucket.put(backupKey, JSON.stringify(prevDoc, null, 2), {
+                httpMetadata: {
+                  contentType: "application/json; charset=utf-8",
+                  cacheControl: "no-store",
+                },
+              });
+
+              const meta = {
+                season: Number(v.season),
+                backedUpAt,
+                reason: "week15_import",
+                fromUpdatedAt: typeof prevDoc?.updatedAt === "string" ? prevDoc.updatedAt : "",
+                fromEligibilityComputedAt: prevComputedAt,
+                newEligibilityComputedAt: newComputedAt,
+                backupKey,
+              };
+
+              await bucket.put(metaKey, JSON.stringify(meta, null, 2), {
+                httpMetadata: {
+                  contentType: "application/json; charset=utf-8",
+                  cacheControl: "no-store",
+                },
+              });
+            }
+          }
+        }
+      } catch {
+        // Backup is best-effort; never block saving.
+      }
 
       await bucket.put(key, JSON.stringify(toWrite, null, 2), {
         httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "no-store" },

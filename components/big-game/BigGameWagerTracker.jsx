@@ -49,14 +49,6 @@ function Coin({ amount, title }) {
   );
 }
 
-function WinnerTag({ children }) {
-  return (
-    <span className="inline-flex items-center rounded-full border border-emerald-300/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-200">
-      {children}
-    </span>
-  );
-}
-
 function buildLeagueOrderIndex(bigGameMeta) {
   const rows = safeArray(bigGameMeta?.rows);
   const map = new Map();
@@ -154,19 +146,35 @@ function normalizeFromAdminDoc(doc, leagueOrderIndex) {
 
   const bonus = Number(champ?.bonus ?? 0) || 0;
 
-  // Main Pot = first $50 (everyone with wager>=50) + bonus
-  // Side Pot 1 = second $50 (wager>=100)  -> entrants * $50
-  // Side Pot 2 = third $50 (wager>=150)   -> entrants * $50
+  // Championship pot rules:
+  // - Main Pot: first $50 (anyone with wager >= $50), plus championship bonus.
+  // - Side Pot 1: second $50 (anyone with wager >= $100).
+  // - Side Pot 2: third $50 (anyone with wager >= $150).
   const mainEntrants = bettors.filter((r) => r.wager >= 50);
   const side1Entrants = bettors.filter((r) => r.wager >= 100);
   const side2Entrants = bettors.filter((r) => r.wager >= 150);
 
-  const mainWinnerRow = pickWinner(mainEntrants);
-  const side1WinnerRow = pickWinner(side1Entrants);
-  const side2WinnerRow = pickWinner(side2Entrants);
-
   const mainPotWagers = mainEntrants.length * 50;
 
+  const sidePots = [
+    { label: "Side Pot 1", threshold: 100, increment: 2, entrants: side1Entrants },
+    { label: "Side Pot 2", threshold: 150, increment: 3, entrants: side2Entrants },
+  ].map((p) => {
+    const winnerRow = pickWinner(p.entrants);
+    return {
+      label: p.label,
+      threshold: p.threshold,
+      increment: p.increment,
+      coinAmount: 50,
+      entrants: p.entrants,
+      pool: p.entrants.length * 50,
+      winner: winnerRow?.ownerName || "",
+      winnerDivision: winnerRow?.division || "",
+      winnerPts: Number(winnerRow?.wk17 ?? 0) || 0,
+    };
+  });
+
+  const mainWinnerRow = pickWinner(mainEntrants);
   const wouldHaveWonRow = pickWinner(seeded);
 
   return {
@@ -176,7 +184,6 @@ function normalizeFromAdminDoc(doc, leagueOrderIndex) {
       resolvedAt: safeStr(champ?.resolvedAt).trim(),
       bettors,
       nonBettors,
-
       mainPot: {
         wagers: mainPotWagers,
         bonus,
@@ -185,28 +192,7 @@ function normalizeFromAdminDoc(doc, leagueOrderIndex) {
         winnerDivision: mainWinnerRow?.division || "",
         winnerPts: Number(mainWinnerRow?.wk17 ?? 0) || 0,
       },
-
-      sidePots: [
-        {
-          label: "Side Pot 1",
-          threshold: 100,
-          entrants: side1Entrants,
-          pool: side1Entrants.length * 50,
-          winner: side1WinnerRow?.ownerName || "",
-          winnerDivision: side1WinnerRow?.division || "",
-          winnerPts: Number(side1WinnerRow?.wk17 ?? 0) || 0,
-        },
-        {
-          label: "Side Pot 2",
-          threshold: 150,
-          entrants: side2Entrants,
-          pool: side2Entrants.length * 50,
-          winner: side2WinnerRow?.ownerName || "",
-          winnerDivision: side2WinnerRow?.division || "",
-          winnerPts: Number(side2WinnerRow?.wk17 ?? 0) || 0,
-        },
-      ],
-
+      sidePots,
       wouldHaveWon: {
         ownerName: wouldHaveWonRow?.ownerName || "",
         division: wouldHaveWonRow?.division || "",
@@ -264,6 +250,7 @@ function TrackerInner({ season: seasonProp, version }) {
 
   const normalized = useMemo(() => {
     if (!doc || typeof doc !== "object") return null;
+    // If we ever store a simplified public doc later, honor it.
     if (doc?.divisions && doc?.championship && !doc?.divisionWagers) {
       return {
         updatedAt: safeStr(doc?.updatedAt).trim(),
@@ -275,6 +262,7 @@ function TrackerInner({ season: seasonProp, version }) {
     return normalizeFromAdminDoc(doc, leagueOrderIndex);
   }, [doc, leagueOrderIndex]);
 
+  // Decide which tab to start on once we have data.
   useEffect(() => {
     if (!normalized || tab !== "auto") return;
     const champResolved = Boolean(normalized?.championship?.resolvedAt);
@@ -314,13 +302,6 @@ function TrackerInner({ season: seasonProp, version }) {
     });
   };
 
-  // ✅ Championship winner lookup for table tags
-  const champWinners = {
-    main: safeStr(normalized?.championship?.mainPot?.winner).trim(),
-    side1: safeStr(normalized?.championship?.sidePots?.[0]?.winner).trim(),
-    side2: safeStr(normalized?.championship?.sidePots?.[1]?.winner).trim(),
-  };
-
   return (
     <div className="space-y-6">
       <Card>
@@ -334,7 +315,7 @@ function TrackerInner({ season: seasonProp, version }) {
             <p className="text-sm text-muted">
               Division pots are ${""}
               <span className="text-foreground">$25</span> each. Championship wagers are ${""}
-              <span className="text-foreground">$50 increments</span> with side pots at $50 / $100 / $150.
+              <span className="text-foreground">$50 increments</span> with side pots for the 2nd and 3rd $50 increments.
             </p>
           </div>
 
@@ -419,23 +400,21 @@ function TrackerInner({ season: seasonProp, version }) {
             </div>
           </div>
 
-          <div className="mt-5 grid gap-3 md:grid-cols-2">
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
             {normalized.championship.sidePots.map((p) => (
               <div key={p.threshold} className="rounded-2xl border border-subtle bg-panel/30 p-4">
                 <div className="flex items-center justify-between">
                   <div className="text-[11px] uppercase tracking-[0.25em] text-muted">{p.label}</div>
-                  <Coin amount={50} title="Each side pot is a $50 increment" />
+                  <Coin
+                    amount={p.coinAmount || 50}
+                    title={`$50 increment #${p.increment || ""}`.trim()}
+                  />
                 </div>
                 <div className="mt-2 text-sm text-muted">Pool</div>
                 <div className="text-lg font-semibold">{fmtMoney(p.pool)}</div>
                 <div className="mt-2 text-sm text-muted">Winner</div>
                 <div className="font-semibold">{p.winner || "—"}</div>
-                {p.winnerDivision ? (
-                  <div className="text-xs text-muted mt-1">
-                    {p.winnerDivision}
-                    {p.winner ? ` · ${p.winnerPts.toFixed(2)} pts` : ""}
-                  </div>
-                ) : null}
+                {p.winnerDivision ? <div className="text-xs text-muted mt-1">{p.winnerDivision}{p.winner ? ` · ${p.winnerPts.toFixed(2)} pts` : ""}</div> : null}
                 <div className="mt-2 text-xs text-muted">Entrants: {p.entrants.length}</div>
               </div>
             ))}
@@ -467,41 +446,23 @@ function TrackerInner({ season: seasonProp, version }) {
                   ) : (
                     [...normalized.championship.bettors]
                       .sort((a, b) => b.wager - a.wager || a.ownerName.localeCompare(b.ownerName))
-                      .map((r) => {
-                        const tags = [];
-                        if (champResolved && champWinners.main && r.ownerName === champWinners.main) tags.push("Main Pot");
-                        if (champResolved && champWinners.side1 && r.ownerName === champWinners.side1) tags.push("Side Pot 1");
-                        if (champResolved && champWinners.side2 && r.ownerName === champWinners.side2) tags.push("Side Pot 2");
-
-                        return (
-                          <tr key={r.entryKey} className="border-t border-subtle/70">
-                            <td className="py-2 pr-3 text-muted whitespace-nowrap">{r.division}</td>
-                            <td className="py-2 pr-3">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-medium text-foreground whitespace-nowrap">{r.ownerName}</span>
-                                {tags.length ? (
-                                  <span className="flex items-center gap-1 flex-wrap">
-                                    {tags.map((t) => (
-                                      <WinnerTag key={t}>{t}</WinnerTag>
-                                    ))}
-                                  </span>
-                                ) : null}
+                      .map((r) => (
+                        <tr key={r.entryKey} className="border-t border-subtle/70">
+                          <td className="py-2 pr-3 text-muted whitespace-nowrap">{r.division}</td>
+                          <td className="py-2 pr-3 font-medium text-foreground whitespace-nowrap">{r.ownerName}</td>
+                          <td className="py-2 pr-3">
+                            <div className="flex items-center gap-2">
+                              <div className="text-muted tabular-nums w-14">{fmtMoney(r.wager)}</div>
+                              <div className="flex items-center gap-1">
+                                {Array.from({ length: Math.min(4, Math.floor(r.wager / 50)) }).map((_, i) => (
+                                  <Coin key={i} amount={50} title="$50" />
+                                ))}
                               </div>
-                            </td>
-                            <td className="py-2 pr-3">
-                              <div className="flex items-center gap-2">
-                                <div className="text-muted tabular-nums w-14">{fmtMoney(r.wager)}</div>
-                                <div className="flex items-center gap-1">
-                                  {Array.from({ length: Math.min(4, Math.floor(r.wager / 50)) }).map((_, i) => (
-                                    <Coin key={i} amount={50} title="$50" />
-                                  ))}
-                                </div>
-                              </div>
-                            </td>
-                            <td className="py-2 pr-3 text-right tabular-nums text-muted">{champResolved ? r.wk17.toFixed(2) : ""}</td>
-                          </tr>
-                        );
-                      })
+                            </div>
+                          </td>
+                          <td className="py-2 pr-3 text-right tabular-nums text-muted">{champResolved ? r.wk17.toFixed(2) : ""}</td>
+                        </tr>
+                      ))
                   )}
                 </tbody>
               </table>
@@ -554,9 +515,6 @@ function TrackerInner({ season: seasonProp, version }) {
                 const pot1Count = entries.filter((e) => e.pot1Entered).length;
                 const pot2Count = entries.filter((e) => e.pot2Entered).length;
 
-                const pot1Winner = safeStr(d?.pot1?.winner).trim();
-                const pot2Winner = safeStr(d?.pot2?.winner).trim();
-
                 return (
                   <div key={div} className="rounded-2xl border border-subtle bg-panel/20 p-4">
                     <button type="button" onClick={() => toggleDiv(div)} className="w-full text-left">
@@ -573,8 +531,8 @@ function TrackerInner({ season: seasonProp, version }) {
                             </SmallBadge>
                           </div>
                           <div className="text-xs text-muted">
-                            Pot1 winner: <span className="text-foreground">{pot1Winner || "—"}</span> · Pot2 winner:{" "}
-                            <span className="text-foreground">{pot2Winner || "—"}</span>
+                            Pot1 winner: <span className="text-foreground">{safeStr(d?.pot1?.winner) || "—"}</span> · Pot2 winner:{" "}
+                            <span className="text-foreground">{safeStr(d?.pot2?.winner) || "—"}</span>
                           </div>
                         </div>
 
@@ -594,36 +552,19 @@ function TrackerInner({ season: seasonProp, version }) {
                             </tr>
                           </thead>
                           <tbody>
-                            {entries.map((e) => {
-                              const tags = [];
-                              if (divResolved && pot1Winner && e.ownerName === pot1Winner) tags.push("Pot 1 Winner");
-                              if (divResolved && pot2Winner && e.ownerName === pot2Winner) tags.push("Pot 2 Winner");
-
-                              return (
-                                <tr key={e.k} className="border-t border-subtle/70">
-                                  <td className="py-2 pr-3 text-muted whitespace-nowrap">{e.leagueName}</td>
-                                  <td className="py-2 pr-3">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="font-medium text-foreground whitespace-nowrap">{e.ownerName}</span>
-                                      {tags.length ? (
-                                        <span className="flex items-center gap-1 flex-wrap">
-                                          {tags.map((t) => (
-                                            <WinnerTag key={t}>{t}</WinnerTag>
-                                          ))}
-                                        </span>
-                                      ) : null}
-                                    </div>
-                                  </td>
-                                  <td className="py-2 pr-3">
-                                    <div className="flex items-center gap-2">
-                                      {e.pot1Entered ? <Coin amount={25} title="Pot #1" /> : <span className="text-muted">—</span>}
-                                      {e.pot2Entered ? <Coin amount={25} title="Pot #2" /> : null}
-                                    </div>
-                                  </td>
-                                  <td className="py-2 pr-3 text-right tabular-nums text-muted">{divResolved ? e.wk16.toFixed(2) : ""}</td>
-                                </tr>
-                              );
-                            })}
+                            {entries.map((e) => (
+                              <tr key={e.k} className="border-t border-subtle/70">
+                                <td className="py-2 pr-3 text-muted whitespace-nowrap">{e.leagueName}</td>
+                                <td className="py-2 pr-3 font-medium text-foreground whitespace-nowrap">{e.ownerName}</td>
+                                <td className="py-2 pr-3">
+                                  <div className="flex items-center gap-2">
+                                    {e.pot1Entered ? <Coin amount={25} title="Pot #1" /> : <span className="text-muted">—</span>}
+                                    {e.pot2Entered ? <Coin amount={25} title="Pot #2" /> : null}
+                                  </div>
+                                </td>
+                                <td className="py-2 pr-3 text-right tabular-nums text-muted">{divResolved ? e.wk16.toFixed(2) : ""}</td>
+                              </tr>
+                            ))}
                           </tbody>
                         </table>
                       </div>
