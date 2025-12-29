@@ -167,14 +167,14 @@ function TagPill({ active, onClick, children }) {
 function CornerRibbon({ label, variant = "mini" }) {
   // variant: "mini" | "expired" | "pinned"
   const base =
-    "absolute z-30 px-12 py-1 text-[10px] uppercase tracking-[0.25em] font-semibold shadow-md border pointer-events-none flex items-center justify-center";
+  "absolute z-30 px-12 py-1 text-[10px] uppercase tracking-[0.25em] font-semibold shadow-md border pointer-events-none flex items-center justify-center filter-none opacity-100";
 
   const pos =
     variant === "expired"
-      ? "top-10 -right-10 rotate-45"   // stick out more
+  ? `${base} ${pos} bg-rose-600 text-white border-rose-300/40 filter-none opacity-100`
       : variant === "mini"
       ? "top-10 -left-10 -rotate-45"  // stick out more
-      : "top-10 -right-10 rotate-45";
+      : "top-10 -right-6 rotate-45";
 
   const cls =
     variant === "expired"
@@ -382,7 +382,7 @@ function NewsInner({ version = "0", manifest = null }) {
         </header>
 
         {/* Premium filter bar (bubble) */}
-        <div className="rounded-2xl border border-subtle bg-card-surface/60 backdrop-blur px-4 py-3 flex flex-col gap-3 shadow-sm">
+        <div className="rounded-2xl border border-subtle bg-card-surface backdrop-blur px-4 py-3 flex flex-col gap-3 shadow-sm">
           <div className="flex flex-wrap items-center justify-center gap-2">
             {tagOptions.map((t) => (
               <TagPill key={t} active={activeTag === t} onClick={() => setActiveTag(t)}>
