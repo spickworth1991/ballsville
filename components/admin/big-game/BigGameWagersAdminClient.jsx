@@ -246,16 +246,20 @@ export default function BigGameWagersAdminClient({ season }) {
       const pot1Entrants = w?.pot1?.entrants || {};
       const pot2Entrants = w?.pot2?.entrants || {};
 
-      const pot1Names = elig.map((e) => e.ownerName).filter(Boolean).filter((n) => pot1Entrants[n]);
-      const pot2Names = elig.map((e) => e.ownerName).filter(Boolean).filter((n) => pot2Entrants[n]);
+      const eligIds = elig
+        .map((e) => safeStr(e.entryId || `${safeStr(e.division || div)}::${safeStr(e.leagueName)}::${safeStr(e.ownerName)}`))
+        .filter(Boolean);
 
-      const pot1Pool = pot1Names.length * entryFee;
-      const pot2Pool = pot2Names.length * entryFee;
+      const pot1Count = eligIds.filter((id) => pot1Entrants[id]).length;
+      const pot2Count = eligIds.filter((id) => pot2Entrants[id]).length;
+
+      const pot1Pool = pot1Count * entryFee;
+      const pot2Pool = pot2Count * entryFee;
 
       out.divisions[div] = {
         eligibleCount: elig.length,
-        pot1Count: pot1Names.length,
-        pot2Count: pot2Names.length,
+        pot1Count,
+        pot2Count,
         pot1Pool,
         pot2Pool,
         pot1Winner: safeStr(w?.pot1?.winner).trim(),
@@ -408,34 +412,39 @@ export default function BigGameWagersAdminClient({ season }) {
   }
 
   function toggleEntrant(div, pot, entryId, checked) {
+    const id = safeStr(entryId).trim();
+    if (!id) return;
+
     const next = structuredClone(state);
     next.divisionWagers = next.divisionWagers || { week: 16, entryFee: 25, resolvedAt: "", byDivision: {} };
     next.divisionWagers.byDivision = next.divisionWagers.byDivision || {};
+
     const d = next.divisionWagers.byDivision[div] || {};
     const p = d[pot] || { entrants: {}, points: {}, winner: "", pool: 0, resolvedAt: "" };
 
     p.entrants = p.entrants || {};
-    if (checked) p.entrants[ownerName] = true;
-    else delete p.entrants[ownerName];
+    if (checked) p.entrants[id] = true;
+    else delete p.entrants[id];
 
     // enforce pot2 => pot1
     if (pot === "pot2" && checked) {
       d.pot1 = d.pot1 || { entrants: {}, points: {}, winner: "", pool: 0, resolvedAt: "" };
       d.pot1.entrants = d.pot1.entrants || {};
-      d.pot1.entrants[ownerName] = true;
+      d.pot1.entrants[id] = true;
     }
 
-    // and if pot1 unchecked -> pot2 must also be removed
+    // pot1 unchecked -> pot2 must also be removed
     if (pot === "pot1" && !checked) {
       d.pot2 = d.pot2 || { entrants: {}, points: {}, winner: "", pool: 0, resolvedAt: "" };
       d.pot2.entrants = d.pot2.entrants || {};
-      delete d.pot2.entrants[ownerName];
+      delete d.pot2.entrants[id];
     }
 
     d[pot] = p;
     next.divisionWagers.byDivision[div] = d;
     setState(next);
   }
+
 
   async function resolveDivisionWagersWeek16() {
     const ok = window.confirm(
@@ -779,6 +788,9 @@ export default function BigGameWagersAdminClient({ season }) {
                         <tbody>
                           {elig.map((e) => {
                             const name = safeStr(e.ownerName);
+                            const entryId = safeStr(
+                              e.entryId || `${safeStr(e.division || div)}::${safeStr(e.leagueName)}::${safeStr(e.ownerName)}`
+                            );
                             const wk16 = pot1?.points?.[name] ?? pot2?.points?.[name];
                             const wk16Num = typeof wk16 === "number" ? wk16 : parseFloat(wk16);
                             const wk16Show = Number.isNaN(wk16Num) ? "" : wk16Num.toFixed(2);
