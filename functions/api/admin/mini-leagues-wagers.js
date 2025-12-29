@@ -3,12 +3,16 @@
 // GET  /api/admin/mini-leagues-wagers?season=2025[&variant=backup]
 // PUT  /api/admin/mini-leagues-wagers?season=2025   (body = full wagers doc)
 //
-// Behavior:
-// - Current doc always saved at:   data/mini-leagues/wagers_<season>.json
-// - On Week 14 import (eligibility.week===14), snapshot the *previous* current doc to:
-//     data/mini-leagues/wagers_<season>_wk14_backup.json
-//   but only when the incoming eligibility.computedAt differs from the stored one.
-// - Backup key is deterministic (overwrites), so no indefinite growth.
+// Storage keys:
+// - Current doc:  data/mini-leagues/wagers_<season>.json
+// - Backup doc:   data/mini-leagues/wagers_<season>_wk14_backup.json
+// - Backup meta:  data/mini-leagues/wagers_<season>_wk14_backup_meta.json
+// - Manifest:     data/manifests/mini-leagues-wagers_<season>.json
+//
+// Snapshot rule (same pattern as Big Game):
+// - when importing eligibility for Week 14 (eligibility.week===14)
+// - and eligibility.computedAt differs from the stored doc
+// - snapshot the *previous* current doc to the deterministic Week 14 backup key
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -25,11 +29,19 @@ function bad(msg, status = 400) {
 }
 
 function ensureR2(env) {
-  const b = env.ADMIN_BUCKET || env;
+  const b = env.ADMIN_BUCKET || env.admin_bucket || env;
   if (!b || typeof b.get !== "function" || typeof b.put !== "function") {
-    throw new Error("R2 bucket binding not found. Expected env.ADMIN_BUCKET (or env) to be an R2 binding.");
+    throw new Error("R2 bucket binding not found. Expected env.ADMIN_BUCKET (or env.admin_bucket) to be an R2 binding.");
   }
   return b;
+}
+
+function safeStr(v) {
+  return typeof v === "string" ? v : v == null ? "" : String(v);
+}
+
+function nowIso() {
+  return new Date().toISOString();
 }
 
 function keyForSeason(season) {
@@ -53,22 +65,14 @@ async function readJsonFromR2(bucket, key) {
   }
 }
 
-function safeStr(v) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
-
-function nowIso() {
-  return new Date().toISOString();
-}
-
-async function touchManifest(bucket, key, season) {
-  const body = JSON.stringify({ section: \"mini-leagues-wagers\", season: Number(season) || season, updatedAt: nowIso() }, null, 2);
-  await bucket.put(key, body, { httpMetadata: { contentType: \"application/json; charset=utf-8\", cacheControl: \"no-store\" } });
-}
-
-async function touchManifest(bucket, key, season) {
-  const body = JSON.stringify({ section: "mini-leagues-wagers", season: Number(season) || season, updatedAt: nowIso() }, null, 2);
-  await bucket.put(key, body, { httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "no-store" } });
+async function touchManifest(bucket, manifestKey, season) {
+  const payload = {
+    season: Number(season) || season,
+    updatedAt: nowIso(),
+  };
+  await bucket.put(manifestKey, JSON.stringify(payload, null, 2), {
+    httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "no-store" },
+  });
 }
 
 export async function onRequest(context) {
@@ -79,7 +83,7 @@ export async function onRequest(context) {
     const season = url.searchParams.get("season");
     if (!season) return bad("Missing ?season=", 400);
 
-    const variant = (url.searchParams.get("variant") || "").toLowerCase(); // optional
+    const variant = (url.searchParams.get("variant") || "").toLowerCase();
     const bucket = ensureR2(env);
     const keys = keyForSeason(season);
 
@@ -99,18 +103,12 @@ export async function onRequest(context) {
       }
       if (!body || typeof body !== "object") return bad("Body must be a JSON object", 400);
 
-      // Read current doc (so we can snapshot it if needed)
       const currentDoc = await readJsonFromR2(bucket, keys.current);
 
       const incomingEligWeek = Number(body?.eligibility?.week || 0);
       const incomingEligComputedAt = safeStr(body?.eligibility?.computedAt).trim();
-
       const storedEligComputedAt = safeStr(currentDoc?.eligibility?.computedAt).trim();
 
-      // Snapshot rule:
-      // - only when importing Week 14 eligibility
-      // - only when computedAt is present AND different from what we already have
-      // - only if there *is* an existing current doc to snapshot
       const shouldSnapshot =
         incomingEligWeek === 14 &&
         incomingEligComputedAt &&
@@ -122,12 +120,10 @@ export async function onRequest(context) {
       if (shouldSnapshot) {
         const snapshotAt = nowIso();
 
-        // Save the previous current doc as the Week 14 backup (deterministic key overwrites)
         await bucket.put(keys.backup, JSON.stringify(currentDoc, null, 2), {
           httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "no-store" },
         });
 
-        // Small meta (helps you verify which import created the backup)
         const meta = {
           season: Number(season) || season,
           snapshotAt,
@@ -144,13 +140,12 @@ export async function onRequest(context) {
         snapshotInfo = meta;
       }
 
-      // Always overwrite the current doc
       await bucket.put(keys.current, JSON.stringify(body, null, 2), {
         httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "no-store" },
       });
-      // Cache-bust public tracker
-      await touchManifest(bucket, keys.manifest, season).catch(() => null);
 
+      // Bump manifest so the public page can cache-bust reliably
+      await touchManifest(bucket, keys.manifest, season);
 
       return json(
         {
@@ -167,9 +162,4 @@ export async function onRequest(context) {
   } catch (e) {
     return json({ ok: false, error: e?.message || String(e) }, 500);
   }
-}
-
-async function touchManifest(bucket, key, season) {
-  const body = JSON.stringify({ section: "mini-leagues-wagers", season: Number(season) || season, updatedAt: new Date().toISOString() }, null, 2);
-  await bucket.put(key, body, { httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "no-store" } });
 }

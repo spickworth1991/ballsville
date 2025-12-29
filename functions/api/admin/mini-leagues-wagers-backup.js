@@ -1,9 +1,9 @@
 // functions/api/admin/mini-leagues-wagers-backup.js
 //
 // GET  /api/admin/mini-leagues-wagers-backup?season=2025
-//   -> { ok: true, data: <backupDoc|null>, meta: <metaDoc|null> }
-// POST /api/admin/mini-leagues-wagers-backup?season=2025
-//   -> Restores the backup to be the current wagers doc (overwrites wagers_<season>.json)
+// POST /api/admin/mini-leagues-wagers-backup?season=2025   (restore backup -> current)
+//
+// Mirrors the Big Game backup/restore endpoint pattern.
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -15,91 +15,83 @@ function json(data, status = 200) {
   });
 }
 
+function bad(msg, status = 400) {
+  return json({ ok: false, error: msg }, status);
+}
+
 function ensureR2(env) {
-  const b = env.ADMIN_BUCKET || env;
+  const b = env.ADMIN_BUCKET || env.admin_bucket || env;
   if (!b || typeof b.get !== "function" || typeof b.put !== "function") {
-    throw new Error("R2 bucket binding not found (env.ADMIN_BUCKET).");
+    throw new Error("R2 bucket binding not found. Expected env.ADMIN_BUCKET (or env.admin_bucket) to be an R2 binding.");
   }
   return b;
 }
 
-function getSeason(url) {
-  const seasonRaw = url.searchParams.get("season");
-  const season = Number(seasonRaw);
-  if (!Number.isFinite(season) || season < 2000 || season > 3000) {
-    return { ok: false, error: "Missing or invalid season." };
-  }
-  return { ok: true, season };
+function safeStr(v) {
+  return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
-function keyFor(season) {
-  return `data/mini-leagues/wagers_${season}.json`;
+function nowIso() {
+  return new Date().toISOString();
 }
 
-function backupKeyFor(season) {
-  return `data/mini-leagues/wagers_${season}_wk14_backup.json`;
+function keysForSeason(season) {
+  const s = String(season).trim();
+  return {
+    current: `data/mini-leagues/wagers_${s}.json`,
+    backup: `data/mini-leagues/wagers_${s}_wk14_backup.json`,
+    backupMeta: `data/mini-leagues/wagers_${s}_wk14_backup_meta.json`,
+    manifest: `data/manifests/mini-leagues-wagers_${s}.json`,
+  };
 }
 
-function backupMetaKeyFor(season) {
-  return `data/mini-leagues/wagers_${season}_wk14_backup_meta.json`;
-}
-
-async function readJson(bucket, key) {
-  const obj = await bucket.get(key, { cacheControl: "no-store" });
+async function readJsonFromR2(bucket, key) {
+  const obj = await bucket.get(key);
   if (!obj) return null;
-  const text = await obj.text();
-  if (!text) return null;
   try {
-    return JSON.parse(text);
+    return JSON.parse(await obj.text());
   } catch {
-    return { _raw: text };
+    return null;
   }
 }
 
-async function touchManifest(env, season) {
-  // Keep in sync with the main wagers endpoint manifest key.
+export async function onRequest(context) {
   try {
-    const bucket = ensureR2(env);
-    const manifestKey = `data/manifests/mini-leagues-wagers_${season}.json`;
-    const payload = { updatedAt: new Date().toISOString() };
-    await bucket.put(manifestKey, JSON.stringify(payload, null, 2), {
-      httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "no-store" },
-    });
-  } catch {
-    // best-effort
-  }
-}
-
-export async function onRequest({ request, env }) {
-  try {
+    const { request, env } = context;
     const url = new URL(request.url);
-    const s = getSeason(url);
-    if (!s.ok) return json({ ok: false, error: s.error }, 400);
+
+    const season = url.searchParams.get("season");
+    if (!season) return bad("Missing ?season=", 400);
 
     const bucket = ensureR2(env);
-    const season = s.season;
+    const keys = keysForSeason(season);
 
     if (request.method === "GET") {
-      const data = await readJson(bucket, backupKeyFor(season));
-      const meta = await readJson(bucket, backupMetaKeyFor(season));
-      return json({ ok: true, data, meta });
+      const data = await readJsonFromR2(bucket, keys.backup);
+      const meta = await readJsonFromR2(bucket, keys.backupMeta);
+      return json({ ok: true, data: data || null, meta: meta || null, key: keys.backup }, 200);
     }
 
     if (request.method === "POST") {
-      const backup = await bucket.get(backupKeyFor(season), { cacheControl: "no-store" });
-      if (!backup) return json({ ok: false, error: "No backup exists for this season yet." }, 404);
+      const backup = await readJsonFromR2(bucket, keys.backup);
+      if (!backup) return bad("No backup found to restore", 404);
 
-      const body = await backup.text();
-      await bucket.put(keyFor(season), body, {
+      // Restore backup into current
+      await bucket.put(keys.current, JSON.stringify(backup, null, 2), {
         httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "no-store" },
       });
 
-      await touchManifest(env, season);
-      return json({ ok: true });
+      // Touch manifest so the public page can cache-bust deterministically
+      const manifest = { updatedAt: nowIso(), season: Number(season) || season };
+      await bucket.put(keys.manifest, JSON.stringify(manifest, null, 2), {
+        httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "no-store" },
+      });
+
+      return json({ ok: true, restored: true, savedKey: keys.current, manifestKey: keys.manifest }, 200);
     }
 
-    return json({ ok: false, error: "Method not allowed." }, 405);
+    return bad(`Method not allowed: ${request.method}`, 405);
   } catch (e) {
-    return json({ ok: false, error: e?.message || "Server error" }, 500);
+    return json({ ok: false, error: e?.message || String(e) }, 500);
   }
 }
