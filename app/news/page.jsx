@@ -469,25 +469,23 @@ function PostCard({ p, updatedAt }) {
 
   const disabled = isExpiredMini;
 
-  // If expired, kill hover lift + add grayscale/opacity + prevent clicking
-  const cardCls = `${cardBase} ${disabled ? "opacity-60 grayscale cursor-not-allowed" : cardHover}`;
+  const cardCls = `${cardBase} ${disabled ? "cursor-not-allowed" : cardHover}`;
 
-  const Wrapper = ({ children }) => {
-    if (disabled) return <article className={cardCls}>{children}</article>;
-    return <article className={cardCls}>{children}</article>;
-  };
+  // ✅ only this wrapper gets greyed out
+  const dimCls = disabled ? "opacity-60 grayscale" : "";
 
   return (
-    <Wrapper>
+    <article className={cardCls}>
+      {/* ✅ CLEAN wrapper: ribbons live here, not affected by dim */}
       <div className="relative overflow-hidden">
-        {/* Ribbons */}
+        {/* Ribbons (NOT greyed) */}
         {p.is_coupon ? <CornerRibbon label="Mini Game" variant="mini" /> : null}
         {isExpiredMini ? <CornerRibbon label="Expired" variant="expired" /> : null}
         {p.pinned ? <CornerRibbon label="Pinned" variant="pinned" /> : null}
 
-        {/* Media */}
+        {/* ✅ Grey ONLY the media */}
         {p.mediaSrc ? (
-          <div className="rounded-2xl overflow-hidden">
+          <div className={`rounded-2xl overflow-hidden ${dimCls}`}>
             <MediaBlock
               src={p.mediaSrc}
               updatedAt={updatedAt}
@@ -495,11 +493,10 @@ function PostCard({ p, updatedAt }) {
             />
           </div>
         ) : null}
-
-
       </div>
 
-      <div className="p-5">
+      {/* ✅ Grey ONLY the content */}
+      <div className={`p-5 ${dimCls}`}>
         <div className="flex items-start justify-between gap-2">
           <h3 className="text-sm font-semibold text-foreground leading-snug">{p.title || "Post"}</h3>
         </div>
@@ -515,7 +512,10 @@ function PostCard({ p, updatedAt }) {
         {p.is_coupon ? <MiniGameTimer expiresAt={p.expires_at} /> : null}
 
         {p.html ? (
-          <div className="mt-3 prose prose-invert max-w-none text-xs text-muted" dangerouslySetInnerHTML={{ __html: p.html }} />
+          <div
+            className="mt-3 prose prose-invert max-w-none text-xs text-muted"
+            dangerouslySetInnerHTML={{ __html: p.html }}
+          />
         ) : p.body ? (
           <p className="mt-3 text-xs text-muted line-clamp-6 whitespace-pre-line">{p.body}</p>
         ) : null}
@@ -525,7 +525,12 @@ function PostCard({ p, updatedAt }) {
             disabled ? (
               <span className="inline-flex text-xs text-muted">Closed</span>
             ) : (
-              <Link href={p.link} target="_blank" rel="noreferrer" className="inline-flex text-xs text-accent hover:underline">
+              <Link
+                href={p.link}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex text-xs text-accent hover:underline"
+              >
                 Read more →
               </Link>
             )
@@ -535,17 +540,16 @@ function PostCard({ p, updatedAt }) {
 
           {p.tags?.length ? (
             <div className="text-[10px] text-muted truncate max-w-[60%]">
-              {p.tags.slice(0, 2).join(" · ")}{p.tags.length > 2 ? " · …" : ""}
+              {p.tags.slice(0, 2).join(" · ")}
+              {p.tags.length > 2 ? " · …" : ""}
             </div>
           ) : null}
         </div>
       </div>
-
-      {/* Click blocker overlay (so links/video controls still work only if NOT disabled) */}
-      
-    </Wrapper>
+    </article>
   );
 }
+
 
 export default function NewsPage() {
   return (
