@@ -4,6 +4,7 @@
 import AdminGuard from "@/components/AdminGuard";
 import AdminNav from "@/components/admin/AdminNav";
 import BigGameAdminClient from "@/components/admin/big-game/BigGameAdminClient";
+import Link from "next/link";
 
 export default function BigGameAdminPage() {
   return (
@@ -17,6 +18,15 @@ export default function BigGameAdminPage() {
             publicHref="/big-game"
             publicLabel="← View Public Big Game Page"
           />
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="/admin/big-game/wagers"
+              className="btn btn-primary"
+            >
+              💰 Big Game Wager Tracker
+            </Link>
+          </div>
 
           <BigGameAdminClient />
         </div>

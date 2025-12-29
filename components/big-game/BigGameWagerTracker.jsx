@@ -328,15 +328,7 @@ function TrackerInner({ version = "0", manifest = null, season = CURRENT_SEASON 
 
           {data?.championship ? <ChampionshipCard champ={data.championship} /> : null}
 
-          <div className="rounded-2xl border border-subtle bg-panel/40 p-4 text-center">
-            <p className="text-xs text-muted">
-              Admin controls live on the admin panel.
-              <span className="mx-2 text-muted/50">•</span>
-              <Link href="/admin/big-game/wagers" className="text-accent hover:underline">
-                Open admin wager tracker →
-              </Link>
-            </p>
-          </div>
+          
         </div>
       )}
     </section>

@@ -287,8 +287,11 @@ export default function BigGameWagersAdminClient({ season }) {
         const t = await res.text().catch(() => "");
         throw new Error(t || `Save failed (${res.status})`);
       }
+      // Server responds as { ok: true, data: <full doc> }.
+      // Older clients expected the raw doc. Support both shapes.
       const saved = await res.json().catch(() => payload);
-      setState((prev) => ({ ...prev, ...(saved || payload) }));
+      const doc = saved && typeof saved === "object" && "data" in saved ? saved.data : saved;
+      setState((prev) => ({ ...prev, ...(doc || payload) }));
       setMsg("Saved.");
     } catch (e) {
       setMsg(e?.message || "Failed to save.");
