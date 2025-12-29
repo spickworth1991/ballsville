@@ -18,9 +18,11 @@ function json(data, status = 200) {
 }
 
 function ensureR2(env) {
-  // Keep this consistent with upload.js and the Pages binding name.
-  const b = env.admin_bucket || env.ADMIN_BUCKET;
-  if (!b?.get || !b?.put) throw new Error("Missing R2 binding: admin_bucket (Pages binding: admin_bucket)");
+  // IMPORTANT: binding name is ADMIN_BUCKET (ALL CAPS)
+  const b = env?.ADMIN_BUCKET;
+  if (!b || typeof b.get !== "function" || typeof b.put !== "function") {
+    throw new Error("Missing R2 binding: ADMIN_BUCKET");
+  }
   return b;
 }
 
