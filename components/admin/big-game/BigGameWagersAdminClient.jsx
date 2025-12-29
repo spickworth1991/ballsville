@@ -95,13 +95,6 @@ function computeLeagueWinnersFromLeaderboard(leaderboardsJson, season, upToWeek 
     byDivision[w.division].push(w);
   }
 
-  // stable sort per division: highest total first
-  for (const div of Object.keys(byDivision)) {
-    byDivision[div].sort((a, b) => {
-      if (b.total !== a.total) return b.total - a.total;
-      return safeStr(a.leagueName).localeCompare(safeStr(b.leagueName));
-    });
-  }
 
   return byDivision;
 }
@@ -155,6 +148,27 @@ function Card({ children }) {
 function Divider() {
   return <div className="h-px w-full bg-subtle my-4" />;
 }
+
+function buildLeagueOrderIndex(bigGameMeta) {
+  const rows = safeArray(bigGameMeta?.rows);
+
+  // key: "Division|||League Name" -> order number
+  const map = new Map();
+
+  for (const r of rows) {
+    const div = safeStr(r?.theme_name).trim(); // division
+    const leagueName = safeStr(r?.name).trim(); // league name
+    if (!div || !leagueName) continue;
+
+    const orderRaw = r?.display_order ?? r?.displayOrder ?? r?.league_order ?? r?.order;
+    const orderNum = Number.isFinite(Number(orderRaw)) ? Number(orderRaw) : 999999;
+
+    map.set(`${div}|||${leagueName}`.toLowerCase(), orderNum);
+  }
+
+  return map;
+}
+
 
 export default function BigGameWagersAdminClient({ season }) {
   const [state, setState] = useState(() => buildEmptyState(season));
@@ -224,6 +238,7 @@ export default function BigGameWagersAdminClient({ season }) {
     }
     return Array.from(by.keys()).sort((a, b) => a.localeCompare(b));
   }, [bigGameMeta]);
+  const leagueOrderIndex = useMemo(() => buildLeagueOrderIndex(bigGameMeta), [bigGameMeta]);
 
   const eligibilityByDivision = state?.eligibility?.byDivision || {};
   const wagersByDivision = state?.divisionWagers?.byDivision || {};
@@ -747,7 +762,30 @@ export default function BigGameWagersAdminClient({ season }) {
             Object.keys(eligibilityByDivision)
               .sort((a, b) => a.localeCompare(b))
               .map((div) => {
-                const elig = safeArray(eligibilityByDivision[div]);
+                const elig = safeArray(eligibilityByDivision[div])
+                  .slice()
+                  .sort((a, b) => {
+                    const aDiv = safeStr(a?.division || div).trim();
+                    const bDiv = safeStr(b?.division || div).trim();
+                    const aLeague = safeStr(a?.leagueName).trim();
+                    const bLeague = safeStr(b?.leagueName).trim();
+
+                    const aKey = `${aDiv}|||${aLeague}`.toLowerCase();
+                    const bKey = `${bDiv}|||${bLeague}`.toLowerCase();
+
+                    const ao = leagueOrderIndex.get(aKey) ?? 999999;
+                    const bo = leagueOrderIndex.get(bKey) ?? 999999;
+
+                    if (ao !== bo) return ao - bo;
+
+                    // tie-breakers
+                    const ln = aLeague.localeCompare(bLeague);
+                    if (ln !== 0) return ln;
+
+                    return safeStr(a?.ownerName).trim().localeCompare(safeStr(b?.ownerName).trim());
+                  });
+
+
                 const d = wagersByDivision?.[div] || {};
                 const pot1 = d?.pot1 || {};
                 const pot2 = d?.pot2 || {};
