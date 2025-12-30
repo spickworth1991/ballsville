@@ -258,6 +258,7 @@ function normalizeFromAdminDoc(doc, leagueOrderIndex) {
       .slice()
       .sort((a, b) => b.pts - a.pts || a.ownerName.localeCompare(b.ownerName))
       .map((h) => ({
+        entryKey: h.entryKey, // ✅ add this
         ownerName: h.ownerName,
         division: h.division,
         pts: h.pts,
@@ -270,6 +271,7 @@ function normalizeFromAdminDoc(doc, leagueOrderIndex) {
         swept: h.swept,
         maxWager: 150,
       }));
+
       
 
 
@@ -526,27 +528,61 @@ function TrackerInner({ season: seasonProp, version }) {
 
                 const ppAll = safeArray(mw?.perPerson);
 
-                // Only show people who could win at least one pot
+                const mainTotal = Number(normalized?.championship?.mainPot?.total ?? 0) || 0;
+                const side1Pool = Number(normalized?.championship?.sidePots?.[0]?.pool ?? 0) || 0;
+                const side2Pool = Number(normalized?.championship?.sidePots?.[1]?.pool ?? 0) || 0;
+
+                const pots = [
+                  { key: "main", label: "Main Pot", amount: mainTotal },
+                  { key: "side1", label: "Side Pot 1", amount: side1Pool },
+                  { key: "side2", label: "Side Pot 2", amount: side2Pool },
+                ];
+
+                const sumWins = (p) => {
+                  let total = 0;
+                  if (p?.wouldWin?.main) total += mainTotal;
+                  if (p?.wouldWin?.side1) total += side1Pool;
+                  if (p?.wouldWin?.side2) total += side2Pool;
+                  return total;
+                };
+
+                const winParts = (p) => {
+                  const parts = [];
+                  if (p?.wouldWin?.main) parts.push(`Main Pot (${fmtMoney(mainTotal)})`);
+                  if (p?.wouldWin?.side1) parts.push(`Side Pot 1 (${fmtMoney(side1Pool)})`);
+                  if (p?.wouldWin?.side2) parts.push(`Side Pot 2 (${fmtMoney(side2Pool)})`);
+                  return parts;
+                };
+
+                // Only show people who could win at least one pot by maxing
                 const interesting = ppAll.filter((p) => p?.wouldWin?.main || p?.wouldWin?.side1 || p?.wouldWin?.side2);
+
+                // ---- Special case: the ACTUAL Main Pot winner who could have added side pots by betting more
+                const actualMainWinnerKey = safeStr(normalized?.championship?.mainPot?.winnerKey).trim();
+                const actualMainWinnerName = safeStr(normalized?.championship?.mainPot?.winner).trim();
+
+                const actualMainWinnerRow = actualMainWinnerKey ? ppAll.find((p) => safeStr(p?.entryKey).trim() === actualMainWinnerKey) : null;
+
+                // If they already won main, we only care about side pots they could have also won by maxing.
+                const mainWinnerCouldAddSide1 = Boolean(actualMainWinnerRow?.wouldWin?.side1);
+                const mainWinnerCouldAddSide2 = Boolean(actualMainWinnerRow?.wouldWin?.side2);
+                const mainWinnerMissed = (mainWinnerCouldAddSide1 ? side1Pool : 0) + (mainWinnerCouldAddSide2 ? side2Pool : 0);
+
+                const mainWinnerWouldSweep =
+                  Boolean(actualMainWinnerName) &&
+                  (mainWinnerCouldAddSide1 && mainWinnerCouldAddSide2) &&
+                  // they already won main in reality, so this is "sweep by maxing"
+                  true;
 
                 // For the "maxed individually" list, don't repeat the sweepOwner from the fun fact line
                 const pp = sweepOwner ? interesting.filter((p) => safeStr(p?.ownerName).trim() !== sweepOwner) : interesting;
 
-                const hasAny = Boolean(sweepOwner || pp.length);
+                const hasAny = Boolean(sweepOwner || pp.length || (actualMainWinnerName && mainWinnerMissed > 0));
                 if (!hasAny) return null;
-
-                const winLabel = (p) => {
-                  const wins = [];
-                  if (p?.wouldWin?.main) wins.push("Main");
-                  if (p?.wouldWin?.side1) wins.push("Side 1");
-                  if (p?.wouldWin?.side2) wins.push("Side 2");
-
-                  if (wins.length === 3) return "Sweep (Main + Side 1 + Side 2)";
-                  return wins.join(" + ");
-                };
 
                 return (
                   <div className="mt-3 rounded-xl border border-subtle bg-panel/60 px-4 py-3 text-sm">
+                    {/* 1) Sweeper fun fact (single sentence only) */}
                     {sweepOwner ? (
                       <>
                         <span className="text-muted">Fun fact:</span>{" "}
@@ -554,30 +590,73 @@ function TrackerInner({ season: seasonProp, version }) {
                         <span className="text-muted">would have</span>{" "}
                         <span className="text-foreground font-semibold">swept</span>{" "}
                         <span className="text-muted">
-                          the championship pots (Main + Side Pot 1 + Side Pot 2) if they had maxed their bet.
+                          the championship pots (Main + Side Pot 1 + Side Pot 2) if they had maxed their bet — worth{" "}
+                          <span className="text-foreground font-semibold">{fmtMoney(mainTotal + side1Pool + side2Pool)}</span>.
                         </span>
                       </>
                     ) : null}
 
+                    {/* 2) Special message for the actual Main Pot winner who could’ve added side pots */}
+                    {actualMainWinnerName && mainWinnerMissed > 0 ? (
+                      <div className={`${sweepOwner ? "mt-3 pt-3 border-t border-subtle/60" : ""} text-xs text-muted`}>
+                        {(() => {
+                          const missedParts = [];
+                          if (mainWinnerCouldAddSide1) missedParts.push(`Side Pot 1 (${fmtMoney(side1Pool)})`);
+                          if (mainWinnerCouldAddSide2) missedParts.push(`Side Pot 2 (${fmtMoney(side2Pool)})`);
+
+                          const missedLabel = missedParts.join(" + ");
+
+                          return (
+                            <>
+                              <span className="text-foreground font-semibold">{actualMainWinnerName}</span>{" "}
+                              <span className="text-muted">
+                                only bet on the Main Pot and missed{" "}
+                                <span className="text-foreground font-semibold">{missedLabel}</span>{" "}
+                                ={" "}
+                                <span className="text-foreground font-semibold">{fmtMoney(mainWinnerMissed)}</span>.{" "}
+                                {mainWinnerWouldSweep ? (
+                                  <>
+                                    They would have <span className="text-foreground font-semibold">swept</span> by maxing to{" "}
+                                    {fmtMoney(150)} (total possible{" "}
+                                    <span className="text-foreground font-semibold">{fmtMoney(mainTotal + side1Pool + side2Pool)}</span>).
+                                  </>
+                                ) : (
+                                  <>
+                                    They could have added those by maxing to {fmtMoney(150)}.
+                                  </>
+                                )}
+                              </span>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    ) : null}
+
+
+                    {/* 3) If these owners maxed individually (with $ amounts per pot + total) */}
                     {pp.length ? (
-                      <div className={`${sweepOwner ? "mt-3 pt-3 border-t border-subtle/60" : ""}`}>
+                      <div className={`${sweepOwner || (actualMainWinnerName && mainWinnerMissed > 0) ? "mt-3 pt-3 border-t border-subtle/60" : ""}`}>
                         <div className="text-[11px] uppercase tracking-[0.25em] text-muted">If these owners maxed individually</div>
                         <div className="mt-2 flex flex-col gap-1 text-xs text-muted">
                           {pp
                             .slice()
-                            .sort((a, b) => Number(b?.pts || 0) - Number(a?.pts || 0) || safeStr(a?.ownerName).localeCompare(safeStr(b?.ownerName)))
+                            .sort((a, b) => sumWins(b) - sumWins(a) || Number(b?.pts || 0) - Number(a?.pts || 0) || safeStr(a?.ownerName).localeCompare(safeStr(b?.ownerName)))
                             .slice(0, 8)
                             .map((p) => {
-                              const label = winLabel(p);
-                              if (!label) return null;
+                              const parts = winParts(p);
+                              if (!parts.length) return null;
+
+                              const totalCouldWin = sumWins(p);
 
                               return (
-                                <div key={`${p.ownerName}|||${p.division}|||${p.pts}`}>
+                                <div key={`${p.entryKey || ""}|||${p.ownerName}|||${p.division}|||${p.pts}`}>
                                   • <span className="text-foreground font-semibold">{p.ownerName}</span>{" "}
                                   {p.division ? <span className="text-muted">({p.division})</span> : null}{" "}
                                   <span className="text-muted">
                                     could have won{" "}
-                                    <span className="text-foreground font-semibold">{label}</span>{" "}
+                                    <span className="text-foreground font-semibold">{parts.join(" + ")}</span>{" "}
+                                    ={" "}
+                                    <span className="text-foreground font-semibold">{fmtMoney(totalCouldWin)}</span>{" "}
                                     by maxing to {fmtMoney(p.maxWager)} (scored{" "}
                                   </span>
                                   <span className="text-foreground font-semibold">{Number(p.pts || 0).toFixed(2)}</span>{" "}
@@ -591,6 +670,7 @@ function TrackerInner({ season: seasonProp, version }) {
                   </div>
                 );
               })()}
+
 
             </div>
           </div>
