@@ -501,7 +501,6 @@ export default function DynastyWagersAdminClient() {
   const [leagueOrderIndex, setLeagueOrderIndex] = useState(() => new Map());
   // { [division]: { [leagueName]: string[] } }
   const [ownersByDivisionLeague, setOwnersByDivisionLeague] = useState(null);
-  const [ownersByDivisionLeague, setOwnersByDivisionLeague] = useState(null);
 
   async function loadLeagueOrderIndex(seasonToLoad) {
     try {
