@@ -85,6 +85,7 @@ function normalizeDoc(doc) {
 
   const wagerPot = results?.wagerPot || {};
   const champ = results?.championship || {};
+  const wagerMisses = safeArray(results?.wagerMisses);
 
   return {
     updatedAt: safeStr(doc?.updatedAt).trim(),
@@ -108,8 +109,14 @@ function normalizeDoc(doc) {
       winnerPts: Number(champ?.winnerPts ?? 0) || 0,
       bonus: Number(champ?.bonus ?? 0) || 0,
     },
+    wagerMisses: wagerMisses.map((m) => ({
+      ownerName: safeStr(m?.ownerName).trim(),
+      division: safeStr(m?.division).trim(),
+      leagueName: safeStr(m?.leagueName).trim(),
+      wk15: Number(m?.wk15 ?? 0) || 0,
+      key: safeStr(m?.key || m?.winnerKey || "").trim(),
+    })),
     divisions,
-    missedWagers: safeArray(results?.missedWagers),
   };
 }
 
@@ -184,7 +191,9 @@ export default function MiniLeaguesWagerTracker({ season, version }) {
               <SmallBadge>Season {s}</SmallBadge>
             </div>
             <p className="mt-3 text-sm text-muted">
-              League winners after Week 14 earn a {fmtMoney(view.coin)} coin. The Division (+{fmtMoney(view.divisionBonusAmount)}) and Championship (+{fmtMoney(view.champBonusAmount)}) bonuses go to the top Week 15 points (regardless of wager). You can still <b>wager</b> your coin to compete for the pooled pot + a +{fmtMoney(view.wagerBonusAmount)} wager bonus.
+              League winners after Week 14 earn a {fmtMoney(view.coin)} coin. They can <b>keep</b> it and chase the
+              Division (+{fmtMoney(view.divisionBonusAmount)}) and Championship (+{fmtMoney(view.champBonusAmount)}) bonuses,
+              or <b>wager</b> it for the pooled pot + a +{fmtMoney(view.wagerBonusAmount)} wager bonus.
             </p>
           </div>
 
@@ -215,28 +224,7 @@ export default function MiniLeaguesWagerTracker({ season, version }) {
               <p className="text-sm text-muted">Waiting for Week 15 results.</p>
             )}
           </div>
-        
-          {safeArray(view.missedWagers).length > 0 ? (
-            <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-500/5 p-3">
-              <div className="text-[11px] uppercase tracking-[0.25em] text-amber-200">Wager Misses</div>
-              <div className="mt-2 space-y-1 text-sm text-muted">
-                {safeArray(view.missedWagers)
-                  .slice()
-                  .sort((a, b) => (Number(b?.wk15 ?? 0) || 0) - (Number(a?.wk15 ?? 0) || 0))
-                  .map((m) => (
-                    <div key={safeStr(m?.k)}>
-                      <span className="text-foreground font-semibold">{safeStr(m?.ownerName)}</span>{" "}
-                      <span className="text-muted">— {Number(m?.wk15 ?? 0) || 0} pts</span>{" "}
-                      <span className="text-amber-200">
-                        {safeStr(m?.reason) === "would_win" ? "→ would have won" : "→ could have tied for"}{" "}
-                        {fmtMoney(Number(m?.hypotheticalTotal ?? 0) || 0)} if they wagered
-                      </span>
-                    </div>
-                  ))}
-              </div>
-            </div>
-          ) : null}
-</Card>
+        </Card>
 
         <Card>
           <div className="flex items-center justify-between gap-3">
@@ -257,6 +245,40 @@ export default function MiniLeaguesWagerTracker({ season, version }) {
           </div>
         </Card>
       </div>
+
+      {view.wagerMisses.length > 0 && (
+        <Card>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-white">Who should have wagered?</h2>
+            <SmallBadge>Week 15</SmallBadge>
+          </div>
+          <p className="mt-3 text-sm text-muted">
+            These managers chose <b>Keep</b> but scored enough to beat (or tie) the best wager score — meaning they could’ve won the pooled pot + {fmtMoney(view.wagerBonusAmount)}.
+          </p>
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-[720px] w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-[0.2em] text-muted">
+                  <th className="py-2 pr-4">Division</th>
+                  <th className="py-2 pr-4">League</th>
+                  <th className="py-2 pr-4">Manager</th>
+                  <th className="py-2 text-right">Week 15 Pts</th>
+                </tr>
+              </thead>
+              <tbody>
+                {view.wagerMisses.map((m) => (
+                  <tr key={m.key} className="border-t border-subtle">
+                    <td className="py-2 pr-4 text-muted">{m.division}</td>
+                    <td className="py-2 pr-4 text-muted">{m.leagueName}</td>
+                    <td className="py-2 pr-4 text-foreground">{m.ownerName}</td>
+                    <td className="py-2 text-right text-foreground font-semibold">{m.wk15}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       <div className="space-y-4">
         {divisionNames.length === 0 ? (
