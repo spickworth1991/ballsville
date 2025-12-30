@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { getSupabase } from "@/lib/supabaseClient";
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
@@ -229,12 +230,24 @@ export default function BigGameWagersAdminClient({ season }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
+  async function adminToken() {
+    try {
+      const supabase = getSupabase();
+      const { data } = await supabase.auth.getSession();
+      return data?.session?.access_token || "";
+    } catch {
+      return "";
+    }
+  }
+
   // Load Big Game page config (division names, league cards, images)
   useEffect(() => {
     let cancelled = false;
     async function run() {
       try {
+        const token = await adminToken();
         const res = await fetch(`/api/admin/biggame?season=${encodeURIComponent(season)}&type=page`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
           cache: "no-store",
         });
         const data = res.ok ? await res.json() : null;
@@ -248,6 +261,42 @@ export default function BigGameWagersAdminClient({ season }) {
       cancelled = true;
     };
   }, [season]);
+
+  function setBetLevel(div, entry, level) {
+    const k = entryKey({ division: div, leagueName: entry?.leagueName, ownerName: entry?.ownerName });
+    const legacyName = safeStr(entry?.ownerName).trim();
+
+    const next = structuredClone(state);
+    next.divisionWagers = next.divisionWagers || { week: 16, entryFee: 25, resolvedAt: "", byDivision: {} };
+    next.divisionWagers.byDivision = next.divisionWagers.byDivision || {};
+
+    const d = next.divisionWagers.byDivision[div] || {};
+    const pot1 = d.pot1 || { entrants: {}, points: {}, winner: "", winnerKey: "", pool: 0, resolvedAt: "" };
+    const pot2 = d.pot2 || { entrants: {}, points: {}, winner: "", winnerKey: "", pool: 0, resolvedAt: "" };
+
+    pot1.entrants = pot1.entrants || {};
+    pot2.entrants = pot2.entrants || {};
+
+    // Clear existing selections for this entry
+    delete pot1.entrants[k];
+    delete pot2.entrants[k];
+    if (legacyName) {
+      delete pot1.entrants[legacyName];
+      delete pot2.entrants[legacyName];
+    }
+
+    if (level === "half") {
+      pot1.entrants[k] = true;
+    } else if (level === "max") {
+      pot1.entrants[k] = true;
+      pot2.entrants[k] = true;
+    }
+
+    d.pot1 = pot1;
+    d.pot2 = pot2;
+    next.divisionWagers.byDivision[div] = d;
+    setState(next);
+  }
 
   // Load wager state
   useEffect(() => {
@@ -881,8 +930,7 @@ export default function BigGameWagersAdminClient({ season }) {
                             <th className="text-left py-2 pr-3">League</th>
                             <th className="text-left py-2 pr-3">Owner</th>
                             <th className="text-right py-2 pr-3">W1–15</th>
-                            <th className="text-center py-2 px-2">Pot #1</th>
-                            <th className="text-center py-2 px-2">Pot #2</th>
+                            <th className="text-center py-2 px-2">Bet</th>
                             <th className="text-right py-2 pl-3">Wk16</th>
                           </tr>
                         </thead>
@@ -894,6 +942,10 @@ export default function BigGameWagersAdminClient({ season }) {
                             const wk16Num = typeof wk16 === "number" ? wk16 : parseFloat(wk16);
                             const wk16Show = Number.isNaN(wk16Num) ? "" : wk16Num.toFixed(2);
 
+                            const has1 = Boolean(pot1?.entrants?.[k] || pot1?.entrants?.[name]);
+                            const has2 = Boolean(pot2?.entrants?.[k] || pot2?.entrants?.[name]);
+                            const level = has1 && has2 ? "max" : has1 ? "half" : "none";
+
                             return (
                               <tr key={`${div}:${e.leagueName}:${name}`} className="border-t border-subtle/70">
                                 <td className="py-2 pr-3 text-muted whitespace-nowrap">{e.leagueName}</td>
@@ -901,19 +953,35 @@ export default function BigGameWagersAdminClient({ season }) {
                                 <td className="py-2 pr-3 text-right tabular-nums text-muted">{Number(e.total || 0).toFixed(2)}</td>
 
                                 <td className="py-2 px-2 text-center">
-                                  <input
-                                    type="checkbox"
-                                    checked={Boolean(pot1?.entrants?.[k] || pot1?.entrants?.[name])}
-                                    onChange={(ev) => toggleEntrant(div, "pot1", e, ev.target.checked)}
-                                  />
-                                </td>
+                                  <div className="inline-flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => setBetLevel(div, e, level === "half" ? "none" : "half")}
+                                      className={`rounded-lg border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] transition \
+                                        ${
+                                          level === "half"
+                                            ? "bg-accent/20 border-accent/40 text-accent"
+                                            : "bg-panel/40 border-subtle text-muted hover:border-accent/30"
+                                        }`}
+                                      title="Half Bet (Pot #1 only)"
+                                    >
+                                      Half
+                                    </button>
 
-                                <td className="py-2 px-2 text-center">
-                                  <input
-                                    type="checkbox"
-                                    checked={Boolean(pot2?.entrants?.[k] || pot2?.entrants?.[name])}
-                                    onChange={(ev) => toggleEntrant(div, "pot2", e, ev.target.checked)}
-                                  />
+                                    <button
+                                      type="button"
+                                      onClick={() => setBetLevel(div, e, level === "max" ? "none" : "max")}
+                                      className={`rounded-lg border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] transition \
+                                        ${
+                                          level === "max"
+                                            ? "bg-primary/20 border-primary/40 text-primary"
+                                            : "bg-panel/40 border-subtle text-muted hover:border-primary/30"
+                                        }`}
+                                      title="Max Bet (Pot #1 + Pot #2)"
+                                    >
+                                      Max
+                                    </button>
+                                  </div>
                                 </td>
 
                                 <td className="py-2 pl-3 text-right tabular-nums text-muted">{wk16Show}</td>
