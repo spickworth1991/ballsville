@@ -112,14 +112,17 @@ function normalizeFromAdminDoc(doc, leagueOrderIndex) {
       pot1: {
         pool: Number(pot1?.pool || 0),
         winner: safeStr(pot1?.winner).trim(),
+        winnerKey: safeStr(pot1?.winnerKey).trim(),
         resolvedAt: safeStr(pot1?.resolvedAt).trim(),
       },
       pot2: {
         pool: Number(pot2?.pool || 0),
         winner: safeStr(pot2?.winner).trim(),
+        winnerKey: safeStr(pot2?.winnerKey).trim(),
         resolvedAt: safeStr(pot2?.resolvedAt).trim(),
       },
     };
+
   }
 
   const champ = doc?.championship || {};
@@ -172,24 +175,23 @@ const mainWinnerPts = Number(mainWinnerRow?.wk17 ?? NaN);
 const side1WinnerPts = Number(side1WinnerRow?.wk17 ?? NaN);
 const side2WinnerPts = Number(side2WinnerRow?.wk17 ?? NaN);
 
-// “Could have won” logic:
-// For each pot threshold, find the single best scorer who DID NOT qualify for that pot,
-// but WOULD have beaten the REAL pot winner’s score.
-// This assumes everyone else stayed the same (no-betters still didn’t bet).
-function pickCouldHaveWon(threshold, realWinnerPts) {
-  // If there wasn't a real winner (no entrants), don't generate a fun fact for it.
+function pickCouldHaveWon({ label, threshold, minWager, maxWagerExclusive }, realWinnerPts) {
   if (!Number.isFinite(realWinnerPts)) return null;
 
-  const candidates = seeded.filter((r) => (Number(r?.wager ?? 0) || 0) < threshold);
+  const candidates = seeded.filter((r) => {
+    const w = Number(r?.wager ?? 0) || 0;
+    return w >= minWager && w < maxWagerExclusive;
+  });
+
+  // Find the highest scorer in this wager band
   const best = pickWinner(candidates);
   if (!best) return null;
 
   const pts = Number(best.wk17 ?? 0) || 0;
-
-  // They only "could have won" if they actually beat the real winner
   if (!(pts > realWinnerPts)) return null;
 
   return {
+    label,
     threshold,
     ownerName: best.ownerName || "",
     division: best.division || "",
@@ -198,9 +200,22 @@ function pickCouldHaveWon(threshold, realWinnerPts) {
   };
 }
 
-const couldMain = pickCouldHaveWon(50, mainWinnerPts);
-const couldSide1 = pickCouldHaveWon(100, side1WinnerPts);
-const couldSide2 = pickCouldHaveWon(150, side2WinnerPts);
+
+const couldMain = pickCouldHaveWon(
+  { label: "the Main Pot", threshold: 50, minWager: 0, maxWagerExclusive: 50 },
+  mainWinnerPts
+);
+
+const couldSide1 = pickCouldHaveWon(
+  { label: "Side Pot 1", threshold: 100, minWager: 50, maxWagerExclusive: 100 },
+  side1WinnerPts
+);
+
+const couldSide2 = pickCouldHaveWon(
+  { label: "Side Pot 2", threshold: 150, minWager: 100, maxWagerExclusive: 150 },
+  side2WinnerPts
+);
+
 
 // “Would have swept” ONLY if the same person could have won ALL THREE pots
 // (and each pot had a real winner to beat).
@@ -225,9 +240,11 @@ return {
       bonus,
       total: mainPotWagers + bonus,
       winner: mainWinnerRow?.ownerName || "",
+      winnerKey: safeStr(mainWinnerRow?.entryKey).trim(),
       winnerDivision: mainWinnerRow?.division || "",
       winnerPts: Number(mainWinnerRow?.wk17 ?? 0) || 0,
     },
+
 
     sidePots: [
       {
@@ -236,6 +253,7 @@ return {
         entrants: side1Entrants,
         pool: side1Entrants.length * 50,
         winner: side1WinnerRow?.ownerName || "",
+        winnerKey: safeStr(side1WinnerRow?.entryKey).trim(),
         winnerDivision: side1WinnerRow?.division || "",
         winnerPts: Number(side1WinnerRow?.wk17 ?? 0) || 0,
       },
@@ -245,10 +263,12 @@ return {
         entrants: side2Entrants,
         pool: side2Entrants.length * 50,
         winner: side2WinnerRow?.ownerName || "",
+        winnerKey: safeStr(side2WinnerRow?.entryKey).trim(),
         winnerDivision: side2WinnerRow?.division || "",
         winnerPts: Number(side2WinnerRow?.wk17 ?? 0) || 0,
       },
     ],
+
 
     couldHaveWon: {
       sweepOwner: couldSweepOwner,
@@ -359,10 +379,11 @@ function TrackerInner({ season: seasonProp, version }) {
 
   // ✅ Championship winner lookup for table tags
   const champWinners = {
-    main: safeStr(normalized?.championship?.mainPot?.winner).trim(),
-    side1: safeStr(normalized?.championship?.sidePots?.[0]?.winner).trim(),
-    side2: safeStr(normalized?.championship?.sidePots?.[1]?.winner).trim(),
+    mainKey: safeStr(normalized?.championship?.mainPot?.winnerKey).trim(),
+    side1Key: safeStr(normalized?.championship?.sidePots?.[0]?.winnerKey).trim(),
+    side2Key: safeStr(normalized?.championship?.sidePots?.[1]?.winnerKey).trim(),
   };
+
 
   return (
     <div className="space-y-6">
@@ -500,16 +521,14 @@ function TrackerInner({ season: seasonProp, version }) {
                         { label: "the Main Pot", obj: main },
                         { label: "Side Pot 1", obj: side1 },
                         { label: "Side Pot 2", obj: side2 },
-                      ]
-                        .filter((r) => r.obj?.ownerName)
-                        // If we already said “swept”, don’t repeat sweepOwner lines
-                        .filter((r) => !sweepOwner || r.obj.ownerName !== sweepOwner);
+                      ].filter((r) => r.obj?.ownerName);
+
 
                       if (!rows.length) return null;
 
                       return (
                         <div className="mt-2 text-xs text-muted">
-                          {sweepOwner ? <div>Also:</div> : null}
+                          {sweepOwner ? <div>Breakdown:</div> : null}
                           <div className="mt-2 flex flex-col gap-1">
                             {rows.map(({ label, obj }) => (
                               <div key={label}>
@@ -584,9 +603,10 @@ function TrackerInner({ season: seasonProp, version }) {
                       .sort((a, b) => b.wager - a.wager || a.ownerName.localeCompare(b.ownerName))
                       .map((r) => {
                         const tags = [];
-                        if (champResolved && champWinners.main && r.ownerName === champWinners.main) tags.push("Main Pot");
-                        if (champResolved && champWinners.side1 && r.ownerName === champWinners.side1) tags.push("Side Pot 1");
-                        if (champResolved && champWinners.side2 && r.ownerName === champWinners.side2) tags.push("Side Pot 2");
+                        if (champResolved && champWinners.mainKey && r.entryKey === champWinners.mainKey) tags.push("Main Pot");
+                        if (champResolved && champWinners.side1Key && r.entryKey === champWinners.side1Key) tags.push("Side Pot 1");
+                        if (champResolved && champWinners.side2Key && r.entryKey === champWinners.side2Key) tags.push("Side Pot 2");
+
 
                         return (
                           <tr key={r.entryKey} className="border-t border-subtle/70">
@@ -711,8 +731,12 @@ function TrackerInner({ season: seasonProp, version }) {
                           <tbody>
                             {entries.map((e) => {
                               const tags = [];
-                              if (divResolved && pot1Winner && e.ownerName === pot1Winner) tags.push("Pot 1 Winner");
-                              if (divResolved && pot2Winner && e.ownerName === pot2Winner) tags.push("Pot 2 Winner");
+                              const pot1WinnerKey = safeStr(d?.pot1?.winnerKey).trim();
+                              const pot2WinnerKey = safeStr(d?.pot2?.winnerKey).trim();
+
+                              if (divResolved && pot1WinnerKey && e.k === pot1WinnerKey) tags.push("Pot 1 Winner");
+                              if (divResolved && pot2WinnerKey && e.k === pot2WinnerKey) tags.push("Pot 2 Winner");
+
 
                               return (
                                 <tr key={e.k} className="border-t border-subtle/70">
