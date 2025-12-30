@@ -171,60 +171,93 @@ function normalizeFromAdminDoc(doc, leagueOrderIndex) {
   const mainPotWagers = mainEntrants.length * 50;
 
   // Helper: winner among real entrants for a pot (already computed above)
-const mainWinnerPts = Number(mainWinnerRow?.wk17 ?? NaN);
-const side1WinnerPts = Number(side1WinnerRow?.wk17 ?? NaN);
-const side2WinnerPts = Number(side2WinnerRow?.wk17 ?? NaN);
+    const mainWinnerPts = Number(mainWinnerRow?.wk17 ?? NaN);
+    const side1WinnerPts = Number(side1WinnerRow?.wk17 ?? NaN);
+    const side2WinnerPts = Number(side2WinnerRow?.wk17 ?? NaN);
 
-function pickCouldHaveWon({ label, threshold, minWager, maxWagerExclusive }, realWinnerPts) {
-  if (!Number.isFinite(realWinnerPts)) return null;
+    function pickCouldHaveWon({ label, threshold, minWager, maxWagerExclusive }, realWinnerPts) {
+      if (!Number.isFinite(realWinnerPts)) return null;
 
-  const candidates = seeded.filter((r) => {
-    const w = Number(r?.wager ?? 0) || 0;
-    return w >= minWager && w < maxWagerExclusive;
-  });
+      const candidates = seeded.filter((r) => {
+        const w = Number(r?.wager ?? 0) || 0;
+        return w >= minWager && w < maxWagerExclusive;
+      });
 
-  // Find the highest scorer in this wager band
-  const best = pickWinner(candidates);
-  if (!best) return null;
+      const best = pickWinner(candidates);
+      if (!best) return null;
 
-  const pts = Number(best.wk17 ?? 0) || 0;
-  if (!(pts > realWinnerPts)) return null;
+      const pts = Number(best.wk17 ?? 0) || 0;
+      if (!(pts > realWinnerPts)) return null;
 
-  return {
-    label,
-    threshold,
-    ownerName: best.ownerName || "",
-    division: best.division || "",
-    pts,
-    wager: Number(best.wager ?? 0) || 0,
-  };
-}
+      return {
+        label,
+        threshold,
+        ownerName: best.ownerName || "",
+        division: best.division || "",
+        pts,
+        wager: Number(best.wager ?? 0) || 0,
+      };
+    }
 
+    // keep your originals (top missed winner per pot)
+    const couldMain = pickCouldHaveWon(
+      { label: "the Main Pot", threshold: 50, minWager: 0, maxWagerExclusive: 50 },
+      mainWinnerPts
+    );
 
-const couldMain = pickCouldHaveWon(
-  { label: "the Main Pot", threshold: 50, minWager: 0, maxWagerExclusive: 50 },
-  mainWinnerPts
-);
+    const couldSide1 = pickCouldHaveWon(
+      { label: "Side Pot 1", threshold: 100, minWager: 50, maxWagerExclusive: 100 },
+      side1WinnerPts
+    );
 
-const couldSide1 = pickCouldHaveWon(
-  { label: "Side Pot 1", threshold: 100, minWager: 50, maxWagerExclusive: 100 },
-  side1WinnerPts
-);
+    const couldSide2 = pickCouldHaveWon(
+      { label: "Side Pot 2", threshold: 150, minWager: 100, maxWagerExclusive: 150 },
+      side2WinnerPts
+    );
 
-const couldSide2 = pickCouldHaveWon(
-  { label: "Side Pot 2", threshold: 150, minWager: 100, maxWagerExclusive: 150 },
-  side2WinnerPts
-);
+    // “Would have swept” ONLY if the same person could have won ALL THREE pots
+    const couldSweepOwner =
+      couldMain?.ownerName &&
+      couldMain.ownerName === couldSide1?.ownerName &&
+      couldMain.ownerName === couldSide2?.ownerName
+        ? couldMain.ownerName
+        : "";
 
+    // NEW: include ONE additional “missed winner” line per pot
+    // specifically for a person who didn't bet at all (wager === 0)
+    // (and only if they would’ve beaten the real winner and are NOT already the top missed winner)
+    function pickExtraNoBetWinner(threshold, realWinnerPts, topOwnerName) {
+      if (!Number.isFinite(realWinnerPts)) return null;
 
-// “Would have swept” ONLY if the same person could have won ALL THREE pots
-// (and each pot had a real winner to beat).
-const couldSweepOwner =
-  couldMain?.ownerName &&
-  couldMain.ownerName === couldSide1?.ownerName &&
-  couldMain.ownerName === couldSide2?.ownerName
-    ? couldMain.ownerName
-    : "";
+      const best = pickWinner(
+        seeded.filter((r) => {
+          const w = Number(r?.wager ?? 0) || 0;
+          return w === 0 && w < threshold; // technically always true, but keeps intent clear
+        })
+      );
+
+      if (!best) return null;
+
+      const pts = Number(best.wk17 ?? 0) || 0;
+      if (!(pts > realWinnerPts)) return null;
+
+      const ownerName = safeStr(best.ownerName).trim();
+      if (!ownerName) return null;
+      if (topOwnerName && ownerName === topOwnerName) return null;
+
+      return {
+        ownerName,
+        division: best.division || "",
+        pts,
+        wager: 0,
+        threshold,
+      };
+    }
+
+    const extraMainNoBet = pickExtraNoBetWinner(50, mainWinnerPts, couldMain?.ownerName || "");
+    const extraSide1NoBet = pickExtraNoBetWinner(100, side1WinnerPts, couldSide1?.ownerName || "");
+    const extraSide2NoBet = pickExtraNoBetWinner(150, side2WinnerPts, couldSide2?.ownerName || "");
+
 
 
 return {
@@ -275,8 +308,17 @@ return {
       main: couldMain,
       side1: couldSide1,
       side2: couldSide2,
+
+      // NEW (optional)
+      extras: {
+        mainNoBet: extraMainNoBet,
+        side1NoBet: extraSide1NoBet,
+        side2NoBet: extraSide2NoBet,
+      },
     },
+
   },
+  
   divisions,
 };
 }
@@ -473,22 +515,43 @@ function TrackerInner({ season: seasonProp, version }) {
               {(() => {
                 const mw = normalized?.championship?.couldHaveWon || {};
                 const sweepOwner = safeStr(mw?.sweepOwner).trim();
+
                 const main = mw?.main;
                 const side1 = mw?.side1;
                 const side2 = mw?.side2;
+
+                const extras = mw?.extras || {};
+                const extraMainNoBet = extras?.mainNoBet;
+                const extraSide1NoBet = extras?.side1NoBet;
+                const extraSide2NoBet = extras?.side2NoBet;
 
                 // Show nothing if we don't have any missed-winner info
                 const hasAny = Boolean(
                   (main?.ownerName && main?.threshold) ||
                     (side1?.ownerName && side1?.threshold) ||
-                    (side2?.ownerName && side2?.threshold)
+                    (side2?.ownerName && side2?.threshold) ||
+                    (extraMainNoBet?.ownerName && extraMainNoBet?.threshold) ||
+                    (extraSide1NoBet?.ownerName && extraSide1NoBet?.threshold) ||
+                    (extraSide2NoBet?.ownerName && extraSide2NoBet?.threshold)
                 );
                 if (!hasAny) return null;
 
-                const line = (label, obj) => {
+                const rows = [
+                  { label: "the Main Pot", obj: main },
+                  { label: "Side Pot 1", obj: side1 },
+                  { label: "Side Pot 2", obj: side2 },
+                ].filter((r) => r.obj?.ownerName);
+
+                const extraRows = [
+                  { label: "the Main Pot", obj: extraMainNoBet },
+                  { label: "Side Pot 1", obj: extraSide1NoBet },
+                  { label: "Side Pot 2", obj: extraSide2NoBet },
+                ].filter((r) => r.obj?.ownerName);
+
+                const renderLine = (label, obj) => {
                   if (!obj?.ownerName) return null;
                   return (
-                    <div key={label}>
+                    <div key={`${label}|||${obj.ownerName}`}>
                       • <span className="text-foreground font-semibold">{obj.ownerName}</span>{" "}
                       {obj.division ? <span className="text-muted">({obj.division})</span> : null}{" "}
                       <span className="text-muted">
@@ -516,38 +579,26 @@ function TrackerInner({ season: seasonProp, version }) {
                       <span className="text-muted">Here’s who missed out by not betting enough:</span>
                     )}
 
-                    {(() => {
-                      const rows = [
-                        { label: "the Main Pot", obj: main },
-                        { label: "Side Pot 1", obj: side1 },
-                        { label: "Side Pot 2", obj: side2 },
-                      ].filter((r) => r.obj?.ownerName);
+                    {(rows.length || extraRows.length) ? (
+                      <div className="mt-2 text-xs text-muted">
+                        {sweepOwner ? <div>Breakdown:</div> : null}
 
-
-                      if (!rows.length) return null;
-
-                      return (
-                        <div className="mt-2 text-xs text-muted">
-                          {sweepOwner ? <div>Breakdown:</div> : null}
-                          <div className="mt-2 flex flex-col gap-1">
-                            {rows.map(({ label, obj }) => (
-                              <div key={label}>
-                                • <span className="text-foreground font-semibold">{obj.ownerName}</span>{" "}
-                                {obj.division ? <span className="text-muted">({obj.division})</span> : null}{" "}
-                                <span className="text-muted">
-                                  would’ve won {label} if they qualified ({fmtMoney(obj.threshold)} threshold) with{" "}
-                                </span>
-                                <span className="text-foreground font-semibold">{Number(obj.pts || 0).toFixed(2)}</span>{" "}
-                                <span className="text-muted">pts (they wagered {fmtMoney(obj.wager || 0)}).</span>
-                              </div>
-                            ))}
-                          </div>
+                        <div className="mt-2 flex flex-col gap-1">
+                          {rows.map(({ label, obj }) => renderLine(label, obj))}
                         </div>
-                      );
-                    })()}
+
+                        {/* ✅ Only add the “didn't bet” extra lines when a sweepOwner exists */}
+                        
+                          <div className="mt-2 flex flex-col gap-1">
+                            {extraRows.map(({ label, obj }) => renderLine(label, obj))}
+                          </div>
+                        
+                      </div>
+                    ) : null}
                   </div>
                 );
               })()}
+
 
 
             </div>
