@@ -2,6 +2,21 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import AdminStepTabs from "../AdminStepTabs";
+
+function isLocalhost() {
+  if (typeof window === "undefined") return false;
+  const h = window.location.hostname;
+  return h === "localhost" || h === "127.0.0.1";
+}
+
+function getMiniWagersLoadUrl(season) {
+  // local dev override: static JSON served from /public
+  if (isLocalhost()) return "/wagers/mini-leagues.json";
+
+  // normal behavior: load from admin API
+  return `/api/admin/mini-leagues-wagers?season=${encodeURIComponent(season)}`;
+}
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
@@ -88,7 +103,6 @@ function getMiniLeaguesRoot(leaderboardsJson, season) {
   const candidates = [
     seasonObj.mini_game,
     seasonObj["mini-game"],
-    seasonObj.minigame,
     seasonObj.minigame,
     seasonObj.mini_game,
     seasonObj["mini_game"],
@@ -180,45 +194,17 @@ function Divider() {
   return <div className="h-px w-full bg-subtle my-4" />;
 }
 
-function buildLeagueOrderIndex(miniMeta) {
-  const rows = safeArray(miniMeta?.rows);
-  const map = new Map();
-
-  for (const r of rows) {
-    const div = safeStr(r?.theme_name).trim(); // division
-    const leagueName = safeStr(r?.name).trim(); // league name
-    if (!div || !leagueName) continue;
-
-    const raw =
-      r?.display_order ??
-      r?.displayOrder ??
-      r?.league_order ??
-      r?.order ??
-      r?.leagueOrder ??
-      r?.displayorder;
-
-    const n = Number(raw);
-    const orderNum = Number.isFinite(n) ? n : 999999;
-    map.set(`${div}|||${leagueName}`.toLowerCase(), orderNum);
-  }
-
-  return map;
-}
-
-function sortEligByDisplayOrder(elig, div, leagueOrderIndex) {
+// Sorting with NO miniMeta dependency:
+// - leagueName ASC
+// - ownerName ASC
+function sortEligDefault(elig) {
   return safeArray(elig)
     .slice()
     .sort((a, b) => {
       const aLeague = safeStr(a?.leagueName).trim();
       const bLeague = safeStr(b?.leagueName).trim();
-
-      const ao = leagueOrderIndex.get(`${div}|||${aLeague}`.toLowerCase()) ?? 999999;
-      const bo = leagueOrderIndex.get(`${div}|||${bLeague}`.toLowerCase()) ?? 999999;
-      if (ao !== bo) return ao - bo;
-
       const ln = aLeague.localeCompare(bLeague);
       if (ln !== 0) return ln;
-
       return safeStr(a?.ownerName).trim().localeCompare(safeStr(b?.ownerName).trim());
     });
 }
@@ -256,14 +242,12 @@ function computeResults(state) {
   const keepers = allEntries.filter((e) => e.decision === "keep");
   const everyone = allEntries;
 
-  // Wager pot: pooled coins from wagerers. Winner is top Week 15 points among wagerers.
   const wagerPool = wagerers.length * coin;
   let wagerWinner = null;
   for (const e of wagerers) {
     if (!wagerWinner || e.wk15 > wagerWinner.wk15) wagerWinner = e;
   }
 
-  // Division bonus: highest Week 15 points per division (REGARDLESS of wager).
   const divWinners = {};
   for (const div of Object.keys(eligibility)) {
     const divEntries = everyone.filter((e) => e.division === div);
@@ -279,13 +263,11 @@ function computeResults(state) {
     };
   }
 
-  // Championship bonus: highest Week 15 points overall (REGARDLESS of wager).
   let champWinner = null;
   for (const e of everyone) {
     if (!champWinner || e.wk15 > champWinner.wk15) champWinner = e;
   }
 
-  // "Should have wagered" callout: any KEEPERS who would have beaten (or tied) the top wagerer.
   const wagerTopPts = Number(wagerWinner?.wk15 ?? 0) || 0;
   const wagerMisses = keepers
     .filter((e) => e.wk15 >= wagerTopPts && wagerers.length > 0)
@@ -322,30 +304,10 @@ function computeResults(state) {
 
 export default function MiniLeaguesWagersAdminClient({ season }) {
   const [state, setState] = useState(() => buildEmptyState(season));
-  const [miniMeta, setMiniMeta] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
-
-  // Load Mini Leagues page config (division names, league cards, etc.)
-  useEffect(() => {
-    let cancelled = false;
-    async function run() {
-      try {
-        const res = await fetch(`/api/admin/mini-leagues?season=${encodeURIComponent(season)}&type=page`, {
-          cache: "no-store",
-        });
-        const data = res.ok ? await res.json() : null;
-        if (!cancelled) setMiniMeta(data);
-      } catch {
-        if (!cancelled) setMiniMeta(null);
-      }
-    }
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [season]);
+  const [tab, setTab] = useState("auto");
 
   // Load wagers doc
   useEffect(() => {
@@ -354,9 +316,7 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
       setLoading(true);
       setMsg("");
       try {
-        const res = await fetch(`/api/admin/mini-leagues-wagers?season=${encodeURIComponent(season)}`, {
-          cache: "no-store",
-        });
+        const res = await fetch(getMiniWagersLoadUrl(season), { cache: "no-store" });
         const saved = res.ok ? await res.json() : null;
         const doc = saved && typeof saved === "object" && "data" in saved ? saved.data : saved;
 
@@ -377,8 +337,6 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
       cancelled = true;
     };
   }, [season]);
-
-  const leagueOrderIndex = useMemo(() => buildLeagueOrderIndex(miniMeta), [miniMeta]);
 
   const divisions = useMemo(() => {
     const byDivision = state?.eligibility?.byDivision || {};
@@ -460,13 +418,18 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
         week15: {
           ...state.week15,
           decisions: nextDecisions,
-          // reset resolution whenever we re-import eligibility
           resolvedAt: "",
-          results: { ...state.week15?.results, divisionBonus: {}, wagerPot: { ...state.week15?.results?.wagerPot }, championship: { ...state.week15?.results?.championship } },
+          results: {
+            ...state.week15?.results,
+            divisionBonus: {},
+            wagerPot: { ...state.week15?.results?.wagerPot },
+            championship: { ...state.week15?.results?.championship },
+          },
         },
       };
 
       await save(next, "Imported Week 14 league winners.");
+      setTab("rules");
     } catch (e) {
       setMsg(`Error: ${String(e)}`);
     } finally {
@@ -516,32 +479,41 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
     await save(next, "Resolved Week 15 results.");
   }
 
-  async function restoreBackup() {
-    setSaving(true);
-    setMsg("");
-    try {
-      const res = await fetch(`/api/admin/mini-leagues-wagers-backup?season=${encodeURIComponent(season)}`, {
-        method: "POST",
-      });
-      if (!res.ok) {
-        const t = await res.text().catch(() => "");
-        throw new Error(t || `Restore failed (${res.status})`);
-      }
+  // IMPORTANT: keep hooks at the top-level (no early returns before useMemo),
+  // otherwise React will detect a Hooks order mismatch.
+  const coin = Number(state?.week15?.coin ?? 30) || 30;
+  const wagerBonus = Number(state?.week15?.wagerBonus ?? 60) || 60;
+  const divisionBonus = Number(state?.week15?.divisionBonus ?? 30) || 30;
+  const champBonus = Number(state?.week15?.champBonus ?? 100) || 100;
 
-      const saved = await res.json().catch(() => null);
-      const doc = saved && typeof saved === "object" && "data" in saved ? saved.data : saved;
+  const steps = useMemo(() => {
+    const hasEligibility = Boolean(state?.eligibility?.computedAt) && Object.keys(state?.eligibility?.byDivision || {}).length > 0;
+    const hasRules =
+      Boolean(state?.week15?.coin ?? null) ||
+      Boolean(state?.week15?.wagerBonus ?? null) ||
+      Boolean(state?.week15?.divisionBonus ?? null) ||
+      Boolean(state?.week15?.champBonus ?? null);
+    const hasDecisions = Object.keys(state?.week15?.decisions || {}).length > 0;
+    const hasPoints = Object.keys(state?.week15?.points || {}).length > 0;
+    const resolved = Boolean(state?.week15?.resolvedAt);
+    return [
+      { key: "import", label: "1) Import Eligibility", done: hasEligibility },
+      { key: "rules", label: "2) Rules", done: hasRules },
+      { key: "decisions", label: "3) Decisions & Points", done: hasDecisions || hasPoints },
+      { key: "resolve", label: "4) Resolve", done: resolved },
+    ];
+  }, [state]);
 
-      setState(() => {
-        const base = buildEmptyState(season);
-        return { ...base, ...(doc || {}), season: Number(season) };
-      });
-      setMsg("Restored backup.");
-    } catch (e) {
-      setMsg(`Error: ${String(e)}`);
-    } finally {
-      setSaving(false);
-    }
-  }
+  const activeTab =
+    tab === "auto"
+      ? state?.week15?.resolvedAt
+        ? "resolve"
+        : state?.eligibility?.computedAt
+        ? Object.keys(state?.week15?.decisions || {}).length
+          ? "decisions"
+          : "rules"
+        : "import"
+      : tab;
 
   if (loading) {
     return (
@@ -550,11 +522,6 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
       </Card>
     );
   }
-
-  const coin = Number(state?.week15?.coin ?? 30) || 30;
-  const wagerBonus = Number(state?.week15?.wagerBonus ?? 60) || 60;
-  const divisionBonus = Number(state?.week15?.divisionBonus ?? 30) || 30;
-  const champBonus = Number(state?.week15?.champBonus ?? 100) || 100;
 
   return (
     <div className="space-y-6">
@@ -566,8 +533,7 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
               <SmallBadge>Season {String(season)}</SmallBadge>
             </div>
             <p className="mt-3 text-sm text-muted">
-              Import Week 14 league winners, set each winner to <b>Keep</b> or <b>Wager</b>, then pull Week 15 points and
-              resolve.
+              Import Week 14 league winners, set each winner to <b>Keep</b> or <b>Wager</b>, then pull Week 15 points and resolve.
             </p>
           </div>
 
@@ -586,228 +552,270 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
         ) : null}
       </Card>
 
-      <Card>
-        <h2 className="text-lg font-semibold text-white">Step 1 — Import Week 14 League Winners</h2>
-        <p className="mt-2 text-sm text-muted">
-          Uses the leaderboard feed to find each league’s top points from Weeks 1–14.
-        </p>
+      <AdminStepTabs steps={steps} activeKey={activeTab} onChange={setTab} />
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          <PrimaryButton disabled={saving} onClick={importEligibility}>
-            Import Eligibility
-          </PrimaryButton>
-          <PrimaryButton disabled={saving} tone="muted" onClick={restoreBackup}>
-            Restore Week 14 Backup
-          </PrimaryButton>
-        </div>
+      {activeTab === "import" ? (
+        <Card>
+          <h2 className="text-lg font-semibold text-white">Step 1 — Import Week 14 League Winners</h2>
+          <p className="mt-2 text-sm text-muted">Uses the leaderboard feed to find each league’s top points from Weeks 1–14.</p>
 
-        <Divider />
-
-        <div className="flex flex-wrap gap-3 text-sm text-muted">
-          <div>Eligible Entries: <span className="text-foreground font-semibold">{totalEligibilityCount}</span></div>
-          <div>Keep: <span className="text-foreground font-semibold">{decisionsCount.keep}</span></div>
-          <div>Wager: <span className="text-foreground font-semibold">{decisionsCount.wager}</span></div>
-        </div>
-      </Card>
-
-      <Card>
-        <h2 className="text-lg font-semibold text-white">Step 2 — Rules (Editable)</h2>
-        <p className="mt-2 text-sm text-muted">These values are stored in the JSON so the public page stays in sync.</p>
-
-        <div className="mt-4 grid gap-3 sm:grid-cols-4">
-          <label className="text-sm text-muted">
-            Coin
-            <input
-              className="mt-1 w-full rounded-xl border border-subtle bg-panel px-3 py-2 text-sm text-foreground"
-              type="number"
-              value={coin}
-              onChange={(e) => setState((p) => ({ ...p, week15: { ...p.week15, coin: Number(e.target.value) || 0 } }))}
-            />
-          </label>
-          <label className="text-sm text-muted">
-            Wager Bonus
-            <input
-              className="mt-1 w-full rounded-xl border border-subtle bg-panel px-3 py-2 text-sm text-foreground"
-              type="number"
-              value={wagerBonus}
-              onChange={(e) => setState((p) => ({ ...p, week15: { ...p.week15, wagerBonus: Number(e.target.value) || 0 } }))}
-            />
-          </label>
-          <label className="text-sm text-muted">
-            Division Bonus
-            <input
-              className="mt-1 w-full rounded-xl border border-subtle bg-panel px-3 py-2 text-sm text-foreground"
-              type="number"
-              value={divisionBonus}
-              onChange={(e) => setState((p) => ({ ...p, week15: { ...p.week15, divisionBonus: Number(e.target.value) || 0 } }))}
-            />
-          </label>
-          <label className="text-sm text-muted">
-            Championship Bonus
-            <input
-              className="mt-1 w-full rounded-xl border border-subtle bg-panel px-3 py-2 text-sm text-foreground"
-              type="number"
-              value={champBonus}
-              onChange={(e) => setState((p) => ({ ...p, week15: { ...p.week15, champBonus: Number(e.target.value) || 0 } }))}
-            />
-          </label>
-        </div>
-
-        <div className="mt-4">
-          <PrimaryButton disabled={saving} onClick={() => save(state, "Saved rules.")}>Save Rules</PrimaryButton>
-        </div>
-      </Card>
-
-      <Card>
-        <h2 className="text-lg font-semibold text-white">Step 3 — Decisions (Keep vs Wager)</h2>
-        <p className="mt-2 text-sm text-muted">
-          Keepers keep their {fmtMoney(coin)} and can win Division (+{fmtMoney(divisionBonus)}) and Championship (+{fmtMoney(champBonus)}).
-          Wagerers put their {fmtMoney(coin)} into the pot and can win the pooled pot + +{fmtMoney(wagerBonus)}.
-        </p>
-
-        <Divider />
-
-        {divisions.length === 0 ? (
-          <p className="text-sm text-muted">No eligibility yet — import Week 14 winners first.</p>
-        ) : (
-          <div className="space-y-6">
-            {divisions.map((div) => {
-              const elig = sortEligByDisplayOrder(state?.eligibility?.byDivision?.[div] || [], div, leagueOrderIndex);
-              return (
-                <div key={div} className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-base font-semibold text-white">{div}</h3>
-                    <SmallBadge>{elig.length} leagues</SmallBadge>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-sm">
-                      <thead>
-                        <tr className="text-xs uppercase tracking-[0.2em] text-muted">
-                          <th className="text-left py-2 pr-4">League</th>
-                          <th className="text-left py-2 pr-4">Owner</th>
-                          <th className="text-right py-2 pr-4">Wk1-14</th>
-                          <th className="text-center py-2">Decision</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-subtle">
-                        {elig.map((e) => {
-                          const k = entryKey({ division: div, leagueName: e.leagueName, ownerName: e.ownerName });
-                          const cur = safeStr(state?.week15?.decisions?.[k]?.decision || "pending").trim() || "pending";
-                          return (
-                            <tr key={k}>
-                              <td className="py-2 pr-4 text-foreground">{safeStr(e?.leagueName).trim()}</td>
-                              <td className="py-2 pr-4 text-foreground">{safeStr(e?.ownerName).trim()}</td>
-                              <td className="py-2 pr-4 text-right text-muted">{Number(e?.total ?? 0) || 0}</td>
-                              <td className="py-2 text-center">
-                                <div className="inline-flex rounded-xl border border-subtle bg-panel/60 p-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => setDecision(k, "keep")}
-                                    className={`px-3 py-1 text-xs font-semibold rounded-lg transition ${cur === "keep" ? "bg-cyan-500/15 text-cyan-100 border border-cyan-400/30" : "text-muted hover:text-white"}`}
-                                  >
-                                    Keep
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setDecision(k, "wager")}
-                                    className={`px-3 py-1 text-xs font-semibold rounded-lg transition ${cur === "wager" ? "bg-amber-500/15 text-amber-100 border border-amber-400/30" : "text-muted hover:text-white"}`}
-                                  >
-                                    Wager
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setDecision(k, "pending")}
-                                    className={`px-3 py-1 text-xs font-semibold rounded-lg transition ${cur === "pending" ? "bg-panel text-foreground border border-subtle" : "text-muted hover:text-white"}`}
-                                  >
-                                    —
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <PrimaryButton disabled={saving} onClick={importEligibility}>
+              Import Eligibility
+            </PrimaryButton>
           </div>
-        )}
 
-        <div className="mt-5 flex flex-wrap gap-2">
-          <PrimaryButton disabled={saving} onClick={() => save(state, "Saved decisions.")}>Save Decisions</PrimaryButton>
-        </div>
-      </Card>
+          <Divider />
 
-      <Card>
-        <h2 className="text-lg font-semibold text-white">Step 4 — Pull Week 15 Points + Resolve</h2>
-        <p className="mt-2 text-sm text-muted">Pull Week 15 points from the leaderboard, then resolve winners.</p>
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          <PrimaryButton disabled={saving} onClick={pullWeek15Points}>Pull Week 15 Points</PrimaryButton>
-          <PrimaryButton disabled={saving} tone="muted" onClick={resolveWeek15}>Resolve Week 15</PrimaryButton>
-        </div>
-
-        <Divider />
-
-        <div className="grid gap-3 sm:grid-cols-3 text-sm">
-          <div className="rounded-xl border border-subtle bg-panel/60 p-3">
-            <div className="text-xs uppercase tracking-[0.2em] text-muted">Wager Pot</div>
-            <div className="mt-1 text-foreground font-semibold">{fmtMoney(state?.week15?.results?.wagerPot?.total ?? (decisionsCount.wager * coin + wagerBonus))}</div>
-            <div className="mt-1 text-xs text-muted">
-              Winner: {safeStr(state?.week15?.results?.wagerPot?.winner).trim() || "—"}
-            </div>
-          </div>
-          <div className="rounded-xl border border-subtle bg-panel/60 p-3">
-            <div className="text-xs uppercase tracking-[0.2em] text-muted">Championship Bonus</div>
-            <div className="mt-1 text-foreground font-semibold">{fmtMoney(champBonus)}</div>
-            <div className="mt-1 text-xs text-muted">
-              Winner: {safeStr(state?.week15?.results?.championship?.winner).trim() || "—"}
-            </div>
-          </div>
-          <div className="rounded-xl border border-subtle bg-panel/60 p-3">
-            <div className="text-xs uppercase tracking-[0.2em] text-muted">Resolved At</div>
-            <div className="mt-1 text-xs text-muted">{state?.week15?.resolvedAt ? new Date(state.week15.resolvedAt).toLocaleString() : "—"}</div>
-          </div>
-        </div>
-
-        {safeArray(state?.week15?.results?.wagerMisses).length > 0 && (
-          <>
-            <Divider />
+          <div className="flex flex-wrap gap-3 text-sm text-muted">
             <div>
-              <h3 className="text-sm font-semibold text-white">Who should have wagered?</h3>
-              <p className="mt-1 text-xs text-muted">
-                These managers chose <b>Keep</b> but scored enough in Week 15 to beat (or tie) the best wager score — meaning they could’ve won the pot + {fmtMoney(wagerBonus)}.
-              </p>
-
-              <div className="mt-3 overflow-x-auto">
-                <table className="min-w-[720px] w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-xs uppercase tracking-[0.2em] text-muted">
-                      <th className="py-2 pr-4">Division</th>
-                      <th className="py-2 pr-4">League</th>
-                      <th className="py-2 pr-4">Manager</th>
-                      <th className="py-2 text-right">Week 15 Pts</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {safeArray(state?.week15?.results?.wagerMisses).map((m) => (
-                      <tr key={safeStr(m?.key)} className="border-t border-subtle">
-                        <td className="py-2 pr-4 text-muted">{safeStr(m?.division)}</td>
-                        <td className="py-2 pr-4 text-muted">{safeStr(m?.leagueName)}</td>
-                        <td className="py-2 pr-4 text-foreground">{safeStr(m?.ownerName)}</td>
-                        <td className="py-2 text-right text-foreground font-semibold">{Number(m?.wk15 ?? 0) || 0}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              Eligible Entries: <span className="text-foreground font-semibold">{totalEligibilityCount}</span>
             </div>
-          </>
-        )}
-      </Card>
+            <div>
+              Keep: <span className="text-foreground font-semibold">{decisionsCount.keep}</span>
+            </div>
+            <div>
+              Wager: <span className="text-foreground font-semibold">{decisionsCount.wager}</span>
+            </div>
+          </div>
+        </Card>
+      ) : null}
+
+      {activeTab === "rules" ? (
+        <Card>
+          <h2 className="text-lg font-semibold text-white">Step 2 — Rules (Editable)</h2>
+          <p className="mt-2 text-sm text-muted">These values are stored in the JSON so the public page stays in sync.</p>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-4">
+            <label className="text-sm text-muted">
+              Coin
+              <input
+                className="mt-1 w-full rounded-xl border border-subtle bg-panel px-3 py-2 text-sm text-foreground"
+                type="number"
+                value={coin}
+                onChange={(e) => setState((p) => ({ ...p, week15: { ...p.week15, coin: Number(e.target.value) || 0 } }))}
+              />
+            </label>
+            <label className="text-sm text-muted">
+              Wager Bonus
+              <input
+                className="mt-1 w-full rounded-xl border border-subtle bg-panel px-3 py-2 text-sm text-foreground"
+                type="number"
+                value={wagerBonus}
+                onChange={(e) => setState((p) => ({ ...p, week15: { ...p.week15, wagerBonus: Number(e.target.value) || 0 } }))}
+              />
+            </label>
+            <label className="text-sm text-muted">
+              Division Bonus
+              <input
+                className="mt-1 w-full rounded-xl border border-subtle bg-panel px-3 py-2 text-sm text-foreground"
+                type="number"
+                value={divisionBonus}
+                onChange={(e) => setState((p) => ({ ...p, week15: { ...p.week15, divisionBonus: Number(e.target.value) || 0 } }))}
+              />
+            </label>
+            <label className="text-sm text-muted">
+              Championship Bonus
+              <input
+                className="mt-1 w-full rounded-xl border border-subtle bg-panel px-3 py-2 text-sm text-foreground"
+                type="number"
+                value={champBonus}
+                onChange={(e) => setState((p) => ({ ...p, week15: { ...p.week15, champBonus: Number(e.target.value) || 0 } }))}
+              />
+            </label>
+          </div>
+
+          <div className="mt-4">
+            <PrimaryButton
+              disabled={saving}
+              onClick={async () => {
+                await save(state, "Saved rules.");
+                setTab("decisions");
+              }}
+            >
+              Save Rules
+            </PrimaryButton>
+          </div>
+        </Card>
+      ) : null}
+
+      {activeTab === "decisions" ? (
+        <Card>
+          <h2 className="text-lg font-semibold text-white">Step 3 — Decisions (Keep vs Wager)</h2>
+          <p className="mt-2 text-sm text-muted">
+            Keepers keep their {fmtMoney(coin)} and can win Division (+{fmtMoney(divisionBonus)}) and Championship (+{fmtMoney(champBonus)}).
+            Wagerers put their {fmtMoney(coin)} into the pot and can win the pooled pot + +{fmtMoney(wagerBonus)}.
+          </p>
+
+          <Divider />
+
+          {divisions.length === 0 ? (
+            <p className="text-sm text-muted">No eligibility yet — import Week 14 winners first.</p>
+          ) : (
+            <div className="space-y-6">
+              {divisions.map((div) => {
+                const elig = sortEligDefault(state?.eligibility?.byDivision?.[div] || []);
+                return (
+                  <div key={div} className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-base font-semibold text-white">{div}</h3>
+                      <SmallBadge>{elig.length} leagues</SmallBadge>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead>
+                          <tr className="text-xs uppercase tracking-[0.2em] text-muted">
+                            <th className="text-left py-2 pr-4">League</th>
+                            <th className="text-left py-2 pr-4">Owner</th>
+                            <th className="text-right py-2 pr-4">Wk1-14</th>
+                            <th className="text-center py-2">Decision</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-subtle">
+                          {elig.map((e) => {
+                            const k = entryKey({ division: div, leagueName: e.leagueName, ownerName: e.ownerName });
+                            const cur = safeStr(state?.week15?.decisions?.[k]?.decision || "pending").trim() || "pending";
+                            return (
+                              <tr key={k}>
+                                <td className="py-2 pr-4 text-foreground">{safeStr(e?.leagueName).trim()}</td>
+                                <td className="py-2 pr-4 text-foreground">{safeStr(e?.ownerName).trim()}</td>
+                                <td className="py-2 pr-4 text-right text-muted">{Number(e?.total ?? 0) || 0}</td>
+                                <td className="py-2 text-center">
+                                  <div className="inline-flex rounded-xl border border-subtle bg-panel/60 p-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => setDecision(k, "keep")}
+                                      className={`px-3 py-1 text-xs font-semibold rounded-lg transition ${
+                                        cur === "keep"
+                                          ? "bg-cyan-500/15 text-cyan-100 border border-cyan-400/30"
+                                          : "text-muted hover:text-white"
+                                      }`}
+                                    >
+                                      Keep
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setDecision(k, "wager")}
+                                      className={`px-3 py-1 text-xs font-semibold rounded-lg transition ${
+                                        cur === "wager"
+                                          ? "bg-amber-500/15 text-amber-100 border border-amber-400/30"
+                                          : "text-muted hover:text-white"
+                                      }`}
+                                    >
+                                      Wager
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setDecision(k, "pending")}
+                                      className={`px-3 py-1 text-xs font-semibold rounded-lg transition ${
+                                        cur === "pending"
+                                          ? "bg-panel text-foreground border border-subtle"
+                                          : "text-muted hover:text-white"
+                                      }`}
+                                    >
+                                      —
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="mt-5 flex flex-wrap gap-2">
+            <PrimaryButton
+              disabled={saving}
+              onClick={async () => {
+                await save(state, "Saved decisions.");
+                setTab("resolve");
+              }}
+            >
+              Save Decisions
+            </PrimaryButton>
+          </div>
+        </Card>
+      ) : null}
+
+      {activeTab === "resolve" ? (
+        <Card>
+          <h2 className="text-lg font-semibold text-white">Step 4 — Pull Week 15 Points + Resolve</h2>
+          <p className="mt-2 text-sm text-muted">Pull Week 15 points from the leaderboard, then resolve winners.</p>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <PrimaryButton disabled={saving} onClick={pullWeek15Points}>
+              Pull Week 15 Points
+            </PrimaryButton>
+            <PrimaryButton disabled={saving} tone="muted" onClick={resolveWeek15}>
+              Resolve Week 15
+            </PrimaryButton>
+          </div>
+
+          <Divider />
+
+          <div className="grid gap-3 sm:grid-cols-3 text-sm">
+            <div className="rounded-xl border border-subtle bg-panel/60 p-3">
+              <div className="text-xs uppercase tracking-[0.2em] text-muted">Wager Pot</div>
+              <div className="mt-1 text-foreground font-semibold">
+                {fmtMoney(state?.week15?.results?.wagerPot?.total ?? decisionsCount.wager * coin + wagerBonus)}
+              </div>
+              <div className="mt-1 text-xs text-muted">Winner: {safeStr(state?.week15?.results?.wagerPot?.winner).trim() || "—"}</div>
+            </div>
+            <div className="rounded-xl border border-subtle bg-panel/60 p-3">
+              <div className="text-xs uppercase tracking-[0.2em] text-muted">Championship Bonus</div>
+              <div className="mt-1 text-foreground font-semibold">{fmtMoney(champBonus)}</div>
+              <div className="mt-1 text-xs text-muted">Winner: {safeStr(state?.week15?.results?.championship?.winner).trim() || "—"}</div>
+            </div>
+            <div className="rounded-xl border border-subtle bg-panel/60 p-3">
+              <div className="text-xs uppercase tracking-[0.2em] text-muted">Resolved At</div>
+              <div className="mt-1 text-xs text-muted">{state?.week15?.resolvedAt ? new Date(state.week15.resolvedAt).toLocaleString() : "—"}</div>
+            </div>
+          </div>
+
+          {safeArray(state?.week15?.results?.wagerMisses).length > 0 && (
+            <>
+              <Divider />
+              <div>
+                <h3 className="text-sm font-semibold text-white">Who should have wagered?</h3>
+                <p className="mt-1 text-xs text-muted">
+                  These managers chose <b>Keep</b> but scored enough in Week 15 to beat (or tie) the best wager score — meaning they could’ve won
+                  the pot + {fmtMoney(wagerBonus)}.
+                </p>
+
+                <div className="mt-3 overflow-x-auto">
+                  <table className="min-w-[720px] w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs uppercase tracking-[0.2em] text-muted">
+                        <th className="py-2 pr-4">Division</th>
+                        <th className="py-2 pr-4">League</th>
+                        <th className="py-2 pr-4">Manager</th>
+                        <th className="py-2 text-right">Week 15 Pts</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {safeArray(state?.week15?.results?.wagerMisses).map((m) => (
+                        <tr key={safeStr(m?.key)} className="border-t border-subtle">
+                          <td className="py-2 pr-4 text-muted">{safeStr(m?.division)}</td>
+                          <td className="py-2 pr-4 text-muted">{safeStr(m?.leagueName)}</td>
+                          <td className="py-2 pr-4 text-foreground">{safeStr(m?.ownerName)}</td>
+                          <td className="py-2 text-right text-foreground font-semibold">{Number(m?.wk15 ?? 0) || 0}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </Card>
+      ) : null}
     </div>
   );
 }

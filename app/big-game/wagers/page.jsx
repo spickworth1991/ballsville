@@ -10,7 +10,7 @@ export const metadata = {
 
 export default function BigGameWagersPage() {
   return (
-    <main className="no-chrome relative min-h-screen text-fg">
+    <main className="relative min-h-screen text-fg">
       <div className="pointer-events-none absolute inset-0 -z-10">
         <div className="hero-glow" />
       </div>

@@ -44,4 +44,6 @@ tmp
 make-icons.mjs
 wrangler.toml
 /unused/
+/public/wagers/*.json
+components.zip
 

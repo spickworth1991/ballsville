@@ -2,6 +2,23 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import AdminStepTabs from "../AdminStepTabs";
+
+function isLocalhost() {
+  if (typeof window === "undefined") return false;
+  const h = window.location.hostname;
+  return h === "localhost" || h === "127.0.0.1";
+}
+
+function getDynastyWagersLoadUrl(season) {
+  // local dev override
+  if (isLocalhost()) return "/wagers/dynasty.json";
+
+  // normal behavior
+  return `/api/admin/dynasty-wagers?season=${encodeURIComponent(season)}`;
+}
+
+
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
@@ -518,9 +535,7 @@ export default function DynastyWagersAdminClient() {
     setInfoMsg("");
     try {
       await loadLeagueOrderIndex(seasonToLoad);
-      const res = await fetch(`/api/admin/dynasty-wagers?season=${encodeURIComponent(seasonToLoad)}`, {
-        cache: "no-store",
-      });
+      const res = await fetch(getDynastyWagersLoadUrl(seasonToLoad), { cache: "no-store" });
       const saved = await res.json().catch(() => null);
       const next = normalizeLoadedDoc(saved, seasonToLoad);
       setDoc(next);
@@ -844,6 +859,21 @@ export default function DynastyWagersAdminClient() {
 
   const results = doc?.week17?.results || {};
 
+  const steps = useMemo(() => {
+    const hasFinalists = Boolean(doc?.eligibility?.computedAt) && Object.keys(doc?.eligibility?.byDivision || {}).length > 0;
+    const hasDecisions = Object.keys(doc?.week17?.decisions || {}).length > 0;
+    const wk17Resolved = Boolean(doc?.week17?.resolvedAt);
+    const wk18Resolved = Boolean(doc?.week18?.resolvedAt);
+    const hasResults = Boolean(doc?.week17?.results?.overall?.first?.winner) || wk17Resolved;
+    return [
+      { key: "finalists", label: "1) Finalists", done: hasFinalists },
+      { key: "decisions", label: "2) Decisions", done: hasDecisions },
+      { key: "resolve17", label: "3) Resolve Wk17", done: wk17Resolved },
+      { key: "resolve18", label: "4) Resolve Wk18", done: wk18Resolved },
+      { key: "results", label: "5) Results", done: hasResults },
+    ];
+  }, [doc]);
+
   return (
     <div className="space-y-6">
       <Card>
@@ -888,23 +918,7 @@ export default function DynastyWagersAdminClient() {
         )}
       </Card>
 
-      <div className="flex flex-wrap gap-2">
-        <PrimaryButton tone={step === "finalists" ? "accent" : "muted"} onClick={() => setStep("finalists")}>
-          1) Finalists
-        </PrimaryButton>
-        <PrimaryButton tone={step === "decisions" ? "accent" : "muted"} onClick={() => setStep("decisions")}>
-          2) Decisions
-        </PrimaryButton>
-        <PrimaryButton tone={step === "resolve17" ? "accent" : "muted"} onClick={() => setStep("resolve17")}>
-          3) Resolve Wk17
-        </PrimaryButton>
-        <PrimaryButton tone={step === "resolve18" ? "accent" : "muted"} onClick={() => setStep("resolve18")}>
-          4) Resolve Wk18
-        </PrimaryButton>
-        <PrimaryButton tone={step === "results" ? "accent" : "muted"} onClick={() => setStep("results")}>
-          5) Results
-        </PrimaryButton>
-      </div>
+      <AdminStepTabs steps={steps} activeKey={step} onChange={setStep} />
 
       {step === "finalists" && (
         <Card>

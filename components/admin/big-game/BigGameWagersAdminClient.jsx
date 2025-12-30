@@ -3,6 +3,22 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
+import AdminStepTabs from "../AdminStepTabs";
+
+function isLocalhost() {
+  if (typeof window === "undefined") return false;
+  const h = window.location.hostname;
+  return h === "localhost" || h === "127.0.0.1";
+}
+
+function getWagersLoadUrl(season) {
+  // local dev override: static JSON served from /public
+  if (isLocalhost()) return "/wagers/big-game.json";
+
+  // normal behavior: load from admin API (R2/Supabase/etc behind it)
+  return `/api/admin/biggame-wagers?season=${encodeURIComponent(season)}`;
+}
+
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
@@ -229,6 +245,7 @@ export default function BigGameWagersAdminClient({ season }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  const [tab, setTab] = useState("auto");
 
   async function adminToken() {
     try {
@@ -305,7 +322,7 @@ export default function BigGameWagersAdminClient({ season }) {
       setLoading(true);
       setMsg("");
       try {
-        const res = await fetch(`/api/admin/biggame-wagers?season=${encodeURIComponent(season)}`, {
+        const res = await fetch(getWagersLoadUrl(season), {
           cache: "no-store",
         });
         const saved = res.ok ? await res.json() : null;
@@ -785,6 +802,43 @@ export default function BigGameWagersAdminClient({ season }) {
   const canResolveW16 = Boolean(Object.keys(eligibilityByDivision || {}).length);
   const canResolveW17 = Boolean(safeArray(state?.championship?.byDivisionWinner).length);
 
+  const steps = useMemo(() => {
+    const hasEligibility = Boolean(state?.eligibility?.computedAt) && Object.keys(state?.eligibility?.byDivision || {}).length > 0;
+    const entryFee = Number(state?.divisionWagers?.entryFee || 25);
+    const anyEntries = Object.values(state?.divisionWagers?.byDivision || {}).some((d) => {
+      const p1 = d?.pot1?.entrants || {};
+      const p2 = d?.pot2?.entrants || {};
+      return Boolean(entryFee) && (Object.keys(p1).length > 0 || Object.keys(p2).length > 0);
+    });
+    const resolvedW16 = Boolean(state?.divisionWagers?.resolvedAt);
+    const seeded = safeArray(state?.championship?.byDivisionWinner).length > 0;
+    const resolvedW17 = Boolean(state?.championship?.resolvedAt);
+    return [
+      { key: "import", label: "1) Import Eligibility", done: hasEligibility },
+      { key: "entries", label: "2) Mark Entries", done: anyEntries },
+      { key: "week16", label: "3) Resolve Week 16", done: resolvedW16 },
+      { key: "week17", label: "4) Championship (Week 17)", done: resolvedW17 || seeded },
+    ];
+  }, [state]);
+
+  const activeTab =
+    tab === "auto"
+      ? state?.championship?.resolvedAt
+        ? "week17"
+        : safeArray(state?.championship?.byDivisionWinner).length
+        ? "week17"
+        : state?.divisionWagers?.resolvedAt
+        ? "week17"
+        : Object.keys(state?.divisionWagers?.byDivision || {}).some((div) => {
+            const d = state?.divisionWagers?.byDivision?.[div] || {};
+            return Object.keys(d?.pot1?.entrants || {}).length || Object.keys(d?.pot2?.entrants || {}).length;
+          })
+        ? "week16"
+        : state?.eligibility?.computedAt
+        ? "entries"
+        : "import"
+      : tab;
+
   if (loading) {
     return <div className="text-sm text-muted">Loading wager tracker…</div>;
   }
@@ -826,48 +880,30 @@ export default function BigGameWagersAdminClient({ season }) {
         ) : null}
 
         <Divider />
-
-        <div className="grid gap-3 md:grid-cols-3">
-          <div className="rounded-2xl border border-subtle bg-panel/40 p-4">
-            <div className="text-[11px] uppercase tracking-[0.25em] text-muted">Step 1</div>
-            <div className="mt-1 font-semibold">Import Week 15 league winners</div>
-            <p className="mt-2 text-xs text-muted">Pulls Week 1–15 totals from the leaderboard and picks the highest total in each league.</p>
-            <div className="mt-3">
-              <PrimaryButton onClick={importEligibilityWeek15} disabled={saving}>
-                Import Week 15 Eligibility
-              </PrimaryButton>
-            </div>
-            {state?.eligibility?.computedAt ? (
-              <div className="mt-3 text-xs text-muted">Last import: {new Date(state.eligibility.computedAt).toLocaleString()}</div>
-            ) : null}
-          </div>
-
-          <div className="rounded-2xl border border-subtle bg-panel/40 p-4">
-            <div className="text-[11px] uppercase tracking-[0.25em] text-muted">Step 2</div>
-            <div className="mt-1 font-semibold">Mark wager entries</div>
-            <p className="mt-2 text-xs text-muted">Pot #2 requires Pot #1. Checking Pot #2 will automatically check Pot #1.</p>
-            <div className="mt-3 text-xs text-muted">
-              Entry fee: <span className="text-foreground">{fmtMoney(state?.divisionWagers?.entryFee || 25)}</span> per pot.
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-subtle bg-panel/40 p-4">
-            <div className="text-[11px] uppercase tracking-[0.25em] text-muted">Step 3</div>
-            <div className="mt-1 font-semibold">Resolve Week 16 & Week 17</div>
-            <p className="mt-2 text-xs text-muted">Week 16 determines division pot winners. Week 17 determines the overall Big Game champion.</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <PrimaryButton onClick={resolveDivisionWagersWeek16} disabled={saving || !canResolveW16}>
-                Resolve Week 16
-              </PrimaryButton>
-              <PrimaryButton onClick={resolveChampionshipWeek17} disabled={saving || !canResolveW17}>
-                Resolve Week 17
-              </PrimaryButton>
-            </div>
-          </div>
-        </div>
+        <p className="text-sm text-muted">Use the tabs below to work through the tracker step-by-step.</p>
       </Card>
 
-      <Card>
+      <AdminStepTabs steps={steps} activeKey={activeTab} onChange={setTab} />
+
+      {activeTab === "import" ? (
+        <Card>
+          <h2 className="text-base font-semibold">Step 1 — Import Week 15 league winners</h2>
+          <p className="mt-2 text-sm text-muted">
+            Pulls Week 1–15 totals from the leaderboard and picks the highest total in each league.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <PrimaryButton onClick={importEligibilityWeek15} disabled={saving}>
+              Import Week 15 Eligibility
+            </PrimaryButton>
+          </div>
+          {state?.eligibility?.computedAt ? (
+            <div className="mt-3 text-xs text-muted">Last import: {new Date(state.eligibility.computedAt).toLocaleString()}</div>
+          ) : null}
+        </Card>
+      ) : null}
+
+      {activeTab === "entries" || activeTab === "week16" ? (
+        <Card>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h2 className="text-base font-semibold">Division Wagers</h2>
           <div className="flex items-center gap-2 text-xs text-muted">
@@ -1010,7 +1046,23 @@ export default function BigGameWagersAdminClient({ season }) {
           </PrimaryButton>
         </div>
       </Card>
+      ) : null}
 
+      {activeTab === "week16" ? (
+        <Card>
+          <h2 className="text-base font-semibold">Resolve Week 16</h2>
+          <p className="mt-2 text-sm text-muted">
+            This pulls Week 16 points, determines pot winners per division (among entrants), and records pools + winners.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <PrimaryButton onClick={resolveDivisionWagersWeek16} disabled={saving || !canResolveW16}>
+              Resolve Week 16
+            </PrimaryButton>
+          </div>
+        </Card>
+      ) : null}
+
+      {activeTab === "week17" ? (
       <Card>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h2 className="text-base font-semibold">Big Game Championship</h2>
@@ -1160,6 +1212,7 @@ export default function BigGameWagersAdminClient({ season }) {
           </div>
         </div>
       </Card>
+      ) : null}
     </div>
   );
 }
