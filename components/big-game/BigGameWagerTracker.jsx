@@ -170,93 +170,107 @@ function normalizeFromAdminDoc(doc, leagueOrderIndex) {
 
   const mainPotWagers = mainEntrants.length * 50;
 
-  // Helper: winner among real entrants for a pot (already computed above)
     const mainWinnerPts = Number(mainWinnerRow?.wk17 ?? NaN);
     const side1WinnerPts = Number(side1WinnerRow?.wk17 ?? NaN);
     const side2WinnerPts = Number(side2WinnerRow?.wk17 ?? NaN);
 
-    function pickCouldHaveWon({ label, threshold, minWager, maxWagerExclusive }, realWinnerPts) {
-      if (!Number.isFinite(realWinnerPts)) return null;
+    // Build the "real world" winners (who actually won each pot)
+    const real = {
+      main: { threshold: 50, winner: mainWinnerRow, winnerPts: mainWinnerPts },
+      side1: { threshold: 100, winner: side1WinnerRow, winnerPts: side1WinnerPts },
+      side2: { threshold: 150, winner: side2WinnerRow, winnerPts: side2WinnerPts },
+    };
 
-      const candidates = seeded.filter((r) => {
-        const w = Number(r?.wager ?? 0) || 0;
-        return w >= minWager && w < maxWagerExclusive;
-      });
+    // Counterfactual: evaluate each person individually as if THEY maxed to 150,
+    // while everyone else’s wager remains unchanged.
+    function evalIfMaxed(person) {
+      const meKey = safeStr(person?.entryKey).trim();
+      if (!meKey) return null;
 
-      const best = pickWinner(candidates);
-      if (!best) return null;
+      const mePts = Number(person?.wk17 ?? 0) || 0;
 
-      const pts = Number(best.wk17 ?? 0) || 0;
-      if (!(pts > realWinnerPts)) return null;
+      // helper: would I be eligible for a pot if I maxed?
+      const qualifies = (threshold) => threshold <= 150;
 
+      // helper: would I beat the real winner (keeping everyone else same)?
+      const beatsReal = (pot) => {
+        const wPts = Number(pot?.winnerPts ?? NaN);
+        if (!Number.isFinite(wPts)) return false; // pot not resolved / no winner
+        return mePts > wPts;
+      };
+
+      const wins = {
+        main: qualifies(50) && beatsReal(real.main),
+        side1: qualifies(100) && beatsReal(real.side1),
+        side2: qualifies(150) && beatsReal(real.side2),
+      };
+
+      return {
+        ownerName: person.ownerName || "",
+        division: person.division || "",
+        entryKey: meKey,
+        pts: mePts,
+        maxWager: 150,
+        wins, // {main, side1, side2}
+        swept: Boolean(wins.main && wins.side1 && wins.side2),
+      };
+    }
+
+    const hypotheticals = seeded
+      .map(evalIfMaxed)
+      .filter(Boolean)
+      // Only show interesting cases: wins at least one pot they didn’t actually qualify for
+      .filter((r) => r.wins.main || r.wins.side1 || r.wins.side2);
+
+    // For the old UI fields (main/side1/side2), pick the "most interesting" single line per pot:
+    // highest points among people who would win that pot if they maxed.
+    function bestForPot(potKey) {
+      const cand = hypotheticals.filter((h) => h.wins[potKey]);
+      if (!cand.length) return null;
+      cand.sort((a, b) => b.pts - a.pts || a.ownerName.localeCompare(b.ownerName));
+      const best = cand[0];
+      const threshold = potKey === "main" ? 50 : potKey === "side1" ? 100 : 150;
+      const label = potKey === "main" ? "the Main Pot" : potKey === "side1" ? "Side Pot 1" : "Side Pot 2";
       return {
         label,
         threshold,
-        ownerName: best.ownerName || "",
-        division: best.division || "",
-        pts,
-        wager: Number(best.wager ?? 0) || 0,
-      };
-    }
-
-    // keep your originals (top missed winner per pot)
-    const couldMain = pickCouldHaveWon(
-      { label: "the Main Pot", threshold: 50, minWager: 0, maxWagerExclusive: 50 },
-      mainWinnerPts
-    );
-
-    const couldSide1 = pickCouldHaveWon(
-      { label: "Side Pot 1", threshold: 100, minWager: 50, maxWagerExclusive: 100 },
-      side1WinnerPts
-    );
-
-    const couldSide2 = pickCouldHaveWon(
-      { label: "Side Pot 2", threshold: 150, minWager: 100, maxWagerExclusive: 150 },
-      side2WinnerPts
-    );
-
-    // “Would have swept” ONLY if the same person could have won ALL THREE pots
-    const couldSweepOwner =
-      couldMain?.ownerName &&
-      couldMain.ownerName === couldSide1?.ownerName &&
-      couldMain.ownerName === couldSide2?.ownerName
-        ? couldMain.ownerName
-        : "";
-
-    // NEW: include ONE additional “missed winner” line per pot
-    // specifically for a person who didn't bet at all (wager === 0)
-    // (and only if they would’ve beaten the real winner and are NOT already the top missed winner)
-    function pickExtraNoBetWinner(threshold, realWinnerPts, topOwnerName) {
-      if (!Number.isFinite(realWinnerPts)) return null;
-
-      const best = pickWinner(
-        seeded.filter((r) => {
-          const w = Number(r?.wager ?? 0) || 0;
-          return w === 0 && w < threshold; // technically always true, but keeps intent clear
-        })
-      );
-
-      if (!best) return null;
-
-      const pts = Number(best.wk17 ?? 0) || 0;
-      if (!(pts > realWinnerPts)) return null;
-
-      const ownerName = safeStr(best.ownerName).trim();
-      if (!ownerName) return null;
-      if (topOwnerName && ownerName === topOwnerName) return null;
-
-      return {
-        ownerName,
-        division: best.division || "",
-        pts,
+        ownerName: best.ownerName,
+        division: best.division,
+        pts: best.pts,
         wager: 0,
-        threshold,
+        entryKey: best.entryKey,
+        maxWager: 150,
       };
+
     }
 
-    const extraMainNoBet = pickExtraNoBetWinner(50, mainWinnerPts, couldMain?.ownerName || "");
-    const extraSide1NoBet = pickExtraNoBetWinner(100, side1WinnerPts, couldSide1?.ownerName || "");
-    const extraSide2NoBet = pickExtraNoBetWinner(150, side2WinnerPts, couldSide2?.ownerName || "");
+    const couldMain = bestForPot("main");
+    const couldSide1 = bestForPot("side1");
+    const couldSide2 = bestForPot("side2");
+
+    // Sweep: show the highest scoring person who would sweep if they maxed
+    const sweepers = hypotheticals.filter((h) => h.swept);
+    sweepers.sort((a, b) => b.pts - a.pts || a.ownerName.localeCompare(b.ownerName));
+    const couldSweepOwner = sweepers.length ? sweepers[0].ownerName : "";
+
+    // Also include a full per-person breakdown so you can display JoeJoe “would win Side Pots but not Main”
+    const perPerson = hypotheticals
+      .slice()
+      .sort((a, b) => b.pts - a.pts || a.ownerName.localeCompare(b.ownerName))
+      .map((h) => ({
+        ownerName: h.ownerName,
+        division: h.division,
+        pts: h.pts,
+        originalWager: Number(seeded.find((x) => x.entryKey === h.entryKey)?.wager ?? 0) || 0,
+        wouldWin: {
+          main: h.wins.main,
+          side1: h.wins.side1,
+          side2: h.wins.side2,
+        },
+        swept: h.swept,
+        maxWager: 150,
+      }));
+      
 
 
 
@@ -303,19 +317,13 @@ return {
     ],
 
 
-    couldHaveWon: {
-      sweepOwner: couldSweepOwner,
-      main: couldMain,
-      side1: couldSide1,
-      side2: couldSide2,
-
-      // NEW (optional)
-      extras: {
-        mainNoBet: extraMainNoBet,
-        side1NoBet: extraSide1NoBet,
-        side2NoBet: extraSide2NoBet,
-      },
-    },
+        couldHaveWon: {
+          sweepOwner: couldSweepOwner,
+          main: couldMain,
+          side1: couldSide1,
+          side2: couldSide2,
+          perPerson,
+        },
 
   },
   
@@ -519,20 +527,13 @@ function TrackerInner({ season: seasonProp, version }) {
                 const main = mw?.main;
                 const side1 = mw?.side1;
                 const side2 = mw?.side2;
+                const pp = safeArray(mw?.perPerson);
 
-                const extras = mw?.extras || {};
-                const extraMainNoBet = extras?.mainNoBet;
-                const extraSide1NoBet = extras?.side1NoBet;
-                const extraSide2NoBet = extras?.side2NoBet;
-
-                // Show nothing if we don't have any missed-winner info
                 const hasAny = Boolean(
                   (main?.ownerName && main?.threshold) ||
                     (side1?.ownerName && side1?.threshold) ||
                     (side2?.ownerName && side2?.threshold) ||
-                    (extraMainNoBet?.ownerName && extraMainNoBet?.threshold) ||
-                    (extraSide1NoBet?.ownerName && extraSide1NoBet?.threshold) ||
-                    (extraSide2NoBet?.ownerName && extraSide2NoBet?.threshold)
+                    pp.length
                 );
                 if (!hasAny) return null;
 
@@ -542,23 +543,27 @@ function TrackerInner({ season: seasonProp, version }) {
                   { label: "Side Pot 2", obj: side2 },
                 ].filter((r) => r.obj?.ownerName);
 
-                const extraRows = [
-                  { label: "the Main Pot", obj: extraMainNoBet },
-                  { label: "Side Pot 1", obj: extraSide1NoBet },
-                  { label: "Side Pot 2", obj: extraSide2NoBet },
-                ].filter((r) => r.obj?.ownerName);
-
                 const renderLine = (label, obj) => {
                   if (!obj?.ownerName) return null;
+
+                  const originalWager =
+                    pp.length
+                      ? Number(pp.find((p) => p.ownerName === obj.ownerName && p.division === obj.division)?.originalWager ?? 0) || 0
+                      : Number(obj.wager ?? 0) || 0;
+
+                  const maxTo = Number(obj?.maxWager ?? 150) || 150;
+
                   return (
-                    <div key={`${label}|||${obj.ownerName}`}>
+                    <div key={`${label}|||${obj.ownerName}|||${obj.division || ""}`}>
                       • <span className="text-foreground font-semibold">{obj.ownerName}</span>{" "}
                       {obj.division ? <span className="text-muted">({obj.division})</span> : null}{" "}
                       <span className="text-muted">
-                        would’ve won {label} if they qualified ({fmtMoney(obj.threshold)} threshold) with{" "}
+                        would’ve won {label} if they{" "}
+                        <span className="text-foreground font-semibold">maxed to {fmtMoney(maxTo)}</span>{" "}
+                        (beat the {fmtMoney(obj.threshold)} threshold) with{" "}
                       </span>
                       <span className="text-foreground font-semibold">{Number(obj.pts || 0).toFixed(2)}</span>{" "}
-                      <span className="text-muted">pts (they wagered {fmtMoney(obj.wager || 0)}).</span>
+                      <span className="text-muted">pts (original wager {fmtMoney(originalWager)}).</span>
                     </div>
                   );
                 };
@@ -579,27 +584,43 @@ function TrackerInner({ season: seasonProp, version }) {
                       <span className="text-muted">Here’s who missed out by not betting enough:</span>
                     )}
 
-                    {(rows.length || extraRows.length) ? (
+                    {rows.length ? (
                       <div className="mt-2 text-xs text-muted">
                         {sweepOwner ? <div>Breakdown:</div> : null}
+                        <div className="mt-2 flex flex-col gap-1">{rows.map(({ label, obj }) => renderLine(label, obj))}</div>
+                      </div>
+                    ) : null}
 
-                        <div className="mt-2 flex flex-col gap-1">
-                          {rows.map(({ label, obj }) => renderLine(label, obj))}
+                    {pp.length ? (
+                      <div className="mt-3 pt-3 border-t border-subtle/60">
+                        <div className="text-[11px] uppercase tracking-[0.25em] text-muted">If each person maxed individually</div>
+                        <div className="mt-2 flex flex-col gap-1 text-xs text-muted">
+                          {pp.slice(0, 8).map((p) => {
+                            const wins = [];
+                            if (p?.wouldWin?.main) wins.push("Main");
+                            if (p?.wouldWin?.side1) wins.push("Side 1");
+                            if (p?.wouldWin?.side2) wins.push("Side 2");
+                            if (!wins.length) return null;
+
+                            return (
+                              <div key={`${p.ownerName}|||${p.division}|||${p.pts}`}>
+                                • <span className="text-foreground font-semibold">{p.ownerName}</span>{" "}
+                                {p.division ? <span className="text-muted">({p.division})</span> : null}{" "}
+                                <span className="text-muted">
+                                  would win <span className="text-foreground font-semibold">{wins.join(" + ")}</span> by maxing to{" "}
+                                  {fmtMoney(p.maxWager)} (scored{" "}
+                                </span>
+                                <span className="text-foreground font-semibold">{Number(p.pts || 0).toFixed(2)}</span>{" "}
+                                <span className="text-muted">pts; originally wagered {fmtMoney(p.originalWager)}).</span>
+                              </div>
+                            );
+                          })}
                         </div>
-
-                        {/* ✅ Only add the “didn't bet” extra lines when a sweepOwner exists */}
-                        
-                          <div className="mt-2 flex flex-col gap-1">
-                            {extraRows.map(({ label, obj }) => renderLine(label, obj))}
-                          </div>
-                        
                       </div>
                     ) : null}
                   </div>
                 );
               })()}
-
-
 
             </div>
           </div>
