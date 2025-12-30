@@ -524,55 +524,32 @@ function TrackerInner({ season: seasonProp, version }) {
                 const mw = normalized?.championship?.couldHaveWon || {};
                 const sweepOwner = safeStr(mw?.sweepOwner).trim();
 
-                const main = mw?.main;
-                const side1 = mw?.side1;
-                const side2 = mw?.side2;
-                const pp = safeArray(mw?.perPerson);
+                const ppAll = safeArray(mw?.perPerson);
 
-                const hasAny = Boolean(
-                  (main?.ownerName && main?.threshold) ||
-                    (side1?.ownerName && side1?.threshold) ||
-                    (side2?.ownerName && side2?.threshold) ||
-                    pp.length
-                );
+                // Only show people who could win at least one pot
+                const interesting = ppAll.filter((p) => p?.wouldWin?.main || p?.wouldWin?.side1 || p?.wouldWin?.side2);
+
+                // For the "maxed individually" list, don't repeat the sweepOwner from the fun fact line
+                const pp = sweepOwner ? interesting.filter((p) => safeStr(p?.ownerName).trim() !== sweepOwner) : interesting;
+
+                const hasAny = Boolean(sweepOwner || pp.length);
                 if (!hasAny) return null;
 
-                const rows = [
-                  { label: "the Main Pot", obj: main },
-                  { label: "Side Pot 1", obj: side1 },
-                  { label: "Side Pot 2", obj: side2 },
-                ].filter((r) => r.obj?.ownerName);
+                const winLabel = (p) => {
+                  const wins = [];
+                  if (p?.wouldWin?.main) wins.push("Main");
+                  if (p?.wouldWin?.side1) wins.push("Side 1");
+                  if (p?.wouldWin?.side2) wins.push("Side 2");
 
-                const renderLine = (label, obj) => {
-                  if (!obj?.ownerName) return null;
-
-                  const originalWager =
-                    pp.length
-                      ? Number(pp.find((p) => p.ownerName === obj.ownerName && p.division === obj.division)?.originalWager ?? 0) || 0
-                      : Number(obj.wager ?? 0) || 0;
-
-                  const maxTo = Number(obj?.maxWager ?? 150) || 150;
-
-                  return (
-                    <div key={`${label}|||${obj.ownerName}|||${obj.division || ""}`}>
-                      • <span className="text-foreground font-semibold">{obj.ownerName}</span>{" "}
-                      {obj.division ? <span className="text-muted">({obj.division})</span> : null}{" "}
-                      <span className="text-muted">
-                        would’ve won {label} if they{" "}
-                        <span className="text-foreground font-semibold">maxed to {fmtMoney(maxTo)}</span>{" "}
-                        (beat the {fmtMoney(obj.threshold)} threshold) with{" "}
-                      </span>
-                      <span className="text-foreground font-semibold">{Number(obj.pts || 0).toFixed(2)}</span>{" "}
-                      <span className="text-muted">pts (original wager {fmtMoney(originalWager)}).</span>
-                    </div>
-                  );
+                  if (wins.length === 3) return "Sweep (Main + Side 1 + Side 2)";
+                  return wins.join(" + ");
                 };
 
                 return (
                   <div className="mt-3 rounded-xl border border-subtle bg-panel/60 px-4 py-3 text-sm">
-                    <span className="text-muted">Fun fact:</span>{" "}
                     {sweepOwner ? (
                       <>
+                        <span className="text-muted">Fun fact:</span>{" "}
                         <span className="text-foreground font-semibold">{sweepOwner}</span>{" "}
                         <span className="text-muted">would have</span>{" "}
                         <span className="text-foreground font-semibold">swept</span>{" "}
@@ -580,41 +557,34 @@ function TrackerInner({ season: seasonProp, version }) {
                           the championship pots (Main + Side Pot 1 + Side Pot 2) if they had maxed their bet.
                         </span>
                       </>
-                    ) : (
-                      <span className="text-muted">Here’s who missed out by not betting enough:</span>
-                    )}
-
-                    {rows.length ? (
-                      <div className="mt-2 text-xs text-muted">
-                        {sweepOwner ? <div>Breakdown:</div> : null}
-                        <div className="mt-2 flex flex-col gap-1">{rows.map(({ label, obj }) => renderLine(label, obj))}</div>
-                      </div>
                     ) : null}
 
                     {pp.length ? (
-                      <div className="mt-3 pt-3 border-t border-subtle/60">
-                        <div className="text-[11px] uppercase tracking-[0.25em] text-muted">If each person maxed individually</div>
+                      <div className={`${sweepOwner ? "mt-3 pt-3 border-t border-subtle/60" : ""}`}>
+                        <div className="text-[11px] uppercase tracking-[0.25em] text-muted">If these owners maxed individually</div>
                         <div className="mt-2 flex flex-col gap-1 text-xs text-muted">
-                          {pp.slice(0, 8).map((p) => {
-                            const wins = [];
-                            if (p?.wouldWin?.main) wins.push("Main");
-                            if (p?.wouldWin?.side1) wins.push("Side 1");
-                            if (p?.wouldWin?.side2) wins.push("Side 2");
-                            if (!wins.length) return null;
+                          {pp
+                            .slice()
+                            .sort((a, b) => Number(b?.pts || 0) - Number(a?.pts || 0) || safeStr(a?.ownerName).localeCompare(safeStr(b?.ownerName)))
+                            .slice(0, 8)
+                            .map((p) => {
+                              const label = winLabel(p);
+                              if (!label) return null;
 
-                            return (
-                              <div key={`${p.ownerName}|||${p.division}|||${p.pts}`}>
-                                • <span className="text-foreground font-semibold">{p.ownerName}</span>{" "}
-                                {p.division ? <span className="text-muted">({p.division})</span> : null}{" "}
-                                <span className="text-muted">
-                                  would win <span className="text-foreground font-semibold">{wins.join(" + ")}</span> by maxing to{" "}
-                                  {fmtMoney(p.maxWager)} (scored{" "}
-                                </span>
-                                <span className="text-foreground font-semibold">{Number(p.pts || 0).toFixed(2)}</span>{" "}
-                                <span className="text-muted">pts; originally wagered {fmtMoney(p.originalWager)}).</span>
-                              </div>
-                            );
-                          })}
+                              return (
+                                <div key={`${p.ownerName}|||${p.division}|||${p.pts}`}>
+                                  • <span className="text-foreground font-semibold">{p.ownerName}</span>{" "}
+                                  {p.division ? <span className="text-muted">({p.division})</span> : null}{" "}
+                                  <span className="text-muted">
+                                    could have won{" "}
+                                    <span className="text-foreground font-semibold">{label}</span>{" "}
+                                    by maxing to {fmtMoney(p.maxWager)} (scored{" "}
+                                  </span>
+                                  <span className="text-foreground font-semibold">{Number(p.pts || 0).toFixed(2)}</span>{" "}
+                                  <span className="text-muted">pts; originally wagered {fmtMoney(p.originalWager)}).</span>
+                                </div>
+                              );
+                            })}
                         </div>
                       </div>
                     ) : null}
