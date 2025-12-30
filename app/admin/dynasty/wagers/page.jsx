@@ -4,21 +4,19 @@
 import AdminGuard from "@/components/AdminGuard";
 import AdminNav from "@/components/admin/AdminNav";
 import DynastyWagersAdminClient from "@/components/admin/dynasty/DynastyWagersAdminClient";
+import { CURRENT_SEASON } from "@/lib/season";
 
 export default function AdminDynastyWagersPage() {
   return (
     <AdminGuard>
       <section className="section">
-        <div className="container-site max-w-6xl px-4 sm:px-6 lg:px-8 space-y-8">
+        <div className="container-site max-w-6xl space-y-8">
           <AdminNav
             eyebrow="Admin · Dynasty"
             title="Dynasty Wager Tracker"
-            description="Import Week 17 finalists, set wager/bank decisions, and resolve bonuses."
-            publicHref="/dynasty/wagers"
-            publicLabel="← View Public Dynasty Wager Tracker"
+            description="Step 1: pick finalists. Step 2: set bank/wager. Step 3: resolve Week 17 payouts."
           />
-
-          <DynastyWagersAdminClient />
+          <DynastyWagersAdminClient season={CURRENT_SEASON} />
         </div>
       </section>
     </AdminGuard>

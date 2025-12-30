@@ -135,7 +135,7 @@ export default function DynastyIntroPage() {
                   <Link prefetch={false} href="/dynasty" className="btn btn-outline">
                     ← Back to Dynasty
                   </Link>
-                  <Link prefetch={false} href="/dynasty/wagering-demo" className="btn btn-primary">
+                  <Link prefetch={false} href="/dynasty/wagers" className="btn btn-primary">
                     Wagering Demo →
                   </Link>
                 </div>
@@ -255,7 +255,7 @@ export default function DynastyIntroPage() {
 
               <Link
                 prefetch={false}
-                href="/dynasty/wagering-demo"
+                href="/dynasty/wagers"
                 className="rounded-2xl border border-subtle bg-subtle-surface p-4 hover:border-accent transition"
               >
                 <p className="text-sm font-semibold">See the Wagering Demo</p>

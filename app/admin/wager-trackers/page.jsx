@@ -41,7 +41,7 @@ export default function AdminWagerTrackersPage() {
               className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
             >
               <h2 className="text-lg font-semibold text-primary">🏆 Dynasty Wager Tracker</h2>
-              <p className="mt-1 text-sm text-muted">Import finalists, set wager/bank, and resolve Week 17 bonuses.</p>
+              <p className="mt-1 text-sm text-muted">Select finalists, set bank/wager, resolve Week 17 bonuses.</p>
             </Link>
           </div>
 

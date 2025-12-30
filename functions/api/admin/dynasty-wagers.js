@@ -1,13 +1,14 @@
 // functions/api/admin/dynasty-wagers.js
 //
-// Dynasty Wager Tracker (automated-style, like Big Game / Mini Leagues)
+// Admin CRUD for Dynasty Wagers tracker (stored in R2).
 //
 // GET  /api/admin/dynasty-wagers?season=2025
-// PUT  /api/admin/dynasty-wagers?season=2025   (body = full wagers doc)
+// PUT  /api/admin/dynasty-wagers?season=2025   (JSON body = full doc)
 //
-// Storage keys:
-// - Current doc:  data/dynasty/wagers_<season>.json
-// - Manifest:     data/manifests/dynasty-wagers_<season>.json
+// Notes
+// - Uses the SAME R2 binding as the other admin endpoints: env.admin_bucket
+//   (ensureR2 falls back to env.admin_bucket or env if bound directly).
+// - Supabase is ONLY used to verify the admin JWT (Bearer token).
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -19,90 +20,111 @@ function json(data, status = 200) {
   });
 }
 
-function bad(msg, status = 400) {
-  return json({ ok: false, error: msg }, status);
-}
-
 function ensureR2(env) {
-  const b = env.ADMIN_BUCKET || env.admin_bucket || env;
-  if (!b || typeof b.get !== "function" || typeof b.put !== "function") {
+  const b = env?.ADMIN_BUCKET || env;
+  if (!b || typeof b.get !== "function") {
     throw new Error(
-      "R2 bucket binding not found. Expected env.ADMIN_BUCKET (or env.admin_bucket) to be an R2 binding."
+      "Missing R2 binding: expected env.admin_bucket (same binding used by other admin endpoints)."
     );
   }
   return b;
 }
 
-function nowIso() {
-  return new Date().toISOString();
-}
+async function requireAdmin(request, env) {
+  const auth = request.headers.get("authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
 
-function keyForSeason(season) {
-  const s = String(season).trim();
-  return {
-    current: `data/dynasty/wagers_${s}.json`,
-    manifest: `data/manifests/dynasty-wagers_${s}.json`,
-  };
-}
+  if (!token) return { ok: false, status: 401, error: "Missing Bearer token" };
 
-async function readJsonFromR2(bucket, key) {
-  const obj = await bucket.get(key);
-  if (!obj) return null;
-  try {
-    const text = await obj.text();
-    return JSON.parse(text);
-  } catch {
-    return null;
+  // Same envs used elsewhere for admin auth
+  const url = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
+  const anon = env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anon) return { ok: false, status: 500, error: "Missing SUPABASE_URL / SUPABASE_ANON_KEY" };
+
+  const res = await fetch(`${url}/auth/v1/user`, {
+    headers: {
+      apikey: anon,
+      authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!res.ok) return { ok: false, status: 401, error: "Unauthorized" };
+  const user = await res.json().catch(() => null);
+
+  // Allow-list based on email
+  const allow = (env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  const email = String(user?.email || "").toLowerCase();
+
+  if (!email || (allow.length && !allow.includes(email))) {
+    return { ok: false, status: 403, error: "Forbidden" };
   }
+
+  return { ok: true, email };
 }
 
-async function touchManifest(bucket, manifestKey, season) {
-  const payload = {
-    season: Number(season) || season,
-    updatedAt: nowIso(),
-  };
-  await bucket.put(manifestKey, JSON.stringify(payload, null, 2), {
-    httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "no-store" },
+async function touchManifest(env, season) {
+  const r2 = ensureR2(env);
+  const key = `data/manifests/dynasty-wagers_${season}.json`;
+  const body = JSON.stringify(
+    { section: "dynasty-wagers", season, updatedAt: new Date().toISOString() },
+    null,
+    2
+  );
+  await r2.put(key, body, {
+    httpMetadata: {
+      contentType: "application/json; charset=utf-8",
+      cacheControl: "no-store",
+    },
   });
 }
 
-export async function onRequest(context) {
+function keyForSeason(season) {
+  return `data/dynasty/wagers_${season}.json`;
+}
+
+export async function onRequest({ request, env }) {
   try {
-    const { request, env } = context;
+    const auth = await requireAdmin(request, env);
+    if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
+
+    const r2 = ensureR2(env);
     const url = new URL(request.url);
+    const season = Number(url.searchParams.get("season") || "");
+    if (!Number.isFinite(season) || season < 2000) {
+      return json({ ok: false, error: "Missing/invalid season" }, 400);
+    }
 
-    const season = url.searchParams.get("season");
-    if (!season) return bad("Missing ?season=", 400);
-
-    const bucket = ensureR2(env);
-    const keys = keyForSeason(season);
+    const key = keyForSeason(season);
 
     if (request.method === "GET") {
-      const data = await readJsonFromR2(bucket, keys.current);
-      if (!data) return json({ ok: true, data: null, key: keys.current }, 200);
-      return json({ ok: true, data, key: keys.current }, 200);
+      const obj = await r2.get(key);
+      if (!obj) return json({ ok: true, season, data: null }, 200);
+      const text = await obj.text();
+      const parsed = JSON.parse(text);
+      return json({ ok: true, season, data: parsed || null }, 200);
     }
 
     if (request.method === "PUT") {
-      let body;
-      try {
-        body = await request.json();
-      } catch {
-        return bad("Invalid JSON body", 400);
-      }
-      if (!body || typeof body !== "object") return bad("Body must be a JSON object", 400);
+      const body = await request.json().catch(() => ({}));
+      // Always stamp season/updatedAt on the doc.
+      const payload = {
+        ...(body && typeof body === "object" ? body : {}),
+        season,
+        updatedAt: new Date().toISOString(),
+      };
 
-      await bucket.put(keys.current, JSON.stringify(body, null, 2), {
-        httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "no-store" },
+      await r2.put(key, JSON.stringify(payload, null, 2), {
+        httpMetadata: { contentType: "application/json; charset=utf-8" },
       });
-
-      await touchManifest(bucket, keys.manifest, season);
-
-      return json({ ok: true, data: body, savedKey: keys.current }, 200);
+      await touchManifest(env, season);
+      return json({ ok: true, season, key }, 200);
     }
 
-    return bad(`Method not allowed: ${request.method}`, 405);
+    return json({ ok: false, error: "Method not allowed" }, 405);
   } catch (e) {
-    return json({ ok: false, error: e?.message || String(e) }, 500);
+    return json({ ok: false, error: e?.message || "Server error" }, 500);
   }
 }

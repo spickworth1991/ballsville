@@ -50,8 +50,8 @@ export default function DynastyRostersClient() {
                 <Link prefetch={false} href="/dynasty" className="btn btn-outline">
                   ← Back to Dynasty
                 </Link>
-                <Link prefetch={false} href="/dynasty/wagering-demo" className="btn btn-outline">
-                  Wagering Demo
+                <Link prefetch={false} href="/dynasty/wagers" className="btn btn-outline">
+                  Wagering
                 </Link>
               </div>
             </div>

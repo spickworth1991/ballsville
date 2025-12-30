@@ -4,7 +4,7 @@ import { CURRENT_SEASON } from "@/lib/season";
 
 export const metadata = {
   title: "Dynasty Wager Tracker | Ballsville",
-  description: "Track Dynasty finalists, Week 17 wager decisions, and bonuses.",
+  description: "Track Dynasty finalists, wagers, and Week 17 bonuses.",
 };
 
 export default function DynastyWagersPage() {
@@ -21,7 +21,7 @@ export default function DynastyWagersPage() {
               <p className="text-xs uppercase tracking-[0.35em] text-accent">BALLSVILLE</p>
               <h1 className="mt-2 text-2xl sm:text-3xl font-semibold text-white">Dynasty Wager Tracker</h1>
               <p className="mt-2 text-sm text-muted">
-                Week 17 finalist credits ($50) + wagers and bonuses.
+                Week 16: finalists selected · Week 17: bank/wager + bonuses · Week 18: Heroes vs Dragons champs.
               </p>
             </div>
 
