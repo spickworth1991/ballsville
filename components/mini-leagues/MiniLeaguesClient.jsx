@@ -246,6 +246,13 @@ export default function MiniLeaguesClient({ season = CURRENT_SEASON, version = "
                 <p className="text-sm sm:text-base text-muted max-w-prose">{HERO_STATIC.subtitle}</p>
 
                 <div className="flex flex-wrap gap-3 pt-2">
+                  <Link
+                    prefetch={false}
+                    href="/mini-leagues/wagers"
+                    className="inline-flex items-center gap-2 rounded-2xl border border-emerald-500/35 bg-gradient-to-r from-emerald-600/20 via-lime-600/10 to-cyan-600/10 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-lg shadow-emerald-900/25 hover:shadow-xl hover:shadow-emerald-900/35 hover:-translate-y-0.5 transition"
+                  >
+                    💰 Wager Tracker
+                  </Link>
                   <Link prefetch={false} href="/dynasty" className="btn btn-outline">
                     Dynasty
                   </Link>
