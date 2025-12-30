@@ -167,18 +167,19 @@ function normalizeFromAdminDoc(doc, leagueOrderIndex) {
 
   const mainPotWagers = mainEntrants.length * 50;
 
-  function pickMissedWinner(threshold, actualWinnerPts) {
+  function pickMissedWinner(threshold, actualWinnerPts, potHasEntrants) {
+    // If nobody qualified for this pot, there is no “winner’s score” to beat,
+    // so we don’t show “you missed out” callouts for it.
+    if (!potHasEntrants) return null;
+
     const nonQual = seeded.filter((r) => (Number(r?.wager ?? 0) || 0) < threshold);
     const win = pickWinner(nonQual);
     if (!win) return null;
 
     const pts = Number(win.wk17 ?? 0) || 0;
 
-    // Only a "miss" if they'd have actually beaten the real pot winner
-    // If the pot had no qualified winner, allow the note (actualWinnerPts may be -Infinity or null)
-    if (typeof actualWinnerPts === "number" && Number.isFinite(actualWinnerPts)) {
-      if (!(pts > actualWinnerPts)) return null;
-    }
+    // Only a true miss if they BEAT the actual pot winner
+    if (Number.isFinite(actualWinnerPts) && !(pts > actualWinnerPts)) return null;
 
     const wager = Number(win?.wager ?? 0) || 0;
     return {
@@ -191,18 +192,26 @@ function normalizeFromAdminDoc(doc, leagueOrderIndex) {
   }
 
 
-const missedMain = pickMissedWinner(50, Number(mainWinnerRow?.wk17 ?? -Infinity));
-const missedSide1 = pickMissedWinner(100, Number(side1WinnerRow?.wk17 ?? -Infinity));
-const missedSide2 = pickMissedWinner(150, Number(side2WinnerRow?.wk17 ?? -Infinity));
+
+const mainHasEntrants = mainEntrants.length > 0;
+const side1HasEntrants = side1Entrants.length > 0;
+const side2HasEntrants = side2Entrants.length > 0;
+
+const missedMain = pickMissedWinner(50, Number(mainWinnerRow?.wk17 ?? NaN), mainHasEntrants);
+const missedSide1 = pickMissedWinner(100, Number(side1WinnerRow?.wk17 ?? NaN), side1HasEntrants);
+const missedSide2 = pickMissedWinner(150, Number(side2WinnerRow?.wk17 ?? NaN), side2HasEntrants);
+
 
 
 // If the same person is the “missed winner” for all 3 thresholds, call it a sweep.
+const sweepCandidates = [missedMain, missedSide1, missedSide2].filter(Boolean);
+
 const sweepOwner =
-  missedMain?.ownerName &&
-  missedMain.ownerName === missedSide1?.ownerName &&
-  missedMain.ownerName === missedSide2?.ownerName
-    ? missedMain.ownerName
+  sweepCandidates.length >= 2 && // only call a sweep if at least 2 real pots had true misses
+  sweepCandidates.every((x) => x.ownerName && x.ownerName === sweepCandidates[0].ownerName)
+    ? sweepCandidates[0].ownerName
     : "";
+
 
 return {
   updatedAt: safeStr(doc?.updatedAt).trim(),
