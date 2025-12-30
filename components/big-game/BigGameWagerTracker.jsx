@@ -169,53 +169,82 @@ function normalizeFromAdminDoc(doc, leagueOrderIndex) {
 
   const wouldHaveWonRow = pickWinner(seeded);
 
+// Hypothetical “if they bet enough to qualify” winners for each pot threshold
+function wouldHaveWonForThreshold(threshold) {
+  if (!wouldHaveWonRow) {
+    return {
+      threshold,
+      ownerName: "",
+      division: "",
+      pts: 0,
+      wager: 0,
+      qualified: false,
+    };
+  }
+  const wager = Number(wouldHaveWonRow.wager ?? 0) || 0;
   return {
-    updatedAt: safeStr(doc?.updatedAt).trim(),
-    divisionResolvedAt: safeStr(doc?.divisionWagers?.resolvedAt).trim(),
-    championship: {
-      resolvedAt: safeStr(champ?.resolvedAt).trim(),
-      bettors,
-      nonBettors,
-
-      mainPot: {
-        wagers: mainPotWagers,
-        bonus,
-        total: mainPotWagers + bonus,
-        winner: mainWinnerRow?.ownerName || "",
-        winnerDivision: mainWinnerRow?.division || "",
-        winnerPts: Number(mainWinnerRow?.wk17 ?? 0) || 0,
-      },
-
-      sidePots: [
-        {
-          label: "Side Pot 1",
-          threshold: 100,
-          entrants: side1Entrants,
-          pool: side1Entrants.length * 50,
-          winner: side1WinnerRow?.ownerName || "",
-          winnerDivision: side1WinnerRow?.division || "",
-          winnerPts: Number(side1WinnerRow?.wk17 ?? 0) || 0,
-        },
-        {
-          label: "Side Pot 2",
-          threshold: 150,
-          entrants: side2Entrants,
-          pool: side2Entrants.length * 50,
-          winner: side2WinnerRow?.ownerName || "",
-          winnerDivision: side2WinnerRow?.division || "",
-          winnerPts: Number(side2WinnerRow?.wk17 ?? 0) || 0,
-        },
-      ],
-
-      wouldHaveWon: {
-        ownerName: wouldHaveWonRow?.ownerName || "",
-        division: wouldHaveWonRow?.division || "",
-        pts: Number(wouldHaveWonRow?.wk17 ?? 0) || 0,
-        didNotBet: Boolean(wouldHaveWonRow && !(wouldHaveWonRow.wager > 0)),
-      },
-    },
-    divisions,
+    threshold,
+    ownerName: wouldHaveWonRow.ownerName || "",
+    division: wouldHaveWonRow.division || "",
+    pts: Number(wouldHaveWonRow.wk17 ?? 0) || 0,
+    wager,
+    qualified: wager >= threshold,
   };
+}
+
+const wouldHaveWonMain = wouldHaveWonForThreshold(50);
+const wouldHaveWonSide1 = wouldHaveWonForThreshold(100);
+const wouldHaveWonSide2 = wouldHaveWonForThreshold(150);
+
+return {
+  updatedAt: safeStr(doc?.updatedAt).trim(),
+  divisionResolvedAt: safeStr(doc?.divisionWagers?.resolvedAt).trim(),
+  championship: {
+    resolvedAt: safeStr(champ?.resolvedAt).trim(),
+    bettors,
+    nonBettors,
+
+    mainPot: {
+      wagers: mainPotWagers,
+      bonus,
+      total: mainPotWagers + bonus,
+      winner: mainWinnerRow?.ownerName || "",
+      winnerDivision: mainWinnerRow?.division || "",
+      winnerPts: Number(mainWinnerRow?.wk17 ?? 0) || 0,
+    },
+
+    sidePots: [
+      {
+        label: "Side Pot 1",
+        threshold: 100,
+        entrants: side1Entrants,
+        pool: side1Entrants.length * 50,
+        winner: side1WinnerRow?.ownerName || "",
+        winnerDivision: side1WinnerRow?.division || "",
+        winnerPts: Number(side1WinnerRow?.wk17 ?? 0) || 0,
+      },
+      {
+        label: "Side Pot 2",
+        threshold: 150,
+        entrants: side2Entrants,
+        pool: side2Entrants.length * 50,
+        winner: side2WinnerRow?.ownerName || "",
+        winnerDivision: side2WinnerRow?.division || "",
+        winnerPts: Number(side2WinnerRow?.wk17 ?? 0) || 0,
+      },
+    ],
+
+    wouldHaveWon: {
+      ownerName: wouldHaveWonMain.ownerName,
+      division: wouldHaveWonMain.division,
+      pts: wouldHaveWonMain.pts,
+      didNotBet: Boolean(wouldHaveWonRow && !(Number(wouldHaveWonRow.wager ?? 0) > 0)),
+      // NEW: side-pot hypotheticals
+      sidePotsIfBet: [wouldHaveWonSide1, wouldHaveWonSide2],
+    },
+  },
+  divisions,
+};
 }
 
 function TrackerInner({ season: seasonProp, version }) {
@@ -407,15 +436,40 @@ function TrackerInner({ season: seasonProp, version }) {
                 {champResolved ? <SmallBadge>{normalized.championship.mainPot.winnerPts.toFixed(2)} pts</SmallBadge> : null}
               </div>
               {normalized.championship.wouldHaveWon?.didNotBet ? (
-                <div className="mt-3 rounded-xl border border-subtle bg-panel/60 px-4 py-3 text-sm">
-                  <span className="text-muted">Fun note:</span>{" "}
-                  <span className="text-foreground font-semibold">{normalized.championship.wouldHaveWon.ownerName}</span>{" "}
-                  {normalized.championship.wouldHaveWon.division ? <span className="text-muted">({normalized.championship.wouldHaveWon.division})</span> : null}{" "}
-                  <span className="text-muted">would have won the main pot with</span>{" "}
-                  <span className="text-foreground font-semibold">{normalized.championship.wouldHaveWon.pts.toFixed(2)}</span>{" "}
-                  <span className="text-muted">— but didn’t bet.</span>
-                </div>
-              ) : null}
+              <div className="mt-3 rounded-xl border border-subtle bg-panel/60 px-4 py-3 text-sm">
+                <span className="text-muted">Fun fact:</span>{" "}
+                <span className="text-foreground font-semibold">{normalized.championship.wouldHaveWon.ownerName}</span>{" "}
+                {normalized.championship.wouldHaveWon.division ? (
+                  <span className="text-muted">({normalized.championship.wouldHaveWon.division})</span>
+                ) : null}{" "}
+                <span className="text-muted">would have won the main pot with</span>{" "}
+                <span className="text-foreground font-semibold">{normalized.championship.wouldHaveWon.pts.toFixed(2)}</span>{" "}
+                <span className="text-muted">— but didn’t bet.</span>
+
+                {safeArray(normalized.championship.wouldHaveWon?.sidePotsIfBet)
+                  .filter((p) => p && p.ownerName && !p.qualified)
+                  .length ? (
+                  <div className="mt-2 text-xs text-muted">
+                    Also, if they had bet enough to qualify:
+                    <div className="mt-1 flex flex-col gap-1">
+                      {safeArray(normalized.championship.wouldHaveWon?.sidePotsIfBet)
+                        .filter((p) => p && p.ownerName && !p.qualified)
+                        .map((p) => (
+                          <div key={p.threshold}>
+                            • <span className="text-foreground font-semibold">{p.ownerName}</span>{" "}
+                            <span className="text-muted">
+                              would’ve won Side Pot {p.threshold === 100 ? "1" : "2"} ({fmtMoney(p.threshold)} threshold) with{" "}
+                              <span className="text-foreground font-semibold">{Number(p.pts || 0).toFixed(2)}</span> pts
+                              {Number.isFinite(Number(p.wager)) ? ` (they wagered ${fmtMoney(p.wager)}).` : "."}
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             </div>
           </div>
 
