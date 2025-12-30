@@ -170,61 +170,50 @@ function normalizeFromAdminDoc(doc, leagueOrderIndex) {
 
   const mainPotWagers = mainEntrants.length * 50;
 
-  // Helper: winner among real entrants for a pot (already computed above)
-const mainWinnerPts = Number(mainWinnerRow?.wk17 ?? NaN);
-const side1WinnerPts = Number(side1WinnerRow?.wk17 ?? NaN);
-const side2WinnerPts = Number(side2WinnerRow?.wk17 ?? NaN);
+    // Helper: winner pts among real entrants for each pot
+  const mainWinnerPts = Number(mainWinnerRow?.wk17 ?? NaN);
+  const side1WinnerPts = Number(side1WinnerRow?.wk17 ?? NaN);
+  const side2WinnerPts = Number(side2WinnerRow?.wk17 ?? NaN);
 
-function pickCouldHaveWon({ label, threshold, minWager, maxWagerExclusive }, realWinnerPts) {
-  if (!Number.isFinite(realWinnerPts)) return null;
+  // For a given threshold:
+  // - Look at ANYONE who did NOT meet the threshold (wager < threshold)
+  // - Return up to N "missed winners" who would have beaten the real winner
+  function pickCouldHaveWonMany({ label, threshold }, realWinnerPts, limit = 3) {
+    if (!Number.isFinite(realWinnerPts)) return [];
 
-  const candidates = seeded.filter((r) => {
-    const w = Number(r?.wager ?? 0) || 0;
-    return w >= minWager && w < maxWagerExclusive;
-  });
+    const candidates = seeded
+      .filter((r) => (Number(r?.wager ?? 0) || 0) < threshold)
+      .slice()
+      .sort((a, b) => (Number(b.wk17 ?? 0) || 0) - (Number(a.wk17 ?? 0) || 0));
 
-  // Find the highest scorer in this wager band
-  const best = pickWinner(candidates);
-  if (!best) return null;
+    const winners = [];
+    for (const r of candidates) {
+      const pts = Number(r?.wk17 ?? 0) || 0;
+      if (!(pts > realWinnerPts)) break; // since sorted desc
+      winners.push({
+        label,
+        threshold,
+        ownerName: r.ownerName || "",
+        division: r.division || "",
+        pts,
+        wager: Number(r.wager ?? 0) || 0,
+      });
+      if (winners.length >= limit) break;
+    }
 
-  const pts = Number(best.wk17 ?? 0) || 0;
-  if (!(pts > realWinnerPts)) return null;
+    return winners;
+  }
 
-  return {
-    label,
-    threshold,
-    ownerName: best.ownerName || "",
-    division: best.division || "",
-    pts,
-    wager: Number(best.wager ?? 0) || 0,
-  };
-}
+  const couldMain = pickCouldHaveWonMany({ label: "the Main Pot", threshold: 50 }, mainWinnerPts, 3);
+  const couldSide1 = pickCouldHaveWonMany({ label: "Side Pot 1", threshold: 100 }, side1WinnerPts, 3);
+  const couldSide2 = pickCouldHaveWonMany({ label: "Side Pot 2", threshold: 150 }, side2WinnerPts, 3);
 
+  // Sweep owner = top "missed winner" is the same for all three (if present)
+  const topMain = couldMain?.[0]?.ownerName || "";
+  const topSide1 = couldSide1?.[0]?.ownerName || "";
+  const topSide2 = couldSide2?.[0]?.ownerName || "";
 
-const couldMain = pickCouldHaveWon(
-  { label: "the Main Pot", threshold: 50, minWager: 0, maxWagerExclusive: 50 },
-  mainWinnerPts
-);
-
-const couldSide1 = pickCouldHaveWon(
-  { label: "Side Pot 1", threshold: 100, minWager: 50, maxWagerExclusive: 100 },
-  side1WinnerPts
-);
-
-const couldSide2 = pickCouldHaveWon(
-  { label: "Side Pot 2", threshold: 150, minWager: 100, maxWagerExclusive: 150 },
-  side2WinnerPts
-);
-
-
-// “Would have swept” ONLY if the same person could have won ALL THREE pots
-// (and each pot had a real winner to beat).
-const couldSweepOwner =
-  couldMain?.ownerName &&
-  couldMain.ownerName === couldSide1?.ownerName &&
-  couldMain.ownerName === couldSide2?.ownerName
-    ? couldMain.ownerName
-    : "";
+  const couldSweepOwner = topMain && topMain === topSide1 && topMain === topSide2 ? topMain : "";
 
 
 return {
@@ -270,12 +259,13 @@ return {
     ],
 
 
-    couldHaveWon: {
-      sweepOwner: couldSweepOwner,
-      main: couldMain,
-      side1: couldSide1,
-      side2: couldSide2,
-    },
+        couldHaveWon: {
+          sweepOwner: couldSweepOwner,
+          main: couldMain,
+          side1: couldSide1,
+          side2: couldSide2,
+        },
+
   },
   divisions,
 };
@@ -517,34 +507,38 @@ function TrackerInner({ season: seasonProp, version }) {
                     )}
 
                     {(() => {
-                      const rows = [
-                        { label: "the Main Pot", obj: main },
-                        { label: "Side Pot 1", obj: side1 },
-                        { label: "Side Pot 2", obj: side2 },
-                      ].filter((r) => r.obj?.ownerName);
+                    const rows = [
+                      { label: "the Main Pot", winners: safeArray(main) },
+                      { label: "Side Pot 1", winners: safeArray(side1) },
+                      { label: "Side Pot 2", winners: safeArray(side2) },
+                    ];
 
+                    const hasAnyLines = rows.some((r) => r.winners.length);
+                    if (!hasAnyLines) return null;
 
-                      if (!rows.length) return null;
+                    return (
+                      <div className="mt-2 text-xs text-muted">
+                        {sweepOwner ? <div>Breakdown:</div> : null}
 
-                      return (
-                        <div className="mt-2 text-xs text-muted">
-                          {sweepOwner ? <div>Breakdown:</div> : null}
-                          <div className="mt-2 flex flex-col gap-1">
-                            {rows.map(({ label, obj }) => (
-                              <div key={label}>
+                        <div className="mt-2 flex flex-col gap-1">
+                          {rows.flatMap((r) =>
+                            r.winners.map((obj, i) => (
+                              <div key={`${r.label}|||${obj.ownerName}|||${i}`}>
                                 • <span className="text-foreground font-semibold">{obj.ownerName}</span>{" "}
                                 {obj.division ? <span className="text-muted">({obj.division})</span> : null}{" "}
                                 <span className="text-muted">
-                                  would’ve won {label} if they qualified ({fmtMoney(obj.threshold)} threshold) with{" "}
+                                  would’ve won {r.label} if they qualified ({fmtMoney(obj.threshold)} threshold) with{" "}
                                 </span>
                                 <span className="text-foreground font-semibold">{Number(obj.pts || 0).toFixed(2)}</span>{" "}
                                 <span className="text-muted">pts (they wagered {fmtMoney(obj.wager || 0)}).</span>
                               </div>
-                            ))}
-                          </div>
+                            ))
+                          )}
                         </div>
-                      );
-                    })()}
+                      </div>
+                    );
+                  })()}
+
                   </div>
                 );
               })()}
