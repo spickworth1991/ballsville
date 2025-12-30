@@ -342,9 +342,13 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
         const res = await fetch(`/api/admin/mini-leagues-wagers?season=${encodeURIComponent(season)}`, {
           cache: "no-store",
         });
-        const data = res.ok ? await res.json() : null;
+        const saved = res.ok ? await res.json() : null;
+        // API follows the Big Game pattern and may return { ok, data, key }
+        const data = saved && typeof saved === "object" && "data" in saved ? saved.data : saved;
+
         if (!cancelled) {
-          setState(data && typeof data === "object" ? data : buildEmptyState(season));
+          const base = buildEmptyState(season);
+          setState({ ...base, ...(data && typeof data === "object" ? data : {}), season: Number(season) });
         }
       } catch {
         if (!cancelled) setState(buildEmptyState(season));
@@ -395,8 +399,9 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(`Save failed (${res.status})`);
-      const data = await res.json();
-      setState(data && typeof data === "object" ? data : payload);
+      const saved = await res.json();
+      const data = saved && typeof saved === "object" && "data" in saved ? saved.data : saved;
+      setState((data && typeof data === "object" ? data : payload) || payload);
       setMsg(note || "Saved.");
     } catch (e) {
       setMsg(`Error: ${String(e)}`);
@@ -498,8 +503,10 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
         method: "POST",
       });
       if (!res.ok) throw new Error(`Restore failed (${res.status})`);
-      const data = await res.json();
-      setState(data && typeof data === "object" ? data : buildEmptyState(season));
+      const saved = await res.json();
+      const data = saved && typeof saved === "object" && "data" in saved ? saved.data : saved;
+      const base = buildEmptyState(season);
+      setState({ ...base, ...(data && typeof data === "object" ? data : {}), season: Number(season) });
       setMsg("Restored backup.");
     } catch (e) {
       setMsg(`Error: ${String(e)}`);
