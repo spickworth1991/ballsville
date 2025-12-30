@@ -109,6 +109,7 @@ function normalizeDoc(doc) {
       bonus: Number(champ?.bonus ?? 0) || 0,
     },
     divisions,
+    missedWagers: safeArray(results?.missedWagers),
   };
 }
 
@@ -183,9 +184,7 @@ export default function MiniLeaguesWagerTracker({ season, version }) {
               <SmallBadge>Season {s}</SmallBadge>
             </div>
             <p className="mt-3 text-sm text-muted">
-              League winners after Week 14 earn a {fmtMoney(view.coin)} coin. They can <b>keep</b> it and chase the
-              Division (+{fmtMoney(view.divisionBonusAmount)}) and Championship (+{fmtMoney(view.champBonusAmount)}) bonuses,
-              or <b>wager</b> it for the pooled pot + a +{fmtMoney(view.wagerBonusAmount)} wager bonus.
+              League winners after Week 14 earn a {fmtMoney(view.coin)} coin. The Division (+{fmtMoney(view.divisionBonusAmount)}) and Championship (+{fmtMoney(view.champBonusAmount)}) bonuses go to the top Week 15 points (regardless of wager). You can still <b>wager</b> your coin to compete for the pooled pot + a +{fmtMoney(view.wagerBonusAmount)} wager bonus.
             </p>
           </div>
 
@@ -216,7 +215,28 @@ export default function MiniLeaguesWagerTracker({ season, version }) {
               <p className="text-sm text-muted">Waiting for Week 15 results.</p>
             )}
           </div>
-        </Card>
+        
+          {safeArray(view.missedWagers).length > 0 ? (
+            <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-500/5 p-3">
+              <div className="text-[11px] uppercase tracking-[0.25em] text-amber-200">Wager Misses</div>
+              <div className="mt-2 space-y-1 text-sm text-muted">
+                {safeArray(view.missedWagers)
+                  .slice()
+                  .sort((a, b) => (Number(b?.wk15 ?? 0) || 0) - (Number(a?.wk15 ?? 0) || 0))
+                  .map((m) => (
+                    <div key={safeStr(m?.k)}>
+                      <span className="text-foreground font-semibold">{safeStr(m?.ownerName)}</span>{" "}
+                      <span className="text-muted">— {Number(m?.wk15 ?? 0) || 0} pts</span>{" "}
+                      <span className="text-amber-200">
+                        {safeStr(m?.reason) === "would_win" ? "→ would have won" : "→ could have tied for"}{" "}
+                        {fmtMoney(Number(m?.hypotheticalTotal ?? 0) || 0)} if they wagered
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          ) : null}
+</Card>
 
         <Card>
           <div className="flex items-center justify-between gap-3">

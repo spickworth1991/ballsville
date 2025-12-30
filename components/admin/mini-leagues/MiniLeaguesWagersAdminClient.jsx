@@ -76,6 +76,7 @@ function buildEmptyState(season) {
         wagerPot: { pool: 0, bonus: 60, total: 60, winner: "", winnerKey: "", winnerDivision: "", winnerPts: 0 },
         divisionBonus: {}, // { [division]: { bonus, winner, winnerKey, pts } }
         championship: { bonus: 100, winner: "", winnerKey: "", winnerDivision: "", winnerPts: 0 },
+        missedWagers: [],
       },
     },
   };
@@ -240,7 +241,7 @@ function computeResults(state) {
       const leagueName = safeStr(e?.leagueName).trim();
       const ownerName = safeStr(e?.ownerName).trim();
       const k = entryKey({ division: div, leagueName, ownerName });
-      const decision = safeStr(decisions?.[k]?.decision || "pending").trim();
+      const decision = safeStr(decisions?.[k]?.decision || "pending").trim() || "pending";
       allEntries.push({
         division: div,
         leagueName,
@@ -253,7 +254,7 @@ function computeResults(state) {
   }
 
   const wagerers = allEntries.filter((e) => e.decision === "wager");
-  const keepers = allEntries.filter((e) => e.decision === "keep");
+  const nonWagerers = allEntries.filter((e) => e.decision !== "wager");
 
   // Wager pot: pooled coins from wagerers. Winner is top Week 15 points among wagerers.
   const wagerPool = wagerers.length * coin;
@@ -261,13 +262,14 @@ function computeResults(state) {
   for (const e of wagerers) {
     if (!wagerWinner || e.wk15 > wagerWinner.wk15) wagerWinner = e;
   }
+  const wagerMaxPts = wagerWinner ? Number(wagerWinner.wk15 ?? 0) || 0 : 0;
 
-  // Division bonus: among KEEPERS only, per division.
+  // Division bonus: top Week 15 points in each division (regardless of wager decision).
   const divWinners = {};
   for (const div of Object.keys(eligibility)) {
-    const divKeepers = keepers.filter((e) => e.division === div);
+    const divEntries = allEntries.filter((e) => e.division === div);
     let best = null;
-    for (const e of divKeepers) {
+    for (const e of divEntries) {
       if (!best || e.wk15 > best.wk15) best = e;
     }
     divWinners[div] = {
@@ -278,10 +280,31 @@ function computeResults(state) {
     };
   }
 
-  // Championship bonus: among KEEPERS only, all divisions.
+  // Championship bonus: top Week 15 points overall (regardless of wager decision).
   let champWinner = null;
-  for (const e of keepers) {
+  for (const e of allEntries) {
     if (!champWinner || e.wk15 > champWinner.wk15) champWinner = e;
+  }
+
+  // "Should have wagered" hints: if a non-wagerer beat (or tied) the top wagerer, they likely left money on the table.
+  const missedWagers = [];
+  if (wagerers.length > 0) {
+    for (const e of nonWagerers) {
+      if (e.wk15 > wagerMaxPts || e.wk15 === wagerMaxPts) {
+        const hypotheticalPool = wagerPool + coin; // if they had wagered, the pool increases by their coin
+        missedWagers.push({
+          k: e.k,
+          division: e.division,
+          leagueName: e.leagueName,
+          ownerName: e.ownerName,
+          wk15: Number(e.wk15 ?? 0) || 0,
+          reason: e.wk15 > wagerMaxPts ? "would_win" : "could_tie",
+          hypotheticalPool,
+          hypotheticalTotal: hypotheticalPool + wagerBonus,
+          wagerMaxPts,
+        });
+      }
+    }
   }
 
   return {
@@ -302,6 +325,7 @@ function computeResults(state) {
       winnerDivision: champWinner?.division || "",
       winnerPts: Number(champWinner?.wk15 ?? 0) || 0,
     },
+    missedWagers,
   };
 }
 
@@ -342,13 +366,9 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
         const res = await fetch(`/api/admin/mini-leagues-wagers?season=${encodeURIComponent(season)}`, {
           cache: "no-store",
         });
-        const saved = res.ok ? await res.json() : null;
-        // API follows the Big Game pattern and may return { ok, data, key }
-        const data = saved && typeof saved === "object" && "data" in saved ? saved.data : saved;
-
+        const data = res.ok ? await res.json() : null;
         if (!cancelled) {
-          const base = buildEmptyState(season);
-          setState({ ...base, ...(data && typeof data === "object" ? data : {}), season: Number(season) });
+          setState(data && typeof data === "object" ? data : buildEmptyState(season));
         }
       } catch {
         if (!cancelled) setState(buildEmptyState(season));
@@ -399,9 +419,8 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(`Save failed (${res.status})`);
-      const saved = await res.json();
-      const data = saved && typeof saved === "object" && "data" in saved ? saved.data : saved;
-      setState((data && typeof data === "object" ? data : payload) || payload);
+      const data = await res.json();
+      setState(data && typeof data === "object" ? data : payload);
       setMsg(note || "Saved.");
     } catch (e) {
       setMsg(`Error: ${String(e)}`);
@@ -503,10 +522,8 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
         method: "POST",
       });
       if (!res.ok) throw new Error(`Restore failed (${res.status})`);
-      const saved = await res.json();
-      const data = saved && typeof saved === "object" && "data" in saved ? saved.data : saved;
-      const base = buildEmptyState(season);
-      setState({ ...base, ...(data && typeof data === "object" ? data : {}), season: Number(season) });
+      const data = await res.json();
+      setState(data && typeof data === "object" ? data : buildEmptyState(season));
       setMsg("Restored backup.");
     } catch (e) {
       setMsg(`Error: ${String(e)}`);
@@ -580,6 +597,32 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
           <div>Keep: <span className="text-foreground font-semibold">{decisionsCount.keep}</span></div>
           <div>Wager: <span className="text-foreground font-semibold">{decisionsCount.wager}</span></div>
         </div>
+
+        {safeArray(state?.week15?.results?.missedWagers).length > 0 ? (
+          <div className="mt-4 rounded-2xl border border-amber-400/20 bg-amber-500/5 p-4">
+            <div className="text-xs uppercase tracking-[0.2em] text-amber-200">Wager Misses</div>
+            <p className="mt-2 text-sm text-muted">
+              These entries did not wager, but their Week 15 score was strong enough that they {` `}
+              {safeArray(state?.week15?.results?.missedWagers).some((m) => m?.reason === "would_win") ? "would have won" : "could have tied for"} the top wager score.
+            </p>
+            <div className="mt-3 space-y-2 text-sm">
+              {safeArray(state?.week15?.results?.missedWagers)
+                .slice()
+                .sort((a, b) => (Number(b?.wk15 ?? 0) || 0) - (Number(a?.wk15 ?? 0) || 0))
+                .map((m) => (
+                  <div key={safeStr(m?.k)}>
+                    <span className="text-foreground font-semibold">{safeStr(m?.ownerName)}</span>{" "}
+                    <span className="text-muted">({safeStr(m?.division)} • {safeStr(m?.leagueName)})</span>{" "}
+                    <span className="text-muted">— {Number(m?.wk15 ?? 0) || 0} pts</span>
+                    <span className="text-amber-200">
+                      {" "}
+                      {safeStr(m?.reason) === "would_win" ? "→ would have won" : "→ could have tied for"} {fmtMoney(Number(m?.hypotheticalTotal ?? 0) || 0)}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        ) : null}
       </Card>
 
       <Card>
@@ -633,8 +676,7 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
       <Card>
         <h2 className="text-lg font-semibold text-white">Step 3 — Decisions (Keep vs Wager)</h2>
         <p className="mt-2 text-sm text-muted">
-          Keepers keep their {fmtMoney(coin)} and can win Division (+{fmtMoney(divisionBonus)}) and Championship (+{fmtMoney(champBonus)}).
-          Wagerers put their {fmtMoney(coin)} into the pot and can win the pooled pot + +{fmtMoney(wagerBonus)}.
+          Everyone keeps their {fmtMoney(coin)} coin if they don’t wager. The Division (+{fmtMoney(divisionBonus)}) and Championship (+{fmtMoney(champBonus)}) bonuses go to the top Week 15 points (regardless of wager). Wagerers also compete for the pooled pot + +{fmtMoney(wagerBonus)}.
         </p>
 
         <Divider />
