@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+// import Link from "next/link";
 import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import { CURRENT_SEASON } from "@/lib/season";
 
@@ -374,14 +374,14 @@ function TrackerInner({ season: seasonProp, version }) {
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          {/* <div className="flex flex-wrap gap-2">
             <Link
               href="/big-game"
               className="inline-flex items-center justify-center rounded-xl border border-subtle bg-panel px-4 py-2 text-xs font-semibold tracking-[0.15em] uppercase text-foreground hover:border-accent/40 transition"
             >
               ← Big Game
             </Link>
-          </div>
+          </div> */}
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">

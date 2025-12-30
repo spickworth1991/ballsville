@@ -1,4 +1,4 @@
-import Link from "next/link";
+// import Link from "next/link";
 import BigGameWagerTracker from "@/components/big-game/BigGameWagerTracker";
 import { CURRENT_SEASON } from "@/lib/season";
 
@@ -28,7 +28,7 @@ export default function BigGameWagersPage() {
               </p>
             </div>
 
-            <div className="flex flex-wrap gap-3">
+            {/* <div className="flex flex-wrap gap-3">
               <Link
                 prefetch={false}
                 href="/big-game"
@@ -43,7 +43,7 @@ export default function BigGameWagersPage() {
               >
                 🏟️ Divisions
               </Link>
-            </div>
+            </div> */}
           </div>
         </header>
 
