@@ -34,6 +34,15 @@ export default function AdminWagerTrackersPage() {
               <h2 className="text-lg font-semibold text-primary">🪙 Mini Leagues Wager Tracker</h2>
               <p className="mt-1 text-sm text-muted">Week 14 league-winner coins + Week 15 wagers/bonuses.</p>
             </Link>
+
+            <Link
+              prefetch={false}
+              href="/admin/dynasty/wagers"
+              className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
+            >
+              <h2 className="text-lg font-semibold text-primary">🏆 Dynasty Wager Tracker</h2>
+              <p className="mt-1 text-sm text-muted">Import finalists, set wager/bank, and resolve Week 17 bonuses.</p>
+            </Link>
           </div>
 
           <div>

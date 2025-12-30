@@ -17,6 +17,7 @@ export default function sitemap() {
     "/big-game",
     "/dynasty",
     "/dynasty/intro",
+    "/dynasty/wagers",
     "/dynasty/wagering-demo",
     "/dynasty/rosters",
     "/redraft",
