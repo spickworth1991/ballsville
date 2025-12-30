@@ -167,49 +167,48 @@ function normalizeFromAdminDoc(doc, leagueOrderIndex) {
 
   const mainPotWagers = mainEntrants.length * 50;
 
-  function pickMissedWinner(threshold, actualWinnerPts, potHasEntrants) {
-    // If nobody qualified for this pot, there is no “winner’s score” to beat,
-    // so we don’t show “you missed out” callouts for it.
-    if (!potHasEntrants) return null;
+  // Helper: winner among real entrants for a pot (already computed above)
+const mainWinnerPts = Number(mainWinnerRow?.wk17 ?? NaN);
+const side1WinnerPts = Number(side1WinnerRow?.wk17 ?? NaN);
+const side2WinnerPts = Number(side2WinnerRow?.wk17 ?? NaN);
 
-    const nonQual = seeded.filter((r) => (Number(r?.wager ?? 0) || 0) < threshold);
-    const win = pickWinner(nonQual);
-    if (!win) return null;
+// “Could have won” logic:
+// For each pot threshold, find the single best scorer who DID NOT qualify for that pot,
+// but WOULD have beaten the REAL pot winner’s score.
+// This assumes everyone else stayed the same (no-betters still didn’t bet).
+function pickCouldHaveWon(threshold, realWinnerPts) {
+  // If there wasn't a real winner (no entrants), don't generate a fun fact for it.
+  if (!Number.isFinite(realWinnerPts)) return null;
 
-    const pts = Number(win.wk17 ?? 0) || 0;
+  const candidates = seeded.filter((r) => (Number(r?.wager ?? 0) || 0) < threshold);
+  const best = pickWinner(candidates);
+  if (!best) return null;
 
-    // Only a true miss if they BEAT the actual pot winner
-    if (Number.isFinite(actualWinnerPts) && !(pts > actualWinnerPts)) return null;
+  const pts = Number(best.wk17 ?? 0) || 0;
 
-    const wager = Number(win?.wager ?? 0) || 0;
-    return {
-      threshold,
-      ownerName: win.ownerName || "",
-      division: win.division || "",
-      pts,
-      wager,
-    };
-  }
+  // They only "could have won" if they actually beat the real winner
+  if (!(pts > realWinnerPts)) return null;
 
+  return {
+    threshold,
+    ownerName: best.ownerName || "",
+    division: best.division || "",
+    pts,
+    wager: Number(best.wager ?? 0) || 0,
+  };
+}
 
+const couldMain = pickCouldHaveWon(50, mainWinnerPts);
+const couldSide1 = pickCouldHaveWon(100, side1WinnerPts);
+const couldSide2 = pickCouldHaveWon(150, side2WinnerPts);
 
-const mainHasEntrants = mainEntrants.length > 0;
-const side1HasEntrants = side1Entrants.length > 0;
-const side2HasEntrants = side2Entrants.length > 0;
-
-const missedMain = pickMissedWinner(50, Number(mainWinnerRow?.wk17 ?? NaN), mainHasEntrants);
-const missedSide1 = pickMissedWinner(100, Number(side1WinnerRow?.wk17 ?? NaN), side1HasEntrants);
-const missedSide2 = pickMissedWinner(150, Number(side2WinnerRow?.wk17 ?? NaN), side2HasEntrants);
-
-
-
-// If the same person is the “missed winner” for all 3 thresholds, call it a sweep.
-const sweepCandidates = [missedMain, missedSide1, missedSide2].filter(Boolean);
-
-const sweepOwner =
-  sweepCandidates.length >= 2 && // only call a sweep if at least 2 real pots had true misses
-  sweepCandidates.every((x) => x.ownerName && x.ownerName === sweepCandidates[0].ownerName)
-    ? sweepCandidates[0].ownerName
+// “Would have swept” ONLY if the same person could have won ALL THREE pots
+// (and each pot had a real winner to beat).
+const couldSweepOwner =
+  couldMain?.ownerName &&
+  couldMain.ownerName === couldSide1?.ownerName &&
+  couldMain.ownerName === couldSide2?.ownerName
+    ? couldMain.ownerName
     : "";
 
 
@@ -251,12 +250,11 @@ return {
       },
     ],
 
-    // NEW: smarter missed-winner insights
-    missedWinners: {
-      sweepOwner,
-      main: missedMain,
-      side1: missedSide1,
-      side2: missedSide2,
+    couldHaveWon: {
+      sweepOwner: couldSweepOwner,
+      main: couldMain,
+      side1: couldSide1,
+      side2: couldSide2,
     },
   },
   divisions,
@@ -452,7 +450,7 @@ function TrackerInner({ season: seasonProp, version }) {
                 {champResolved ? <SmallBadge>{normalized.championship.mainPot.winnerPts.toFixed(2)} pts</SmallBadge> : null}
               </div>
               {(() => {
-                const mw = normalized?.championship?.missedWinners || {};
+                const mw = normalized?.championship?.couldHaveWon || {};
                 const sweepOwner = safeStr(mw?.sweepOwner).trim();
                 const main = mw?.main;
                 const side1 = mw?.side1;
