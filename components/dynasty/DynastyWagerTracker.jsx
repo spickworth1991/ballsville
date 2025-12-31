@@ -47,6 +47,7 @@ function normalizeDoc(doc) {
   const decisions = wk17?.decisions || {};
   const points = wk17?.points || {};
   const results = wk17?.results || {};
+  const divisionAwards = results?.divisions || {};
   const leagueWinners = results?.leagueWinners || {};
 
   const wk18 = doc?.week18 || {};
@@ -109,6 +110,7 @@ function normalizeDoc(doc) {
       leagueWinBonus: Number(wk17?.leagueWinBonus ?? 125) || 125,
       empireBonus: Number(wk17?.empireBonus ?? 225) || 225,
     },
+    divisionAwards,
     overall: {
       first: {
         winner: safeStr(overall?.first?.winner || "").trim(),
@@ -153,6 +155,7 @@ function normalizeDoc(doc) {
       wk17: Number(m?.wk17 ?? 0) || 0,
       key: safeStr(m?.key || "").trim(),
     })),
+    divisionAwards,
     divisions,
   };
 }
@@ -231,28 +234,40 @@ function DynastyWagerTrackerInner({ season, version, dataKey }) {
           </div>
         </div>
 
-        <div className="mt-5 grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border border-subtle bg-panel/50 p-4">
-            <div className="text-xs uppercase tracking-[0.22em] text-muted">Wager Bonus</div>
-            <div className="mt-2 text-lg font-semibold text-white">{fmtMoney(view.wagerBonus.bonus)}</div>
-            <div className="mt-2 text-sm text-muted">
-              Winner: <span className="text-white font-medium">{view.wagerBonus.winner || "—"}</span>
-            </div>
-            <div className="mt-1 text-sm text-muted">Pts: {view.wagerBonus.winnerPts.toFixed(2)}</div>
-            <div className="mt-1 text-xs text-muted">Entrants: {view.wagerBonus.entrants}</div>
-          </div>
-
-          <div className="rounded-2xl border border-subtle bg-panel/50 p-4">
-            <div className="text-xs uppercase tracking-[0.22em] text-muted">Overall (Week 17)</div>
-            <div className="mt-2 text-lg font-semibold text-white">{fmtMoney(view.overall.first.bonus)}</div>
-            <div className="mt-2 text-sm text-muted">
-              🏆 1st: <span className="text-white font-medium">{view.overall.first.winner || "—"}</span>
-            </div>
-            <div className="mt-1 text-sm text-muted">Pts: {view.overall.first.pts.toFixed(2)}</div>
-            <div className="mt-1 text-xs text-muted">
-              🥈 2nd: {fmtMoney(view.overall.second.bonus)} · 🥉 3rd: {fmtMoney(view.overall.third.bonus)}
-            </div>
-          </div>
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          {Object.entries(view.divisionAwards || {}).length === 0 ? (
+            <div className="text-sm text-muted">Division awards will appear once Week 17 is resolved.</div>
+          ) : (
+            Object.entries(view.divisionAwards)
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([div, d]) => (
+                <div key={div} className="rounded-2xl border border-subtle bg-panel/50 p-4">
+                  <div className="text-xs uppercase tracking-[0.22em] text-muted">{div} — Week 17 Awards</div>
+                  <div className="mt-3 grid gap-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted">🏆 Champ</span>
+                      <span className="text-white font-medium">{d?.champion?.winner || "—"}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted">🥈 2nd</span>
+                      <span className="text-white font-medium">{d?.second?.winner || "—"}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted">🥉 3rd</span>
+                      <span className="text-white font-medium">{d?.third?.winner || "—"}</span>
+                    </div>
+                    <div className="mt-2 pt-2 border-t border-subtle flex items-center justify-between">
+                      <span className="text-muted">🎯 Wager Pot</span>
+                      <span className="text-white font-semibold">{fmtMoney(d?.wagerPot?.total ?? 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted">Wager Winner</span>
+                      <span className="text-white font-medium">{d?.wagerPot?.winner || "—"}</span>
+                    </div>
+                  </div>
+                </div>
+              ))
+          )}
 
           <div className="rounded-2xl border border-subtle bg-panel/50 p-4">
             <div className="text-xs uppercase tracking-[0.22em] text-muted">League Winner Bonus</div>
@@ -322,7 +337,7 @@ function DynastyWagerTrackerInner({ season, version, dataKey }) {
                     <div className="text-xs uppercase tracking-[0.22em] text-muted">Division</div>
                     <div className="mt-1 text-lg font-semibold text-white">{div}</div>
                   </div>
-                  {view.overall.first.division === div ? <WinnerTag>Overall Winner</WinnerTag> : null}
+                  {view.divisionAwards?.[div]?.champion?.winner ? <WinnerTag>Division Champ</WinnerTag> : null}
                 </div>
 
                 <div className="mt-4 space-y-4">
