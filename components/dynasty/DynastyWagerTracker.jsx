@@ -42,6 +42,74 @@ function WinnerTag({ children }) {
   );
 }
 
+function DecisionPill({ decision }) {
+  const isWager = decision === "wager";
+  return (
+    <span
+      className={
+        isWager
+          ? "inline-flex items-center gap-1 rounded-full border border-emerald-300/25 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200"
+          : "inline-flex items-center gap-1 rounded-full border border-sky-300/25 bg-sky-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-200"
+      }
+      title={isWager ? "Wagered" : "Banked"}
+    >
+      <span aria-hidden>{isWager ? "🎯" : "🏦"}</span>
+      {isWager ? "Wager" : "Bank"}
+    </span>
+  );
+}
+
+function Modal({ open, title, children, onClose }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className="relative w-full max-w-lg rounded-2xl border border-subtle bg-card-surface shadow-xl backdrop-blur p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-xs uppercase tracking-[0.25em] text-muted">Details</div>
+            <div className="mt-1 text-lg font-semibold text-white">{title}</div>
+          </div>
+          <button
+            type="button"
+            className="rounded-xl border border-subtle bg-panel/40 px-3 py-2 text-xs font-semibold text-white hover:bg-panel/60"
+            onClick={onClose}
+          >
+            Close
+          </button>
+        </div>
+        <div className="mt-4">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function slugify(v) {
+  const s = safeStr(v).trim().toLowerCase();
+  // Keep this intentionally simple (no external deps)
+  return s
+    .replace(/['"]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/(^-|-$)/g, "")
+    .slice(0, 80);
+}
+
+function leagueAnchorId(season, division, leagueName) {
+  return `dw-${slugify(season)}-${slugify(division)}-${slugify(leagueName)}`;
+}
+
+function scrollToId(id) {
+  if (typeof window === "undefined") return;
+  const el = document.getElementById(id);
+  if (!el) return;
+  try {
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch {
+    el.scrollIntoView();
+  }
+}
+
 function normalizeDoc(doc) {
   const eligibilityByDivision = doc?.eligibility?.byDivision || {};
   const wk17 = doc?.week17 || {};
@@ -155,6 +223,12 @@ function DynastyWagerTrackerInner({ season }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [doc, setDoc] = useState(null);
+  const [winnerModal, setWinnerModal] = useState(null);
+
+  function openWinnerModal(payload) {
+    if (!payload) return;
+    setWinnerModal(payload);
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -235,43 +309,147 @@ function DynastyWagerTrackerInner({ season }) {
               .map(([div, d]) => (
                 <div key={div} className="rounded-2xl border border-subtle bg-panel/50 p-4">
                   <div className="text-xs uppercase tracking-[0.22em] text-muted">{div} — Week 17 Awards</div>
-                  <div className="mt-3 grid gap-2 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted">🏆 Champ</span>
-                      <span className="text-white font-medium">
-                        {d?.champion?.winner || "—"}
-                        {Number.isFinite(Number(d?.champion?.payout)) ? (
-                          <span className="text-muted"> · +{fmtMoney(d?.champion?.payout)}</span>
-                        ) : null}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted">🥈 2nd</span>
-                      <span className="text-white font-medium">
-                        {d?.second?.winner || "—"}
-                        {Number.isFinite(Number(d?.second?.payout)) ? (
-                          <span className="text-muted"> · +{fmtMoney(d?.second?.payout)}</span>
-                        ) : null}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted">🥉 3rd</span>
-                      <span className="text-white font-medium">
-                        {d?.third?.winner || "—"}
-                        {Number.isFinite(Number(d?.third?.payout)) ? (
-                          <span className="text-muted"> · +{fmtMoney(d?.third?.payout)}</span>
-                        ) : null}
-                      </span>
-                    </div>
-                    <div className="mt-2 pt-2 border-t border-subtle flex items-center justify-between">
-                      <span className="text-muted">🎯 Wager Pot</span>
-                      <span className="text-white font-semibold">{fmtMoney(d?.wagerPot?.total ?? 0)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted">Wager Winner</span>
-                      <span className="text-white font-medium">{d?.wagerPot?.winner || "—"}</span>
-                    </div>
-                  </div>
+                  {(() => {
+                    // Back-compat: older public page used "champion/payout".
+                    // Admin (source of truth) uses "champ/bonus".
+                    const champ = d?.champ || d?.champion || {};
+                    const second = d?.second || {};
+                    const third = d?.third || {};
+                    const wagerPot = d?.wagerPot || {};
+
+                    function row(label, icon, obj, moneyKey = "bonus") {
+                      const winner = safeStr(obj?.winner).trim();
+                      const league = safeStr(obj?.leagueName || obj?.league || "").trim();
+                      const pts = Number(obj?.pts ?? obj?.winnerPts ?? 0) || 0;
+                      const payout = Number(obj?.[moneyKey] ?? obj?.payout ?? 0) || 0;
+                      const canJump = Boolean(league);
+                      const jumpId = canJump ? leagueAnchorId(season, div, league) : "";
+
+                      return (
+                        <div className="rounded-xl border border-subtle bg-panel/30 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-muted">
+                              {icon} {label}
+                            </span>
+                            <div className="text-right">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openWinnerModal({
+                                    label,
+                                    icon,
+                                    division: div,
+                                    winner,
+                                    league,
+                                    pts,
+                                    payout,
+                                    jumpId,
+                                  })
+                                }
+                                className="text-white font-semibold hover:underline underline-offset-4"
+                                disabled={!winner}
+                                title={winner ? "View details" : ""}
+                              >
+                                {winner || "—"}
+                              </button>
+                              {Number.isFinite(payout) && payout > 0 ? (
+                                <div className="text-[11px] text-muted">+{fmtMoney(payout)}</div>
+                              ) : null}
+                            </div>
+                          </div>
+                          {winner ? (
+                            <div className="mt-1 flex items-center justify-between gap-3 text-xs text-muted">
+                              <div className="truncate">
+                                {league ? (
+                                  <>
+                                    <span className="text-white/90">{league}</span>
+                                    <span className="text-muted"> · </span>
+                                  </>
+                                ) : null}
+                                <span>Week 17: </span>
+                                <span className="text-white font-medium">{pts.toFixed(2)}</span>
+                              </div>
+                              {canJump ? (
+                                <button
+                                  type="button"
+                                  onClick={() => scrollToId(jumpId)}
+                                  className="shrink-0 rounded-full border border-subtle bg-panel/40 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white hover:bg-panel/60"
+                                >
+                                  Jump
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="mt-3 grid gap-2 text-sm">
+                        {row("Champ", "🏆", champ)}
+                        {row("2nd", "🥈", second)}
+                        {row("3rd", "🥉", third)}
+
+                        <div className="rounded-xl border border-subtle bg-panel/30 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-muted">🎯 Wager Pot</span>
+                            <span className="text-white font-semibold">{fmtMoney(wagerPot?.total ?? 0)}</span>
+                          </div>
+                          <div className="mt-1 flex items-center justify-between gap-3 text-xs text-muted">
+                            <div className="truncate">
+                              <span className="text-muted">Winner: </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openWinnerModal({
+                                    label: "Wager Winner",
+                                    icon: "🎯",
+                                    division: div,
+                                    winner: safeStr(wagerPot?.winner).trim(),
+                                    league: safeStr(wagerPot?.winnerLeague || "").trim(),
+                                    pts: Number(wagerPot?.winnerPts ?? 0) || 0,
+                                    payout: Number(wagerPot?.total ?? 0) || 0,
+                                    jumpId: wagerPot?.winnerLeague
+                                      ? leagueAnchorId(season, div, wagerPot?.winnerLeague)
+                                      : "",
+                                  })
+                                }
+                                className="text-white font-semibold hover:underline underline-offset-4"
+                                disabled={!wagerPot?.winner}
+                              >
+                                {wagerPot?.winner || "—"}
+                              </button>
+                              {wagerPot?.winnerLeague ? <span className="text-muted"> · </span> : null}
+                              {wagerPot?.winnerLeague ? (
+                                <span className="text-white/90">{wagerPot?.winnerLeague}</span>
+                              ) : null}
+                            </div>
+                            {wagerPot?.winnerLeague ? (
+                              <button
+                                type="button"
+                                onClick={() => scrollToId(leagueAnchorId(season, div, wagerPot?.winnerLeague))}
+                                className="shrink-0 rounded-full border border-subtle bg-panel/40 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white hover:bg-panel/60"
+                              >
+                                Jump
+                              </button>
+                            ) : null}
+                          </div>
+                          {wagerPot?.winner ? (
+                            <div className="mt-1 text-xs text-muted">
+                              Week 17 (wagered):{" "}
+                              <span className="text-white font-medium">
+                                {Number(wagerPot?.winnerPts ?? 0).toFixed(2)}
+                              </span>
+                              <span className="text-muted"> · Entrants: </span>
+                              <span className="text-white font-medium">
+                                {Number(wagerPot?.pool ?? 0) / Number(view.rules.credit || 50) || 0}
+                              </span>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               ))
           )}
@@ -292,9 +470,7 @@ function DynastyWagerTrackerInner({ season }) {
           <div>
             <SmallBadge>Week 18</SmallBadge>
             <h2 className="mt-3 text-xl font-semibold text-white">Heroes vs Dragons Showdown</h2>
-            <p className="mt-2 text-sm text-muted">
-              Division champs (highest Week 17 scorer in each division) face off in Week 18.
-            </p>
+            <p className="mt-2 text-sm text-muted">Division champs (highest Week 17 scorer in each division) face off in Week 18.</p>
           </div>
           <div className="text-right text-xs text-muted">
             <div>Resolved: {view.week18.resolvedAt ? new Date(view.week18.resolvedAt).toLocaleString() : "—"}</div>
@@ -311,8 +487,13 @@ function DynastyWagerTrackerInner({ season }) {
                 <div key={div} className="rounded-2xl border border-subtle bg-panel/50 p-4">
                   <div className="text-xs uppercase tracking-[0.22em] text-muted">Champion · {div}</div>
                   <div className="mt-2 text-lg font-semibold text-white">{c.ownerName}</div>
-                  <div className="mt-1 text-sm text-muted">Week 17: <span className="text-white font-medium">{Number(c.wk17 ?? 0).toFixed(2)}</span></div>
-                  <div className="mt-1 text-sm text-muted">Week 18: <span className="text-white font-medium">{Number(view.week18.points?.[c.key] ?? 0).toFixed(2)}</span></div>
+                  <div className="mt-1 text-sm text-muted">
+                    Week 17: <span className="text-white font-medium">{Number(c.wk17 ?? 0).toFixed(2)}</span>
+                  </div>
+                  <div className="mt-1 text-sm text-muted">
+                    Week 18:{" "}
+                    <span className="text-white font-medium">{Number(view.week18.points?.[c.key] ?? 0).toFixed(2)}</span>
+                  </div>
                 </div>
               ))
           )}
@@ -339,48 +520,157 @@ function DynastyWagerTrackerInner({ season }) {
           {Object.keys(view.divisions).length === 0 ? (
             <div className="text-sm text-muted">No divisions found.</div>
           ) : (
-            Object.entries(view.divisions).map(([div, d]) => (
-              <div key={div} className="rounded-2xl border border-subtle bg-panel/30 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-xs uppercase tracking-[0.22em] text-muted">Division</div>
-                    <div className="mt-1 text-lg font-semibold text-white">{div}</div>
-                  </div>
-                  {view.divisionAwards?.[div]?.champion?.winner ? <WinnerTag>Division Champ</WinnerTag> : null}
-                </div>
+            Object.entries(view.divisions).map(([div, d]) => {
+              const r = view.divisionAwards?.[div] || {};
+              const champ = r?.champ || r?.champion || {};
+              const second = r?.second || {};
+              const third = r?.third || {};
+              const wagerPot = r?.wagerPot || {};
 
-                <div className="mt-4 space-y-4">
-                  {safeArray(d?.leagues).map((l) => (
-                    <div key={`${div}|||${l.leagueName}`} className="rounded-2xl border border-subtle bg-card-surface p-4">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="text-white font-semibold">{l.leagueName}</div>
-                        <div className="text-xs text-muted">Week 17: top points across all finalists in this division</div>
-                      </div>
+              const champKey = safeStr(champ?.winnerKey || champ?.key).trim();
+              const secondKey = safeStr(second?.winnerKey || second?.key).trim();
+              const thirdKey = safeStr(third?.winnerKey || third?.key).trim();
+              const wagerKey = safeStr(wagerPot?.winnerKey || "").trim();
 
-                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                        {safeArray(l.entries).map((e) => (
-                          <div key={e.k} className="rounded-xl border border-subtle bg-panel/40 p-3">
-                            <div className="flex items-center justify-between">
-                              <div className="text-white font-semibold">{e.ownerName}</div>
-                              <div
-                                className={
-                                  e.decision === "wager"
-                                    ? "text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200"
-                                    : "text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-200"
-                                }
-                              >
-                                {e.decision === "wager" ? "Wager" : "Bank"}
-                              </div>
-                            </div>
-                            <div className="mt-2 text-sm text-muted">Week 17: <span className="text-white font-medium">{e.wk17.toFixed(2)}</span></div>
-                          </div>
-                        ))}
-                      </div>
+              function tagsForKey(k) {
+                const tags = [];
+                if (k && k === champKey) tags.push({ icon: "🏆", label: "Champ" });
+                if (k && k === secondKey) tags.push({ icon: "🥈", label: "2nd" });
+                if (k && k === thirdKey) tags.push({ icon: "🥉", label: "3rd" });
+                if (k && k === wagerKey) tags.push({ icon: "🎯", label: "Wager Winner" });
+                return tags;
+              }
+
+              return (
+                <div key={div} className="rounded-2xl border border-subtle bg-panel/30 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="text-xs uppercase tracking-[0.22em] text-muted">Division</div>
+                      <div className="mt-1 text-lg font-semibold text-white">{div}</div>
                     </div>
-                  ))}
+                    {safeStr(champ?.winner).trim() ? <WinnerTag>Division Champ</WinnerTag> : null}
+                  </div>
+
+                  {/* Compact division summary */}
+                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                    <div className="rounded-2xl border border-subtle bg-panel/40 p-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted">🏆 Champ</span>
+                        <span className="text-white font-semibold truncate">{champ?.winner || "—"}</span>
+                      </div>
+                      {champ?.leagueName ? (
+                        <div className="mt-1 flex items-center justify-between text-xs text-muted">
+                          <span className="truncate">{champ.leagueName}</span>
+                          <span className="text-white font-medium">{Number(champ?.pts ?? 0).toFixed(2)}</span>
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="rounded-2xl border border-subtle bg-panel/40 p-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted">🎯 Wager Winner</span>
+                        <span className="text-white font-semibold truncate">{wagerPot?.winner || "—"}</span>
+                      </div>
+                      {wagerPot?.winnerLeague ? (
+                        <div className="mt-1 flex items-center justify-between text-xs text-muted">
+                          <span className="truncate">{wagerPot.winnerLeague}</span>
+                          <span className="text-white font-medium">{Number(wagerPot?.winnerPts ?? 0).toFixed(2)}</span>
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="rounded-2xl border border-subtle bg-panel/40 p-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted">🥈 2nd</span>
+                        <span className="text-white font-semibold truncate">{second?.winner || "—"}</span>
+                      </div>
+                      {second?.leagueName ? (
+                        <div className="mt-1 flex items-center justify-between text-xs text-muted">
+                          <span className="truncate">{second.leagueName}</span>
+                          <span className="text-white font-medium">{Number(second?.pts ?? 0).toFixed(2)}</span>
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="rounded-2xl border border-subtle bg-panel/40 p-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted">🥉 3rd</span>
+                        <span className="text-white font-semibold truncate">{third?.winner || "—"}</span>
+                      </div>
+                      {third?.leagueName ? (
+                        <div className="mt-1 flex items-center justify-between text-xs text-muted">
+                          <span className="truncate">{third.leagueName}</span>
+                          <span className="text-white font-medium">{Number(third?.pts ?? 0).toFixed(2)}</span>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    {safeArray(d?.leagues).map((l) => {
+                      const anchorId = leagueAnchorId(season, div, l.leagueName);
+                      return (
+                        <div
+                          key={`${div}|||${l.leagueName}`}
+                          id={anchorId}
+                          className="rounded-2xl border border-subtle bg-card-surface p-4"
+                        >
+                          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="text-white font-semibold">{l.leagueName}</div>
+                            <div className="text-[11px] text-muted">Week 17 points (division-wide payouts)</div>
+                          </div>
+
+                          <div className="mt-3 overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="text-xs uppercase tracking-[0.22em] text-muted">
+                                  <th className="py-2 pr-4 text-left">Finalist</th>
+                                  <th className="py-2 pr-4 text-left">Choice</th>
+                                  <th className="py-2 text-right">Week 17</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-subtle/60">
+                                {safeArray(l.entries)
+                                  .slice()
+                                  .sort((a, b) => b.wk17 - a.wk17)
+                                  .map((e) => {
+                                    const tags = tagsForKey(e.k);
+                                    return (
+                                      <tr key={e.k} className="align-top">
+                                        <td className="py-2 pr-4">
+                                          <div className="flex items-start gap-2">
+                                            <div className="text-white font-semibold leading-5">{e.ownerName}</div>
+                                            {tags.length ? (
+                                              <div className="flex flex-wrap gap-1 pt-0.5">
+                                                {tags.map((t) => (
+                                                  <span
+                                                    key={t.label}
+                                                    title={t.label}
+                                                    className="inline-flex items-center rounded-full border border-subtle bg-panel/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white"
+                                                  >
+                                                    {t.icon}
+                                                  </span>
+                                                ))}
+                                              </div>
+                                            ) : null}
+                                          </div>
+                                        </td>
+                                        <td className="py-2 pr-4">
+                                          <DecisionPill decision={e.decision} />
+                                        </td>
+                                        <td className="py-2 text-right">
+                                          <span className="text-white font-semibold">{e.wk17.toFixed(2)}</span>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </Card>
@@ -402,15 +692,84 @@ function DynastyWagerTrackerInner({ season }) {
                   <div className="mt-1 text-sm text-muted">
                     {m.division} · {m.leagueName} · Week 17: {m.wk17.toFixed(2)}
                   </div>
-                  <div className="mt-1 text-sm text-muted">
-                    Would have won: <span className="text-white font-semibold">{fmtMoney(m.wouldHaveWon)}</span>
-                  </div>
+                  {(() => {
+                    const r = view.divisionAwards?.[m.division] || {};
+                    const wagerPot = r?.wagerPot || {};
+                    const wName = safeStr(wagerPot?.winner).trim();
+                    const wPts = Number(wagerPot?.winnerPts ?? 0) || 0;
+
+                    return (
+                      <div className="mt-1 text-sm text-muted">
+                        Would have won: <span className="text-white font-semibold">{fmtMoney(m.wouldHaveWon)}</span>
+                        {wName ? (
+                          <>
+                            <span className="text-muted"> because </span>
+                            <span className="text-white font-semibold">{wName}</span>
+                            <span className="text-muted"> scored </span>
+                            <span className="text-white font-semibold">{wPts.toFixed(2)}</span>
+                            <span className="text-muted"> (Wager winner), and you scored </span>
+                            <span className="text-white font-semibold">{m.wk17.toFixed(2)}</span>
+                            <span className="text-muted"> while banking.</span>
+                          </>
+                        ) : null}
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
           )}
         </div>
       </Card>
+
+      <Modal
+        open={Boolean(winnerModal)}
+        title={winnerModal ? `${winnerModal.icon || ""} ${winnerModal.label || ""}`.trim() : ""}
+        onClose={() => setWinnerModal(null)}
+      >
+        {winnerModal ? (
+          <div className="space-y-3 text-sm">
+            <div className="rounded-2xl border border-subtle bg-panel/40 p-4">
+              <div className="text-xs uppercase tracking-[0.25em] text-muted">Division</div>
+              <div className="mt-1 text-white font-semibold">{winnerModal.division || "—"}</div>
+            </div>
+
+            <div className="rounded-2xl border border-subtle bg-panel/40 p-4">
+              <div className="text-xs uppercase tracking-[0.25em] text-muted">Winner</div>
+              <div className="mt-1 text-white font-semibold">{winnerModal.winner || "—"}</div>
+              {winnerModal.league ? (
+                <div className="mt-1 text-xs text-muted">
+                  League: <span className="text-white/90">{winnerModal.league}</span>
+                </div>
+              ) : null}
+              {Number.isFinite(Number(winnerModal.pts)) ? (
+                <div className="mt-1 text-xs text-muted">
+                  Week 17 Points:{" "}
+                  <span className="text-white font-medium">{Number(winnerModal.pts).toFixed(2)}</span>
+                </div>
+              ) : null}
+              {Number.isFinite(Number(winnerModal.payout)) && Number(winnerModal.payout) > 0 ? (
+                <div className="mt-1 text-xs text-muted">
+                  Payout: <span className="text-white font-medium">{fmtMoney(Number(winnerModal.payout))}</span>
+                </div>
+              ) : null}
+            </div>
+
+            {winnerModal.jumpId ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setWinnerModal(null);
+                  scrollToId(winnerModal.jumpId);
+                }}
+                className="w-full rounded-2xl border border-subtle bg-panel/40 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-white hover:bg-panel/60"
+              >
+                Jump to league
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }
