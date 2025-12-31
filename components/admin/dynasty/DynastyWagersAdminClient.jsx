@@ -342,6 +342,7 @@ function computeResults(doc) {
       credit,
     }));
 
+  // Per-division podium + wager pot winner
   const divisionResults = {};
   const divisionsSorted = Object.keys(byDivision).sort((a, b) => a.localeCompare(b));
 
@@ -378,7 +379,7 @@ function computeResults(doc) {
     divisionResults[div] = { champ, second, third, wagerPot };
   }
 
-  // Who should have wagered? (bankers who outscored the top wagered score IN THEIR DIVISION)
+  // Wager misses (same as your new file)
   const wagerMisses = [];
   for (const div of Object.keys(byDivision)) {
     const topWagerPts = Number(divisionResults?.[div]?.wagerPot?.winnerPts ?? 0) || 0;
@@ -403,6 +404,78 @@ function computeResults(doc) {
   }
   wagerMisses.sort((a, b) => b.wk17 - a.wk17);
 
+  // ✅ Restore Week 18 champion derivation + result (from your old working file)
+  const nextWeek18 = (() => {
+    const prev18 = doc?.week18 || {};
+    const points18 = prev18?.points || {};
+
+    const champions = {};
+    for (const div of Object.keys(byDivision)) {
+      const champEntry = divisionResults?.[div]?.champ;
+      if (!champEntry?.winner || !champEntry?.winnerKey) continue;
+      champions[div] = {
+        ownerName: champEntry.winner,
+        key: champEntry.winnerKey,
+        leagueName: champEntry.leagueName || "",
+        wk17: Number(champEntry.pts ?? 0) || 0,
+      };
+    }
+
+    const divs = Object.keys(champions).sort((a, b) => a.localeCompare(b));
+    const aDiv = divs[0] || "";
+    const bDiv = divs[1] || "";
+    const aChamp = aDiv ? champions[aDiv] : null;
+    const bChamp = bDiv ? champions[bDiv] : null;
+
+    const aPts = aChamp ? Number(points18?.[aChamp.key] ?? 0) || 0 : 0;
+    const bPts = bChamp ? Number(points18?.[bChamp.key] ?? 0) || 0 : 0;
+
+    const result = (() => {
+      if (!aChamp || !bChamp) {
+        return { ...buildEmptyState(doc?.season || new Date().getFullYear()).week18.showdown.result };
+      }
+      if (aPts === bPts) {
+        return {
+          winner: "TIE",
+          winnerKey: "",
+          winnerDivision: "",
+          winnerPts: aPts,
+          loser: "TIE",
+          loserKey: "",
+          loserDivision: "",
+          loserPts: bPts,
+          tie: true,
+        };
+      }
+
+      const win = aPts > bPts ? { div: aDiv, champ: aChamp, pts: aPts } : { div: bDiv, champ: bChamp, pts: bPts };
+      const lose = aPts > bPts ? { div: bDiv, champ: bChamp, pts: bPts } : { div: aDiv, champ: aChamp, pts: aPts };
+
+      return {
+        winner: win.champ.ownerName,
+        winnerKey: win.champ.key,
+        winnerDivision: win.div,
+        winnerPts: win.pts,
+        loser: lose.champ.ownerName,
+        loserKey: lose.champ.key,
+        loserDivision: lose.div,
+        loserPts: lose.pts,
+        tie: false,
+      };
+    })();
+
+    return {
+      ...prev18,
+      week: 18,
+      points: points18,
+      showdown: {
+        ...prev18.showdown,
+        champions,
+        result,
+      },
+    };
+  })();
+
   return {
     ...doc,
     week17: {
@@ -412,8 +485,10 @@ function computeResults(doc) {
         wagerMisses,
       },
     },
+    week18: nextWeek18,
   };
 }
+
 
 export default function DynastyWagersAdminClient() {
   const [season, setSeason] = useState(() => new Date().getFullYear());
@@ -684,6 +759,92 @@ export default function DynastyWagersAdminClient() {
       return computeResults(next);
     });
   }
+  async function resolveWeek17AndNext() {
+    setSaving(true);
+    setErrorMsg("");
+    setInfoMsg("");
+
+    try {
+      const lbUrl = LEADERBOARD_URL_BY_SEASON(season);
+      const lbRes = await fetch(lbUrl, { cache: "no-store" });
+      if (!lbRes.ok) throw new Error(`Failed to fetch leaderboards (${lbRes.status})`);
+      const leaderboardsJson = await lbRes.json();
+
+      const pointsMap = getWeekPointsMapFromLeaderboard(leaderboardsJson, season, 17);
+
+      const decisions = { ...(doc?.week17?.decisions || {}) };
+      const points = { ...(doc?.week17?.points || {}) };
+
+      for (const div of Object.keys(doc?.eligibility?.byDivision || {})) {
+        for (const league of safeArray(doc?.eligibility?.byDivision?.[div])) {
+          const leagueName = safeStr(league?.leagueName).trim();
+          for (const ownerName of safeArray(league?.finalists)) {
+            const on = safeStr(ownerName).trim();
+            if (!on) continue;
+
+            const k = entryKey({ division: div, leagueName, ownerName: on });
+
+            // ensure a default decision exists
+            if (!decisions[k]) decisions[k] = { decision: "bank" };
+
+            // pull week 17 points
+            points[k] = Number(pointsMap?.[k] ?? 0) || 0;
+          }
+        }
+      }
+
+      const next = computeResults({
+        ...doc,
+        source: { ...doc.source, leaderboardUrl: lbUrl, lastFetchedAt: nowIso() },
+        week17: { ...doc.week17, week: 17, decisions, points, resolvedAt: nowIso() },
+      });
+
+      await save(next, { setStepAfter: "resolve18" });
+      setInfoMsg("Resolved Week 17 points.");
+    } catch (e) {
+      setErrorMsg(e?.message || "Resolve Week 17 failed.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function resolveWeek18AndNext() {
+    setSaving(true);
+    setErrorMsg("");
+    setInfoMsg("");
+
+    try {
+      const lbUrl = LEADERBOARD_URL_BY_SEASON(season);
+      const lbRes = await fetch(lbUrl, { cache: "no-store" });
+      if (!lbRes.ok) throw new Error(`Failed to fetch leaderboards (${lbRes.status})`);
+      const leaderboardsJson = await lbRes.json();
+
+      const pointsMap = getWeekPointsMapFromLeaderboard(leaderboardsJson, season, 18);
+
+      const champions = doc?.week18?.showdown?.champions || {};
+      const points = { ...(doc?.week18?.points || {}) };
+
+      for (const div of Object.keys(champions)) {
+        const k = safeStr(champions?.[div]?.key).trim();
+        if (!k) continue;
+        points[k] = Number(pointsMap?.[k] ?? 0) || 0;
+      }
+
+      const next = computeResults({
+        ...doc,
+        week18: { ...doc.week18, week: 18, points, resolvedAt: nowIso() },
+      });
+
+      await save(next, { setStepAfter: "results" });
+      setInfoMsg("Resolved Week 18 showdown.");
+    } catch (e) {
+      setErrorMsg(e?.message || "Resolve Week 18 failed.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+
 
   async function saveDecisionsAndNext() {
     await save(doc, { setStepAfter: "resolve17" });
@@ -959,12 +1120,21 @@ export default function DynastyWagersAdminClient() {
 
       {step === "resolve17" && (
         <Card>
+          
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-white">Week 17 Summary</h2>
-              <p className="mt-2 text-sm text-muted">Shows what’s currently stored in results (after Week 17 resolve).</p>
+              <h2 className="text-lg font-semibold text-white">Resolve Week 17</h2>
+              <p className="mt-2 text-sm text-muted">
+                Pull Week 17 points for all selected finalists and compute division payouts.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <PrimaryButton onClick={resolveWeek17AndNext} disabled={saving}>
+                Resolve Week 17 & Next
+              </PrimaryButton>
             </div>
           </div>
+
 
           <Divider />
 
@@ -1002,9 +1172,61 @@ export default function DynastyWagersAdminClient() {
                   </div>
                 ))
             )}
+            
           </div>
         </Card>
       )}
+      {step === "resolve18" && (
+  <Card>
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <h2 className="text-lg font-semibold text-white">Resolve Week 18 Showdown</h2>
+        <p className="mt-2 text-sm text-muted">
+          Week 18 is head-to-head between the <b>division champs</b> (highest Week 17 scorer in each division).
+        </p>
+      </div>
+      <div className="flex gap-2">
+        <PrimaryButton onClick={resolveWeek18AndNext} disabled={saving}>
+          Resolve Week 18 & Next
+        </PrimaryButton>
+      </div>
+    </div>
+
+    <Divider />
+
+    <div className="grid gap-3 sm:grid-cols-2">
+      {Object.keys(doc?.week18?.showdown?.champions || {}).length === 0 ? (
+        <div className="text-sm text-muted">Resolve Week 17 first to determine division champs.</div>
+      ) : (
+        Object.entries(doc.week18.showdown.champions)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([div, c]) => (
+            <div key={div} className="rounded-2xl border border-subtle bg-panel/40 p-4">
+              <div className="text-xs uppercase tracking-[0.25em] text-muted">Champion · {div}</div>
+              <div className="mt-1 text-white font-semibold">{c.ownerName}</div>
+              <div className="mt-1 text-sm text-muted">Week 17: {Number(c.wk17 ?? 0).toFixed(2)}</div>
+              <div className="mt-1 text-sm text-muted">Week 18: {Number(doc?.week18?.points?.[c.key] ?? 0).toFixed(2)}</div>
+            </div>
+          ))
+      )}
+    </div>
+
+    {doc?.week18?.resolvedAt ? (
+      <div className="mt-4 rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-4">
+        <div className="text-xs uppercase tracking-[0.25em] text-emerald-200">Showdown Result</div>
+        <div className="mt-1 text-white font-semibold">{doc?.week18?.showdown?.result?.winner || "—"}</div>
+        <div className="mt-1 text-sm text-muted">
+          {doc?.week18?.showdown?.result?.tie
+            ? "Tie"
+            : `${Number(doc?.week18?.showdown?.result?.winnerPts ?? 0).toFixed(2)} vs ${Number(
+                doc?.week18?.showdown?.result?.loserPts ?? 0
+              ).toFixed(2)}`}
+        </div>
+      </div>
+    ) : null}
+  </Card>
+)}
+
     </div>
   );
 }
