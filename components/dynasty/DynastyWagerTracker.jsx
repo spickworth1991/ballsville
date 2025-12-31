@@ -49,7 +49,8 @@ function normalizeDoc(doc) {
   const points = wk17?.points || {};
   const results = wk17?.results || {};
   const divisionAwards = results?.divisions || {};
-  const leagueWinners = results?.leagueWinners || {};
+  // Dynasty Week 17 is division-wide (all finalists in the division compete).
+  // Any league-level winner/empire logic is not used on the public page.
 
   const wk18 = doc?.week18 || {};
   const showdown = wk18?.showdown || {};
@@ -74,19 +75,9 @@ function normalizeDoc(doc) {
           };
         });
 
-        const leagueRes = leagueWinners?.[`${div}|||${leagueName}`] || {};
-
         return {
           leagueName,
           entries,
-          leagueWinner: {
-            winner: safeStr(leagueRes?.winner || "").trim(),
-            winnerKey: safeStr(leagueRes?.winnerKey || "").trim(),
-            pts: Number(leagueRes?.pts ?? 0) || 0,
-            bonus: Number(leagueRes?.bonus ?? 0) || 0,
-            empire: !!leagueRes?.empire,
-            empireBonus: Number(leagueRes?.empireBonus ?? 0) || 0,
-          },
         };
       })
       .filter((l) => l.leagueName && l.entries.length);
@@ -108,8 +99,6 @@ function normalizeDoc(doc) {
       champBonus: Number(wk17?.champBonus ?? 250) || 250,
       champBonus2: Number(wk17?.champBonus2 ?? 100) || 100,
       champBonus3: Number(wk17?.champBonus3 ?? 50) || 50,
-      leagueWinBonus: Number(wk17?.leagueWinBonus ?? 125) || 125,
-      empireBonus: Number(wk17?.empireBonus ?? 225) || 225,
     },
     divisionAwards,
     overall: {
@@ -154,6 +143,7 @@ function normalizeDoc(doc) {
       division: safeStr(m?.division).trim(),
       leagueName: safeStr(m?.leagueName).trim(),
       wk17: Number(m?.wk17 ?? 0) || 0,
+      wouldHaveWon: Number(m?.wouldHaveWon ?? 0) || 0,
       key: safeStr(m?.key || "").trim(),
     })),
     divisionAwards,
@@ -248,15 +238,30 @@ function DynastyWagerTrackerInner({ season }) {
                   <div className="mt-3 grid gap-2 text-sm">
                     <div className="flex items-center justify-between">
                       <span className="text-muted">🏆 Champ</span>
-                      <span className="text-white font-medium">{d?.champion?.winner || "—"}</span>
+                      <span className="text-white font-medium">
+                        {d?.champion?.winner || "—"}
+                        {Number.isFinite(Number(d?.champion?.payout)) ? (
+                          <span className="text-muted"> · +{fmtMoney(d?.champion?.payout)}</span>
+                        ) : null}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-muted">🥈 2nd</span>
-                      <span className="text-white font-medium">{d?.second?.winner || "—"}</span>
+                      <span className="text-white font-medium">
+                        {d?.second?.winner || "—"}
+                        {Number.isFinite(Number(d?.second?.payout)) ? (
+                          <span className="text-muted"> · +{fmtMoney(d?.second?.payout)}</span>
+                        ) : null}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-muted">🥉 3rd</span>
-                      <span className="text-white font-medium">{d?.third?.winner || "—"}</span>
+                      <span className="text-white font-medium">
+                        {d?.third?.winner || "—"}
+                        {Number.isFinite(Number(d?.third?.payout)) ? (
+                          <span className="text-muted"> · +{fmtMoney(d?.third?.payout)}</span>
+                        ) : null}
+                      </span>
                     </div>
                     <div className="mt-2 pt-2 border-t border-subtle flex items-center justify-between">
                       <span className="text-muted">🎯 Wager Pot</span>
@@ -272,10 +277,12 @@ function DynastyWagerTrackerInner({ season }) {
           )}
 
           <div className="rounded-2xl border border-subtle bg-panel/50 p-4">
-            <div className="text-xs uppercase tracking-[0.22em] text-muted">League Winner Bonus</div>
-            <div className="mt-2 text-lg font-semibold text-white">{fmtMoney(view.rules.leagueWinBonus)}</div>
-            <div className="mt-2 text-sm text-muted">Awarded per league to the higher Week 17 scorer.</div>
-            <div className="mt-1 text-xs text-muted">Empire toggle is tracked per league (manual).</div>
+            <div className="text-xs uppercase tracking-[0.22em] text-muted">How Week 17 Works</div>
+            <div className="mt-2 text-sm text-muted">
+              All finalists in each division compete together in Week 17. The top Week 17 scorers in the division earn
+              <b> Champ</b>, <b>2nd</b>, and <b>3rd</b>. The <b>Wager Pot</b> is only among those who chose <b>Wager</b>.
+            </div>
+            <div className="mt-2 text-xs text-muted">(No league-level head-to-head winner in this format.)</div>
           </div>
         </div>
       </Card>
@@ -347,18 +354,7 @@ function DynastyWagerTrackerInner({ season }) {
                     <div key={`${div}|||${l.leagueName}`} className="rounded-2xl border border-subtle bg-card-surface p-4">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div className="text-white font-semibold">{l.leagueName}</div>
-                        {l.leagueWinner?.winner ? (
-                          <div className="text-xs text-muted">
-                            League Winner Bonus: <span className="text-white font-semibold">{safeStr(l.leagueWinner.winner)}</span>
-                            {l.leagueWinner.empire ? (
-                              <span className="ml-2 inline-flex items-center rounded-full border border-amber-300/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-200">
-                                Empire +{fmtMoney(l.leagueWinner.empireBonus || view.rules.empireBonus)}
-                              </span>
-                            ) : null}
-                          </div>
-                        ) : (
-                          <div className="text-xs text-muted">League Winner Bonus: —</div>
-                        )}
+                        <div className="text-xs text-muted">Week 17: top points across all finalists in this division</div>
                       </div>
 
                       <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -404,7 +400,10 @@ function DynastyWagerTrackerInner({ season }) {
                 <div key={`${m.key || idx}`} className="rounded-xl border border-rose-400/25 bg-rose-500/10 p-3">
                   <div className="text-white font-semibold">{m.ownerName}</div>
                   <div className="mt-1 text-sm text-muted">
-                    {m.division} · {m.leagueName} · {m.wk17.toFixed(2)}
+                    {m.division} · {m.leagueName} · Week 17: {m.wk17.toFixed(2)}
+                  </div>
+                  <div className="mt-1 text-sm text-muted">
+                    Would have won: <span className="text-white font-semibold">{fmtMoney(m.wouldHaveWon)}</span>
                   </div>
                 </div>
               ))}

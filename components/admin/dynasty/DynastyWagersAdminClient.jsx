@@ -4,35 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import AdminStepTabs from "../AdminStepTabs";
 
-function isLocalhost() {
-  if (typeof window === "undefined") return false;
-  const h = window.location.hostname;
-  return h === "localhost" || h === "127.0.0.1";
-}
 
-function getR2Base() {
-  // In prod, `/r2` is the Pages Function proxy for the public R2 bucket.
-  if (!isLocalhost()) return "/r2";
-
-  // Local dev: fall back to an explicit public base if you have it, otherwise use production.
-  // (next dev doesn't run Pages Functions, so `/r2` will 404 on localhost.)
-  return (
-    process.env.NEXT_PUBLIC_R2_PUBLIC_BASE ||
-    process.env.NEXT_PUBLIC_R2_PUBLIC_URL ||
-    "https://ballsville.pages.dev/r2"
-  );
-}
-
-// When running on localhost, Pages Functions won't run in `next dev`, so `/r2/...` won't exist.
-// Also, if the `/r2` proxy route ever changes, this gives us a resilient fallback.
-function getPublicR2Base() {
-  // Optional overrides if you ever want to point at a different R2 proxy/base.
-  return (
-    process.env.NEXT_PUBLIC_R2_PUBLIC_BASE ||
-    process.env.NEXT_PUBLIC_R2_PROXY_BASE ||
-    "https://ballsville.pages.dev/r2"
-  );
-}
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
@@ -120,19 +92,8 @@ function buildEmptyState(season) {
       },
 
       results: {
-        // New format: per-division awards, plus league winners and wager misses.
-        divisions: {
-          // [division]: {
-          //   champion: { bonus, winner, winnerKey, division, leagueName, pts },
-          //   second:   { bonus, winner, winnerKey, division, leagueName, pts },
-          //   third:    { bonus, winner, winnerKey, division, leagueName, pts },
-          //   wagerPot: { pool, bonus, total, winner, winnerKey, winnerDivision, winnerLeague, winnerPts }
-          // }
-        },
-        leagueWinners: {
-          // `${division}|||${leagueName}` -> { winner, winnerKey, pts, bonus, opponent, opponentPts, tie }
-        },
-        // banked finalists who would have won the wager bonus if they wagered
+        divisions: {},
+        leagueWinners: {},
         wagerMisses: [],
       },
     },
@@ -140,14 +101,9 @@ function buildEmptyState(season) {
     week18: {
       week: 18,
       resolvedAt: "",
-      // { [entryKey]: number }
       points: {},
       showdown: {
-        // Derived from Week 17: highest scorer among finalists in each division.
-        champions: {
-          // [division]: { ownerName, key, leagueName, wk17 }
-        },
-        // Week 18 head-to-head result across division champs.
+        champions: {},
         result: {
           winner: "",
           winnerKey: "",
@@ -196,24 +152,6 @@ function getWeekPointsMapFromLeaderboard(leaderboardsJson, season, week) {
   return map;
 }
 
-function parseTrailingFractionOrder(leagueName) {
-  // Expected: "... 3/16" (league number at end) -> 3
-  const s = safeStr(leagueName).trim();
-  const m = s.match(/\b(\d{1,3})\s*\/\s*\d{1,3}\s*$/);
-  if (!m) return null;
-  const n = Number(m[1]);
-  return Number.isFinite(n) ? n : null;
-}
-
-function getLeagueDisplayOrder(division, leagueName, leagueOrderIndex) {
-  const key = `${safeStr(division).trim()}|||${safeStr(leagueName).trim()}`.toLowerCase();
-  const mapped = leagueOrderIndex?.get?.(key);
-  if (typeof mapped === "number" && Number.isFinite(mapped) && mapped !== 999999) return mapped;
-  const parsed = parseTrailingFractionOrder(leagueName);
-  if (parsed != null) return parsed;
-  return 999999;
-}
-
 function buildOwnersByDivisionLeague(leaderboardsJson, season) {
   const root = getDynastyRoot(leaderboardsJson, season);
   const owners = safeArray(root?.owners);
@@ -229,7 +167,6 @@ function buildOwnersByDivisionLeague(leaderboardsJson, season) {
     byDiv[division][leagueName].add(ownerName);
   }
 
-  // Normalize to arrays
   const out = {};
   for (const div of Object.keys(byDiv)) {
     out[div] = {};
@@ -247,8 +184,7 @@ function buildLeagueOrderIndex(dynastyLeaguesJson, season) {
   for (const r of rows) {
     const y = Number(r?.year);
     if (Number.isFinite(y) && Number.isFinite(Number(season)) && y !== Number(season)) continue;
-    // Dynasty "leagues.json" is created by admin tooling and has had a few shapes over time.
-    // Try multiple keys so ordering doesn't break.
+
     const div = safeStr(r?.division || r?.theme_name || r?.themeName || "").trim();
     const leagueName = safeStr(r?.leagueName || r?.name || r?.league_name || "").trim();
     if (!div || !leagueName) continue;
@@ -263,7 +199,8 @@ function buildLeagueOrderIndex(dynastyLeaguesJson, season) {
 
     const n = Number(raw);
     const fromName = parseLeagueNumberFromName(leagueName);
-    // Prefer explicit display_order, otherwise use the "1/16" style suffix.
+
+    // Prefer explicit display_order, otherwise use trailing "1/16"
     const orderNum = Number.isFinite(n) ? n : Number.isFinite(fromName) ? fromName : 999999;
     map.set(`${div}|||${leagueName}`.toLowerCase(), orderNum);
   }
@@ -275,8 +212,7 @@ function getLeagueOrder(orderIndex, division, leagueName) {
   const key = `${safeStr(division).trim()}|||${safeStr(leagueName).trim()}`.toLowerCase();
   const v = orderIndex?.get?.(key);
   if (Number.isFinite(v)) return v;
-  // Fallback: if we couldn't load leagues.json (or it doesn't include the league),
-  // keep the UI usable by parsing the trailing "N/16" in the league name.
+
   const fromName = parseLeagueNumberFromName(leagueName);
   return Number.isFinite(fromName) ? fromName : 999999;
 }
@@ -378,12 +314,9 @@ function computeResults(doc) {
   const champ1 = Number(wk?.champBonus ?? 250) || 250;
   const champ2 = Number(wk?.champBonus2 ?? 100) || 100;
   const champ3 = Number(wk?.champBonus3 ?? 50) || 50;
-  const leagueWinBonus = Number(wk?.leagueWinBonus ?? 125) || 125;
-  const empireBonus = Number(wk?.empireBonus ?? 225) || 225;
 
   const decisions = wk?.decisions || {};
   const points = wk?.points || {};
-  const empireTriggered = wk?.empireTriggered || {};
 
   // Flatten finalists from eligibility
   const entries = [];
@@ -409,9 +342,9 @@ function computeResults(doc) {
       credit,
     }));
 
-  // Per-division podium + wager pot winner
   const divisionResults = {};
   const divisionsSorted = Object.keys(byDivision).sort((a, b) => a.localeCompare(b));
+
   for (const div of divisionsSorted) {
     const divRows = rows.filter((r) => r.division === div);
     const ranked = [...divRows].sort((a, b) => b.pts - a.pts);
@@ -429,6 +362,7 @@ function computeResults(doc) {
     const wagered = divRows.filter((r) => r.decision === "wager");
     const wagerPool = wagered.length * credit;
     const wagerWinner = [...wagered].sort((a, b) => b.pts - a.pts)[0] || null;
+
     const wagerPot = wagerWinner
       ? {
           pool: wagerPool,
@@ -444,56 +378,12 @@ function computeResults(doc) {
     divisionResults[div] = { champ, second, third, wagerPot };
   }
 
-  // Keep legacy overall fields (not used by UI anymore) for backwards compatibility.
-  const allRanked = [...rows].sort((a, b) => b.pts - a.pts);
-  // NOTE: previously we had an overall (across all divisions) bonus set.
-  // Dynasty wagering pays out per division now: Champ/2nd/3rd + Wager Pot winner.
-
-  // League winners (+$125) per league (finalists head-to-head)
-  const leagueWinners = {};
-  const byLeague = new Map();
-  for (const r of rows) {
-    const lk = `${r.division}|||${r.leagueName}`;
-    if (!byLeague.has(lk)) byLeague.set(lk, []);
-    byLeague.get(lk).push(r);
-  }
-
-  for (const [lk, arr] of byLeague.entries()) {
-    const a = arr[0];
-    const b = arr[1];
-    if (!a || !b) continue;
-    if (a.pts === b.pts) {
-      leagueWinners[lk] = {
-        bonus: leagueWinBonus,
-        tie: true,
-        winner: "TIE",
-        winnerKey: "",
-        pts: a.pts,
-        opponent: "TIE",
-        opponentPts: b.pts,
-        empireBonus: empireTriggered?.[lk] ? empireBonus : 0,
-      };
-      continue;
-    }
-    const win = a.pts > b.pts ? a : b;
-    const lose = a.pts > b.pts ? b : a;
-    leagueWinners[lk] = {
-      bonus: leagueWinBonus,
-      tie: false,
-      winner: win.ownerName,
-      winnerKey: win.k,
-      pts: win.pts,
-      opponent: lose.ownerName,
-      opponentPts: lose.pts,
-      empireBonus: empireTriggered?.[lk] ? empireBonus : 0,
-    };
-  }
-
   // Who should have wagered? (bankers who outscored the top wagered score IN THEIR DIVISION)
   const wagerMisses = [];
   for (const div of Object.keys(byDivision)) {
     const topWagerPts = Number(divisionResults?.[div]?.wagerPot?.winnerPts ?? 0) || 0;
     const hasWagerWinner = Boolean(divisionResults?.[div]?.wagerPot?.winnerKey);
+    const wouldHaveWon = Number(divisionResults?.[div]?.wagerPot?.total ?? 0) || 0;
     if (!hasWagerWinner) continue;
 
     for (const r of rows) {
@@ -506,83 +396,12 @@ function computeResults(doc) {
           leagueName: r.leagueName,
           wk17: r.pts,
           key: r.k,
+          wouldHaveWon,
         });
       }
     }
   }
   wagerMisses.sort((a, b) => b.wk17 - a.wk17);
-
-  // Week 18: derive division champs from Week 17 (highest scorer among finalists in each division)
-  const nextWeek18 = (() => {
-    const prev18 = doc?.week18 || {};
-    const points18 = prev18?.points || {};
-
-    const champions = {};
-    for (const div of Object.keys(byDivision)) {
-      const champEntry = divisionResults?.[div]?.champ;
-      if (!champEntry?.ownerName || !champEntry?.key) continue;
-      champions[div] = {
-        ownerName: champEntry.ownerName,
-        key: champEntry.key,
-        leagueName: champEntry.leagueName || "",
-        wk17: Number(champEntry.pts ?? 0) || 0,
-      };
-    }
-
-    // Resolve Week 18 winner between the first two divisions (sorted) if possible.
-    const divs = Object.keys(champions).sort((a, b) => a.localeCompare(b));
-    const aDiv = divs[0] || "";
-    const bDiv = divs[1] || "";
-    const aChamp = aDiv ? champions[aDiv] : null;
-    const bChamp = bDiv ? champions[bDiv] : null;
-
-    const aPts = aChamp ? Number(points18?.[aChamp.key] ?? 0) || 0 : 0;
-    const bPts = bChamp ? Number(points18?.[bChamp.key] ?? 0) || 0 : 0;
-    const tie = !!aChamp && !!bChamp && aPts === bPts;
-
-    const result = (() => {
-      if (!aChamp || !bChamp) {
-        return { ...buildEmptyState(doc?.season || new Date().getFullYear()).week18.showdown.result };
-      }
-      if (tie) {
-        return {
-          winner: "TIE",
-          winnerKey: "",
-          winnerDivision: "",
-          winnerPts: aPts,
-          loser: "TIE",
-          loserKey: "",
-          loserDivision: "",
-          loserPts: bPts,
-          tie: true,
-        };
-      }
-      const win = aPts > bPts ? { div: aDiv, champ: aChamp, pts: aPts } : { div: bDiv, champ: bChamp, pts: bPts };
-      const lose = aPts > bPts ? { div: bDiv, champ: bChamp, pts: bPts } : { div: aDiv, champ: aChamp, pts: aPts };
-      return {
-        winner: win.champ.ownerName,
-        winnerKey: win.champ.key,
-        winnerDivision: win.div,
-        winnerPts: win.pts,
-        loser: lose.champ.ownerName,
-        loserKey: lose.champ.key,
-        loserDivision: lose.div,
-        loserPts: lose.pts,
-        tie: false,
-      };
-    })();
-
-    return {
-      ...prev18,
-      week: 18,
-      points: points18,
-      showdown: {
-        ...prev18.showdown,
-        champions,
-        result,
-      },
-    };
-  })();
 
   return {
     ...doc,
@@ -590,11 +409,9 @@ function computeResults(doc) {
       ...wk,
       results: {
         divisions: divisionResults,
-        leagueWinners,
         wagerMisses,
       },
     },
-    week18: nextWeek18,
   };
 }
 
@@ -607,29 +424,68 @@ export default function DynastyWagersAdminClient() {
   const [infoMsg, setInfoMsg] = useState("");
   const [step, setStep] = useState("finalists");
 
-  function scrollTop() {
-    if (typeof window === "undefined") return;
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
   const [leagueOrderIndex, setLeagueOrderIndex] = useState(() => new Map());
   // { [division]: { [leagueName]: string[] } }
   const [ownersByDivisionLeague, setOwnersByDivisionLeague] = useState(null);
 
+  const divisions = useMemo(() => {
+    const byDiv = doc?.eligibility?.byDivision || {};
+    const out = [];
+
+    for (const div of Object.keys(byDiv)) {
+      const leagues = safeArray(byDiv[div]).map((l) => {
+        const leagueName = safeStr(l?.leagueName).trim();
+        const finalists = safeArray(l?.finalists).map((x) => safeStr(x).trim()).filter(Boolean);
+        return { division: div, leagueName, finalists };
+      });
+
+      out.push({
+        division: div,
+        leagues: leagues.sort((a, b) => {
+          const ao = getLeagueOrder(leagueOrderIndex, div, a.leagueName);
+          const bo = getLeagueOrder(leagueOrderIndex, div, b.leagueName);
+          if (ao !== bo) return ao - bo;
+          return a.leagueName.localeCompare(b.leagueName);
+        }),
+      });
+    }
+
+    return out.sort((a, b) => a.division.localeCompare(b.division));
+  }, [doc, leagueOrderIndex]);
+
+  // ✅ FIX: this was undefined before and caused step 2 to crash
+  const divisionsSorted = useMemo(() => divisions.map((d) => d.division).sort((a, b) => a.localeCompare(b)), [divisions]);
+
+  const flatRows = useMemo(() => {
+    const out = [];
+    for (const d of divisions) {
+      for (const l of d.leagues) {
+        for (const ownerName of l.finalists) {
+          const k = entryKey({ division: d.division, leagueName: l.leagueName, ownerName });
+          const decision = safeStr(doc?.week17?.decisions?.[k]?.decision || "bank").trim() || "bank";
+          const pts = Number(doc?.week17?.points?.[k] ?? 0) || 0;
+          out.push({ division: d.division, leagueName: l.leagueName, ownerName, k, decision, pts });
+        }
+      }
+    }
+    return sortByLeagueOrder(out, leagueOrderIndex);
+  }, [divisions, doc, leagueOrderIndex]);
+
+  const flatRowsByDivision = useMemo(() => {
+    const m = {};
+    for (const r of flatRows) {
+      const div = safeStr(r?.division).trim();
+      if (!div) continue;
+      if (!m[div]) m[div] = [];
+      m[div].push(r);
+    }
+    return m;
+  }, [flatRows]);
+
   async function loadLeagueOrderIndex(seasonToLoad) {
     try {
       const bust = `v=${Date.now()}`;
-      const base = getR2Base();
-
-      // Try the primary base first; on localhost this will be absolute, on prod it's `/r2`.
-      let res = await fetch(`${base}/data/dynasty/leagues.json?${bust}`, { cache: "no-store" });
-
-      // Defensive fallback: if something misroutes `/r2` in a given environment,
-      // try the known production host.
-      if (!res.ok && base === "/r2") {
-        res = await fetch(`https://ballsville.pages.dev/r2/data/dynasty/leagues.json?${bust}`, { cache: "no-store" });
-      }
-
+      const res = await fetch(`/r2/data/dynasty/leagues.json?${bust}`, { cache: "no-store" });
       if (!res.ok) return;
       const data = await res.json();
       setLeagueOrderIndex(buildLeagueOrderIndex(data, seasonToLoad));
@@ -657,12 +513,10 @@ export default function DynastyWagersAdminClient() {
     }
   }
 
-  // Default to the current season.
   useEffect(() => {
     setSeason(CURRENT_SEASON);
   }, []);
 
-  // Auto-load whenever the season changes (no manual "Reload" needed).
   useEffect(() => {
     if (!season) return;
     loadDoc(season);
@@ -685,9 +539,8 @@ export default function DynastyWagersAdminClient() {
         throw new Error(out?.error || `Delete failed (${res.status})`);
       }
 
-      // Reset local state immediately.
       setDoc(buildEmptyState(season));
-      setStep("import");
+      setStep("finalists");
       setInfoMsg("Deleted. Starting fresh.");
     } catch (e) {
       setErrorMsg(e?.message || "Failed to delete Dynasty wagers.");
@@ -719,60 +572,13 @@ export default function DynastyWagersAdminClient() {
       setInfoMsg("Saved.");
       if (setStepAfter) {
         setStep(setStepAfter);
-        scrollTop();
+        scrollTopSmooth();
       }
     } catch (e) {
       setErrorMsg(e?.message || "Save failed.");
     } finally {
       setSaving(false);
     }
-  }
-
-  async function importFinalistsFromR2Manual(seasonToLoad) {
-    const bust = `v=${Date.now()}`;
-    const res = await fetch(`/r2/data/dynasty/wagering_${encodeURIComponent(seasonToLoad)}.json?${bust}`, {
-      cache: "no-store",
-    });
-    if (!res.ok) return [];
-    const data = await res.json().catch(() => null);
-    const rows = safeArray(data?.rows || data);
-    return rows
-      .map((r) => ({
-        division: safeStr(r?.group_name).trim(),
-        leagueName: safeStr(r?.league_name).trim(),
-        finalist1: safeStr(r?.finalist1_name).trim(),
-        finalist2: safeStr(r?.finalist2_name).trim(),
-      }))
-      .filter((r) => r.division && r.leagueName && r.finalist1 && r.finalist2);
-  }
-
-  function inferFinalistsFromLeaderboard(leaderboardsJson, seasonToLoad) {
-    const root = getDynastyRoot(leaderboardsJson, seasonToLoad);
-    const owners = safeArray(root?.owners);
-
-    // group by division+league, take top 2 by Week17 points
-    const byDivLeague = new Map();
-    for (const o of owners) {
-      const division = safeStr(o?.division).trim();
-      const leagueName = safeStr(o?.leagueName).trim();
-      const ownerName = safeStr(o?.ownerName).trim();
-      if (!division || !leagueName || !ownerName) continue;
-      const v = o?.weekly?.["17"] ?? o?.weekly?.[17];
-      const n = typeof v === "number" ? v : parseFloat(v);
-      const pts = Number.isNaN(n) ? 0 : Math.round(n * 100) / 100;
-      const k = `${division}|||${leagueName}`;
-      if (!byDivLeague.has(k)) byDivLeague.set(k, []);
-      byDivLeague.get(k).push({ ownerName, pts });
-    }
-
-    const rows = [];
-    for (const [k, arr] of byDivLeague.entries()) {
-      const [division, leagueName] = k.split("|||");
-      const top2 = [...arr].sort((a, b) => b.pts - a.pts).slice(0, 2);
-      if (top2.length < 2) continue;
-      rows.push({ division, leagueName, finalist1: top2[0].ownerName, finalist2: top2[1].ownerName });
-    }
-    return rows;
   }
 
   async function loadOwners() {
@@ -792,10 +598,13 @@ export default function DynastyWagersAdminClient() {
       setDoc((prev) => {
         const existing = prev?.eligibility?.byDivision || {};
         if (Object.keys(existing).length) return prev;
+
         const byDivision = {};
         for (const div of Object.keys(ownersMap)) {
+          // KEEP unsorted here; UI sorting is handled by leagueOrderIndex in `divisions` memo
           byDivision[div] = Object.keys(ownersMap[div]).map((leagueName) => ({ leagueName, finalists: ["", ""] }));
         }
+
         return {
           ...prev,
           source: { ...prev.source, leaderboardUrl: lbUrl, lastFetchedAt: nowIso() },
@@ -817,15 +626,19 @@ export default function DynastyWagersAdminClient() {
       const leagues = safeArray(byDivision[division]).map((l) => ({ ...l }));
       const i = leagues.findIndex((l) => safeStr(l?.leagueName).trim() === leagueName);
       if (i === -1) return prev;
+
       const cur = safeArray(leagues[i].finalists);
       const nextFinals = [safeStr(cur[0] || "").trim(), safeStr(cur[1] || "").trim()];
       nextFinals[idx] = safeStr(ownerName || "").trim();
+
       // Prevent duplicates within the league.
       if (nextFinals[0] && nextFinals[0] === nextFinals[1]) {
         nextFinals[1 - idx] = "";
       }
+
       leagues[i].finalists = nextFinals;
       byDivision[division] = leagues;
+
       return {
         ...prev,
         eligibility: { ...prev.eligibility, week: 16, byDivision },
@@ -835,7 +648,6 @@ export default function DynastyWagersAdminClient() {
 
   async function saveFinalistsAndNext() {
     const byDivision = doc?.eligibility?.byDivision || {};
-    // Basic validation: each league has 2 unique finalists.
     for (const div of Object.keys(byDivision)) {
       for (const l of safeArray(byDivision[div])) {
         const finals = safeArray(l?.finalists).map((x) => safeStr(x).trim()).filter(Boolean);
@@ -857,80 +669,6 @@ export default function DynastyWagersAdminClient() {
     await save(next, { setStepAfter: "decisions" });
   }
 
-  async function resolveWeek17AndNext() {
-    setSaving(true);
-    setErrorMsg("");
-    setInfoMsg("");
-    try {
-      const lbUrl = LEADERBOARD_URL_BY_SEASON(season);
-      const lbRes = await fetch(lbUrl, { cache: "no-store" });
-      if (!lbRes.ok) throw new Error(`Failed to fetch leaderboards (${lbRes.status})`);
-      const leaderboardsJson = await lbRes.json();
-
-      const pointsMap = getWeekPointsMapFromLeaderboard(leaderboardsJson, season, 17);
-      const decisions = { ...(doc?.week17?.decisions || {}) };
-      const points = { ...(doc?.week17?.points || {}) };
-
-      for (const div of Object.keys(doc?.eligibility?.byDivision || {})) {
-        for (const league of safeArray(doc?.eligibility?.byDivision?.[div])) {
-          const leagueName = safeStr(league?.leagueName).trim();
-          for (const ownerName of safeArray(league?.finalists)) {
-            const on = safeStr(ownerName).trim();
-            if (!on) continue;
-            const k = entryKey({ division: div, leagueName, ownerName: on });
-            if (!decisions[k]) decisions[k] = { decision: "bank" };
-            points[k] = Number(pointsMap?.[k] ?? 0) || 0;
-          }
-        }
-      }
-
-      const next = computeResults({
-        ...doc,
-        source: { ...doc.source, leaderboardUrl: lbUrl, lastFetchedAt: nowIso() },
-        week17: { ...doc.week17, week: 17, decisions, points, resolvedAt: nowIso() },
-      });
-
-      await save(next, { setStepAfter: "resolve18" });
-      setInfoMsg("Resolved Week 17 points.");
-    } catch (e) {
-      setErrorMsg(e?.message || "Resolve Week 17 failed.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function resolveWeek18AndNext() {
-    setSaving(true);
-    setErrorMsg("");
-    setInfoMsg("");
-    try {
-      const lbUrl = LEADERBOARD_URL_BY_SEASON(season);
-      const lbRes = await fetch(lbUrl, { cache: "no-store" });
-      if (!lbRes.ok) throw new Error(`Failed to fetch leaderboards (${lbRes.status})`);
-      const leaderboardsJson = await lbRes.json();
-
-      const pointsMap = getWeekPointsMapFromLeaderboard(leaderboardsJson, season, 18);
-      const champions = doc?.week18?.showdown?.champions || {};
-      const points = { ...(doc?.week18?.points || {}) };
-      for (const div of Object.keys(champions)) {
-        const k = safeStr(champions?.[div]?.key).trim();
-        if (!k) continue;
-        points[k] = Number(pointsMap?.[k] ?? 0) || 0;
-      }
-
-      const next = computeResults({
-        ...doc,
-        week18: { ...doc.week18, week: 18, points, resolvedAt: nowIso() },
-      });
-      await save(next, { setStepAfter: "results" });
-      setInfoMsg("Resolved Week 18 showdown.");
-    } catch (e) {
-      setErrorMsg(e?.message || "Resolve Week 18 failed.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   function updateDecision(k, decision) {
     setDoc((prev) => {
       const next = {
@@ -948,101 +686,41 @@ export default function DynastyWagersAdminClient() {
   }
 
   async function saveDecisionsAndNext() {
-    setSaving(true);
-    setErrorMsg("");
-    setInfoMsg("");
-    try {
-      await save(doc, { setStepAfter: "resolve17" });
-      setInfoMsg("Saved decisions.");
-    } catch (e) {
-      setErrorMsg(e?.message || "Save failed.");
-    } finally {
-      setSaving(false);
-    }
+    await save(doc, { setStepAfter: "resolve17" });
   }
-
-  function toggleEmpire(leagueKey) {
-    setDoc((prev) => {
-      const current = !!prev?.week17?.empireTriggered?.[leagueKey];
-      const next = {
-        ...prev,
-        week17: {
-          ...prev.week17,
-          empireTriggered: {
-            ...(prev.week17?.empireTriggered || {}),
-            [leagueKey]: !current,
-          },
-        },
-      };
-      return computeResults(next);
-    });
-  }
-
-  const divisions = useMemo(() => {
-    const byDiv = doc?.eligibility?.byDivision || {};
-    const out = [];
-    for (const div of Object.keys(byDiv)) {
-      const leagues = safeArray(byDiv[div]).map((l) => {
-        const leagueName = safeStr(l?.leagueName).trim();
-        const finalists = safeArray(l?.finalists).map((x) => safeStr(x).trim()).filter(Boolean);
-        return { division: div, leagueName, finalists };
-      });
-      out.push({
-        division: div,
-        leagues: leagues.sort((a, b) => {
-          const ao = getLeagueDisplayOrder(a.division, a.leagueName, leagueOrderIndex);
-          const bo = getLeagueDisplayOrder(b.division, b.leagueName, leagueOrderIndex);
-          if (ao !== bo) return ao - bo;
-          return a.leagueName.localeCompare(b.leagueName);
-        }),
-      });
-    }
-    return out.sort((a, b) => a.division.localeCompare(b.division));
-  }, [doc, leagueOrderIndex]);
-
-  const flatRows = useMemo(() => {
-    const out = [];
-    for (const d of divisions) {
-      for (const l of d.leagues) {
-        for (const ownerName of l.finalists) {
-          const k = entryKey({ division: d.division, leagueName: l.leagueName, ownerName });
-          const decision = safeStr(doc?.week17?.decisions?.[k]?.decision || "bank").trim() || "bank";
-          const pts = Number(doc?.week17?.points?.[k] ?? 0) || 0;
-          out.push({ division: d.division, leagueName: l.leagueName, ownerName, k, decision, pts });
-        }
-      }
-    }
-    return sortByLeagueOrder(out, leagueOrderIndex);
-  }, [divisions, doc, leagueOrderIndex]);
 
   const results = doc?.week17?.results || {};
 
+  // ✅ FIX: step completion logic now uses eligibility.byDivision.finalists (not nonexistent finalistsByLeague)
   const steps = useMemo(() => {
-    const eligibleLeagues = [];
-    for (const d of divisions) {
-      for (const l of d.leagues) {
-        eligibleLeagues.push(`${d.division}|||${l.leagueName}`.toLowerCase());
+    const byDivision = doc?.eligibility?.byDivision || {};
+    const hasLeagues = Object.keys(byDivision).length > 0;
+
+    let finalistsDone = hasLeagues && Boolean(doc?.eligibility?.computedAt);
+    if (finalistsDone) {
+      for (const div of Object.keys(byDivision)) {
+        for (const l of safeArray(byDivision[div])) {
+          const f = safeArray(l?.finalists).map((x) => safeStr(x).trim()).filter(Boolean);
+          if (f.length !== 2 || f[0] === f[1]) {
+            finalistsDone = false;
+            break;
+          }
+        }
+        if (!finalistsDone) break;
       }
     }
 
-    const finalistsByLeague = doc?.week17?.finalistsByLeague || {};
-    let finalistsDone = eligibleLeagues.length > 0;
-    for (const lk of eligibleLeagues) {
-      const picked = safeArray(finalistsByLeague?.[lk]);
-      if (picked.length < 2) {
-        finalistsDone = false;
-        break;
-      }
-    }
-
-    const decisions = doc?.week17?.decisions || {};
     let decisionsDone = finalistsDone;
     if (decisionsDone) {
-      for (const d of divisions) {
-        for (const l of d.leagues) {
-          for (const ownerName of l.finalists) {
-            const k = entryKey({ division: d.division, leagueName: l.leagueName, ownerName });
-            if (!decisions?.[k]?.decision) {
+      const d = doc?.week17?.decisions || {};
+      for (const div of Object.keys(byDivision)) {
+        for (const l of safeArray(byDivision[div])) {
+          const leagueName = safeStr(l?.leagueName).trim();
+          const f = safeArray(l?.finalists).map((x) => safeStr(x).trim()).filter(Boolean);
+          for (const ownerName of f) {
+            const k = entryKey({ division: div, leagueName, ownerName });
+            const dec = safeStr(d?.[k]?.decision || "").trim();
+            if (dec !== "bank" && dec !== "wager") {
               decisionsDone = false;
               break;
             }
@@ -1059,10 +737,10 @@ export default function DynastyWagersAdminClient() {
     return [
       { key: "finalists", label: "1) Finalists", done: finalistsDone },
       { key: "decisions", label: "2) Decisions", done: decisionsDone },
-      { key: "week17", label: "3) Week 17 Results", done: week17Resolved },
-      { key: "week18", label: "4) Week 18 Showdown", done: week18Resolved },
+      { key: "resolve17", label: "3) Week 17 Results", done: week17Resolved },
+      { key: "resolve18", label: "4) Week 18 Showdown", done: week18Resolved },
     ];
-  }, [divisions, doc]);
+  }, [doc]);
 
   return (
     <div className="space-y-6">
@@ -1080,7 +758,7 @@ export default function DynastyWagersAdminClient() {
               <SmallBadge>WEEK 17</SmallBadge>
             </div>
             <p className="mt-3 text-sm text-muted">
-              Steps: pick the 2 finalists per league (pulled from leaderboards) → set Bank/Wager → resolve Week 17 → resolve Week 18 showdown.
+              Steps: pick the 2 finalists per league → set Bank/Wager → resolve Week 17 → resolve Week 18 showdown.
             </p>
           </div>
 
@@ -1145,8 +823,9 @@ export default function DynastyWagersAdminClient() {
                   <div className="mt-4 space-y-3">
                     {d.leagues.map((l) => {
                       const opts = ownersByDivisionLeague?.[d.division]?.[l.leagueName] || [];
-                      const current = safeArray(doc?.eligibility?.byDivision?.[d.division])
-                        .find((x) => safeStr(x?.leagueName).trim() === l.leagueName)?.finalists || ["", ""];
+                      const current =
+                        safeArray(doc?.eligibility?.byDivision?.[d.division]).find((x) => safeStr(x?.leagueName).trim() === l.leagueName)
+                          ?.finalists || ["", ""];
 
                       return (
                         <div key={`${d.division}|||${l.leagueName}`} className="rounded-2xl border border-subtle bg-card-surface p-4">
@@ -1176,11 +855,11 @@ export default function DynastyWagersAdminClient() {
                     })}
                   </div>
 
-	                  <div className="mt-4 flex justify-end">
-	                    <PrimaryButton tone="accent2" onClick={saveFinalistsAndNext} disabled={saving}>
-	                      Save Finalists & Next
-	                    </PrimaryButton>
-	                  </div>
+                  <div className="mt-4 flex justify-end">
+                    <PrimaryButton tone="accent2" onClick={saveFinalistsAndNext} disabled={saving}>
+                      Save Finalists & Next
+                    </PrimaryButton>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1206,62 +885,74 @@ export default function DynastyWagersAdminClient() {
 
           <Divider />
 
-          <div className="overflow-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-muted">
-                  <th className="py-2 pr-4">Division</th>
-                  <th className="py-2 pr-4">League</th>
-                  <th className="py-2 pr-4">Finalist</th>
-                  <th className="py-2 pr-4">Week 17</th>
-                  <th className="py-2 pr-4">Decision</th>
-                </tr>
-              </thead>
-              <tbody>
-                {flatRows.map((r) => (
-                  <tr key={r.k} className="border-t border-subtle">
-                    <td className="py-2 pr-4 whitespace-nowrap">{r.division}</td>
-                    <td className="py-2 pr-4 whitespace-nowrap">{r.leagueName}</td>
-                    <td className="py-2 pr-4 whitespace-nowrap font-medium text-white">{r.ownerName}</td>
-                    <td className="py-2 pr-4 whitespace-nowrap">{r.pts.toFixed(2)}</td>
-                    <td className="py-2 pr-4">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => updateDecision(r.k, "bank")}
-                          className={`rounded-xl border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.15em] transition ${
-                            r.decision === "bank"
-                              ? "bg-emerald-500/15 border-emerald-400/40 text-emerald-100"
-                              : "bg-panel border-subtle text-foreground hover:border-emerald-400/30"
-                          }`}
-                        >
-                          Bank
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => updateDecision(r.k, "wager")}
-                          className={`rounded-xl border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.15em] transition ${
-                            r.decision === "wager"
-                              ? "bg-amber-500/15 border-amber-400/40 text-amber-100"
-                              : "bg-panel border-subtle text-foreground hover:border-amber-400/30"
-                          }`}
-                        >
-                          Wager
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <div className="space-y-6">
+            {divisionsSorted.map((div) => {
+              const rows = flatRowsByDivision?.[div] || [];
+              if (!rows.length) return null;
 
-          <Divider />
+              return (
+                <div key={div} className="rounded-2xl border border-subtle bg-panel/40 p-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-base font-semibold text-white">{div}</h3>
+                    <SmallBadge>{rows.length} finalists</SmallBadge>
+                  </div>
 
-          <div className="flex flex-wrap gap-2 justify-end">
-            <PrimaryButton tone="accent2" onClick={saveDecisionsAndNext} disabled={saving}>
-              Save & Next
-            </PrimaryButton>
+                  <div className="mt-3 overflow-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-muted">
+                          <th className="py-2 pr-4">League</th>
+                          <th className="py-2 pr-4">Finalist</th>
+                          <th className="py-2 pr-4">Week 17</th>
+                          <th className="py-2 pr-4">Decision</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((r) => (
+                          <tr key={r.k} className="border-t border-subtle">
+                            <td className="py-2 pr-4 whitespace-nowrap">{r.leagueName}</td>
+                            <td className="py-2 pr-4 whitespace-nowrap font-medium text-white">{r.ownerName}</td>
+                            <td className="py-2 pr-4 whitespace-nowrap">{Number(r.pts ?? 0).toFixed(2)}</td>
+                            <td className="py-2 pr-4">
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => updateDecision(r.k, "bank")}
+                                  className={`rounded-xl border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.15em] transition ${
+                                    r.decision === "bank"
+                                      ? "bg-emerald-500/15 border-emerald-400/40 text-emerald-100"
+                                      : "bg-panel border-subtle text-foreground hover:border-emerald-400/30"
+                                  }`}
+                                >
+                                  Bank
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => updateDecision(r.k, "wager")}
+                                  className={`rounded-xl border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.15em] transition ${
+                                    r.decision === "wager"
+                                      ? "bg-amber-500/15 border-amber-400/40 text-amber-100"
+                                      : "bg-panel border-subtle text-foreground hover:border-amber-400/30"
+                                  }`}
+                                >
+                                  Wager
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="mt-4 flex justify-end">
+                    <PrimaryButton tone="accent2" onClick={saveDecisionsAndNext} disabled={saving}>
+                      Save & Next
+                    </PrimaryButton>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </Card>
       )}
@@ -1270,244 +961,49 @@ export default function DynastyWagersAdminClient() {
         <Card>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-white">Resolve Week 17</h2>
-              <p className="mt-2 text-sm text-muted">
-                Pull Week 17 points for all selected finalists and compute: Wager Bonus, Overall Bonuses, League Winner Bonus, and Empire flags.
-              </p>
-              <p className="mt-2 text-sm text-muted">
-                <b>Empire warning:</b> If a league winner repeats as champion, their league can trigger an Empire reset. Toggle the Empire flag per league below (if needed).
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <PrimaryButton onClick={resolveWeek17AndNext} disabled={saving}>
-                Resolve Week 17 & Next
-              </PrimaryButton>
-            </div>
-          </div>
-
-          <Divider />
-
-          <div className="space-y-3">
-            {Object.keys(results?.leagueWinners || {}).length === 0 ? (
-              <div className="text-sm text-muted">No Week 17 results yet.</div>
-            ) : (
-              Object.entries(results?.leagueWinners || {})
-                .sort(([a], [b]) => {
-                  const ao = leagueOrderIndex.get(String(a).toLowerCase()) ?? 999999;
-                  const bo = leagueOrderIndex.get(String(b).toLowerCase()) ?? 999999;
-                  if (ao !== bo) return ao - bo;
-                  return String(a).localeCompare(String(b));
-                })
-                .map(([lk, row]) => (
-                  <div key={lk} className="rounded-2xl border border-subtle bg-panel/40 p-4">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="text-white font-semibold">{lk.split("|||")[1]}</div>
-                      <button
-                        type="button"
-                        onClick={() => toggleEmpire(lk)}
-                        className={`rounded-xl border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.15em] transition ${
-                          doc?.week17?.empireTriggered?.[lk]
-                            ? "bg-amber-500/15 border-amber-400/40 text-amber-100"
-                            : "bg-panel border-subtle text-foreground hover:border-amber-400/30"
-                        }`}
-                      >
-                        Empire {doc?.week17?.empireTriggered?.[lk] ? "ON" : "OFF"}
-                      </button>
-                    </div>
-                    <div className="mt-2 text-sm text-muted">
-                      Winner: <span className="text-white font-medium">{row?.winner}</span> · {Number(row?.pts ?? 0).toFixed(2)}
-                    </div>
-                  </div>
-                ))
-            )}
-          </div>
-        </Card>
-      )}
-
-      {step === "resolve18" && (
-        <Card>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-white">Resolve Week 18 Showdown</h2>
-              <p className="mt-2 text-sm text-muted">
-                Week 18 is a head-to-head between the <b>division champs</b> (highest Week 17 scorer in each division).
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <PrimaryButton onClick={resolveWeek18AndNext} disabled={saving}>
-                Resolve Week 18 & Next
-              </PrimaryButton>
+              <h2 className="text-lg font-semibold text-white">Week 17 Summary</h2>
+              <p className="mt-2 text-sm text-muted">Shows what’s currently stored in results (after Week 17 resolve).</p>
             </div>
           </div>
 
           <Divider />
 
           <div className="grid gap-3 sm:grid-cols-2">
-            {Object.keys(doc?.week18?.showdown?.champions || {}).length === 0 ? (
-              <div className="text-sm text-muted">Resolve Week 17 first to determine division champs.</div>
+            {Object.keys(results?.divisions || {}).length === 0 ? (
+              <div className="text-sm text-muted">No Week 17 results yet.</div>
             ) : (
-              Object.entries(doc.week18.showdown.champions)
+              Object.entries(results.divisions)
                 .sort(([a], [b]) => a.localeCompare(b))
-                .map(([div, c]) => (
+                .map(([div, r]) => (
                   <div key={div} className="rounded-2xl border border-subtle bg-panel/40 p-4">
-                    <div className="text-xs uppercase tracking-[0.25em] text-muted">Champion · {div}</div>
-                    <div className="mt-1 text-white font-semibold">{c.ownerName}</div>
-                    <div className="mt-1 text-sm text-muted">Week 17: {Number(c.wk17 ?? 0).toFixed(2)}</div>
-                    <div className="mt-1 text-sm text-muted">Week 18: {Number(doc?.week18?.points?.[c.key] ?? 0).toFixed(2)}</div>
+                    <div className="text-xs uppercase tracking-[0.25em] text-muted">{div}</div>
+                    <div className="mt-2 grid gap-2 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted">Champ</span>
+                        <span className="text-white font-semibold">{r?.champ?.winner || "—"}</span>
+                        <span className="text-muted">+{fmtMoney(r?.champ?.bonus ?? 0)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted">2nd</span>
+                        <span className="text-white font-semibold">{r?.second?.winner || "—"}</span>
+                        <span className="text-muted">+{fmtMoney(r?.second?.bonus ?? 0)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted">3rd</span>
+                        <span className="text-white font-semibold">{r?.third?.winner || "—"}</span>
+                        <span className="text-muted">+{fmtMoney(r?.third?.bonus ?? 0)}</span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between">
+                        <span className="text-muted">Wager Pot</span>
+                        <span className="text-white font-semibold">{r?.wagerPot?.winner || "—"}</span>
+                        <span className="text-muted">{fmtMoney(r?.wagerPot?.total ?? 0)}</span>
+                      </div>
+                    </div>
                   </div>
                 ))
             )}
           </div>
-
-          {doc?.week18?.resolvedAt ? (
-            <div className="mt-4 rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-4">
-              <div className="text-xs uppercase tracking-[0.25em] text-emerald-200">Showdown Result</div>
-              <div className="mt-1 text-white font-semibold">{doc?.week18?.showdown?.result?.winner || "—"}</div>
-              <div className="mt-1 text-sm text-muted">
-                {doc?.week18?.showdown?.result?.tie
-                  ? "Tie"
-                  : `${Number(doc?.week18?.showdown?.result?.winnerPts ?? 0).toFixed(2)} vs ${Number(doc?.week18?.showdown?.result?.loserPts ?? 0).toFixed(2)}`}
-              </div>
-            </div>
-          ) : null}
         </Card>
-      )}
-
-      {step === "results" && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card>
-            <h2 className="text-lg font-semibold text-white">Bonuses</h2>
-            <Divider />
-
-            <div className="space-y-3 text-sm">
-              {Object.keys(results?.divisions || {}).length === 0 ? (
-                <div className="text-muted">Resolve Week 17 to compute division payouts.</div>
-              ) : (
-                Object.entries(results.divisions)
-                  .sort(([a], [b]) => a.localeCompare(b))
-                  .map(([div, r]) => (
-                    <div key={div} className="rounded-2xl border border-subtle bg-panel/40 p-4">
-                      <div className="text-xs uppercase tracking-[0.25em] text-muted">{div}</div>
-                      <div className="mt-3 grid gap-2">
-                        {["champion", "second", "third"].map((k) => {
-                          const row = r?.[k];
-                          const label = k === "champion" ? "🏆 Champ" : k === "second" ? "🥈 2nd" : "🥉 3rd";
-                          return (
-                            <div key={k} className="flex items-center justify-between rounded-xl border border-subtle bg-panel/60 px-3 py-2">
-                              <div className="text-white font-medium">{label} {row?.winner ? `· ${row.winner}` : ""}</div>
-                              <div className="text-muted">{fmtMoney(row?.bonus ?? 0)} {row?.pts ? `· ${Number(row.pts).toFixed(2)}` : ""}</div>
-                            </div>
-                          );
-                        })}
-
-                        <div className="mt-2 rounded-xl border border-amber-400/25 bg-amber-500/10 p-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-amber-200 font-semibold">Wager Pot</span>
-                            <span className="text-white font-semibold">{fmtMoney(r?.wagerPot?.total ?? 0)}</span>
-                          </div>
-                          <div className="mt-1 text-muted">
-                            Winner: <span className="text-white font-semibold">{r?.wagerPot?.winner || "—"}</span>
-                            {r?.wagerPot?.winnerPts != null ? ` · ${Number(r.wagerPot.winnerPts).toFixed(2)}` : ""}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-              )}
-            </div>
-          </Card>
-
-          <Card>
-            <h2 className="text-lg font-semibold text-white">League Winners (+{fmtMoney(doc?.week17?.leagueWinBonus ?? 125)})</h2>
-            <p className="mt-2 text-sm text-muted">Winner is the finalist who outscored their opponent in Week 17.</p>
-            <Divider />
-
-            <div className="space-y-3">
-              {Object.keys(results?.leagueWinners || {}).length === 0 && <div className="text-sm text-muted">No leagues imported yet.</div>}
-              {Object.entries(results?.leagueWinners || {})
-                .sort(([a], [b]) => {
-                  const ao = leagueOrderIndex.get(String(a).toLowerCase()) ?? 999999;
-                  const bo = leagueOrderIndex.get(String(b).toLowerCase()) ?? 999999;
-                  if (ao !== bo) return ao - bo;
-                  return String(a).localeCompare(String(b));
-                })
-                .map(([lk, w]) => {
-                  const [div, leagueName] = lk.split("|||");
-                  const empireOn = !!doc?.week17?.empireTriggered?.[lk];
-                  return (
-                    <div key={lk} className="rounded-xl border border-subtle bg-panel/60 p-3">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <div className="text-xs uppercase tracking-[0.25em] text-muted">{div}</div>
-                          <div className="mt-1 text-white font-semibold">{leagueName}</div>
-                          <div className="mt-1 text-sm text-muted">
-                            {w?.tie ? (
-                              <>Tie: {Number(w?.pts ?? 0).toFixed(2)} – {Number(w?.opponentPts ?? 0).toFixed(2)}</>
-                            ) : (
-                              <>
-                                Winner: <span className="text-white font-medium">{w?.winner}</span> ({Number(w?.pts ?? 0).toFixed(2)})
-                                <span className="mx-1">·</span>
-                                Opponent: {w?.opponent} ({Number(w?.opponentPts ?? 0).toFixed(2)})
-                              </>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => toggleEmpire(lk)}
-                            className={`rounded-xl border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.15em] transition ${
-                              empireOn
-                                ? "bg-fuchsia-500/15 border-fuchsia-400/40 text-fuchsia-100"
-                                : "bg-panel border-subtle text-foreground hover:border-fuchsia-400/30"
-                            }`}
-                            title="If the overall champ repeats in this league (Empire trigger), toggle this on so the public page can highlight it."
-                          >
-                            Empire {empireOn ? "ON" : "OFF"}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-          </Card>
-
-          <Card>
-            <h2 className="text-lg font-semibold text-white">Who should have wagered?</h2>
-            <p className="mt-2 text-sm text-muted">
-              Banked finalists who scored at least as many Week 17 points as the highest scorer among those who wagered.
-            </p>
-            <Divider />
-
-            {safeArray(results?.wagerMisses).length === 0 ? (
-              <div className="text-sm text-muted">No misses detected (or no one wagered yet).</div>
-            ) : (
-              <div className="space-y-2">
-                {safeArray(results?.wagerMisses).slice(0, 20).map((m, idx) => (
-                  <div key={`${m?.key || idx}`} className="rounded-xl border border-rose-400/25 bg-rose-500/10 p-3">
-                    <div className="text-white font-semibold">{safeStr(m?.ownerName)}</div>
-                    <div className="mt-1 text-sm text-muted">
-                      {safeStr(m?.division)} · {safeStr(m?.leagueName)} · {Number(m?.wk17 ?? 0).toFixed(2)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-
-          <Card>
-            <h2 className="text-lg font-semibold text-white">Save to publish</h2>
-            <p className="mt-2 text-sm text-muted">
-              The public page reads from R2. After editing decisions or Empire toggles, click Save.
-            </p>
-            <Divider />
-            <PrimaryButton tone="accent2" onClick={() => save(doc)} disabled={saving}>
-              Save
-            </PrimaryButton>
-          </Card>
-        </div>
       )}
     </div>
   );
