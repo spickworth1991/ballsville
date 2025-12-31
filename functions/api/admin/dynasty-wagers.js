@@ -1,14 +1,12 @@
 // functions/api/admin/dynasty-wagers.js
 //
-// Admin CRUD for Dynasty Wagers tracker (stored in R2).
+// Stores/reads the Dynasty Week 15 wagering admin doc in R2.
 //
-// GET  /api/admin/dynasty-wagers?season=2025
-// PUT  /api/admin/dynasty-wagers?season=2025   (JSON body = full doc)
-//
-// Notes
-// - Uses the SAME R2 binding as the other admin endpoints: env.admin_bucket
-//   (ensureR2 falls back to env.admin_bucket or env if bound directly).
-// - Supabase is ONLY used to verify the admin JWT (Bearer token).
+// IMPORTANT:
+// - This endpoint intentionally does NOT require a Bearer token.
+// - Admin access is enforced at the page level via <AdminGuard />.
+// - This mirrors the auth-free behavior used by Big Game + Mini Leagues
+//   wagering admin endpoints.
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -21,110 +19,67 @@ function json(data, status = 200) {
 }
 
 function ensureR2(env) {
-  const b = env?.ADMIN_BUCKET || env;
-  if (!b || typeof b.get !== "function") {
+  // Prefer the established binding name used across the project.
+  const b = env.admin_bucket || env.ADMIN_BUCKET || env.bucket || env.BUCKET || env;
+  if (!b || typeof b.get !== "function" || typeof b.put !== "function") {
     throw new Error(
-      "Missing R2 binding: expected env.admin_bucket (same binding used by other admin endpoints)."
+      "Missing R2 binding. Expected env.admin_bucket (or equivalent) to be bound to the admin bucket."
     );
   }
   return b;
 }
 
-async function requireAdmin(request, env) {
-  const auth = request.headers.get("authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+const ALLOWED_SEASONS = [2024, 2025, 2026];
 
-  if (!token) return { ok: false, status: 401, error: "Missing Bearer token" };
-
-  // Same envs used elsewhere for admin auth
-  const url = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anon) return { ok: false, status: 500, error: "Missing SUPABASE_URL / SUPABASE_ANON_KEY" };
-
-  const res = await fetch(`${url}/auth/v1/user`, {
-    headers: {
-      apikey: anon,
-      authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!res.ok) return { ok: false, status: 401, error: "Unauthorized" };
-  const user = await res.json().catch(() => null);
-
-  // Allow-list based on email
-  const allow = (env.ADMIN_EMAILS || "")
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-  const email = String(user?.email || "").toLowerCase();
-
-  if (!email || (allow.length && !allow.includes(email))) {
-    return { ok: false, status: 403, error: "Forbidden" };
-  }
-
-  return { ok: true, email };
-}
-
-async function touchManifest(env, season) {
-  const r2 = ensureR2(env);
-  const key = `data/manifests/dynasty-wagers_${season}.json`;
-  const body = JSON.stringify(
-    { section: "dynasty-wagers", season, updatedAt: new Date().toISOString() },
-    null,
-    2
-  );
-  await r2.put(key, body, {
-    httpMetadata: {
-      contentType: "application/json; charset=utf-8",
-      cacheControl: "no-store",
-    },
-  });
+function parseSeason(url) {
+  const { searchParams } = new URL(url);
+  const raw = String(searchParams.get("season") || "").trim();
+  const season = Number(raw);
+  if (!Number.isFinite(season) || !ALLOWED_SEASONS.includes(season)) return null;
+  return season;
 }
 
 function keyForSeason(season) {
-  return `data/dynasty/wagers_${season}.json`;
+  return `admin/dynasty-wagers_${season}.json`;
 }
 
 export async function onRequest({ request, env }) {
   try {
-    const auth = await requireAdmin(request, env);
-    if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
+    const season = parseSeason(request.url);
+    if (!season) return json({ ok: false, error: "Invalid season." }, 400);
 
-    const r2 = ensureR2(env);
-    const url = new URL(request.url);
-    const season = Number(url.searchParams.get("season") || "");
-    if (!Number.isFinite(season) || season < 2000) {
-      return json({ ok: false, error: "Missing/invalid season" }, 400);
-    }
-
+    const bucket = ensureR2(env);
     const key = keyForSeason(season);
 
     if (request.method === "GET") {
-      const obj = await r2.get(key);
-      if (!obj) return json({ ok: true, season, data: null }, 200);
+      const obj = await bucket.get(key);
+      if (!obj) return json({ ok: true, key, data: null });
       const text = await obj.text();
-      const parsed = JSON.parse(text);
-      return json({ ok: true, season, data: parsed || null }, 200);
+      const data = text ? JSON.parse(text) : null;
+      return json({ ok: true, key, data });
     }
 
     if (request.method === "PUT") {
-      const body = await request.json().catch(() => ({}));
-      // Always stamp season/updatedAt on the doc.
-      const payload = {
-        ...(body && typeof body === "object" ? body : {}),
-        season,
-        updatedAt: new Date().toISOString(),
-      };
+      const body = await request.json().catch(() => null);
+      if (!body || typeof body !== "object") {
+        return json({ ok: false, error: "Invalid JSON body." }, 400);
+      }
 
-      await r2.put(key, JSON.stringify(payload, null, 2), {
-        httpMetadata: { contentType: "application/json; charset=utf-8" },
+      await bucket.put(key, JSON.stringify(body, null, 2), {
+        httpMetadata: { contentType: "application/json" },
       });
-      await touchManifest(env, season);
-      return json({ ok: true, season, key }, 200);
+
+      return json({ ok: true, key, data: body });
+    }
+
+    if (request.method === "DELETE") {
+      // Delete the doc entirely so the admin can "start over".
+      await bucket.delete(key);
+      return json({ ok: true, key, deleted: true });
     }
 
     return json({ ok: false, error: "Method not allowed" }, 405);
   } catch (e) {
-    return json({ ok: false, error: e?.message || "Server error" }, 500);
+    return json({ ok: false, error: String(e?.message || e) }, 500);
   }
 }

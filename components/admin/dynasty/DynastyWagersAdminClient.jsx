@@ -2,23 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import AdminStepTabs from "../AdminStepTabs";
-
-function isLocalhost() {
-  if (typeof window === "undefined") return false;
-  const h = window.location.hostname;
-  return h === "localhost" || h === "127.0.0.1";
-}
-
-function getDynastyWagersLoadUrl(season) {
-  // local dev override
-  if (isLocalhost()) return "/wagers/dynasty.json";
-
-  // normal behavior
-  return `/api/admin/dynasty-wagers?season=${encodeURIComponent(season)}`;
-}
-
-
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
@@ -535,7 +518,9 @@ export default function DynastyWagersAdminClient() {
     setInfoMsg("");
     try {
       await loadLeagueOrderIndex(seasonToLoad);
-      const res = await fetch(getDynastyWagersLoadUrl(seasonToLoad), { cache: "no-store" });
+      const res = await fetch(`/api/admin/dynasty-wagers?season=${encodeURIComponent(seasonToLoad)}`, {
+        cache: "no-store",
+      });
       const saved = await res.json().catch(() => null);
       const next = normalizeLoadedDoc(saved, seasonToLoad);
       setDoc(next);
@@ -548,10 +533,44 @@ export default function DynastyWagersAdminClient() {
     }
   }
 
+  // Default to the current season.
   useEffect(() => {
-    loadDoc(new Date().getFullYear());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setSeason(CURRENT_SEASON);
   }, []);
+
+  // Auto-load whenever the season changes (no manual "Reload" needed).
+  useEffect(() => {
+    if (!season) return;
+    loadDoc(season);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [season]);
+
+  async function deleteDocAndReset() {
+    const ok = typeof window !== "undefined" && window.confirm("Delete this season's Dynasty wagers doc and start over? This cannot be undone.");
+    if (!ok) return;
+
+    setSaving(true);
+    setErrorMsg("");
+    setInfoMsg("");
+    try {
+      const res = await fetch(`/api/admin/dynasty-wagers?season=${encodeURIComponent(season)}`, {
+        method: "DELETE",
+      });
+      const out = await res.json().catch(() => null);
+      if (!res.ok || out?.ok === false) {
+        throw new Error(out?.error || `Delete failed (${res.status})`);
+      }
+
+      // Reset local state immediately.
+      setDoc(buildEmptyState(season));
+      setStep("import");
+      setInfoMsg("Deleted. Starting fresh.");
+    } catch (e) {
+      setErrorMsg(e?.message || "Failed to delete Dynasty wagers.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function save(nextDoc, { setStepAfter } = {}) {
     setSaving(true);
@@ -859,21 +878,6 @@ export default function DynastyWagersAdminClient() {
 
   const results = doc?.week17?.results || {};
 
-  const steps = useMemo(() => {
-    const hasFinalists = Boolean(doc?.eligibility?.computedAt) && Object.keys(doc?.eligibility?.byDivision || {}).length > 0;
-    const hasDecisions = Object.keys(doc?.week17?.decisions || {}).length > 0;
-    const wk17Resolved = Boolean(doc?.week17?.resolvedAt);
-    const wk18Resolved = Boolean(doc?.week18?.resolvedAt);
-    const hasResults = Boolean(doc?.week17?.results?.overall?.first?.winner) || wk17Resolved;
-    return [
-      { key: "finalists", label: "1) Finalists", done: hasFinalists },
-      { key: "decisions", label: "2) Decisions", done: hasDecisions },
-      { key: "resolve17", label: "3) Resolve Wk17", done: wk17Resolved },
-      { key: "resolve18", label: "4) Resolve Wk18", done: wk18Resolved },
-      { key: "results", label: "5) Results", done: hasResults },
-    ];
-  }, [doc]);
-
   return (
     <div className="space-y-6">
       <Card>
@@ -895,14 +899,14 @@ export default function DynastyWagersAdminClient() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <PrimaryButton tone="muted" onClick={() => loadDoc(season)} disabled={loading || saving}>
-              Reload
-            </PrimaryButton>
             <PrimaryButton onClick={loadOwners} disabled={loading || saving}>
               Load Leagues & Owners
             </PrimaryButton>
             <PrimaryButton tone="accent2" onClick={() => save(doc)} disabled={loading || saving}>
               Save
+            </PrimaryButton>
+            <PrimaryButton tone="danger" onClick={deleteDocAndReset} disabled={loading || saving}>
+              Delete & Start Over
             </PrimaryButton>
             <Link href="/admin/wager-trackers" className="btn btn-secondary">
               ← Wager Trackers
@@ -918,7 +922,23 @@ export default function DynastyWagersAdminClient() {
         )}
       </Card>
 
-      <AdminStepTabs steps={steps} activeKey={step} onChange={setStep} />
+      <div className="flex flex-wrap gap-2">
+        <PrimaryButton tone={step === "finalists" ? "accent" : "muted"} onClick={() => setStep("finalists")}>
+          1) Finalists
+        </PrimaryButton>
+        <PrimaryButton tone={step === "decisions" ? "accent" : "muted"} onClick={() => setStep("decisions")}>
+          2) Decisions
+        </PrimaryButton>
+        <PrimaryButton tone={step === "resolve17" ? "accent" : "muted"} onClick={() => setStep("resolve17")}>
+          3) Resolve Wk17
+        </PrimaryButton>
+        <PrimaryButton tone={step === "resolve18" ? "accent" : "muted"} onClick={() => setStep("resolve18")}>
+          4) Resolve Wk18
+        </PrimaryButton>
+        <PrimaryButton tone={step === "results" ? "accent" : "muted"} onClick={() => setStep("results")}>
+          5) Results
+        </PrimaryButton>
+      </div>
 
       {step === "finalists" && (
         <Card>
@@ -985,6 +1005,12 @@ export default function DynastyWagersAdminClient() {
                       );
                     })}
                   </div>
+
+	                  <div className="mt-4 flex justify-end">
+	                    <PrimaryButton tone="accent2" onClick={saveFinalistsAndNext} disabled={saving}>
+	                      Save Finalists & Next
+	                    </PrimaryButton>
+	                  </div>
                 </div>
               ))}
             </div>
