@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import SectionManifestGate from "@/components/manifest/SectionManifestGate";
+// NOTE: The Dynasty wagers JSON currently lives behind a public (no-auth) admin API.
+// We fetch it directly so the public page works even if the manifest doesn't include this section.
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
@@ -160,7 +161,7 @@ function normalizeDoc(doc) {
   };
 }
 
-function DynastyWagerTrackerInner({ season, version, dataKey }) {
+function DynastyWagerTrackerInner({ season }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [doc, setDoc] = useState(null);
@@ -171,12 +172,13 @@ function DynastyWagerTrackerInner({ season, version, dataKey }) {
       setLoading(true);
       setError("");
       try {
-        const res = await fetch(`/r2/${dataKey}?v=${version}`, { cache: "no-store" });
+        const res = await fetch(`/api/admin/dynasty-wagers?season=${encodeURIComponent(season)}`, { cache: "no-store" });
         if (!res.ok) {
           setDoc(null);
           return;
         }
-        const json = await res.json();
+        const saved = await res.json();
+        const json = saved && typeof saved === "object" && "data" in saved ? saved.data : saved;
         if (!mounted) return;
         setDoc(json);
       } catch (e) {
@@ -191,7 +193,7 @@ function DynastyWagerTrackerInner({ season, version, dataKey }) {
     return () => {
       mounted = false;
     };
-  }, [season, version, dataKey]);
+  }, [season]);
 
   const view = useMemo(() => (doc ? normalizeDoc(doc) : null), [doc]);
 
@@ -415,12 +417,5 @@ function DynastyWagerTrackerInner({ season, version, dataKey }) {
 }
 
 export default function DynastyWagerTracker({ season }) {
-  const section = "dynasty-wagers";
-  const dataKey = `data/dynasty/wagers_${season}.json`;
-
-  return (
-    <SectionManifestGate section={section} season={season}>
-      <DynastyWagerTrackerInner season={season} dataKey={dataKey} />
-    </SectionManifestGate>
-  );
+  return <DynastyWagerTrackerInner season={season} />;
 }
