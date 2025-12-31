@@ -2,31 +2,12 @@
 import { CURRENT_SEASON } from "@/lib/season";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import AdminStepTabs from "../AdminStepTabs";
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
 }
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
-}
-
-function parseLeagueNumberFromName(name) {
-  // Expected suffix like "... 3/16" (we sort by the leading number)
-  const s = safeStr(name).trim();
-  const m = s.match(/(\d+)\s*\/\s*(\d+)\s*$/);
-  if (!m) return null;
-  const n = Number(m[1]);
-  return Number.isFinite(n) ? n : null;
-}
-
-function scrollTopSmooth() {
-  if (typeof window === "undefined") return;
-  try {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  } catch {
-    window.scrollTo(0, 0);
-  }
 }
 
 // Key by roster-instance (theme/division + leagueName + ownerName)
@@ -90,14 +71,11 @@ function buildEmptyState(season) {
       },
 
       results: {
-        // New format: per-division awards, plus league winners and wager misses.
-        divisions: {
-          // [division]: {
-          //   champion: { bonus, winner, winnerKey, division, leagueName, pts },
-          //   second:   { bonus, winner, winnerKey, division, leagueName, pts },
-          //   third:    { bonus, winner, winnerKey, division, leagueName, pts },
-          //   wagerPot: { pool, bonus, total, winner, winnerKey, winnerDivision, winnerLeague, winnerPts }
-          // }
+        wagerBonus: { bonus: 200, winner: "", winnerKey: "", winnerDivision: "", winnerLeague: "", winnerPts: 0 },
+        overall: {
+          first: { bonus: 250, winner: "", winnerKey: "", division: "", leagueName: "", pts: 0 },
+          second: { bonus: 100, winner: "", winnerKey: "", division: "", leagueName: "", pts: 0 },
+          third: { bonus: 50, winner: "", winnerKey: "", division: "", leagueName: "", pts: 0 },
         },
         leagueWinners: {
           // `${division}|||${leagueName}` -> { winner, winnerKey, pts, bonus, opponent, opponentPts, tie }
@@ -203,9 +181,7 @@ function buildLeagueOrderIndex(dynastyLeaguesJson, season) {
     const leagueName = safeStr(r?.name).trim();
     if (!div || !leagueName) continue;
     const n = Number(r?.display_order);
-    const fromName = parseLeagueNumberFromName(leagueName);
-    // Prefer explicit display_order, otherwise use the "1/16" style suffix.
-    const orderNum = Number.isFinite(n) ? n : Number.isFinite(fromName) ? fromName : 999999;
+    const orderNum = Number.isFinite(n) ? n : 999999;
     map.set(`${div}|||${leagueName}`.toLowerCase(), orderNum);
   }
 
@@ -342,45 +318,29 @@ function computeResults(doc) {
       credit,
     }));
 
-  // Per-division podium + wager pot winner
-  const divisionResults = {};
-  const divisionsSorted = Object.keys(byDivision).sort((a, b) => a.localeCompare(b));
-  for (const div of divisionsSorted) {
-    const divRows = rows.filter((r) => r.division === div);
-    const ranked = [...divRows].sort((a, b) => b.pts - a.pts);
+  // Overall ranking (all finalists)
+  const ranked = [...rows].sort((a, b) => b.pts - a.pts);
 
-    const champ = ranked[0]
-      ? { bonus: champ1, winner: ranked[0].ownerName, winnerKey: ranked[0].k, leagueName: ranked[0].leagueName, pts: ranked[0].pts }
-      : { bonus: champ1, winner: "", winnerKey: "", leagueName: "", pts: 0 };
-    const second = ranked[1]
-      ? { bonus: champ2, winner: ranked[1].ownerName, winnerKey: ranked[1].k, leagueName: ranked[1].leagueName, pts: ranked[1].pts }
-      : { bonus: champ2, winner: "", winnerKey: "", leagueName: "", pts: 0 };
-    const third = ranked[2]
-      ? { bonus: champ3, winner: ranked[2].ownerName, winnerKey: ranked[2].k, leagueName: ranked[2].leagueName, pts: ranked[2].pts }
-      : { bonus: champ3, winner: "", winnerKey: "", leagueName: "", pts: 0 };
+  const overall = {
+    first: ranked[0]
+      ? { bonus: champ1, winner: ranked[0].ownerName, winnerKey: ranked[0].k, division: ranked[0].division, leagueName: ranked[0].leagueName, pts: ranked[0].pts }
+      : { bonus: champ1, winner: "", winnerKey: "", division: "", leagueName: "", pts: 0 },
+    second: ranked[1]
+      ? { bonus: champ2, winner: ranked[1].ownerName, winnerKey: ranked[1].k, division: ranked[1].division, leagueName: ranked[1].leagueName, pts: ranked[1].pts }
+      : { bonus: champ2, winner: "", winnerKey: "", division: "", leagueName: "", pts: 0 },
+    third: ranked[2]
+      ? { bonus: champ3, winner: ranked[2].ownerName, winnerKey: ranked[2].k, division: ranked[2].division, leagueName: ranked[2].leagueName, pts: ranked[2].pts }
+      : { bonus: champ3, winner: "", winnerKey: "", division: "", leagueName: "", pts: 0 },
+  };
 
-    const wagered = divRows.filter((r) => r.decision === "wager");
-    const wagerPool = wagered.length * credit;
-    const wagerWinner = [...wagered].sort((a, b) => b.pts - a.pts)[0] || null;
-    const wagerPot = wagerWinner
-      ? {
-          pool: wagerPool,
-          bonus: wagerBonus,
-          total: wagerPool + wagerBonus,
-          winner: wagerWinner.ownerName,
-          winnerKey: wagerWinner.k,
-          winnerLeague: wagerWinner.leagueName,
-          winnerPts: wagerWinner.pts,
-        }
-      : { pool: wagerPool, bonus: wagerBonus, total: wagerPool + wagerBonus, winner: "", winnerKey: "", winnerLeague: "", winnerPts: 0 };
+  // Wager bonus winner (among those who wager)
+  const wagered = rows.filter((r) => r.decision === "wager");
+  const wageredRank = [...wagered].sort((a, b) => b.pts - a.pts);
+  const wagerWinner = wageredRank[0] || null;
 
-    divisionResults[div] = { champ, second, third, wagerPot };
-  }
-
-  // Keep legacy overall fields (not used by UI anymore) for backwards compatibility.
-  const allRanked = [...rows].sort((a, b) => b.pts - a.pts);
-  // NOTE: previously we had an overall (across all divisions) bonus set.
-  // Dynasty wagering pays out per division now: Champ/2nd/3rd + Wager Pot winner.
+  const wagerBonusResult = wagerWinner
+    ? { bonus: wagerBonus, winner: wagerWinner.ownerName, winnerKey: wagerWinner.k, winnerDivision: wagerWinner.division, winnerLeague: wagerWinner.leagueName, winnerPts: wagerWinner.pts }
+    : { bonus: wagerBonus, winner: "", winnerKey: "", winnerDivision: "", winnerLeague: "", winnerPts: 0 };
 
   // League winners (+$125) per league (finalists head-to-head)
   const leagueWinners = {};
@@ -422,15 +382,11 @@ function computeResults(doc) {
     };
   }
 
-  // Who should have wagered? (bankers who outscored the top wagered score IN THEIR DIVISION)
+  // Who should have wagered? (bankers who outscored the top wagered score)
+  const topWagerPts = wagerWinner ? wagerWinner.pts : null;
   const wagerMisses = [];
-  for (const div of Object.keys(byDivision)) {
-    const topWagerPts = Number(divisionResults?.[div]?.wagerPot?.winnerPts ?? 0) || 0;
-    const hasWagerWinner = Boolean(divisionResults?.[div]?.wagerPot?.winnerKey);
-    if (!hasWagerWinner) continue;
-
+  if (topWagerPts != null) {
     for (const r of rows) {
-      if (r.division !== div) continue;
       if (r.decision !== "bank") continue;
       if (r.pts >= topWagerPts) {
         wagerMisses.push({
@@ -452,13 +408,14 @@ function computeResults(doc) {
 
     const champions = {};
     for (const div of Object.keys(byDivision)) {
-      const champ = divisionResults?.[div]?.champion;
-      if (!champ?.winner || !champ?.winnerKey) continue;
+      const divRows = rows.filter((r) => r.division === div);
+      const best = divRows.sort((a, b) => b.pts - a.pts)[0];
+      if (!best) continue;
       champions[div] = {
-        ownerName: champ.winner,
-        key: champ.winnerKey,
-        leagueName: champ.leagueName || "",
-        wk17: Number(champ.pts ?? 0) || 0,
+        ownerName: best.ownerName,
+        key: best.k,
+        leagueName: best.leagueName,
+        wk17: best.pts,
       };
     }
 
@@ -522,7 +479,8 @@ function computeResults(doc) {
     week17: {
       ...wk,
       results: {
-        divisions: divisionResults,
+        wagerBonus: wagerBonusResult,
+        overall,
         leagueWinners,
         wagerMisses,
       },
@@ -540,14 +498,29 @@ export default function DynastyWagersAdminClient() {
   const [infoMsg, setInfoMsg] = useState("");
   const [step, setStep] = useState("finalists");
 
-  function scrollTop() {
-    if (typeof window === "undefined") return;
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
   const [leagueOrderIndex, setLeagueOrderIndex] = useState(() => new Map());
   // { [division]: { [leagueName]: string[] } }
   const [ownersByDivisionLeague, setOwnersByDivisionLeague] = useState(null);
+
+  function scrollTopSmooth() {
+    if (typeof window === "undefined") return;
+    try {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch {
+      window.scrollTo(0, 0);
+    }
+  }
+
+  function goStep(next) {
+    setStep(next);
+    scrollTopSmooth();
+  }
+
+  function leagueOrderFor(div, leagueName) {
+    // buildLeagueOrderIndex keys are stored as "division|||leagueName"
+    const k = `${safeStr(div).trim()}|||${safeStr(leagueName).trim()}`.toLowerCase();
+    return leagueOrderIndex.get(k) ?? 999999;
+  }
 
   async function loadLeagueOrderIndex(seasonToLoad) {
     try {
@@ -640,10 +613,7 @@ export default function DynastyWagersAdminClient() {
       const normalized = normalizeLoadedDoc(saved, season);
       setDoc(normalized);
       setInfoMsg("Saved.");
-      if (setStepAfter) {
-        setStep(setStepAfter);
-        scrollTop();
-      }
+      if (setStepAfter) goStep(setStepAfter);
     } catch (e) {
       setErrorMsg(e?.message || "Save failed.");
     } finally {
@@ -870,20 +840,6 @@ export default function DynastyWagersAdminClient() {
     });
   }
 
-  async function saveDecisionsAndNext() {
-    setSaving(true);
-    setErrorMsg("");
-    setInfoMsg("");
-    try {
-      await save(doc, { setStepAfter: "resolve17" });
-      setInfoMsg("Saved decisions.");
-    } catch (e) {
-      setErrorMsg(e?.message || "Save failed.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   function toggleEmpire(leagueKey) {
     setDoc((prev) => {
       const current = !!prev?.week17?.empireTriggered?.[leagueKey];
@@ -942,53 +898,6 @@ export default function DynastyWagersAdminClient() {
 
   const results = doc?.week17?.results || {};
 
-  const steps = useMemo(() => {
-    const eligibleLeagues = [];
-    for (const d of divisions) {
-      for (const l of d.leagues) {
-        eligibleLeagues.push(`${d.division}|||${l.leagueName}`.toLowerCase());
-      }
-    }
-
-    const finalistsByLeague = doc?.week17?.finalistsByLeague || {};
-    let finalistsDone = eligibleLeagues.length > 0;
-    for (const lk of eligibleLeagues) {
-      const picked = safeArray(finalistsByLeague?.[lk]);
-      if (picked.length < 2) {
-        finalistsDone = false;
-        break;
-      }
-    }
-
-    const decisions = doc?.week17?.decisions || {};
-    let decisionsDone = finalistsDone;
-    if (decisionsDone) {
-      for (const d of divisions) {
-        for (const l of d.leagues) {
-          for (const ownerName of l.finalists) {
-            const k = entryKey({ division: d.division, leagueName: l.leagueName, ownerName });
-            if (!decisions?.[k]?.decision) {
-              decisionsDone = false;
-              break;
-            }
-          }
-          if (!decisionsDone) break;
-        }
-        if (!decisionsDone) break;
-      }
-    }
-
-    const week17Resolved = Boolean(doc?.week17?.resolvedAt);
-    const week18Resolved = Boolean(doc?.week18?.resolvedAt);
-
-    return [
-      { key: "finalists", label: "1) Finalists", done: finalistsDone },
-      { key: "decisions", label: "2) Decisions", done: decisionsDone },
-      { key: "week17", label: "3) Week 17 Results", done: week17Resolved },
-      { key: "week18", label: "4) Week 18 Showdown", done: week18Resolved },
-    ];
-  }, [divisions, doc]);
-
   return (
     <div className="space-y-6">
       <Card>
@@ -1033,7 +942,23 @@ export default function DynastyWagersAdminClient() {
         )}
       </Card>
 
-      <AdminStepTabs steps={steps} activeKey={step} onChange={setStep} />
+      <div className="flex flex-wrap gap-2">
+        <PrimaryButton tone={step === "finalists" ? "accent" : "muted"} onClick={() => setStep("finalists")}>
+          1) Finalists
+        </PrimaryButton>
+        <PrimaryButton tone={step === "decisions" ? "accent" : "muted"} onClick={() => setStep("decisions")}>
+          2) Decisions
+        </PrimaryButton>
+        <PrimaryButton tone={step === "resolve17" ? "accent" : "muted"} onClick={() => setStep("resolve17")}>
+          3) Resolve Wk17
+        </PrimaryButton>
+        <PrimaryButton tone={step === "resolve18" ? "accent" : "muted"} onClick={() => setStep("resolve18")}>
+          4) Resolve Wk18
+        </PrimaryButton>
+        <PrimaryButton tone={step === "results" ? "accent" : "muted"} onClick={() => setStep("results")}>
+          5) Results
+        </PrimaryButton>
+      </div>
 
       {step === "finalists" && (
         <Card>
@@ -1068,7 +993,15 @@ export default function DynastyWagersAdminClient() {
                   <div className="mt-1 text-lg font-semibold text-white">{d.division}</div>
 
                   <div className="mt-4 space-y-3">
-                    {d.leagues.map((l) => {
+                    {safeArray(d.leagues)
+                      .slice()
+                      .sort((a, b) => {
+                        const ao = leagueOrderFor(d.division, a?.leagueName);
+                        const bo = leagueOrderFor(d.division, b?.leagueName);
+                        if (ao !== bo) return ao - bo;
+                        return safeStr(a?.leagueName).trim().localeCompare(safeStr(b?.leagueName).trim());
+                      })
+                      .map((l) => {
                       const opts = ownersByDivisionLeague?.[d.division]?.[l.leagueName] || [];
                       const current = safeArray(doc?.eligibility?.byDivision?.[d.division])
                         .find((x) => safeStr(x?.leagueName).trim() === l.leagueName)?.finalists || ["", ""];
@@ -1123,7 +1056,7 @@ export default function DynastyWagersAdminClient() {
               </p>
             </div>
             <div className="flex gap-2">
-              <PrimaryButton tone="accent2" onClick={saveDecisionsAndNext} disabled={saving}>
+              <PrimaryButton tone="accent2" onClick={() => save(doc, { setStepAfter: "resolve17" })} disabled={saving}>
                 Save & Next
               </PrimaryButton>
             </div>
@@ -1179,14 +1112,6 @@ export default function DynastyWagersAdminClient() {
                 ))}
               </tbody>
             </table>
-          </div>
-
-          <Divider />
-
-          <div className="flex flex-wrap gap-2 justify-end">
-            <PrimaryButton tone="accent2" onClick={saveDecisionsAndNext} disabled={saving}>
-              Save & Next
-            </PrimaryButton>
           </div>
         </Card>
       )}
@@ -1305,40 +1230,33 @@ export default function DynastyWagersAdminClient() {
             <Divider />
 
             <div className="space-y-3 text-sm">
-              {Object.keys(results?.divisions || {}).length === 0 ? (
-                <div className="text-muted">Resolve Week 17 to compute division payouts.</div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted">Wager Bonus (highest among wagered)</span>
+                <span className="font-semibold text-white">{fmtMoney(results?.wagerBonus?.bonus ?? doc?.week17?.wagerBonus ?? 200)}</span>
+              </div>
+              {results?.wagerBonus?.winner ? (
+                <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3">
+                  <div className="text-xs uppercase tracking-[0.25em] text-amber-200">Winner</div>
+                  <div className="mt-1 text-white font-semibold">{results.wagerBonus.winner}</div>
+                  <div className="mt-1 text-muted">{results.wagerBonus.winnerDivision} · {results.wagerBonus.winnerLeague} · {Number(results.wagerBonus.winnerPts ?? 0).toFixed(2)}</div>
+                </div>
               ) : (
-                Object.entries(results.divisions)
-                  .sort(([a], [b]) => a.localeCompare(b))
-                  .map(([div, r]) => (
-                    <div key={div} className="rounded-2xl border border-subtle bg-panel/40 p-4">
-                      <div className="text-xs uppercase tracking-[0.25em] text-muted">{div}</div>
-                      <div className="mt-3 grid gap-2">
-                        {["champion", "second", "third"].map((k) => {
-                          const row = r?.[k];
-                          const label = k === "champion" ? "🏆 Champ" : k === "second" ? "🥈 2nd" : "🥉 3rd";
-                          return (
-                            <div key={k} className="flex items-center justify-between rounded-xl border border-subtle bg-panel/60 px-3 py-2">
-                              <div className="text-white font-medium">{label} {row?.winner ? `· ${row.winner}` : ""}</div>
-                              <div className="text-muted">{fmtMoney(row?.bonus ?? 0)} {row?.pts ? `· ${Number(row.pts).toFixed(2)}` : ""}</div>
-                            </div>
-                          );
-                        })}
-
-                        <div className="mt-2 rounded-xl border border-amber-400/25 bg-amber-500/10 p-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-amber-200 font-semibold">Wager Pot</span>
-                            <span className="text-white font-semibold">{fmtMoney(r?.wagerPot?.total ?? 0)}</span>
-                          </div>
-                          <div className="mt-1 text-muted">
-                            Winner: <span className="text-white font-semibold">{r?.wagerPot?.winner || "—"}</span>
-                            {r?.wagerPot?.winnerPts != null ? ` · ${Number(r.wagerPot.winnerPts).toFixed(2)}` : ""}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))
+                <div className="text-muted">No wagered finalists yet.</div>
               )}
+
+              <Divider />
+
+              <div className="text-xs uppercase tracking-[0.25em] text-muted">Overall (all finalists)</div>
+              {["first", "second", "third"].map((k) => {
+                const row = results?.overall?.[k];
+                const label = k === "first" ? "🥇 1st" : k === "second" ? "🥈 2nd" : "🥉 3rd";
+                return (
+                  <div key={k} className="flex items-center justify-between rounded-xl border border-subtle bg-panel/60 px-3 py-2">
+                    <div className="text-white font-medium">{label} {row?.winner ? `· ${row.winner}` : ""}</div>
+                    <div className="text-muted">{fmtMoney(row?.bonus ?? 0)} {row?.pts ? `· ${Number(row.pts).toFixed(2)}` : ""}</div>
+                  </div>
+                );
+              })}
             </div>
           </Card>
 
