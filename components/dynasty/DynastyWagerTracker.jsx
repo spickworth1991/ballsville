@@ -301,6 +301,7 @@ function DynastyWagerTrackerInner({ season }) {
 
   return (
     <div className="space-y-6">
+      {/* --- Week 17 bonuses/winners card stays as-is (unchanged) --- */}
       <Card>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -326,8 +327,6 @@ function DynastyWagerTrackerInner({ season }) {
                 <div key={div} className="rounded-2xl border border-subtle bg-panel/50 p-4">
                   <div className="text-xs uppercase tracking-[0.22em] text-muted">{div} — Week 17 Awards</div>
                   {(() => {
-                    // Back-compat: older public page used "champion/payout".
-                    // Admin (source of truth) uses "champ/bonus".
                     const champ = d?.champ || d?.champion || {};
                     const second = d?.second || {};
                     const third = d?.third || {};
@@ -476,6 +475,7 @@ function DynastyWagerTrackerInner({ season }) {
         </div>
       </Card>
 
+      {/* --- Week 18 card stays as-is (unchanged) --- */}
       <Card>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -525,10 +525,11 @@ function DynastyWagerTrackerInner({ season }) {
         ) : null}
       </Card>
 
+      {/* --- UPDATED SECTION: winner cards outside the collapse + "Click to see leagues" --- */}
       <Card>
         <h2 className="text-lg font-semibold text-white">Finalists by Division</h2>
         <p className="mt-2 text-sm text-muted">
-          Divisions are collapsible. Leagues stay expanded (compact rows per finalist).
+          Winner cards stay visible. Click a division to expand the leagues.
         </p>
 
         <div className="mt-5 space-y-4">
@@ -559,118 +560,126 @@ function DynastyWagerTrackerInner({ season }) {
               const divId = `div-${slugify(season)}-${slugify(div)}`;
               const leagues = safeArray(d?.leagues);
 
-              // Division summary numbers for collapsed header
               const allEntries = leagues.flatMap((l) => safeArray(l.entries));
               const totalFinalists = allEntries.length;
               const totalWager = allEntries.filter((x) => x.decision === "wager").length;
               const totalBank = totalFinalists - totalWager;
 
               return (
-                <details
-                  key={div}
-                  open={!!openDivisions[divId]}
-                  onToggle={(e) => {
-                    const isOpen = e.currentTarget?.open === true;
-                    setOpenDivisions((prev) => ({ ...prev, [divId]: isOpen }));
-                  }}
-                  className="group rounded-2xl border border-subtle bg-panel/30"
-                >
-                  <summary className="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-xs uppercase tracking-[0.22em] text-muted">Division</div>
-                        <div className="mt-1 text-lg font-semibold text-white truncate">{div}</div>
+                <div key={div} className="rounded-2xl border border-subtle bg-panel/30 p-4">
+                  {/* Division header + tags (above winner cards) */}
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="text-xs uppercase tracking-[0.22em] text-muted">Division</div>
+                      <div className="mt-1 text-lg font-semibold text-white truncate">{div}</div>
 
-                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
-                          <span className="rounded-full border border-subtle bg-panel/40 px-2 py-0.5">
-                            🏟️ {leagues.length} leagues
-                          </span>
-                          <span className="rounded-full border border-subtle bg-panel/40 px-2 py-0.5">
-                            👥 {totalFinalists} finalists
-                          </span>
-                          <span className="rounded-full border border-subtle bg-panel/40 px-2 py-0.5">
-                            🎯 {totalWager} wager
-                          </span>
-                          <span className="rounded-full border border-subtle bg-panel/40 px-2 py-0.5">
-                            🏦 {totalBank} bank
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="shrink-0 flex items-center gap-2">
-                        {safeStr(champ?.winner).trim() ? <WinnerTag>Division Champ</WinnerTag> : null}
-                        <svg
-                          viewBox="0 0 24 24"
-                          className="h-5 w-5 text-muted transition-transform duration-200 group-open:rotate-180"
-                          aria-hidden="true"
-                        >
-                          <path
-                            fill="currentColor"
-                            d="M12 15.5a1 1 0 0 1-.7-.29l-6-6a1 1 0 1 1 1.4-1.42L12 13.09l5.3-5.3a1 1 0 1 1 1.4 1.42l-6 6a1 1 0 0 1-.7.29Z"
-                          />
-                        </svg>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+                        <span className="rounded-full border border-subtle bg-panel/40 px-2 py-0.5">
+                          🏟️ {leagues.length} leagues
+                        </span>
+                        <span className="rounded-full border border-subtle bg-panel/40 px-2 py-0.5">
+                          👥 {totalFinalists} finalists
+                        </span>
+                        <span className="rounded-full border border-subtle bg-panel/40 px-2 py-0.5">
+                          🎯 {totalWager} wager
+                        </span>
+                        <span className="rounded-full border border-subtle bg-panel/40 px-2 py-0.5">
+                          🏦 {totalBank} bank
+                        </span>
                       </div>
                     </div>
-                  </summary>
+                  </div>
 
-                  <div className="px-4 pb-4 space-y-3">
-                    {/* Keep your compact division awards block (unchanged) */}
-                    <div className="mt-1 grid gap-2 md:grid-cols-2">
-                      <div className="rounded-2xl border border-subtle bg-panel/40 p-3">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted">🏆 Champ</span>
-                          <span className="text-white font-semibold truncate">{champ?.winner || "—"}</span>
-                        </div>
-                        {champ?.leagueName ? (
-                          <div className="mt-1 flex items-center justify-between text-xs text-muted">
-                            <span className="truncate">{champ.leagueName}</span>
-                            <span className="text-white font-medium">{Number(champ?.pts ?? 0).toFixed(2)}</span>
-                          </div>
-                        ) : null}
+                  {/* Winner cards OUTSIDE the collapsible area (unchanged layout) */}
+                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                    <div className="rounded-2xl border border-subtle bg-panel/40 p-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted">🏆 Champ</span>
+                        <span className="text-white font-semibold truncate">{champ?.winner || "—"}</span>
                       </div>
-
-                      <div className="rounded-2xl border border-subtle bg-panel/40 p-3">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted">🎯 Wager Winner</span>
-                          <span className="text-white font-semibold truncate">{wagerPot?.winner || "—"}</span>
+                      {champ?.leagueName ? (
+                        <div className="mt-1 flex items-center justify-between text-xs text-muted">
+                          <span className="truncate">{champ.leagueName}</span>
+                          <span className="text-white font-medium">{Number(champ?.pts ?? 0).toFixed(2)}</span>
                         </div>
-                        {wagerPot?.winnerLeague ? (
-                          <div className="mt-1 flex items-center justify-between text-xs text-muted">
-                            <span className="truncate">{wagerPot.winnerLeague}</span>
-                            <span className="text-white font-medium">{Number(wagerPot?.winnerPts ?? 0).toFixed(2)}</span>
-                          </div>
-                        ) : null}
-                      </div>
-
-                      <div className="rounded-2xl border border-subtle bg-panel/40 p-3">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted">🥈 2nd</span>
-                          <span className="text-white font-semibold truncate">{second?.winner || "—"}</span>
-                        </div>
-                        {second?.leagueName ? (
-                          <div className="mt-1 flex items-center justify-between text-xs text-muted">
-                            <span className="truncate">{second.leagueName}</span>
-                            <span className="text-white font-medium">{Number(second?.pts ?? 0).toFixed(2)}</span>
-                          </div>
-                        ) : null}
-                      </div>
-
-                      <div className="rounded-2xl border border-subtle bg-panel/40 p-3">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted">🥉 3rd</span>
-                          <span className="text-white font-semibold truncate">{third?.winner || "—"}</span>
-                        </div>
-                        {third?.leagueName ? (
-                          <div className="mt-1 flex items-center justify-between text-xs text-muted">
-                            <span className="truncate">{third.leagueName}</span>
-                            <span className="text-white font-medium">{Number(third?.pts ?? 0).toFixed(2)}</span>
-                          </div>
-                        ) : null}
-                      </div>
+                      ) : null}
                     </div>
 
-                    {/* Leagues: NOT collapsible. Compact finalist rows. */}
-                    <div className="space-y-3">
+                    <div className="rounded-2xl border border-subtle bg-panel/40 p-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted">🎯 Wager Winner</span>
+                        <span className="text-white font-semibold truncate">{wagerPot?.winner || "—"}</span>
+                      </div>
+                      {wagerPot?.winnerLeague ? (
+                        <div className="mt-1 flex items-center justify-between text-xs text-muted">
+                          <span className="truncate">{wagerPot.winnerLeague}</span>
+                          <span className="text-white font-medium">{Number(wagerPot?.winnerPts ?? 0).toFixed(2)}</span>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="rounded-2xl border border-subtle bg-panel/40 p-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted">🥈 2nd</span>
+                        <span className="text-white font-semibold truncate">{second?.winner || "—"}</span>
+                      </div>
+                      {second?.leagueName ? (
+                        <div className="mt-1 flex items-center justify-between text-xs text-muted">
+                          <span className="truncate">{second.leagueName}</span>
+                          <span className="text-white font-medium">{Number(second?.pts ?? 0).toFixed(2)}</span>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="rounded-2xl border border-subtle bg-panel/40 p-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted">🥉 3rd</span>
+                        <span className="text-white font-semibold truncate">{third?.winner || "—"}</span>
+                      </div>
+                      {third?.leagueName ? (
+                        <div className="mt-1 flex items-center justify-between text-xs text-muted">
+                          <span className="truncate">{third.leagueName}</span>
+                          <span className="text-white font-medium">{Number(third?.pts ?? 0).toFixed(2)}</span>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {/* Collapsible leagues only */}
+                  <details
+                    open={!!openDivisions[divId]}
+                    onToggle={(e) => {
+                      const isOpen = e.currentTarget?.open === true;
+                      setOpenDivisions((prev) => ({ ...prev, [divId]: isOpen }));
+                    }}
+                    className="group mt-3 rounded-2xl border border-subtle bg-card-surface"
+                  >
+                    <summary className="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-xs uppercase tracking-[0.22em] text-muted">Leagues</div>
+                          <div className="mt-1 text-sm text-muted">Tap to expand / collapse this division’s leagues</div>
+                        </div>
+
+                        <div className="shrink-0 flex items-center gap-2">
+                          <span className="inline-flex items-center rounded-full border border-subtle bg-panel/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white">
+                            Click to see leagues
+                          </span>
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-5 w-5 text-muted transition-transform duration-200 group-open:rotate-180"
+                            aria-hidden="true"
+                          >
+                            <path
+                              fill="currentColor"
+                              d="M12 15.5a1 1 0 0 1-.7-.29l-6-6a1 1 0 1 1 1.4-1.42L12 13.09l5.3-5.3a1 1 0 1 1 1.4 1.42l-6 6a1 1 0 0 1-.7.29Z"
+                            />
+                          </svg>
+                        </div>
+                      </div>
+                    </summary>
+
+                    <div className="px-4 pb-4 space-y-3">
                       {leagues.map((l) => {
                         const anchorId = leagueAnchorId(season, div, l.leagueName);
                         const sorted = safeArray(l.entries).slice().sort((a, b) => b.wk17 - a.wk17);
@@ -679,7 +688,7 @@ function DynastyWagerTrackerInner({ season }) {
                           <div
                             key={`${div}|||${l.leagueName}`}
                             id={anchorId}
-                            className="rounded-2xl border border-subtle bg-card-surface p-4"
+                            className="rounded-2xl border border-subtle bg-panel/30 p-4"
                           >
                             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                               <div className="text-white font-semibold">{l.leagueName}</div>
@@ -690,10 +699,7 @@ function DynastyWagerTrackerInner({ season }) {
                               {sorted.map((e) => {
                                 const tags = tagsForKey(e.k);
                                 return (
-                                  <div
-                                    key={e.k}
-                                    className="rounded-2xl border border-subtle bg-panel/30 p-3"
-                                  >
+                                  <div key={e.k} className="rounded-2xl border border-subtle bg-card-surface p-3">
                                     <div className="flex items-start justify-between gap-3">
                                       <div className="min-w-0">
                                         <div className="flex items-start gap-2">
@@ -729,8 +735,8 @@ function DynastyWagerTrackerInner({ season }) {
                         );
                       })}
                     </div>
-                  </div>
-                </details>
+                  </details>
+                </div>
               );
             })
           )}
