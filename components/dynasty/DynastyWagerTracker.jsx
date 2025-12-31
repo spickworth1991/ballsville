@@ -512,6 +512,55 @@ function DynastyWagerTrackerInner({ season }) {
         ) : null}
       </Card>
 
+
+
+      <Card>
+        <h2 className="text-lg font-semibold text-white">Who should have wagered?</h2>
+        <p className="mt-2 text-sm text-muted">
+          Banked finalists who scored at least as many Week 17 points as the highest scorer among those who wagered.
+        </p>
+
+        <div className="mt-4">
+          {view.wagerMisses.length === 0 ? (
+            <div className="text-sm text-muted">No misses detected (or no one wagered yet).</div>
+          ) : (
+            <div className="space-y-2">
+              {view.wagerMisses.slice(0, 25).map((m, idx) => (
+                <div key={`${m.key || idx}`} className="rounded-xl border border-rose-400/25 bg-rose-500/10 p-3">
+                  <div className="text-white font-semibold">{m.ownerName}</div>
+                  <div className="mt-1 text-sm text-muted">
+                    {m.division} · {m.leagueName} · Week 17: {m.wk17.toFixed(2)}
+                  </div>
+                  {(() => {
+                    const r = view.divisionAwards?.[m.division] || {};
+                    const wagerPot = r?.wagerPot || {};
+                    const wName = safeStr(wagerPot?.winner).trim();
+                    const wPts = Number(wagerPot?.winnerPts ?? 0) || 0;
+
+                    return (
+                      <div className="mt-1 text-sm text-muted">
+                        Would have won: <span className="text-white font-semibold">{fmtMoney(m.wouldHaveWon)}</span>
+                        {wName ? (
+                          <>
+                            <span className="text-muted"> because </span>
+                            <span className="text-white font-semibold">{wName}</span>
+                            <span className="text-muted"> scored </span>
+                            <span className="text-white font-semibold">{wPts.toFixed(2)}</span>
+                            <span className="text-muted"> (Wager winner), and you scored </span>
+                            <span className="text-white font-semibold">{m.wk17.toFixed(2)}</span>
+                            <span className="text-muted"> while banking.</span>
+                          </>
+                        ) : null}
+                      </div>
+                    );
+                  })()}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Card>
+
       <Card>
         <h2 className="text-lg font-semibold text-white">Finalists by Division</h2>
         <p className="mt-2 text-sm text-muted">Wager vs Bank is shown per finalist. Week 17 points drive all payouts.</p>
@@ -675,52 +724,7 @@ function DynastyWagerTrackerInner({ season }) {
         </div>
       </Card>
 
-      <Card>
-        <h2 className="text-lg font-semibold text-white">Who should have wagered?</h2>
-        <p className="mt-2 text-sm text-muted">
-          Banked finalists who scored at least as many Week 17 points as the highest scorer among those who wagered.
-        </p>
-
-        <div className="mt-4">
-          {view.wagerMisses.length === 0 ? (
-            <div className="text-sm text-muted">No misses detected (or no one wagered yet).</div>
-          ) : (
-            <div className="space-y-2">
-              {view.wagerMisses.slice(0, 25).map((m, idx) => (
-                <div key={`${m.key || idx}`} className="rounded-xl border border-rose-400/25 bg-rose-500/10 p-3">
-                  <div className="text-white font-semibold">{m.ownerName}</div>
-                  <div className="mt-1 text-sm text-muted">
-                    {m.division} · {m.leagueName} · Week 17: {m.wk17.toFixed(2)}
-                  </div>
-                  {(() => {
-                    const r = view.divisionAwards?.[m.division] || {};
-                    const wagerPot = r?.wagerPot || {};
-                    const wName = safeStr(wagerPot?.winner).trim();
-                    const wPts = Number(wagerPot?.winnerPts ?? 0) || 0;
-
-                    return (
-                      <div className="mt-1 text-sm text-muted">
-                        Would have won: <span className="text-white font-semibold">{fmtMoney(m.wouldHaveWon)}</span>
-                        {wName ? (
-                          <>
-                            <span className="text-muted"> because </span>
-                            <span className="text-white font-semibold">{wName}</span>
-                            <span className="text-muted"> scored </span>
-                            <span className="text-white font-semibold">{wPts.toFixed(2)}</span>
-                            <span className="text-muted"> (Wager winner), and you scored </span>
-                            <span className="text-white font-semibold">{m.wk17.toFixed(2)}</span>
-                            <span className="text-muted"> while banking.</span>
-                          </>
-                        ) : null}
-                      </div>
-                    );
-                  })()}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </Card>
+      
 
       <Modal
         open={Boolean(winnerModal)}
