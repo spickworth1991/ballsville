@@ -225,9 +225,22 @@ function DynastyWagerTrackerInner({ season }) {
   const [doc, setDoc] = useState(null);
   const [winnerModal, setWinnerModal] = useState(null);
 
+  // Accordion open state per league anchor id
+  const [openLeagues, setOpenLeagues] = useState({});
+
   function openWinnerModal(payload) {
     if (!payload) return;
     setWinnerModal(payload);
+  }
+
+  function jumpToLeague(division, leagueName) {
+    const div = safeStr(division).trim();
+    const league = safeStr(leagueName).trim();
+    if (!div || !league) return;
+    const id = leagueAnchorId(season, div, league);
+    setOpenLeagues((prev) => ({ ...prev, [id]: true }));
+    // Let React paint the open state before scrolling
+    setTimeout(() => scrollToId(id), 60);
   }
 
   useEffect(() => {
@@ -322,8 +335,6 @@ function DynastyWagerTrackerInner({ season }) {
                       const league = safeStr(obj?.leagueName || obj?.league || "").trim();
                       const pts = Number(obj?.pts ?? obj?.winnerPts ?? 0) || 0;
                       const payout = Number(obj?.[moneyKey] ?? obj?.payout ?? 0) || 0;
-                      const canJump = Boolean(league);
-                      const jumpId = canJump ? leagueAnchorId(season, div, league) : "";
 
                       return (
                         <div className="rounded-xl border border-subtle bg-panel/30 p-3">
@@ -343,7 +354,6 @@ function DynastyWagerTrackerInner({ season }) {
                                     league,
                                     pts,
                                     payout,
-                                    jumpId,
                                   })
                                 }
                                 className="text-white font-semibold hover:underline underline-offset-4"
@@ -357,6 +367,7 @@ function DynastyWagerTrackerInner({ season }) {
                               ) : null}
                             </div>
                           </div>
+
                           {winner ? (
                             <div className="mt-1 flex items-center justify-between gap-3 text-xs text-muted">
                               <div className="truncate">
@@ -369,10 +380,11 @@ function DynastyWagerTrackerInner({ season }) {
                                 <span>Week 17: </span>
                                 <span className="text-white font-medium">{pts.toFixed(2)}</span>
                               </div>
-                              {canJump ? (
+
+                              {league ? (
                                 <button
                                   type="button"
-                                  onClick={() => scrollToId(jumpId)}
+                                  onClick={() => jumpToLeague(div, league)}
                                   className="shrink-0 rounded-full border border-subtle bg-panel/40 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white hover:bg-panel/60"
                                 >
                                   Jump
@@ -395,6 +407,7 @@ function DynastyWagerTrackerInner({ season }) {
                             <span className="text-muted">🎯 Wager Pot</span>
                             <span className="text-white font-semibold">{fmtMoney(wagerPot?.total ?? 0)}</span>
                           </div>
+
                           <div className="mt-1 flex items-center justify-between gap-3 text-xs text-muted">
                             <div className="truncate">
                               <span className="text-muted">Winner: </span>
@@ -409,9 +422,6 @@ function DynastyWagerTrackerInner({ season }) {
                                     league: safeStr(wagerPot?.winnerLeague || "").trim(),
                                     pts: Number(wagerPot?.winnerPts ?? 0) || 0,
                                     payout: Number(wagerPot?.total ?? 0) || 0,
-                                    jumpId: wagerPot?.winnerLeague
-                                      ? leagueAnchorId(season, div, wagerPot?.winnerLeague)
-                                      : "",
                                   })
                                 }
                                 className="text-white font-semibold hover:underline underline-offset-4"
@@ -424,25 +434,23 @@ function DynastyWagerTrackerInner({ season }) {
                                 <span className="text-white/90">{wagerPot?.winnerLeague}</span>
                               ) : null}
                             </div>
+
                             {wagerPot?.winnerLeague ? (
                               <button
                                 type="button"
-                                onClick={() => scrollToId(leagueAnchorId(season, div, wagerPot?.winnerLeague))}
+                                onClick={() => jumpToLeague(div, wagerPot?.winnerLeague)}
                                 className="shrink-0 rounded-full border border-subtle bg-panel/40 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white hover:bg-panel/60"
                               >
                                 Jump
                               </button>
                             ) : null}
                           </div>
+
                           {wagerPot?.winner ? (
                             <div className="mt-1 text-xs text-muted">
                               Week 17 (wagered):{" "}
                               <span className="text-white font-medium">
                                 {Number(wagerPot?.winnerPts ?? 0).toFixed(2)}
-                              </span>
-                              <span className="text-muted"> · Entrants: </span>
-                              <span className="text-white font-medium">
-                                {Number(wagerPot?.pool ?? 0) / Number(view.rules.credit || 50) || 0}
                               </span>
                             </div>
                           ) : null}
@@ -470,7 +478,9 @@ function DynastyWagerTrackerInner({ season }) {
           <div>
             <SmallBadge>Week 18</SmallBadge>
             <h2 className="mt-3 text-xl font-semibold text-white">Heroes vs Dragons Showdown</h2>
-            <p className="mt-2 text-sm text-muted">Division champs (highest Week 17 scorer in each division) face off in Week 18.</p>
+            <p className="mt-2 text-sm text-muted">
+              Division champs (highest Week 17 scorer in each division) face off in Week 18.
+            </p>
           </div>
           <div className="text-right text-xs text-muted">
             <div>Resolved: {view.week18.resolvedAt ? new Date(view.week18.resolvedAt).toLocaleString() : "—"}</div>
@@ -512,58 +522,11 @@ function DynastyWagerTrackerInner({ season }) {
         ) : null}
       </Card>
 
-
-
-      <Card>
-        <h2 className="text-lg font-semibold text-white">Who should have wagered?</h2>
-        <p className="mt-2 text-sm text-muted">
-          Banked finalists who scored at least as many Week 17 points as the highest scorer among those who wagered.
-        </p>
-
-        <div className="mt-4">
-          {view.wagerMisses.length === 0 ? (
-            <div className="text-sm text-muted">No misses detected (or no one wagered yet).</div>
-          ) : (
-            <div className="space-y-2">
-              {view.wagerMisses.slice(0, 25).map((m, idx) => (
-                <div key={`${m.key || idx}`} className="rounded-xl border border-rose-400/25 bg-rose-500/10 p-3">
-                  <div className="text-white font-semibold">{m.ownerName}</div>
-                  <div className="mt-1 text-sm text-muted">
-                    {m.division} · {m.leagueName} · Week 17: {m.wk17.toFixed(2)}
-                  </div>
-                  {(() => {
-                    const r = view.divisionAwards?.[m.division] || {};
-                    const wagerPot = r?.wagerPot || {};
-                    const wName = safeStr(wagerPot?.winner).trim();
-                    const wPts = Number(wagerPot?.winnerPts ?? 0) || 0;
-
-                    return (
-                      <div className="mt-1 text-sm text-muted">
-                        Would have won: <span className="text-white font-semibold">{fmtMoney(m.wouldHaveWon)}</span>
-                        {wName ? (
-                          <>
-                            <span className="text-muted"> because </span>
-                            <span className="text-white font-semibold">{wName}</span>
-                            <span className="text-muted"> scored </span>
-                            <span className="text-white font-semibold">{wPts.toFixed(2)}</span>
-                            <span className="text-muted"> (Wager winner), and you scored </span>
-                            <span className="text-white font-semibold">{m.wk17.toFixed(2)}</span>
-                            <span className="text-muted"> while banking.</span>
-                          </>
-                        ) : null}
-                      </div>
-                    );
-                  })()}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </Card>
-
       <Card>
         <h2 className="text-lg font-semibold text-white">Finalists by Division</h2>
-        <p className="mt-2 text-sm text-muted">Wager vs Bank is shown per finalist. Week 17 points drive all payouts.</p>
+        <p className="mt-2 text-sm text-muted">
+          Tap a league to expand. Mobile shows cards; desktop shows the table. (Same data.)
+        </p>
 
         <div className="mt-5 space-y-6">
           {Object.keys(view.divisions).length === 0 ? (
@@ -655,31 +618,131 @@ function DynastyWagerTrackerInner({ season }) {
                   <div className="mt-4 space-y-3">
                     {safeArray(d?.leagues).map((l) => {
                       const anchorId = leagueAnchorId(season, div, l.leagueName);
+                      const sorted = safeArray(l.entries).slice().sort((a, b) => b.wk17 - a.wk17);
+                      const top = sorted[0] || null;
+                      const wagerCount = sorted.filter((x) => x.decision === "wager").length;
+                      const bankCount = sorted.length - wagerCount;
+
                       return (
-                        <div
+                        <details
                           key={`${div}|||${l.leagueName}`}
                           id={anchorId}
-                          className="rounded-2xl border border-subtle bg-card-surface p-4"
+                          open={!!openLeagues[anchorId]}
+                          onToggle={(e) =>
+                            setOpenLeagues((prev) => ({
+                              ...prev,
+                              [anchorId]: e.currentTarget.open,
+                            }))
+                          }
+                          className="group rounded-2xl border border-subtle bg-card-surface"
                         >
-                          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="text-white font-semibold">{l.leagueName}</div>
-                            <div className="text-[11px] text-muted">Week 17 points (division-wide payouts)</div>
-                          </div>
+                          <summary className="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-white font-semibold truncate">{l.leagueName}</div>
 
-                          <div className="mt-3 overflow-x-auto">
-                            <table className="w-full text-sm">
-                              <thead>
-                                <tr className="text-xs uppercase tracking-[0.22em] text-muted">
-                                  <th className="py-2 pr-4 text-left">Finalist</th>
-                                  <th className="py-2 pr-4 text-left">Choice</th>
-                                  <th className="py-2 text-right">Week 17</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-subtle/60">
-                                {safeArray(l.entries)
-                                  .slice()
-                                  .sort((a, b) => b.wk17 - a.wk17)
-                                  .map((e) => {
+                                {/* Collapsed meta: compact + mobile friendly */}
+                                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+                                  <span className="rounded-full border border-subtle bg-panel/30 px-2 py-0.5">
+                                    👥 {sorted.length} finalists
+                                  </span>
+                                  <span className="rounded-full border border-subtle bg-panel/30 px-2 py-0.5">
+                                    🎯 {wagerCount} wager
+                                  </span>
+                                  <span className="rounded-full border border-subtle bg-panel/30 px-2 py-0.5">
+                                    🏦 {bankCount} bank
+                                  </span>
+                                  {top ? (
+                                    <span className="rounded-full border border-subtle bg-panel/30 px-2 py-0.5">
+                                      🔥 {top.ownerName} {top.wk17.toFixed(2)}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+
+                              <div className="shrink-0 flex items-center gap-2">
+                                {/* Show any winner tags for the top scorer right in the collapsed header */}
+                                {top ? (
+                                  <div className="hidden sm:flex flex-wrap gap-1">
+                                    {tagsForKey(top.k).map((t) => (
+                                      <span
+                                        key={t.label}
+                                        title={t.label}
+                                        className="inline-flex items-center rounded-full border border-subtle bg-panel/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white"
+                                      >
+                                        {t.icon}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : null}
+
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  className="h-5 w-5 text-muted transition-transform duration-200 group-open:rotate-180"
+                                  aria-hidden="true"
+                                >
+                                  <path
+                                    fill="currentColor"
+                                    d="M12 15.5a1 1 0 0 1-.7-.29l-6-6a1 1 0 1 1 1.4-1.42L12 13.09l5.3-5.3a1 1 0 1 1 1.4 1.42l-6 6a1 1 0 0 1-.7.29Z"
+                                  />
+                                </svg>
+                              </div>
+                            </div>
+
+                            <div className="mt-2 text-[11px] text-muted">
+                              Week 17 points (division-wide payouts) — tap to expand
+                            </div>
+                          </summary>
+
+                          <div className="px-4 pb-4">
+                            {/* Mobile view: cards (no table scrolling) */}
+                            <div className="sm:hidden space-y-2">
+                              {sorted.map((e) => {
+                                const tags = tagsForKey(e.k);
+                                return (
+                                  <div key={e.k} className="rounded-2xl border border-subtle bg-panel/30 p-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0">
+                                        <div className="text-white font-semibold truncate">{e.ownerName}</div>
+                                        {tags.length ? (
+                                          <div className="mt-1 flex flex-wrap gap-1">
+                                            {tags.map((t) => (
+                                              <span
+                                                key={t.label}
+                                                title={t.label}
+                                                className="inline-flex items-center rounded-full border border-subtle bg-panel/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white"
+                                              >
+                                                {t.icon} <span className="ml-1">{t.label}</span>
+                                              </span>
+                                            ))}
+                                          </div>
+                                        ) : null}
+                                      </div>
+
+                                      <div className="text-right">
+                                        <div className="text-white font-semibold">{e.wk17.toFixed(2)}</div>
+                                        <div className="mt-1">
+                                          <DecisionPill decision={e.decision} />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Desktop view: table (your original vibe) */}
+                            <div className="hidden sm:block overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="text-xs uppercase tracking-[0.22em] text-muted">
+                                    <th className="py-2 pr-4 text-left">Finalist</th>
+                                    <th className="py-2 pr-4 text-left">Choice</th>
+                                    <th className="py-2 text-right">Week 17</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-subtle/60">
+                                  {sorted.map((e) => {
                                     const tags = tagsForKey(e.k);
                                     return (
                                       <tr key={e.k} className="align-top">
@@ -710,10 +773,11 @@ function DynastyWagerTrackerInner({ season }) {
                                       </tr>
                                     );
                                   })}
-                              </tbody>
-                            </table>
+                                </tbody>
+                              </table>
+                            </div>
                           </div>
-                        </div>
+                        </details>
                       );
                     })}
                   </div>
@@ -724,7 +788,52 @@ function DynastyWagerTrackerInner({ season }) {
         </div>
       </Card>
 
-      
+      <Card>
+        <h2 className="text-lg font-semibold text-white">Who should have wagered?</h2>
+        <p className="mt-2 text-sm text-muted">
+          Banked finalists who scored at least as many Week 17 points as the highest scorer among those who wagered.
+        </p>
+
+        <div className="mt-4">
+          {view.wagerMisses.length === 0 ? (
+            <div className="text-sm text-muted">No misses detected (or no one wagered yet).</div>
+          ) : (
+            <div className="space-y-2">
+              {view.wagerMisses.slice(0, 25).map((m, idx) => (
+                <div key={`${m.key || idx}`} className="rounded-xl border border-rose-400/25 bg-rose-500/10 p-3">
+                  <div className="text-white font-semibold">{m.ownerName}</div>
+                  <div className="mt-1 text-sm text-muted">
+                    {m.division} · {m.leagueName} · Week 17: {m.wk17.toFixed(2)}
+                  </div>
+                  {(() => {
+                    const r = view.divisionAwards?.[m.division] || {};
+                    const wagerPot = r?.wagerPot || {};
+                    const wName = safeStr(wagerPot?.winner).trim();
+                    const wPts = Number(wagerPot?.winnerPts ?? 0) || 0;
+
+                    return (
+                      <div className="mt-1 text-sm text-muted">
+                        Would have won: <span className="text-white font-semibold">{fmtMoney(m.wouldHaveWon)}</span>
+                        {wName ? (
+                          <>
+                            <span className="text-muted"> because </span>
+                            <span className="text-white font-semibold">{wName}</span>
+                            <span className="text-muted"> scored </span>
+                            <span className="text-white font-semibold">{wPts.toFixed(2)}</span>
+                            <span className="text-muted"> (Wager winner), and you scored </span>
+                            <span className="text-white font-semibold">{m.wk17.toFixed(2)}</span>
+                            <span className="text-muted"> while banking.</span>
+                          </>
+                        ) : null}
+                      </div>
+                    );
+                  })()}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Card>
 
       <Modal
         open={Boolean(winnerModal)}
@@ -759,12 +868,14 @@ function DynastyWagerTrackerInner({ season }) {
               ) : null}
             </div>
 
-            {winnerModal.jumpId ? (
+            {winnerModal.league && winnerModal.division ? (
               <button
                 type="button"
                 onClick={() => {
+                  const div = winnerModal.division;
+                  const league = winnerModal.league;
                   setWinnerModal(null);
-                  scrollToId(winnerModal.jumpId);
+                  jumpToLeague(div, league);
                 }}
                 className="w-full rounded-2xl border border-subtle bg-panel/40 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-white hover:bg-panel/60"
               >
