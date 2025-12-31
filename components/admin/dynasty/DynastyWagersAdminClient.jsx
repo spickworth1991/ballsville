@@ -4,6 +4,36 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import AdminStepTabs from "../AdminStepTabs";
 
+function isLocalhost() {
+  if (typeof window === "undefined") return false;
+  const h = window.location.hostname;
+  return h === "localhost" || h === "127.0.0.1";
+}
+
+function getR2Base() {
+  // In prod, `/r2` is the Pages Function proxy for the public R2 bucket.
+  if (!isLocalhost()) return "/r2";
+
+  // Local dev: fall back to an explicit public base if you have it, otherwise use production.
+  // (next dev doesn't run Pages Functions, so `/r2` will 404 on localhost.)
+  return (
+    process.env.NEXT_PUBLIC_R2_PUBLIC_BASE ||
+    process.env.NEXT_PUBLIC_R2_PUBLIC_URL ||
+    "https://ballsville.pages.dev/r2"
+  );
+}
+
+// When running on localhost, Pages Functions won't run in `next dev`, so `/r2/...` won't exist.
+// Also, if the `/r2` proxy route ever changes, this gives us a resilient fallback.
+function getPublicR2Base() {
+  // Optional overrides if you ever want to point at a different R2 proxy/base.
+  return (
+    process.env.NEXT_PUBLIC_R2_PUBLIC_BASE ||
+    process.env.NEXT_PUBLIC_R2_PROXY_BASE ||
+    "https://ballsville.pages.dev/r2"
+  );
+}
+
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
 }
@@ -164,6 +194,24 @@ function getWeekPointsMapFromLeaderboard(leaderboardsJson, season, week) {
   }
 
   return map;
+}
+
+function parseTrailingFractionOrder(leagueName) {
+  // Expected: "... 3/16" (league number at end) -> 3
+  const s = safeStr(leagueName).trim();
+  const m = s.match(/\b(\d{1,3})\s*\/\s*\d{1,3}\s*$/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+function getLeagueDisplayOrder(division, leagueName, leagueOrderIndex) {
+  const key = `${safeStr(division).trim()}|||${safeStr(leagueName).trim()}`.toLowerCase();
+  const mapped = leagueOrderIndex?.get?.(key);
+  if (typeof mapped === "number" && Number.isFinite(mapped) && mapped !== 999999) return mapped;
+  const parsed = parseTrailingFractionOrder(leagueName);
+  if (parsed != null) return parsed;
+  return 999999;
 }
 
 function buildOwnersByDivisionLeague(leaderboardsJson, season) {
@@ -571,7 +619,17 @@ export default function DynastyWagersAdminClient() {
   async function loadLeagueOrderIndex(seasonToLoad) {
     try {
       const bust = `v=${Date.now()}`;
-      const res = await fetch(`/r2/data/dynasty/leagues.json?${bust}`, { cache: "no-store" });
+      const base = getR2Base();
+
+      // Try the primary base first; on localhost this will be absolute, on prod it's `/r2`.
+      let res = await fetch(`${base}/data/dynasty/leagues.json?${bust}`, { cache: "no-store" });
+
+      // Defensive fallback: if something misroutes `/r2` in a given environment,
+      // try the known production host.
+      if (!res.ok && base === "/r2") {
+        res = await fetch(`https://ballsville.pages.dev/r2/data/dynasty/leagues.json?${bust}`, { cache: "no-store" });
+      }
+
       if (!res.ok) return;
       const data = await res.json();
       setLeagueOrderIndex(buildLeagueOrderIndex(data, seasonToLoad));
@@ -932,10 +990,8 @@ export default function DynastyWagersAdminClient() {
       out.push({
         division: div,
         leagues: leagues.sort((a, b) => {
-          const ak = `${a.division}|||${a.leagueName}`.toLowerCase();
-          const bk = `${b.division}|||${b.leagueName}`.toLowerCase();
-          const ao = leagueOrderIndex.get(ak) ?? 999999;
-          const bo = leagueOrderIndex.get(bk) ?? 999999;
+          const ao = getLeagueDisplayOrder(a.division, a.leagueName, leagueOrderIndex);
+          const bo = getLeagueDisplayOrder(b.division, b.leagueName, leagueOrderIndex);
           if (ao !== bo) return ao - bo;
           return a.leagueName.localeCompare(b.leagueName);
         }),
