@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabaseClient"; // used for signOut
-import { getUserWithRetry } from "@/lib/adminAuth";
+
 
 function parseAdmins() {
   return (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")
@@ -29,19 +29,15 @@ export default function AdminGuard({ children }) {
     !!user && ADMIN_EMAILS.includes((user?.email || "").toLowerCase());
 
   useEffect(() => {
-    let mounted = true;
-
-    (async () => {
-      // Supabase auth can be briefly unavailable right after a cold load.
-      const u = await getUserWithRetry({ attempts: 6, baseDelayMs: 150 });
-      if (!mounted) return;
-      setUser(u || null);
+    const supabase = getSupabase();
+    if (!supabase) {
       setUserChecked(true);
-    })();
-
-    return () => {
-      mounted = false;
-    };
+      return;
+    }
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user || null);
+      setUserChecked(true);
+    });
   }, []);
 
   // 1) Still checking
