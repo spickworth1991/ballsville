@@ -772,70 +772,72 @@ export default function BigGameWagersAdminClient({ season }) {
     ];
   }, [state]);
 
-  const activeTab =
-    tab === "auto"
-      ? state?.championship?.resolvedAt
-        ? "week17"
-        : state?.divisionWagers?.resolvedAt
-        ? "week16"
-        : safeStr(state?.divisionWagers?.entriesSavedAt || "").trim()
-        ? "week16"
-        : state?.eligibility?.computedAt
-        ? "entries"
-        : "import"
-      : tab;
+    const activeTab =
+      tab === "auto"
+        ? state?.championship?.resolvedAt
+          ? "week17"
+          : state?.divisionWagers?.resolvedAt
+          ? "week16"
+          : safeStr(state?.divisionWagers?.entriesSavedAt || "").trim()
+          ? "week16"
+          : state?.eligibility?.computedAt
+          ? "entries"
+          : "import"
+        : tab;
 
-  if (loading) {
-    return <div className="text-sm text-muted">Loading wager tracker…</div>;
-  }
+    // IMPORTANT: hooks must be declared BEFORE any early return.
+    const week16Resolved = Boolean(state?.divisionWagers?.resolvedAt);
 
-  const week16Resolved = Boolean(state?.divisionWagers?.resolvedAt);
+    const step3ByDivision = useMemo(() => {
+      const out = {};
+      for (const div of Object.keys(eligibilityByDivision || {})) {
+        const elig = safeArray(eligibilityByDivision[div]);
+        const d = wagersByDivision?.[div] || {};
+        const pot1 = d?.pot1 || {};
+        const pot2 = d?.pot2 || {};
 
-  const step3ByDivision = useMemo(() => {
-    const out = {};
-    for (const div of Object.keys(eligibilityByDivision || {})) {
-      const elig = safeArray(eligibilityByDivision[div]);
-      const d = wagersByDivision?.[div] || {};
-      const pot1 = d?.pot1 || {};
-      const pot2 = d?.pot2 || {};
+        const rows = elig
+          .map((e) => {
+            const ownerName = safeStr(e?.ownerName).trim();
+            const leagueName = safeStr(e?.leagueName).trim();
+            const k = entryKey({ division: div, leagueName, ownerName });
 
-      const rows = elig
-        .map((e) => {
-          const ownerName = safeStr(e?.ownerName).trim();
-          const leagueName = safeStr(e?.leagueName).trim();
-          const k = entryKey({ division: div, leagueName, ownerName });
+            const has1 = Boolean(pot1?.entrants?.[k]);
+            const has2 = Boolean(pot2?.entrants?.[k]);
 
-          const has1 = Boolean(pot1?.entrants?.[k]);
-          const has2 = Boolean(pot2?.entrants?.[k]);
+            if (!has1 && !has2) return null;
 
-          if (!has1 && !has2) return null;
+            const wk16 = has2 ? Number(pot2?.points?.[k] ?? 0) : Number(pot1?.points?.[k] ?? 0);
+            return {
+              division: div,
+              leagueName,
+              ownerName,
+              k,
+              total151: Number(e?.total ?? 0) || 0,
+              level: has1 && has2 ? "max" : "half",
+              wk16,
+              isPot1Winner: safeStr(pot1?.winnerKey).trim() === k,
+              isPot2Winner: safeStr(pot2?.winnerKey).trim() === k,
+            };
+          })
+          .filter(Boolean)
+          .sort((a, b) => b.total151 - a.total151);
 
-          const wk16 = has2 ? Number(pot2?.points?.[k] ?? 0) : Number(pot1?.points?.[k] ?? 0);
-          return {
-            division: div,
-            leagueName,
-            ownerName,
-            k,
-            total151: Number(e?.total ?? 0) || 0,
-            level: has1 && has2 ? "max" : "half",
-            wk16,
-            isPot1Winner: safeStr(pot1?.winnerKey).trim() === k,
-            isPot2Winner: safeStr(pot2?.winnerKey).trim() === k,
-          };
-        })
-        .filter(Boolean)
-        .sort((a, b) => b.total151 - a.total151);
+        out[div] = {
+          pot1Pool: Number(pot1?.pool || 0),
+          pot2Pool: Number(pot2?.pool || 0),
+          pot1Winner: safeStr(pot1?.winner || "").trim(),
+          pot2Winner: safeStr(pot2?.winner || "").trim(),
+          rows,
+        };
+      }
+      return out;
+    }, [eligibilityByDivision, wagersByDivision]);
 
-      out[div] = {
-        pot1Pool: Number(pot1?.pool || 0),
-        pot2Pool: Number(pot2?.pool || 0),
-        pot1Winner: safeStr(pot1?.winner || "").trim(),
-        pot2Winner: safeStr(pot2?.winner || "").trim(),
-        rows,
-      };
+    if (loading) {
+      return <div className="text-sm text-muted">Loading wager tracker…</div>;
     }
-    return out;
-  }, [eligibilityByDivision, wagersByDivision]);
+
 
   return (
     <div className="space-y-6">
