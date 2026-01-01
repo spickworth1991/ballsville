@@ -1,12 +1,12 @@
-// functions/api/admin/dynasty-wagers.js
+// functions/api/admin/dynasty-wagering.js
 //
-// Stores/reads the Dynasty Week 15 wagering admin doc in R2.
+// Back-compat endpoint for Dynasty wagering admin doc in R2.
 //
 // IMPORTANT:
 // - This endpoint intentionally does NOT require a Bearer token.
 // - Admin access is enforced at the page level via <AdminGuard />.
-// - This mirrors the auth-free behavior used by Big Game + Mini Leagues
-//   wagering admin endpoints.
+// - Some older pages still call `/api/admin/dynasty-wagering?season=YYYY`.
+//   Keep this endpoint working even if newer pages use `/api/admin/dynasty-wagers`.
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -21,7 +21,12 @@ function json(data, status = 200) {
 function ensureR2(env) {
   // Prefer the established binding name used across the project.
   const b = env.admin_bucket || env.ADMIN_BUCKET || env.bucket || env.BUCKET || env;
-  if (!b || typeof b.get !== "function" || typeof b.put !== "function") {
+  if (
+    !b ||
+    typeof b.get !== "function" ||
+    typeof b.put !== "function" ||
+    typeof b.delete !== "function"
+  ) {
     throw new Error(
       "Missing R2 binding. Expected env.admin_bucket (or equivalent) to be bound to the admin bucket."
     );
@@ -29,18 +34,28 @@ function ensureR2(env) {
   return b;
 }
 
-const ALLOWED_SEASONS = [2024, 2025, 2026];
-
 function parseSeason(url) {
   const { searchParams } = new URL(url);
   const raw = String(searchParams.get("season") || "").trim();
   const season = Number(raw);
-  if (!Number.isFinite(season) || !ALLOWED_SEASONS.includes(season)) return null;
+  // Keep it flexible so you don't have to update code each year.
+  if (!Number.isFinite(season) || season < 2000 || season > 2100) return null;
   return season;
 }
 
 function keyForSeason(season) {
-  return `admin/dynasty-wagers_${season}.json`;
+  // NOTE: This is intentionally separate from `dynasty-wagers`.
+  // It preserves the legacy doc shape `{ season, updatedAt, rows }`.
+  return `admin/dynasty-wagering_${season}.json`;
+}
+
+function normalizeRows(payload) {
+  // Support both shapes:
+  // - legacy: { rows: [...] }
+  // - raw array: [...]
+  if (Array.isArray(payload)) return payload;
+  if (payload && typeof payload === "object" && Array.isArray(payload.rows)) return payload.rows;
+  return [];
 }
 
 export async function onRequest({ request, env }) {
@@ -53,10 +68,15 @@ export async function onRequest({ request, env }) {
 
     if (request.method === "GET") {
       const obj = await bucket.get(key);
-      if (!obj) return json({ ok: true, key, data: null });
+      if (!obj) {
+        return json({ ok: true, season, key, rows: [], data: null });
+      }
+
       const text = await obj.text();
-      const data = text ? JSON.parse(text) : null;
-      return json({ ok: true, key, data });
+      const parsed = text ? JSON.parse(text) : null;
+      const rows = normalizeRows(parsed);
+
+      return json({ ok: true, season, key, rows, data: parsed });
     }
 
     if (request.method === "PUT") {
@@ -65,17 +85,23 @@ export async function onRequest({ request, env }) {
         return json({ ok: false, error: "Invalid JSON body." }, 400);
       }
 
-      await bucket.put(key, JSON.stringify(body, null, 2), {
+      const rows = normalizeRows(body);
+      const doc = {
+        season,
+        updatedAt: new Date().toISOString(),
+        rows,
+      };
+
+      await bucket.put(key, JSON.stringify(doc, null, 2), {
         httpMetadata: { contentType: "application/json" },
       });
 
-      return json({ ok: true, key, data: body });
+      return json({ ok: true, season, key, rows });
     }
 
     if (request.method === "DELETE") {
-      // Delete the doc entirely so the admin can "start over".
       await bucket.delete(key);
-      return json({ ok: true, key, deleted: true });
+      return json({ ok: true, season, key, deleted: true });
     }
 
     return json({ ok: false, error: "Method not allowed" }, 405);

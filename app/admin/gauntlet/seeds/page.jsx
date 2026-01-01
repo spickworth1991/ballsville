@@ -3,8 +3,10 @@
 
 import { useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabaseClient";
+import { CURRENT_SEASON } from "@/lib/season";
 
-const YEAR = 2025;
+const YEAR = CURRENT_SEASON;
+const TABLE_NAME = `gauntlet_seeds_${YEAR}`;
 const MAX_TEAMS_PER_LEAGUE = 12;
 
 // Small helper
@@ -38,8 +40,10 @@ export default function GauntletSeedsPage() {
   // ====== LOAD DATA ======
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // IMPORTANT: return the computed leagueList so callers can safely use it immediately
   async function loadData() {
     setError("");
     setLoading(true);
@@ -48,19 +52,18 @@ export default function GauntletSeedsPage() {
     setDraftSeeds({});
     setDraftNames({});
     setNewOwners({});
+
     try {
       const supabase = getSupabase();
       if (!supabase) {
         setError("Supabase client not available. Open this in a browser.");
         setLoading(false);
-        return;
+        return [];
       }
 
       const { data, error } = await supabase
-        .from("gauntlet_seeds_2025")
-        .select(
-          "id, year, division, god_name, god, side, league_id, league_name, owner_id, owner_name, seed"
-        )
+        .from(TABLE_NAME)
+        .select("id, year, division, god_name, god, side, league_id, league_name, owner_id, owner_name, seed")
         .eq("year", YEAR)
         .order("division", { ascending: true })
         .order("god_name", { ascending: true })
@@ -71,7 +74,7 @@ export default function GauntletSeedsPage() {
         console.error(error);
         setError(error.message || "Failed to load seeds.");
         setLoading(false);
-        return;
+        return [];
       }
 
       const leaguesMap = new Map();
@@ -107,10 +110,12 @@ export default function GauntletSeedsPage() {
 
       setLeagues(leagueList);
       setLoading(false);
+      return leagueList;
     } catch (err) {
       console.error(err);
       setError(err.message || "Failed to load seeds.");
       setLoading(false);
+      return [];
     }
   }
 
@@ -121,8 +126,10 @@ export default function GauntletSeedsPage() {
 
   // ====== EDITING ======
 
-  function startEditLeague(leagueId) {
-    const league = leagues.find((l) => l.leagueId === leagueId);
+  // IMPORTANT: accept an optional league list so we don't depend on async React state timing
+  function startEditLeague(leagueId, leagueListOverride) {
+    const source = leagueListOverride || leagues;
+    const league = source.find((l) => l.leagueId === leagueId);
     if (!league) return;
 
     // Initialize seeds map for existing rows by row.id
@@ -160,14 +167,11 @@ export default function GauntletSeedsPage() {
         [leagueId]: updated,
       };
     });
-
   }
 
   function handleToggleLeague(leagueId) {
     if (dirtyLeagueId && dirtyLeagueId !== leagueId) {
-      const leave = window.confirm(
-        "You have unsaved changes for another league. Discard them and switch?"
-      );
+      const leave = window.confirm("You have unsaved changes for another league. Discard them and switch?");
       if (!leave) return;
       setDirtyLeagueId(null);
     }
@@ -175,9 +179,7 @@ export default function GauntletSeedsPage() {
     if (expandedLeagueId === leagueId) {
       // closing
       if (dirtyLeagueId === leagueId) {
-        const leave = window.confirm(
-          "You have unsaved changes. Close anyway and discard them?"
-        );
+        const leave = window.confirm("You have unsaved changes. Close anyway and discard them?");
         if (!leave) return;
       }
       setExpandedLeagueId(null);
@@ -217,7 +219,6 @@ export default function GauntletSeedsPage() {
     });
     setDirtyLeagueId(leagueId);
   }
-
 
   function handleNewOwnerChange(leagueId, index, field, value) {
     setNewOwners((prev) => {
@@ -263,8 +264,7 @@ export default function GauntletSeedsPage() {
 
       for (const row of league.rows) {
         const raw = seedsForLeague[row.id];
-        const seed =
-          raw === "" || raw == null ? null : Math.max(1, Number(raw) || 1);
+        const seed = raw === "" || raw == null ? null : Math.max(1, Number(raw) || 1);
 
         // Only manual DB rows (owner_id null) can rename owner_name
         let nextName = null;
@@ -285,13 +285,9 @@ export default function GauntletSeedsPage() {
         }
       }
 
-
       // === Manual extra owners (no owner_id) → INSERT ===
       // We only care about slots with a non-empty name.
-      const extraSlotsAllowed = Math.max(
-        0,
-        MAX_TEAMS_PER_LEAGUE - league.rows.length
-      );
+      const extraSlotsAllowed = Math.max(0, MAX_TEAMS_PER_LEAGUE - league.rows.length);
       const effectiveSlots = newSlots.slice(0, extraSlotsAllowed);
 
       for (const slot of effectiveSlots) {
@@ -299,16 +295,13 @@ export default function GauntletSeedsPage() {
         if (!name) continue; // skip empty rows
 
         const rawSeed = slot.seed;
-        const seed =
-          rawSeed === "" || rawSeed == null
-            ? null
-            : Math.max(1, Number(rawSeed) || 1);
+        const seed = rawSeed === "" || rawSeed == null ? null : Math.max(1, Number(rawSeed) || 1);
 
         inserts.push({
           year: YEAR,
           division: league.division,
-          god: league.godName,         // ✅ ensure god is filled
-          god_name: league.godName,    // keep god_name in sync
+          god: league.godName, // ensure god is filled
+          god_name: league.godName, // keep god_name in sync
           side: league.side,
           league_id: league.leagueId,
           league_name: league.leagueName,
@@ -323,12 +316,8 @@ export default function GauntletSeedsPage() {
         const results = await Promise.all(
           updates.map((u) =>
             supabase
-              .from("gauntlet_seeds_2025")
-              .update(
-                u.owner_name != null
-                  ? { seed: u.seed, owner_name: u.owner_name }
-                  : { seed: u.seed }
-              )
+              .from(TABLE_NAME)
+              .update(u.owner_name != null ? { seed: u.seed, owner_name: u.owner_name } : { seed: u.seed })
               .eq("id", u.id)
           )
         );
@@ -344,15 +333,10 @@ export default function GauntletSeedsPage() {
 
       // Then inserts for manual owners
       if (inserts.length) {
-        const { error: insertError } = await supabase
-          .from("gauntlet_seeds_2025")
-          .insert(inserts);
+        const { error: insertError } = await supabase.from(TABLE_NAME).insert(inserts);
 
         if (insertError) {
-          console.error(
-            "Supabase insert error (manual owners):",
-            insertError
-          );
+          console.error("Supabase insert error (manual owners):", insertError);
           setError(insertError.message || "Failed to save manual owners.");
           setSaving(false);
           return;
@@ -366,9 +350,10 @@ export default function GauntletSeedsPage() {
         [leagueId]: [],
       }));
 
-      await loadData();
+      // IMPORTANT: use returned leagueList to avoid state timing flakiness
+      const leagueList = await loadData();
       setExpandedLeagueId(leagueId);
-      startEditLeague(leagueId);
+      startEditLeague(leagueId, leagueList);
     } catch (err) {
       console.error("handleSaveLeague error:", err);
       setError(err.message || "Failed to save seeds.");
@@ -413,24 +398,15 @@ export default function GauntletSeedsPage() {
       const baseUrl = `https://api.sleeper.app/v1/league/${leagueId}`;
       const [leagueInfo, users, rosters] = await Promise.all([
         fetch(baseUrl).then((r) => {
-          if (!r.ok)
-            throw new Error(
-              `Failed to fetch league ${leagueId} from Sleeper (info)`
-            );
+          if (!r.ok) throw new Error(`Failed to fetch league ${leagueId} from Sleeper (info)`);
           return r.json();
         }),
         fetch(`${baseUrl}/users`).then((r) => {
-          if (!r.ok)
-            throw new Error(
-              `Failed to fetch league ${leagueId} users from Sleeper`
-            );
+          if (!r.ok) throw new Error(`Failed to fetch league ${leagueId} users from Sleeper`);
           return r.json();
         }),
         fetch(`${baseUrl}/rosters`).then((r) => {
-          if (!r.ok)
-            throw new Error(
-              `Failed to fetch league ${leagueId} rosters from Sleeper`
-            );
+          if (!r.ok) throw new Error(`Failed to fetch league ${leagueId} rosters from Sleeper`);
           return r.json();
         }),
       ]);
@@ -464,21 +440,16 @@ export default function GauntletSeedsPage() {
         });
 
       if (!rows.length) {
-        throw new Error(
-          "No owned rosters returned from Sleeper (all owner_id were null); cannot sync owners."
-        );
+        throw new Error("No owned rosters returned from Sleeper (all owner_id were null); cannot sync owners.");
       }
 
-
-      const { error } = await supabase
-        .from("gauntlet_seeds_2025")
-        .upsert(rows, {
-          onConflict: "year,league_id,owner_id",
-        });
+      const { error } = await supabase.from(TABLE_NAME).upsert(rows, {
+        onConflict: "year,league_id,owner_id",
+      });
 
       if (error) {
         console.error("Supabase syncOwners error:", error);
-        setError("Failed to sync owners.");
+        setError(error.message || "Failed to sync owners.");
         setCreating(false);
         return;
       }
@@ -522,18 +493,15 @@ export default function GauntletSeedsPage() {
 
       const [leagueInfo, users, rosters] = await Promise.all([
         fetch(baseUrl).then((r) => {
-          if (!r.ok)
-            throw new Error(`Failed to fetch league ${leagueId} from Sleeper (info)`);
+          if (!r.ok) throw new Error(`Failed to fetch league ${leagueId} from Sleeper (info)`);
           return r.json();
         }),
         fetch(`${baseUrl}/users`).then((r) => {
-          if (!r.ok)
-            throw new Error(`Failed to fetch league ${leagueId} users from Sleeper`);
+          if (!r.ok) throw new Error(`Failed to fetch league ${leagueId} users from Sleeper`);
           return r.json();
         }),
         fetch(`${baseUrl}/rosters`).then((r) => {
-          if (!r.ok)
-            throw new Error(`Failed to fetch league ${leagueId} rosters from Sleeper`);
+          if (!r.ok) throw new Error(`Failed to fetch league ${leagueId} rosters from Sleeper`);
           return r.json();
         }),
       ]);
@@ -567,14 +535,12 @@ export default function GauntletSeedsPage() {
         });
 
       if (!rows.length) {
-        throw new Error(
-          "No owned rosters returned from Sleeper (all owner_id were null); cannot sync owners."
-        );
+        throw new Error("No owned rosters returned from Sleeper (all owner_id were null); cannot sync owners.");
       }
 
-      const { error } = await supabase
-        .from("gauntlet_seeds_2025")
-        .upsert(rows, { onConflict: "year,league_id,owner_id" });
+      const { error } = await supabase.from(TABLE_NAME).upsert(rows, {
+        onConflict: "year,league_id,owner_id",
+      });
 
       if (error) {
         console.error(error);
@@ -583,9 +549,10 @@ export default function GauntletSeedsPage() {
         return;
       }
 
-      await loadData();
+      // IMPORTANT: use returned leagueList to avoid state timing flakiness
+      const leagueList = await loadData();
       setExpandedLeagueId(leagueId);
-      startEditLeague(leagueId);
+      startEditLeague(leagueId, leagueList);
     } catch (err) {
       console.error(err);
       setError(err.message || "Failed to sync owners.");
@@ -594,13 +561,12 @@ export default function GauntletSeedsPage() {
     }
   }
 
-
   // ====== RENDER HELPERS ======
 
   const leaguesNeedingSeeds = leagues.filter(leagueNeedsSeeds);
   const leaguesSeeded = leagues.filter((l) => !leagueNeedsSeeds(l));
 
-  function renderLeagueCard(league, idx, type) {
+  function renderLeagueCard(league, type) {
     const isExpanded = expandedLeagueId === league.leagueId;
     const owners = league.rows.slice().sort((a, b) => {
       const sa = a.seed ?? 999;
@@ -609,18 +575,11 @@ export default function GauntletSeedsPage() {
       return (a.ownerName || "").localeCompare(b.ownerName || "");
     });
 
-    const extraSlots = Math.max(
-      0,
-      MAX_TEAMS_PER_LEAGUE - owners.length
-    );
-    const manualSlots =
-      (newOwners[league.leagueId] || []).slice(0, extraSlots);
+    const extraSlots = Math.max(0, MAX_TEAMS_PER_LEAGUE - owners.length);
+    const manualSlots = (newOwners[league.leagueId] || []).slice(0, extraSlots);
 
     return (
-      <div
-        key={`${type}-${league.leagueId}`}
-        className="border border-slate-700 rounded-xl bg-slate-900/70 shadow-md"
-      >
+      <div key={`${type}-${league.leagueId}`} className="border border-slate-700 rounded-xl bg-slate-900/70 shadow-md">
         {/* Header row (clickable to expand) */}
         <div
           role="button"
@@ -636,18 +595,14 @@ export default function GauntletSeedsPage() {
         >
           <div className="flex flex-col gap-0.5">
             <div className="text-xs uppercase tracking-wide text-slate-400">
-              {league.division} · {league.godName} ·{" "}
-              {league.side === "light" ? "Light" : "Dark"}
+              {league.division} · {league.godName} · {league.side === "light" ? "Light" : "Dark"}
             </div>
             <div className="font-semibold text-slate-50">
               {league.leagueName || "(No league name)"}{" "}
-              <span className="text-xs text-slate-400">
-                ({league.leagueId})
-              </span>
+              <span className="text-xs text-slate-400">({league.leagueId})</span>
             </div>
             <div className="text-xs text-slate-400">
-              Seeds: {league.seededCount}/{MAX_TEAMS_PER_LEAGUE} • Teams in
-              table: {league.teamCount}
+              Seeds: {league.seededCount}/{MAX_TEAMS_PER_LEAGUE} • Teams in table: {league.teamCount}
               {leagueNeedsSeeds(league) && " • needs more seeds"}
             </div>
           </div>
@@ -666,9 +621,7 @@ export default function GauntletSeedsPage() {
             <span
               className={classNames(
                 "inline-flex h-7 w-7 items-center justify-center rounded-full border text-xs",
-                isExpanded
-                  ? "border-amber-400 text-amber-300"
-                  : "border-slate-600 text-slate-400"
+                isExpanded ? "border-amber-400 text-amber-300" : "border-slate-600 text-slate-400"
               )}
             >
               {isExpanded ? "−" : "+"}
@@ -695,41 +648,24 @@ export default function GauntletSeedsPage() {
                         {!o.ownerId ? (
                           <input
                             type="text"
-                            value={
-                              (draftNames[league.leagueId] || {})[o.id] ?? o.ownerName ?? ""
-                            }
-                            onChange={(e) =>
-                              handleNameChange(league.leagueId, o.id, e.target.value)
-                            }
+                            value={(draftNames[league.leagueId] || {})[o.id] ?? o.ownerName ?? ""}
+                            onChange={(e) => handleNameChange(league.leagueId, o.id, e.target.value)}
                             className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-400"
                             placeholder="Manual owner name"
                           />
                         ) : (
-                          <div className="truncate max-w-[180px] text-slate-100">
-                            {o.ownerName}
-                          </div>
+                          <div className="truncate max-w-[180px] text-slate-100">{o.ownerName}</div>
                         )}
                       </td>
 
-                      <td className="px-2 py-1 text-xs text-slate-400">
-                        {o.ownerId || "—"}
-                      </td>
+                      <td className="px-2 py-1 text-xs text-slate-400">{o.ownerId || "—"}</td>
                       <td className="px-2 py-1">
                         <input
                           type="number"
                           min={1}
                           step={1}
-                          value={
-                            (draftSeeds[league.leagueId] || {})[o.id] ??
-                            (o.seed != null ? o.seed.toString() : "")
-                          }
-                          onChange={(e) =>
-                            handleSeedChange(
-                              league.leagueId,
-                              o.id,
-                              e.target.value
-                            )
-                          }
+                          value={(draftSeeds[league.leagueId] || {})[o.id] ?? (o.seed != null ? o.seed.toString() : "")}
+                          onChange={(e) => handleSeedChange(league.leagueId, o.id, e.target.value)}
                           className="w-20 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-400"
                           placeholder="—"
                         />
@@ -744,35 +680,19 @@ export default function GauntletSeedsPage() {
                         <input
                           type="text"
                           value={slot.name}
-                          onChange={(e) =>
-                            handleNewOwnerChange(
-                              league.leagueId,
-                              index,
-                              "name",
-                              e.target.value
-                            )
-                          }
+                          onChange={(e) => handleNewOwnerChange(league.leagueId, index, "name", e.target.value)}
                           placeholder="Manual owner name"
                           className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-400"
                         />
                       </td>
-                      <td className="px-2 py-1 text-xs text-slate-500">
-                        (manual)
-                      </td>
+                      <td className="px-2 py-1 text-xs text-slate-500">(manual)</td>
                       <td className="px-2 py-1">
                         <input
                           type="number"
                           min={1}
                           step={1}
                           value={slot.seed}
-                          onChange={(e) =>
-                            handleNewOwnerChange(
-                              league.leagueId,
-                              index,
-                              "seed",
-                              e.target.value
-                            )
-                          }
+                          onChange={(e) => handleNewOwnerChange(league.leagueId, index, "seed", e.target.value)}
                           className="w-20 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-400"
                           placeholder="—"
                         />
@@ -795,9 +715,7 @@ export default function GauntletSeedsPage() {
                     : "bg-slate-700 text-slate-300 cursor-not-allowed opacity-60"
                 )}
               >
-                {saving && dirtyLeagueId === league.leagueId
-                  ? "Saving…"
-                  : "Save seeds"}
+                {saving && dirtyLeagueId === league.leagueId ? "Saving…" : "Save seeds"}
               </button>
             </div>
           </div>
@@ -812,14 +730,14 @@ export default function GauntletSeedsPage() {
     <div className="px-4 py-6 sm:px-6 lg:px-8 max-w-5xl mx-auto">
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-50">
-            Gauntlet – Manual Seeds ({YEAR})
-          </h1>
+          <h1 className="text-2xl font-bold text-slate-50">Gauntlet – Manual Seeds ({YEAR})</h1>
           <p className="text-sm text-slate-400 mt-1 max-w-2xl">
             Set and edit Leg 1 seeds for each league. A league is considered{" "}
-            <span className="font-semibold text-amber-300">seeded</span> when it
-            has at least 12 non-empty seeds. You can also add manual teams for
-            leagues that are missing owners in Sleeper.
+            <span className="font-semibold text-amber-300">seeded</span> when it has at least 12 non-empty seeds. You can
+            also add manual teams for leagues that are missing owners in Sleeper.
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Table: <code className="text-slate-300">{TABLE_NAME}</code>
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -851,53 +769,34 @@ export default function GauntletSeedsPage() {
         <div className="mt-10 text-sm text-slate-300">Loading seeds…</div>
       ) : leagues.length === 0 ? (
         <div className="mt-10 text-sm text-slate-300">
-          No leagues found in <code>gauntlet_seeds_2025</code> for {YEAR}.
-          Create leagues using the button above.
+          No leagues found in <code>{TABLE_NAME}</code> for {YEAR}. Create leagues using the button above.
         </div>
       ) : (
         <div className="space-y-8">
           {/* Leagues needing seeds */}
           <section>
-            <h2 className="text-lg font-semibold text-amber-300 mb-2">
-              Leagues needing seeds
-            </h2>
+            <h2 className="text-lg font-semibold text-amber-300 mb-2">Leagues needing seeds</h2>
             <p className="text-xs text-slate-400 mb-3">
-              These leagues have fewer than 12 seeds set. Fix these before
-              running the Leg 3 script. You can use manual slots if Sleeper is
-              missing owners.
+              These leagues have fewer than 12 seeds set. Fix these before running the Leg 3 script. You can use manual
+              slots if Sleeper is missing owners.
             </p>
             {leaguesNeedingSeeds.length === 0 ? (
-              <div className="text-xs text-slate-500">
-                All leagues have at least 12 seeds.
-              </div>
+              <div className="text-xs text-slate-500">All leagues have at least 12 seeds.</div>
             ) : (
-              <div className="grid gap-3">
-                {leaguesNeedingSeeds.map((league, idx) =>
-                  renderLeagueCard(league, idx, "needs")
-                )}
-              </div>
+              <div className="grid gap-3">{leaguesNeedingSeeds.map((league) => renderLeagueCard(league, "needs"))}</div>
             )}
           </section>
 
           {/* Seeded leagues */}
           <section>
-            <h2 className="text-lg font-semibold text-emerald-300 mb-2">
-              Seeded leagues
-            </h2>
+            <h2 className="text-lg font-semibold text-emerald-300 mb-2">Seeded leagues</h2>
             <p className="text-xs text-slate-400 mb-3">
-              These leagues have at least 12 seeds. You can still edit them if
-              needed.
+              These leagues have at least 12 seeds. You can still edit them if needed.
             </p>
             {leaguesSeeded.length === 0 ? (
-              <div className="text-xs text-slate-500">
-                No leagues are fully seeded yet.
-              </div>
+              <div className="text-xs text-slate-500">No leagues are fully seeded yet.</div>
             ) : (
-              <div className="grid gap-3">
-                {leaguesSeeded.map((league, idx) =>
-                  renderLeagueCard(league, idx, "seeded")
-                )}
-              </div>
+              <div className="grid gap-3">{leaguesSeeded.map((league) => renderLeagueCard(league, "seeded"))}</div>
             )}
           </section>
         </div>
@@ -908,9 +807,7 @@ export default function GauntletSeedsPage() {
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/60">
           <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-xl">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-slate-50">
-                Add Gauntlet League (from Sleeper)
-              </h2>
+              <h2 className="text-sm font-semibold text-slate-50">Add Gauntlet League (from Sleeper)</h2>
               <button
                 type="button"
                 onClick={() => setShowNewModal(false)}
@@ -921,48 +818,30 @@ export default function GauntletSeedsPage() {
             </div>
             <form onSubmit={handleCreateLeague} className="space-y-3 text-sm">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Division
-                </label>
+                <label className="block text-xs font-medium text-slate-300 mb-1">Division</label>
                 <input
                   type="text"
                   value={newLeagueForm.division}
-                  onChange={(e) =>
-                    setNewLeagueForm((f) => ({
-                      ...f,
-                      division: e.target.value,
-                    }))
-                  }
+                  onChange={(e) => setNewLeagueForm((f) => ({ ...f, division: e.target.value }))}
                   placeholder="Egyptians / Greeks / Romans"
                   className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-400"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  God name
-                </label>
+                <label className="block text-xs font-medium text-slate-300 mb-1">God name</label>
                 <input
                   type="text"
                   value={newLeagueForm.godName}
-                  onChange={(e) =>
-                    setNewLeagueForm((f) => ({
-                      ...f,
-                      godName: e.target.value,
-                    }))
-                  }
+                  onChange={(e) => setNewLeagueForm((f) => ({ ...f, godName: e.target.value }))}
                   placeholder="Amun-Rah / Osiris / Zeus / …"
                   className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-400"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Side
-                </label>
+                <label className="block text-xs font-medium text-slate-300 mb-1">Side</label>
                 <select
                   value={newLeagueForm.side}
-                  onChange={(e) =>
-                    setNewLeagueForm((f) => ({ ...f, side: e.target.value }))
-                  }
+                  onChange={(e) => setNewLeagueForm((f) => ({ ...f, side: e.target.value }))}
                   className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-400"
                 >
                   <option value="light">Light</option>
@@ -970,18 +849,11 @@ export default function GauntletSeedsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Sleeper League ID
-                </label>
+                <label className="block text-xs font-medium text-slate-300 mb-1">Sleeper League ID</label>
                 <input
                   type="text"
                   value={newLeagueForm.leagueId}
-                  onChange={(e) =>
-                    setNewLeagueForm((f) => ({
-                      ...f,
-                      leagueId: e.target.value,
-                    }))
-                  }
+                  onChange={(e) => setNewLeagueForm((f) => ({ ...f, leagueId: e.target.value }))}
                   placeholder="123456789012345678"
                   className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-400"
                 />
