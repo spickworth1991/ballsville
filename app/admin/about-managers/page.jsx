@@ -9,6 +9,7 @@ import Image from "next/image";
 import AdminGuard from "@/components/AdminGuard";
 import AdminNav from "@/components/admin/AdminNav";
 import { CURRENT_SEASON } from "@/lib/season";
+import { getAccessTokenWithRetry } from "@/lib/adminAuth";
 
 
 function cleanStr(v, max = 4000) {
@@ -41,6 +42,11 @@ function normalizeManager(m, idx) {
   };
 }
 
+async function getToken() {
+  // Supabase auth can be briefly unavailable right after a cold load.
+  // Retry a few times to avoid "random" 401s.
+  return (await getAccessTokenWithRetry({ attempts: 5, baseDelayMs: 200 })) || "";
+}
 
 export default function AdminAboutManagersPage() {
   const season = CURRENT_SEASON;
@@ -70,9 +76,9 @@ export default function AdminAboutManagersPage() {
     setNotice("");
     setLoading(true);
     try {
-      
+      const token = await getToken();
       const res = await fetch(`/api/admin/about-managers?season=${season}`, {
-        
+        headers: { authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
