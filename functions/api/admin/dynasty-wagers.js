@@ -1,11 +1,10 @@
-// functions/api/admin/dynasty-wagering.js
+// functions/api/admin/dynasty-wagers.js
 //
 // Back-compat endpoint for Dynasty wagering admin doc in R2.
 //
 // IMPORTANT:
 // - This endpoint intentionally does NOT require a Bearer token.
 // - Admin access is enforced at the page level via <AdminGuard />.
-// - Some older pages still call `/api/admin/dynasty-wagering?season=YYYY`.
 //   Keep this endpoint working even if newer pages use `/api/admin/dynasty-wagers`.
 
 function json(data, status = 200) {
@@ -46,7 +45,7 @@ function parseSeason(url) {
 function keyForSeason(season) {
   // NOTE: This is intentionally separate from `dynasty-wagers`.
   // It preserves the legacy doc shape `{ season, updatedAt, rows }`.
-  return `admin/dynasty-wagering_${season}.json`;
+  return `admin/dynasty-wagers_${season}.json`;
 }
 
 function normalizeRows(payload) {

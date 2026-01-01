@@ -6,7 +6,7 @@ import AdminStepTabs from "../AdminStepTabs";
 import { safeArray, safeStr } from "@/lib/safe";
 
 
-
+const season = CURRENT_SEASON;
 
 function parseLeagueNumberFromName(name) {
   // Expected suffix like "... 3/16" (we sort by the leading number)
