@@ -68,7 +68,7 @@ function buildEmptyState(season) {
     },
     divisionWagers: {
       resolvedAt: "",
-      entriesSavedAt: "",
+      entriesSavedAt: "", // drives Step 2 checkmark
       week: 16,
       entryFee: 25,
       byDivision: {},
@@ -76,7 +76,7 @@ function buildEmptyState(season) {
     championship: {
       week: 17,
       resolvedAt: "",
-      byDivisionWinner: [],
+      byDivisionWinner: [], // [{ entryKey, ownerName, division, wager }]
       points: {},
       winner: "",
       winnerKey: "",
@@ -220,6 +220,31 @@ function sortEligByDisplayOrder(elig, div, leagueOrderIndex) {
 
       return safeStr(a?.ownerName).trim().localeCompare(safeStr(b?.ownerName).trim());
     });
+}
+
+function WinnerPill({ pot1, pot2 }) {
+  const both = pot1 && pot2;
+  if (!pot1 && !pot2) return null;
+
+  if (both) {
+    return (
+      <span className="ml-2 inline-flex rounded-full border border-emerald-300/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-200">
+        Pot 1 + Pot 2 Winner
+      </span>
+    );
+  }
+  if (pot1) {
+    return (
+      <span className="ml-2 inline-flex rounded-full border border-emerald-300/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-200">
+        Pot 1 Winner
+      </span>
+    );
+  }
+  return (
+    <span className="ml-2 inline-flex rounded-full border border-emerald-300/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-200">
+      Pot 2 Winner
+    </span>
+  );
 }
 
 export default function BigGameWagersAdminClient({ season }) {
@@ -488,6 +513,7 @@ export default function BigGameWagersAdminClient({ season }) {
         pot1.entrants = migrateAndPrune(pot1.entrants);
         pot2.entrants = migrateAndPrune(pot2.entrants);
 
+        // if someone is in pot2, they MUST be in pot1
         for (const k of Object.keys(pot2.entrants || {})) pot1.entrants[k] = true;
 
         next.divisionWagers.byDivision[div] = { ...existing, pot1, pot2 };
@@ -525,7 +551,9 @@ export default function BigGameWagersAdminClient({ season }) {
 
       for (const div of Object.keys(next.eligibility?.byDivision || {})) {
         const elig = safeArray(next.eligibility.byDivision[div]);
-        const keyToEntry = new Map(elig.map((e) => [entryKey({ division: div, leagueName: e?.leagueName, ownerName: e?.ownerName }), e]));
+        const keyToEntry = new Map(
+          elig.map((e) => [entryKey({ division: div, leagueName: e?.leagueName, ownerName: e?.ownerName }), e])
+        );
         const keysInOrder = elig.map((e) => entryKey({ division: div, leagueName: e?.leagueName, ownerName: e?.ownerName }));
 
         next.divisionWagers.byDivision = next.divisionWagers.byDivision || {};
@@ -551,6 +579,7 @@ export default function BigGameWagersAdminClient({ season }) {
 
         pot1.points = {};
         for (const k of pot1Entrants) pot1.points[k] = Number(week16Points?.[k] ?? 0);
+
         pot2.points = {};
         for (const k of pot2Entrants) pot2.points[k] = Number(week16Points?.[k] ?? 0);
 
@@ -569,6 +598,7 @@ export default function BigGameWagersAdminClient({ season }) {
         next.divisionWagers.byDivision[div] = { ...d, pot1, pot2 };
       }
 
+      // Auto-seed championship entrants from pot1 winners
       const seeded = [];
       for (const [div, d] of Object.entries(next.divisionWagers.byDivision || {})) {
         const winKey = safeStr(d?.pot1?.winnerKey).trim();
@@ -577,7 +607,8 @@ export default function BigGameWagersAdminClient({ season }) {
         seeded.push({ entryKey: winKey, ownerName, division: div, wager: 0 });
       }
 
-      next.championship = next.championship || { week: 17, resolvedAt: "", byDivisionWinner: [], points: {}, winner: "", winnerKey: "", pool: 0, bonus: 200 };
+      next.championship =
+        next.championship || { week: 17, resolvedAt: "", byDivisionWinner: [], points: {}, winner: "", winnerKey: "", pool: 0, bonus: 200 };
       next.championship.week = 17;
 
       const prevWagers = new Map(
@@ -602,7 +633,8 @@ export default function BigGameWagersAdminClient({ season }) {
 
   function setChampWager(entryKeyStr, wager) {
     const next = structuredClone(state);
-    next.championship = next.championship || { week: 17, resolvedAt: "", byDivisionWinner: [], points: {}, winner: "", winnerKey: "", pool: 0, bonus: 200 };
+    next.championship =
+      next.championship || { week: 17, resolvedAt: "", byDivisionWinner: [], points: {}, winner: "", winnerKey: "", pool: 0, bonus: 200 };
     next.championship.byDivisionWinner = safeArray(next.championship.byDivisionWinner).map((r) =>
       safeStr(r.entryKey).trim() === entryKeyStr ? { ...r, wager } : r
     );
@@ -611,7 +643,8 @@ export default function BigGameWagersAdminClient({ season }) {
 
   function setChampionshipBonus(bonus) {
     const next = structuredClone(state);
-    next.championship = next.championship || { week: 17, resolvedAt: "", byDivisionWinner: [], points: {}, winner: "", winnerKey: "", bonus: 200, poolWagers: 0, pool: 0 };
+    next.championship =
+      next.championship || { week: 17, resolvedAt: "", byDivisionWinner: [], points: {}, winner: "", winnerKey: "", bonus: 200, poolWagers: 0, pool: 0 };
     const n = Number(bonus);
     next.championship.bonus = Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
     const wagers = Number(next.championship.poolWagers || 0);
@@ -635,7 +668,8 @@ export default function BigGameWagersAdminClient({ season }) {
 
       next.source = { leaderboardUrl: url, lastFetchedAt: nowIso(), leaderboardEtag: etag };
 
-      next.championship = next.championship || { week: 17, resolvedAt: "", byDivisionWinner: [], points: {}, winner: "", winnerKey: "", pool: 0, bonus: 200 };
+      next.championship =
+        next.championship || { week: 17, resolvedAt: "", byDivisionWinner: [], points: {}, winner: "", winnerKey: "", pool: 0, bonus: 200 };
       next.championship.week = 17;
 
       const seeded = safeArray(next.championship.byDivisionWinner).filter((r) => safeStr(r?.ownerName).trim());
@@ -682,6 +716,7 @@ export default function BigGameWagersAdminClient({ season }) {
       const allKeys = seeded.map((r) => safeStr(r.entryKey).trim());
       const bestOverallKey = pickWinnerKey(allKeys);
       const bestOverall = seededByKey.get(bestOverallKey) || null;
+
       const wouldHaveWonNoBet =
         bestOverall && !mainKeys.includes(bestOverallKey)
           ? {
@@ -724,7 +759,6 @@ export default function BigGameWagersAdminClient({ season }) {
     );
     if (!ok) return;
 
-    // Localhost: there is no R2 doc to delete — just reset local state
     if (isLocalhost()) {
       setState(buildEmptyState(season));
       setMsg("Local reset (localhost) — no R2 file to delete.");
@@ -759,7 +793,6 @@ export default function BigGameWagersAdminClient({ season }) {
 
   const steps = useMemo(() => {
     const hasEligibility = Boolean(state?.eligibility?.computedAt) && Object.keys(state?.eligibility?.byDivision || {}).length > 0;
-
     const entriesSaved = Boolean(safeStr(state?.divisionWagers?.entriesSavedAt || "").trim());
     const resolvedW16 = Boolean(state?.divisionWagers?.resolvedAt);
     const resolvedW17 = Boolean(state?.championship?.resolvedAt);
@@ -772,72 +805,76 @@ export default function BigGameWagersAdminClient({ season }) {
     ];
   }, [state]);
 
-    const activeTab =
-      tab === "auto"
-        ? state?.championship?.resolvedAt
-          ? "week17"
-          : state?.divisionWagers?.resolvedAt
-          ? "week16"
-          : safeStr(state?.divisionWagers?.entriesSavedAt || "").trim()
-          ? "week16"
-          : state?.eligibility?.computedAt
-          ? "entries"
-          : "import"
-        : tab;
+  const activeTab =
+    tab === "auto"
+      ? state?.championship?.resolvedAt
+        ? "week17"
+        : state?.divisionWagers?.resolvedAt
+        ? "week16"
+        : safeStr(state?.divisionWagers?.entriesSavedAt || "").trim()
+        ? "week16"
+        : state?.eligibility?.computedAt
+        ? "entries"
+        : "import"
+      : tab;
 
-    // IMPORTANT: hooks must be declared BEFORE any early return.
-    const week16Resolved = Boolean(state?.divisionWagers?.resolvedAt);
+  // Hooks BEFORE any early return
+  const week16Resolved = Boolean(state?.divisionWagers?.resolvedAt);
 
-    const step3ByDivision = useMemo(() => {
-      const out = {};
-      for (const div of Object.keys(eligibilityByDivision || {})) {
-        const elig = safeArray(eligibilityByDivision[div]);
-        const d = wagersByDivision?.[div] || {};
-        const pot1 = d?.pot1 || {};
-        const pot2 = d?.pot2 || {};
+  // Step 3 view: entrants-only (tight layout + pot-specific winner labels)
+  const step3ByDivision = useMemo(() => {
+    const out = {};
+    for (const div of Object.keys(eligibilityByDivision || {})) {
+      const elig = safeArray(eligibilityByDivision[div]);
+      const d = wagersByDivision?.[div] || {};
+      const pot1 = d?.pot1 || {};
+      const pot2 = d?.pot2 || {};
 
-        const rows = elig
-          .map((e) => {
-            const ownerName = safeStr(e?.ownerName).trim();
-            const leagueName = safeStr(e?.leagueName).trim();
-            const k = entryKey({ division: div, leagueName, ownerName });
+      const rows = elig
+        .map((e) => {
+          const ownerName = safeStr(e?.ownerName).trim();
+          const leagueName = safeStr(e?.leagueName).trim();
+          const k = entryKey({ division: div, leagueName, ownerName });
 
-            const has1 = Boolean(pot1?.entrants?.[k]);
-            const has2 = Boolean(pot2?.entrants?.[k]);
+          const has1 = Boolean(pot1?.entrants?.[k]);
+          const has2 = Boolean(pot2?.entrants?.[k]);
 
-            if (!has1 && !has2) return null;
+          if (!has1 && !has2) return null;
 
-            const wk16 = has2 ? Number(pot2?.points?.[k] ?? 0) : Number(pot1?.points?.[k] ?? 0);
-            return {
-              division: div,
-              leagueName,
-              ownerName,
-              k,
-              total151: Number(e?.total ?? 0) || 0,
-              level: has1 && has2 ? "max" : "half",
-              wk16,
-              isPot1Winner: safeStr(pot1?.winnerKey).trim() === k,
-              isPot2Winner: safeStr(pot2?.winnerKey).trim() === k,
-            };
-          })
-          .filter(Boolean)
-          .sort((a, b) => b.total151 - a.total151);
+          const wk16 = has2 ? Number(pot2?.points?.[k] ?? 0) : Number(pot1?.points?.[k] ?? 0);
 
-        out[div] = {
-          pot1Pool: Number(pot1?.pool || 0),
-          pot2Pool: Number(pot2?.pool || 0),
-          pot1Winner: safeStr(pot1?.winner || "").trim(),
-          pot2Winner: safeStr(pot2?.winner || "").trim(),
-          rows,
-        };
-      }
-      return out;
-    }, [eligibilityByDivision, wagersByDivision]);
+          const isPot1Winner = safeStr(pot1?.winnerKey).trim() === k;
+          const isPot2Winner = safeStr(pot2?.winnerKey).trim() === k;
 
-    if (loading) {
-      return <div className="text-sm text-muted">Loading wager tracker…</div>;
+          return {
+            division: div,
+            leagueName,
+            ownerName,
+            k,
+            total151: Number(e?.total ?? 0) || 0,
+            level: has1 && has2 ? "max" : "half",
+            wk16,
+            isPot1Winner,
+            isPot2Winner,
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.total151 - a.total151);
+
+      out[div] = {
+        pot1Pool: Number(pot1?.pool || 0),
+        pot2Pool: Number(pot2?.pool || 0),
+        pot1Winner: safeStr(pot1?.winner || "").trim(),
+        pot2Winner: safeStr(pot2?.winner || "").trim(),
+        rows,
+      };
     }
+    return out;
+  }, [eligibilityByDivision, wagersByDivision]);
 
+  if (loading) {
+    return <div className="text-sm text-muted">Loading wager tracker…</div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -849,9 +886,7 @@ export default function BigGameWagersAdminClient({ season }) {
               <SmallBadge>Season {season}</SmallBadge>
               {state?.updatedAt ? <SmallBadge>Updated {new Date(state.updatedAt).toLocaleString()}</SmallBadge> : null}
             </div>
-            <p className="text-sm text-muted">
-              Mark entrants for the division pots, resolve Week 16, then seed + resolve Week 17 championship.
-            </p>
+            <p className="text-sm text-muted">Mark entrants for the division pots, resolve Week 16, then seed + resolve Week 17 championship.</p>
             <div className="text-xs text-muted">
               Leaderboard feed: <span className="text-foreground">{LEADERBOARD_URL_BY_SEASON(season)}</span>
             </div>
@@ -875,17 +910,13 @@ export default function BigGameWagersAdminClient({ season }) {
           </div>
         </div>
 
-        {msg ? (
-          <div className="mt-4 rounded-xl border border-subtle bg-panel/50 px-4 py-3 text-sm text-foreground">{msg}</div>
-        ) : null}
+        {msg ? <div className="mt-4 rounded-xl border border-subtle bg-panel/50 px-4 py-3 text-sm text-foreground">{msg}</div> : null}
 
         <Divider />
         <p className="text-sm text-muted">Use the tabs below to work through the tracker step-by-step.</p>
       </Card>
 
       <AdminStepTabs steps={steps} activeKey={activeTab} onChange={setTab} />
-
-      {/* --- the rest of your tabs are unchanged below this line --- */}
 
       {activeTab === "import" ? (
         <Card>
@@ -896,9 +927,7 @@ export default function BigGameWagersAdminClient({ season }) {
               Import Week 15 Eligibility
             </PrimaryButton>
           </div>
-          {state?.eligibility?.computedAt ? (
-            <div className="mt-3 text-xs text-muted">Last import: {new Date(state.eligibility.computedAt).toLocaleString()}</div>
-          ) : null}
+          {state?.eligibility?.computedAt ? <div className="mt-3 text-xs text-muted">Last import: {new Date(state.eligibility.computedAt).toLocaleString()}</div> : null}
         </Card>
       ) : null}
 
@@ -914,15 +943,11 @@ export default function BigGameWagersAdminClient({ season }) {
             </div>
           </div>
 
-          <p className="mt-2 text-sm text-muted">
-            Toggle who entered Pot #1 and Pot #2. Step 3 will not show “who matters” until Week 16 is resolved.
-          </p>
+          <p className="mt-2 text-sm text-muted">Toggle who entered Pot #1 and Pot #2. Step 3 will not show “who matters” until Week 16 is resolved.</p>
 
           <div className="mt-5 space-y-10">
             {Object.keys(eligibilityByDivision || {}).length === 0 ? (
-              <div className="rounded-2xl border border-subtle bg-subtle-surface p-6 text-center text-sm text-muted">
-                Import Week 15 eligibility to begin.
-              </div>
+              <div className="rounded-2xl border border-subtle bg-subtle-surface p-6 text-center text-sm text-muted">Import Week 15 eligibility to begin.</div>
             ) : (
               Object.keys(eligibilityByDivision)
                 .sort((a, b) => a.localeCompare(b))
@@ -994,9 +1019,7 @@ export default function BigGameWagersAdminClient({ season }) {
                                         type="button"
                                         onClick={() => setBetLevel(div, e, level === "half" ? "none" : "half")}
                                         className={`rounded-lg border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] transition ${
-                                          level === "half"
-                                            ? "bg-accent/20 border-accent/40 text-accent"
-                                            : "bg-panel/40 border-subtle text-muted hover:border-accent/30"
+                                          level === "half" ? "bg-accent/20 border-accent/40 text-accent" : "bg-panel/40 border-subtle text-muted hover:border-accent/30"
                                         }`}
                                         title="Half Bet (Pot #1 only)"
                                       >
@@ -1007,9 +1030,7 @@ export default function BigGameWagersAdminClient({ season }) {
                                         type="button"
                                         onClick={() => setBetLevel(div, e, level === "max" ? "none" : "max")}
                                         className={`rounded-lg border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] transition ${
-                                          level === "max"
-                                            ? "bg-primary/20 border-primary/40 text-primary"
-                                            : "bg-panel/40 border-subtle text-muted hover:border-primary/30"
+                                          level === "max" ? "bg-primary/20 border-primary/40 text-primary" : "bg-panel/40 border-subtle text-muted hover:border-primary/30"
                                         }`}
                                         title="Max Bet (Pot #1 + Pot #2)"
                                       >
@@ -1058,7 +1079,6 @@ export default function BigGameWagersAdminClient({ season }) {
 
       {activeTab === "week16" ? (
         <Card>
-          {/* unchanged */}
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <h2 className="text-base font-semibold">Step 3 — Resolve Week 16</h2>
             <div className="flex items-center gap-2 text-xs text-muted">
@@ -1067,9 +1087,7 @@ export default function BigGameWagersAdminClient({ season }) {
             </div>
           </div>
 
-          <p className="mt-2 text-sm text-muted">
-            Resolve Week 16 to lock division pot points + winners. Until it’s resolved, this step will not show any managers.
-          </p>
+          <p className="mt-2 text-sm text-muted">Resolve Week 16 to lock division pot points + winners. Until it’s resolved, this step will not show any managers.</p>
 
           <div className="mt-4 flex flex-wrap gap-2">
             <PrimaryButton onClick={resolveDivisionWagersWeek16} disabled={saving || !canResolveW16}>
@@ -1080,9 +1098,7 @@ export default function BigGameWagersAdminClient({ season }) {
           <Divider />
 
           {!week16Resolved ? (
-            <div className="rounded-2xl border border-subtle bg-panel/30 p-5 text-sm text-muted">
-              Nothing to show yet — resolve Week 16 first.
-            </div>
+            <div className="rounded-2xl border border-subtle bg-panel/30 p-5 text-sm text-muted">Nothing to show yet — resolve Week 16 first.</div>
           ) : (
             <div className="space-y-6">
               {Object.keys(step3ByDivision || {})
@@ -1104,8 +1120,9 @@ export default function BigGameWagersAdminClient({ season }) {
                         </div>
                       </div>
 
+                      {/* ✅ Tight / not-stretched table */}
                       <div className="mt-3 overflow-x-auto">
-                        <table className="min-w-[860px] w-full text-sm">
+                        <table className="w-full text-sm">
                           <thead>
                             <tr className="text-left text-xs uppercase tracking-[0.2em] text-muted">
                               <th className="py-2 pr-4">League</th>
@@ -1124,15 +1141,11 @@ export default function BigGameWagersAdminClient({ season }) {
                               </tr>
                             ) : (
                               rows.map((r) => (
-                                <tr key={r.k} className="border-t border-subtle">
+                                <tr key={r.k} className="border-t border-subtle/70">
                                   <td className="py-2 pr-4 text-muted whitespace-nowrap">{r.leagueName}</td>
                                   <td className="py-2 pr-4 text-foreground font-medium whitespace-nowrap">
-                                    {r.ownerName}{" "}
-                                    {(r.isPot1Winner || r.isPot2Winner) && (
-                                      <span className="ml-2 inline-flex rounded-full border border-emerald-300/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-200">
-                                        Winner
-                                      </span>
-                                    )}
+                                    {r.ownerName}
+                                    <WinnerPill pot1={r.isPot1Winner} pot2={r.isPot2Winner} />
                                   </td>
                                   <td className="py-2 pr-4 text-muted">
                                     {r.level === "max" ? (
@@ -1163,7 +1176,6 @@ export default function BigGameWagersAdminClient({ season }) {
 
       {activeTab === "week17" ? (
         <Card>
-          {/* unchanged */}
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <h2 className="text-base font-semibold">Step 4 — Big Game Championship</h2>
             <div className="flex items-center gap-2 text-xs text-muted">
@@ -1176,8 +1188,140 @@ export default function BigGameWagersAdminClient({ season }) {
             Seeds from each division’s <span className="text-foreground">Pot #1 winner</span>. Each winner may wager in increments of $50 (0–$150). Resolve Week 17 to lock the champion + pots.
           </p>
 
-          {/* ...rest of week17 UI stays the same... */}
-          {/* keep your existing content below here exactly as you had it */}
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-[11px] uppercase tracking-[0.25em] text-muted">
+                  <th className="text-left py-2 pr-3">Division</th>
+                  <th className="text-left py-2 pr-3">Owner</th>
+                  <th className="text-right py-2 pr-3">Wager</th>
+                  <th className="text-right py-2 pr-3">Wk17</th>
+                </tr>
+              </thead>
+              <tbody>
+                {safeArray(state?.championship?.byDivisionWinner).length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-4 text-center text-sm text-muted">
+                      Resolve Week 16 to seed championship entrants.
+                    </td>
+                  </tr>
+                ) : (
+                  safeArray(state?.championship?.byDivisionWinner).map((r) => {
+                    const name = safeStr(r?.ownerName);
+                    const div = safeStr(r?.division);
+                    const k = safeStr(r?.entryKey) || "";
+                    const pts = state?.championship?.points?.[k];
+                    const ptsNum = typeof pts === "number" ? pts : parseFloat(pts);
+
+                    return (
+                      <tr key={k || `${div}:${name}`} className="border-t border-subtle/70">
+                        <td className="py-2 pr-3 text-muted whitespace-nowrap">{div}</td>
+                        <td className="py-2 pr-3 font-medium text-foreground whitespace-nowrap">{name}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">
+                          <div className="inline-flex items-center justify-end gap-2">
+                            {[0, 50, 100, 150].map((amt) => (
+                              <button
+                                key={amt}
+                                type="button"
+                                onClick={() => setChampWager(k, amt)}
+                                className={`rounded-lg border px-2 py-1 text-xs transition ${
+                                  Number(r?.wager || 0) === amt
+                                    ? "border-accent/60 bg-accent/10 text-accent"
+                                    : "border-subtle bg-panel text-muted hover:border-accent/40"
+                                }`}
+                              >
+                                {amt === 0 ? "No Bet" : fmtMoney(amt)}
+                              </button>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="py-2 pr-3 text-right tabular-nums text-muted">{Number.isNaN(ptsNum) ? "" : ptsNum.toFixed(2)}</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-3">
+              <div className="grid gap-2 md:grid-cols-3">
+                <div className="rounded-2xl border border-subtle bg-panel/40 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.25em] text-muted">Main Pot</div>
+                  <div className="mt-1 text-sm text-muted">
+                    <span className="text-foreground font-semibold">{fmtMoney(state?.championship?.pots?.main?.pool || 0)}</span>
+                    <span className="text-muted"> (includes +{fmtMoney(state?.championship?.bonus || 0)} bonus)</span>
+                  </div>
+                  <div className="mt-1 text-xs text-muted">
+                    Winner: <span className="text-foreground font-semibold">{safeStr(state?.championship?.pots?.main?.winner) || "—"}</span>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-subtle bg-panel/40 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.25em] text-muted">Side Pot 1</div>
+                  <div className="mt-1 text-sm text-muted">
+                    <span className="text-foreground font-semibold">{fmtMoney(state?.championship?.pots?.side1?.pool || 0)}</span>
+                  </div>
+                  <div className="mt-1 text-xs text-muted">
+                    Winner: <span className="text-foreground font-semibold">{safeStr(state?.championship?.pots?.side1?.winner) || "—"}</span>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-subtle bg-panel/40 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.25em] text-muted">Side Pot 2</div>
+                  <div className="mt-1 text-sm text-muted">
+                    <span className="text-foreground font-semibold">{fmtMoney(state?.championship?.pots?.side2?.pool || 0)}</span>
+                  </div>
+                  <div className="mt-1 text-xs text-muted">
+                    Winner: <span className="text-foreground font-semibold">{safeStr(state?.championship?.pots?.side2?.winner) || "—"}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 text-sm text-muted">
+                <div>
+                  Total Pool: <span className="text-foreground font-semibold">{fmtMoney(state?.championship?.pool || 0)}</span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                  <span className="uppercase tracking-[0.25em]">Championship bonus</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={50}
+                    value={Number(state?.championship?.bonus || 0)}
+                    onChange={(e) => setChampionshipBonus(e.target.value)}
+                    className="w-24 rounded-lg border border-subtle bg-panel px-3 py-2 text-xs text-foreground"
+                  />
+                  <span className="text-muted">(added to the Main Pot)</span>
+                </div>
+              </div>
+
+              {state?.championship?.wouldHaveWonNoBet?.ownerName ? (
+                <div className="text-xs text-muted">
+                  Fun: <span className="text-foreground font-semibold">{safeStr(state.championship.wouldHaveWonNoBet.ownerName)}</span>
+                  {state.championship.wouldHaveWonNoBet.division ? (
+                    <>
+                      <span className="text-muted"> (</span>
+                      <span className="text-foreground">{safeStr(state.championship.wouldHaveWonNoBet.division)}</span>
+                      <span className="text-muted">)</span>
+                    </>
+                  ) : null}{" "}
+                  would have won on points, but did not wager.
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex gap-2">
+              <PrimaryButton onClick={() => save(state, "Saved wagers.")} disabled={saving} tone="muted">
+                Save Wagers
+              </PrimaryButton>
+              <PrimaryButton onClick={resolveChampionshipWeek17} disabled={saving || !canResolveW17}>
+                Resolve Week 17
+              </PrimaryButton>
+            </div>
+          </div>
         </Card>
       ) : null}
     </div>

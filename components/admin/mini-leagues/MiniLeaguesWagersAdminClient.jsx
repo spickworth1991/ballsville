@@ -407,6 +407,36 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
     }
     return valid === total;
   }, [state, totalEligibilityCount]);
+  
+    async function deleteAndStartOver() {
+      const ok = window.confirm(
+        `Delete Mini Leagues wagers for season ${season}?\n\nThis permanently deletes the JSON in R2 and resets the admin page.`
+      );
+      if (!ok) return;
+
+      setSaving(true);
+      setMsg("");
+      try {
+        const res = await fetch(`/api/admin/mini-leagues-wagers?season=${encodeURIComponent(season)}`, {
+          method: "DELETE",
+        });
+
+        if (!res.ok) {
+          const t = await res.text().catch(() => "");
+          throw new Error(t || `Delete failed (${res.status})`);
+        }
+
+        // Reset local UI state after successful delete
+        setState(buildEmptyState(season));
+        setTab("auto");
+        setMsg("Deleted wagers JSON. You can import eligibility again to start over.");
+      } catch (e) {
+        setMsg(`Error: ${String(e)}`);
+      } finally {
+        setSaving(false);
+      }
+    }
+
 
   async function save(nextState, note) {
     setSaving(true);
@@ -602,10 +632,22 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
             <Link href="/admin/wager-trackers" className="btn btn-secondary">
               ← Wager Trackers
             </Link>
+
+            <button
+              type="button"
+              onClick={deleteAndStartOver}
+              disabled={saving}
+              className="btn btn-secondary border-rose-400/30 bg-rose-500/10 text-rose-100 hover:bg-rose-500/15 disabled:opacity-50"
+              title="Deletes the stored JSON in R2 and resets this tool"
+            >
+              Delete &amp; Start Over
+            </button>
+
             <Link href="/mini-leagues/wagers" className="btn btn-primary">
               View Public Page
             </Link>
           </div>
+
         </div>
 
         {msg ? (

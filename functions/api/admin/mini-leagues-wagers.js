@@ -1,18 +1,16 @@
 // functions/api/admin/mini-leagues-wagers.js
 //
-// GET  /api/admin/mini-leagues-wagers?season=2025[&variant=backup]
-// PUT  /api/admin/mini-leagues-wagers?season=2025   (body = full wagers doc)
+// GET    /api/admin/mini-leagues-wagers?season=2025[&variant=backup]
+// PUT    /api/admin/mini-leagues-wagers?season=2025   (body = full wagers doc)
+// DELETE /api/admin/mini-leagues-wagers?season=2025   (deletes current JSON + manifest + any legacy backup keys)
 //
 // Storage keys:
 // - Current doc:  data/mini-leagues/wagers_<season>.json
-// - Backup doc:   data/mini-leagues/wagers_<season>_wk14_backup.json
-// - Backup meta:  data/mini-leagues/wagers_<season>_wk14_backup_meta.json
 // - Manifest:     data/manifests/mini-leagues-wagers_<season>.json
 //
-// Snapshot rule (same pattern as Big Game):
-// - when importing eligibility for Week 14 (eligibility.week===14)
-// - and eligibility.computedAt differs from the stored doc
-// - snapshot the *previous* current doc to the deterministic Week 14 backup key
+// (Legacy keys that may exist from older versions; DELETE will remove these too)
+// - Backup doc:   data/mini-leagues/wagers_<season>_wk14_backup.json
+// - Backup meta:  data/mini-leagues/wagers_<season>_wk14_backup_meta.json
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -36,10 +34,6 @@ function ensureR2(env) {
   return b;
 }
 
-function safeStr(v) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
-
 function nowIso() {
   return new Date().toISOString();
 }
@@ -48,9 +42,11 @@ function keyForSeason(season) {
   const s = String(season).trim();
   return {
     current: `data/mini-leagues/wagers_${s}.json`,
+    manifest: `data/manifests/mini-leagues-wagers_${s}.json`,
+
+    // legacy keys (safe to leave; DELETE cleans them up if present)
     backup: `data/mini-leagues/wagers_${s}_wk14_backup.json`,
     backupMeta: `data/mini-leagues/wagers_${s}_wk14_backup_meta.json`,
-    manifest: `data/manifests/mini-leagues-wagers_${s}.json`,
   };
 }
 
@@ -75,6 +71,11 @@ async function touchManifest(bucket, manifestKey, season) {
   });
 }
 
+async function deleteIfExists(bucket, key) {
+  // R2 delete is idempotent; deleting a missing key is fine
+  await bucket.delete(key);
+}
+
 export async function onRequest(context) {
   try {
     const { request, env } = context;
@@ -88,6 +89,7 @@ export async function onRequest(context) {
     const keys = keyForSeason(season);
 
     if (request.method === "GET") {
+      // Keep supporting legacy backup reads if you ever want it
       const which = variant === "backup" ? keys.backup : keys.current;
       const data = await readJsonFromR2(bucket, which);
       if (!data) return json({ ok: true, data: null, key: which }, 200);
@@ -103,43 +105,6 @@ export async function onRequest(context) {
       }
       if (!body || typeof body !== "object") return bad("Body must be a JSON object", 400);
 
-      const currentDoc = await readJsonFromR2(bucket, keys.current);
-
-      const incomingEligWeek = Number(body?.eligibility?.week || 0);
-      const incomingEligComputedAt = safeStr(body?.eligibility?.computedAt).trim();
-      const storedEligComputedAt = safeStr(currentDoc?.eligibility?.computedAt).trim();
-
-      const shouldSnapshot =
-        incomingEligWeek === 14 &&
-        incomingEligComputedAt &&
-        incomingEligComputedAt !== storedEligComputedAt &&
-        currentDoc;
-
-      let snapshotInfo = null;
-
-      if (shouldSnapshot) {
-        const snapshotAt = nowIso();
-
-        await bucket.put(keys.backup, JSON.stringify(currentDoc, null, 2), {
-          httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "no-store" },
-        });
-
-        const meta = {
-          season: Number(season) || season,
-          snapshotAt,
-          fromUpdatedAt: safeStr(currentDoc?.updatedAt).trim(),
-          fromEligibilityComputedAt: storedEligComputedAt || "",
-          toEligibilityComputedAt: incomingEligComputedAt || "",
-          note: "Auto-snapshot taken when Week 14 eligibility was imported.",
-        };
-
-        await bucket.put(keys.backupMeta, JSON.stringify(meta, null, 2), {
-          httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "no-store" },
-        });
-
-        snapshotInfo = meta;
-      }
-
       await bucket.put(keys.current, JSON.stringify(body, null, 2), {
         httpMetadata: { contentType: "application/json; charset=utf-8", cacheControl: "no-store" },
       });
@@ -152,7 +117,22 @@ export async function onRequest(context) {
           ok: true,
           data: body,
           savedKey: keys.current,
-          snapshot: snapshotInfo,
+        },
+        200
+      );
+    }
+
+    if (request.method === "DELETE") {
+      // Delete current + manifest + any legacy backup artifacts
+      await deleteIfExists(bucket, keys.current);
+      await deleteIfExists(bucket, keys.manifest);
+      await deleteIfExists(bucket, keys.backup);
+      await deleteIfExists(bucket, keys.backupMeta);
+
+      return json(
+        {
+          ok: true,
+          deleted: [keys.current, keys.manifest, keys.backup, keys.backupMeta],
         },
         200
       );
