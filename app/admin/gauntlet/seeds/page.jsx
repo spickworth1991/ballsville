@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabaseClient";
 import { CURRENT_SEASON } from "@/lib/season";
+import AdminGuard from "@/components/AdminGuard";
 
 const YEAR = CURRENT_SEASON;
 const TABLE_NAME = `gauntlet_seeds_${YEAR}`;
@@ -727,6 +728,7 @@ export default function GauntletSeedsPage() {
   // ====== RENDER PAGE ======
 
   return (
+  <AdminGuard>
     <div className="px-4 py-6 sm:px-6 lg:px-8 max-w-5xl mx-auto">
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
@@ -880,5 +882,6 @@ export default function GauntletSeedsPage() {
         </div>
       )}
     </div>
+  </AdminGuard>
   );
 }

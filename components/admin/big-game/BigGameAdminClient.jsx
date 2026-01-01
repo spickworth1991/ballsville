@@ -272,7 +272,7 @@ export default function BigGameAdminClient() {
         // Auto-discover existing year files around CURRENT_SEASON.
         // No code change needed each year.
         const candidates = [];
-        for (let y = CURRENT_SEASON - 3; y <= CURRENT_SEASON + 3; y++) candidates.push(y);
+        for (let y = CURRENT_SEASON - 1; y <= CURRENT_SEASON + 1; y++) candidates.push(y);
 
         const loadedRows = [];
         const foundYears = [];
