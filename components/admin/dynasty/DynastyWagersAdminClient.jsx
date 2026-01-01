@@ -489,6 +489,49 @@ function computeResults(doc) {
   };
 }
 
+function slugify(v) {
+  const s = safeStr(v).trim().toLowerCase();
+  return s
+    .replace(/['"]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/(^-|-$)/g, "")
+    .slice(0, 80);
+}
+
+function leagueAnchorId(season, division, leagueName) {
+  return `dw-admin-${slugify(season)}-${slugify(division)}-${slugify(leagueName)}`;
+}
+
+function scrollToId(id) {
+  if (typeof window === "undefined") return;
+  const el = document.getElementById(id);
+  if (!el) return;
+  try {
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch {
+    el.scrollIntoView();
+  }
+}
+
+function DecisionPill({ decision }) {
+  const isWager = decision === "wager";
+  return (
+    <span
+      className={
+        isWager
+          ? "inline-flex items-center gap-1 rounded-full border border-emerald-300/25 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200"
+          : "inline-flex items-center gap-1 rounded-full border border-sky-300/25 bg-sky-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-200"
+      }
+      title={isWager ? "Wagered" : "Banked"}
+    >
+      <span aria-hidden>{isWager ? "🎯" : "🏦"}</span>
+      {isWager ? "Wager" : "Bank"}
+    </span>
+  );
+}
+
+
 
 export default function DynastyWagersAdminClient() {
   const [season, setSeason] = useState(() => new Date().getFullYear());
@@ -502,6 +545,19 @@ export default function DynastyWagersAdminClient() {
   const [leagueOrderIndex, setLeagueOrderIndex] = useState(() => new Map());
   // { [division]: { [leagueName]: string[] } }
   const [ownersByDivisionLeague, setOwnersByDivisionLeague] = useState(null);
+  const [openDivisions, setOpenDivisions] = useState({});
+
+  function jumpToLeague(div, leagueName) {
+    const division = safeStr(div).trim();
+    const league = safeStr(leagueName).trim();
+    if (!division || !league) return;
+
+    const divId = `div-${slugify(season)}-${slugify(division)}`;
+    setOpenDivisions((prev) => ({ ...prev, [divId]: true }));
+
+    const id = leagueAnchorId(season, division, league);
+    setTimeout(() => scrollToId(id), 60);
+  }
 
   const divisions = useMemo(() => {
     const byDiv = doc?.eligibility?.byDivision || {};
@@ -1118,14 +1174,16 @@ export default function DynastyWagersAdminClient() {
         </Card>
       )}
 
-      {step === "resolve17" && (
+            {step === "resolve17" && (
         <Card>
-          
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-white">Resolve Week 17</h2>
               <p className="mt-2 text-sm text-muted">
                 Pull Week 17 points for all selected finalists and compute division payouts.
+              </p>
+              <p className="mt-1 text-sm text-muted">
+                Winners stay visible. Expand a division to verify each league’s Week 17 scores.
               </p>
             </div>
             <div className="flex gap-2">
@@ -1135,47 +1193,267 @@ export default function DynastyWagersAdminClient() {
             </div>
           </div>
 
-
           <Divider />
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            {Object.keys(results?.divisions || {}).length === 0 ? (
-              <div className="text-sm text-muted">No Week 17 results yet.</div>
-            ) : (
-              Object.entries(results.divisions)
+          {Object.keys(results?.divisions || {}).length === 0 ? (
+            <div className="text-sm text-muted">No Week 17 results yet.</div>
+          ) : (
+            <div className="space-y-4">
+              {Object.entries(results.divisions)
                 .sort(([a], [b]) => a.localeCompare(b))
-                .map(([div, r]) => (
-                  <div key={div} className="rounded-2xl border border-subtle bg-panel/40 p-4">
-                    <div className="text-xs uppercase tracking-[0.25em] text-muted">{div}</div>
-                    <div className="mt-2 grid gap-2 text-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted">Champ</span>
-                        <span className="text-white font-semibold">{r?.champ?.winner || "—"}</span>
-                        <span className="text-muted">+{fmtMoney(r?.champ?.bonus ?? 0)}</span>
+                .map(([div, r]) => {
+                  const divId = `div-${slugify(season)}-${slugify(div)}`;
+
+                  const champ = r?.champ || {};
+                  const second = r?.second || {};
+                  const third = r?.third || {};
+                  const wagerPot = r?.wagerPot || {};
+
+                  const champKey = safeStr(champ?.winnerKey || "").trim();
+                  const secondKey = safeStr(second?.winnerKey || "").trim();
+                  const thirdKey = safeStr(third?.winnerKey || "").trim();
+                  const wagerKey = safeStr(wagerPot?.winnerKey || "").trim();
+
+                  function tagsForKey(k) {
+                    const tags = [];
+                    if (k && k === champKey) tags.push({ icon: "🏆", label: "Champ" });
+                    if (k && k === secondKey) tags.push({ icon: "🥈", label: "2nd" });
+                    if (k && k === thirdKey) tags.push({ icon: "🥉", label: "3rd" });
+                    if (k && k === wagerKey) tags.push({ icon: "🎯", label: "Wager Winner" });
+                    return tags;
+                  }
+
+                  const leagues = safeArray(doc?.eligibility?.byDivision?.[div]).filter(
+                    (l) => safeStr(l?.leagueName).trim() && safeArray(l?.finalists).length
+                  );
+
+                  const allEntries = leagues.flatMap((l) => {
+                    const leagueName = safeStr(l?.leagueName).trim();
+                    const finals = safeArray(l?.finalists).map((x) => safeStr(x).trim()).filter(Boolean);
+                    return finals.map((ownerName) => {
+                      const k = entryKey({ division: div, leagueName, ownerName });
+                      const decision = safeStr(doc?.week17?.decisions?.[k]?.decision || "bank").trim() || "bank";
+                      const pts = Number(doc?.week17?.points?.[k] ?? 0) || 0;
+                      return { division: div, leagueName, ownerName, k, decision, pts };
+                    });
+                  });
+
+                  const totalFinalists = allEntries.length;
+                  const totalWager = allEntries.filter((x) => x.decision === "wager").length;
+                  const totalBank = totalFinalists - totalWager;
+
+                  return (
+                    <div key={div} className="rounded-2xl border border-subtle bg-panel/30 p-4">
+                      {/* Division header */}
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="text-xs uppercase tracking-[0.25em] text-muted">Division</div>
+                          <div className="mt-1 text-lg font-semibold text-white truncate">{div}</div>
+
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+                            <span className="rounded-full border border-subtle bg-panel/40 px-2 py-0.5">
+                              🏟️ {leagues.length} leagues
+                            </span>
+                            <span className="rounded-full border border-subtle bg-panel/40 px-2 py-0.5">
+                              👥 {totalFinalists} finalists
+                            </span>
+                            <span className="rounded-full border border-subtle bg-panel/40 px-2 py-0.5">
+                              🎯 {totalWager} wager
+                            </span>
+                            <span className="rounded-full border border-subtle bg-panel/40 px-2 py-0.5">
+                              🏦 {totalBank} bank
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted">2nd</span>
-                        <span className="text-white font-semibold">{r?.second?.winner || "—"}</span>
-                        <span className="text-muted">+{fmtMoney(r?.second?.bonus ?? 0)}</span>
+
+                      {/* Winner cards OUTSIDE collapse */}
+                      <div className="mt-3 grid gap-2 md:grid-cols-2">
+                        <div className="rounded-2xl border border-subtle bg-panel/40 p-3">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted">🏆 Champ</span>
+                            <span className="text-white font-semibold truncate">{champ?.winner || "—"}</span>
+                          </div>
+                          {champ?.leagueName ? (
+                            <div className="mt-1 flex items-center justify-between text-xs text-muted">
+                              <span className="truncate">{champ.leagueName}</span>
+                              <span className="text-white font-medium">{Number(champ?.pts ?? 0).toFixed(2)}</span>
+                            </div>
+                          ) : null}
+                          <div className="mt-1 text-xs text-muted">+{fmtMoney(champ?.bonus ?? 0)}</div>
+                        </div>
+
+                        <div className="rounded-2xl border border-subtle bg-panel/40 p-3">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted">🎯 Wager Winner</span>
+                            <span className="text-white font-semibold truncate">{wagerPot?.winner || "—"}</span>
+                          </div>
+                          {wagerPot?.winnerLeague ? (
+                            <div className="mt-1 flex items-center justify-between text-xs text-muted">
+                              <span className="truncate">{wagerPot.winnerLeague}</span>
+                              <span className="text-white font-medium">{Number(wagerPot?.winnerPts ?? 0).toFixed(2)}</span>
+                            </div>
+                          ) : null}
+                          <div className="mt-1 text-xs text-muted">{fmtMoney(wagerPot?.total ?? 0)}</div>
+                        </div>
+
+                        <div className="rounded-2xl border border-subtle bg-panel/40 p-3">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted">🥈 2nd</span>
+                            <span className="text-white font-semibold truncate">{second?.winner || "—"}</span>
+                          </div>
+                          {second?.leagueName ? (
+                            <div className="mt-1 flex items-center justify-between text-xs text-muted">
+                              <span className="truncate">{second.leagueName}</span>
+                              <span className="text-white font-medium">{Number(second?.pts ?? 0).toFixed(2)}</span>
+                            </div>
+                          ) : null}
+                          <div className="mt-1 text-xs text-muted">+{fmtMoney(second?.bonus ?? 0)}</div>
+                        </div>
+
+                        <div className="rounded-2xl border border-subtle bg-panel/40 p-3">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted">🥉 3rd</span>
+                            <span className="text-white font-semibold truncate">{third?.winner || "—"}</span>
+                          </div>
+                          {third?.leagueName ? (
+                            <div className="mt-1 flex items-center justify-between text-xs text-muted">
+                              <span className="truncate">{third.leagueName}</span>
+                              <span className="text-white font-medium">{Number(third?.pts ?? 0).toFixed(2)}</span>
+                            </div>
+                          ) : null}
+                          <div className="mt-1 text-xs text-muted">+{fmtMoney(third?.bonus ?? 0)}</div>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted">3rd</span>
-                        <span className="text-white font-semibold">{r?.third?.winner || "—"}</span>
-                        <span className="text-muted">+{fmtMoney(r?.third?.bonus ?? 0)}</span>
-                      </div>
-                      <div className="mt-2 flex items-center justify-between">
-                        <span className="text-muted">Wager Pot</span>
-                        <span className="text-white font-semibold">{r?.wagerPot?.winner || "—"}</span>
-                        <span className="text-muted">{fmtMoney(r?.wagerPot?.total ?? 0)}</span>
-                      </div>
+
+                      {/* Collapsible leagues (verification) */}
+                      <details
+                        open={!!openDivisions[divId]}
+                        onToggle={(e) => {
+                          const isOpen = e.currentTarget?.open === true;
+                          setOpenDivisions((prev) => ({ ...prev, [divId]: isOpen }));
+                        }}
+                        className="group mt-3 rounded-2xl border border-subtle bg-card-surface"
+                      >
+                        <summary className="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-xs uppercase tracking-[0.22em] text-muted">Leagues</div>
+                              <div className="mt-1 text-sm text-muted">Tap to expand / collapse this division’s leagues</div>
+                            </div>
+
+                            <div className="shrink-0 flex items-center gap-2">
+                              <span className="inline-flex items-center rounded-full border border-subtle bg-panel/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white">
+                                Click to see leagues
+                              </span>
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-5 w-5 text-muted transition-transform duration-200 group-open:rotate-180"
+                                aria-hidden="true"
+                              >
+                                <path
+                                  fill="currentColor"
+                                  d="M12 15.5a1 1 0 0 1-.7-.29l-6-6a1 1 0 1 1 1.4-1.42L12 13.09l5.3-5.3a1 1 0 1 1 1.4 1.42l-6 6a1 1 0 0 1-.7.29Z"
+                                />
+                              </svg>
+                            </div>
+                          </div>
+                        </summary>
+
+                        <div className="px-4 pb-4 space-y-3">
+                          {leagues
+                            .slice()
+                            .sort((a, b) => {
+                              const ao = getLeagueOrder(leagueOrderIndex, div, safeStr(a?.leagueName).trim());
+                              const bo = getLeagueOrder(leagueOrderIndex, div, safeStr(b?.leagueName).trim());
+                              if (ao !== bo) return ao - bo;
+                              return safeStr(a?.leagueName).localeCompare(safeStr(b?.leagueName));
+                            })
+                            .map((l) => {
+                              const leagueName = safeStr(l?.leagueName).trim();
+                              const finals = safeArray(l?.finalists).map((x) => safeStr(x).trim()).filter(Boolean);
+                              const anchorId = leagueAnchorId(season, div, leagueName);
+
+                              const entries = finals
+                                .map((ownerName) => {
+                                  const k = entryKey({ division: div, leagueName, ownerName });
+                                  const decision = safeStr(doc?.week17?.decisions?.[k]?.decision || "bank").trim() || "bank";
+                                  const pts = Number(doc?.week17?.points?.[k] ?? 0) || 0;
+                                  return { ownerName, k, decision, pts };
+                                })
+                                .sort((a, b) => b.pts - a.pts);
+
+                              return (
+                                <div
+                                  key={`${div}|||${leagueName}`}
+                                  id={anchorId}
+                                  className="rounded-2xl border border-subtle bg-panel/30 p-4"
+                                >
+                                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                    <div className="text-white font-semibold">{leagueName}</div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="text-[11px] text-muted">Finalists · Week 17 points</div>
+                                      <button
+                                        type="button"
+                                        onClick={() => jumpToLeague(div, leagueName)}
+                                        className="rounded-full border border-subtle bg-panel/40 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white hover:bg-panel/60"
+                                        title="Jump to this league"
+                                      >
+                                        Jump
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-3 space-y-2">
+                                    {entries.map((e) => {
+                                      const tags = tagsForKey(e.k);
+
+                                      return (
+                                        <div key={e.k} className="rounded-2xl border border-subtle bg-card-surface p-3">
+                                          <div className="flex items-start justify-between gap-3">
+                                            <div className="min-w-0">
+                                              <div className="flex items-start gap-2">
+                                                <div className="text-white font-semibold truncate">{e.ownerName}</div>
+                                                {tags.length ? (
+                                                  <div className="flex flex-wrap gap-1 pt-0.5">
+                                                    {tags.map((t) => (
+                                                      <span
+                                                        key={t.label}
+                                                        title={t.label}
+                                                        className="inline-flex items-center rounded-full border border-subtle bg-panel/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white"
+                                                      >
+                                                        {t.icon}
+                                                      </span>
+                                                    ))}
+                                                  </div>
+                                                ) : null}
+                                              </div>
+                                            </div>
+
+                                            <div className="shrink-0 text-right">
+                                              <div className="text-white font-semibold">{Number(e.pts ?? 0).toFixed(2)}</div>
+                                              <div className="mt-1">
+                                                <DecisionPill decision={e.decision} />
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </details>
                     </div>
-                  </div>
-                ))
-            )}
-            
-          </div>
+                  );
+                })}
+            </div>
+          )}
         </Card>
       )}
+
       {step === "resolve18" && (
   <Card>
     <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">

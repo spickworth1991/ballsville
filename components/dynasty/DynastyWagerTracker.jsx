@@ -543,6 +543,12 @@ function DynastyWagerTrackerInner({ season }) {
               const third = r?.third || {};
               const wagerPot = r?.wagerPot || {};
 
+              // --- ADDED: winner card payouts (back-compat safe) ---
+              const champWon = Number(champ?.bonus ?? champ?.payout ?? 0) || 0;
+              const secondWon = Number(second?.bonus ?? second?.payout ?? 0) || 0;
+              const thirdWon = Number(third?.bonus ?? third?.payout ?? 0) || 0;
+              const wagerWon = Number(wagerPot?.total ?? 0) || 0;
+
               const champKey = safeStr(champ?.winnerKey || champ?.key).trim();
               const secondKey = safeStr(second?.winnerKey || second?.key).trim();
               const thirdKey = safeStr(third?.winnerKey || third?.key).trim();
@@ -590,7 +596,7 @@ function DynastyWagerTrackerInner({ season }) {
                     </div>
                   </div>
 
-                  {/* Winner cards OUTSIDE the collapsible area (unchanged layout) */}
+                  {/* Winner cards OUTSIDE the collapsible area (UPDATED: show "Won") */}
                   <div className="mt-3 grid gap-2 md:grid-cols-2">
                     <div className="rounded-2xl border border-subtle bg-panel/40 p-3">
                       <div className="flex items-center justify-between text-sm">
@@ -601,6 +607,11 @@ function DynastyWagerTrackerInner({ season }) {
                         <div className="mt-1 flex items-center justify-between text-xs text-muted">
                           <span className="truncate">{champ.leagueName}</span>
                           <span className="text-white font-medium">{Number(champ?.pts ?? 0).toFixed(2)}</span>
+                        </div>
+                      ) : null}
+                      {champ?.winner && champWon > 0 ? (
+                        <div className="mt-1 text-xs text-muted">
+                          Won: <span className="text-white font-semibold">+{fmtMoney(champWon)}</span>
                         </div>
                       ) : null}
                     </div>
@@ -616,6 +627,11 @@ function DynastyWagerTrackerInner({ season }) {
                           <span className="text-white font-medium">{Number(wagerPot?.winnerPts ?? 0).toFixed(2)}</span>
                         </div>
                       ) : null}
+                      {wagerPot?.winner && wagerWon > 0 ? (
+                        <div className="mt-1 text-xs text-muted">
+                          Won: <span className="text-white font-semibold">+{fmtMoney(wagerWon)}</span>
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="rounded-2xl border border-subtle bg-panel/40 p-3">
@@ -629,6 +645,11 @@ function DynastyWagerTrackerInner({ season }) {
                           <span className="text-white font-medium">{Number(second?.pts ?? 0).toFixed(2)}</span>
                         </div>
                       ) : null}
+                      {second?.winner && secondWon > 0 ? (
+                        <div className="mt-1 text-xs text-muted">
+                          Won: <span className="text-white font-semibold">+{fmtMoney(secondWon)}</span>
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="rounded-2xl border border-subtle bg-panel/40 p-3">
@@ -640,6 +661,11 @@ function DynastyWagerTrackerInner({ season }) {
                         <div className="mt-1 flex items-center justify-between text-xs text-muted">
                           <span className="truncate">{third.leagueName}</span>
                           <span className="text-white font-medium">{Number(third?.pts ?? 0).toFixed(2)}</span>
+                        </div>
+                      ) : null}
+                      {third?.winner && thirdWon > 0 ? (
+                        <div className="mt-1 text-xs text-muted">
+                          Won: <span className="text-white font-semibold">+{fmtMoney(thirdWon)}</span>
                         </div>
                       ) : null}
                     </div>
