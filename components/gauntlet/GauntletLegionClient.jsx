@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import MediaTabCard from "@/components/ui/MediaTabCard";
+import { CURRENT_SEASON } from "@/lib/season";
 
 function slugify(s) {
   return String(s || "")
@@ -16,17 +17,22 @@ function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
-function resolveImageSrc({ imagePath, imageKey, updatedAt }) {
+function resolveImageSrc({ imagePath, imageKey, updatedAt, version }) {
   const p = safeStr(imagePath).trim();
   const k = safeStr(imageKey).trim();
-  
+
+  // Stable cache-bust token:
+  // - Prefer JSON's updated_at so images re-bust when data updates
+  // - Fall back to manual version prop
+  const bust = encodeURIComponent(safeStr(updatedAt).trim() || safeStr(version).trim() || "0");
+
   // If we already stored a full URL (/r2/... or https://...), just ensure it has a cache-bust.
   if (p) {
     if (p.includes("?")) return p;
-    return `${p}?${bust}`;
+    return `${p}?v=${bust}`;
   }
   // If we stored only the key, build a public /r2 URL.
-  if (k) return `/r2/${k}?${bust}`;
+  if (k) return `/r2/${k}?v=${bust}`;
   return "";
 }
 
@@ -74,9 +80,9 @@ function buildIndex(rows) {
   return { headers, leaguesByLegion };
 }
 
-async function fetchLeagues(season) {
+async function fetchLeagues(season, version) {
   const v = String(version || "0");
-    const url = `/r2/data/gauntlet/leagues_${season}.json?v=${encodeURIComponent(v)}`;
+  const url = `/r2/data/gauntlet/leagues_${season}.json?v=${encodeURIComponent(v)}`;
   const res = await fetch(url, { cache: "default" });
   if (!res.ok) throw new Error(`Failed to load gauntlet leagues (${res.status})`);
   const data = await res.json();
@@ -84,9 +90,15 @@ async function fetchLeagues(season) {
 }
 
 // NOTE: `version` is an optional prop used as a manual cache-bust signal.
-// Not required for manifest-based caching, but keeping it prevents undefined
-// reference issues and allows parent components to force a refetch if desired.
-export default function GauntletLegionClient({ season = 2025, legionKey = "", titleOverride = "", version = "0", manifest = null }) {
+// Not required for manifest-based caching, but keeping it allows parent components
+// to force a refetch if desired.
+export default function GauntletLegionClient({
+  season = CURRENT_SEASON,
+  legionKey = "",
+  titleOverride = "",
+  version = "0",
+  manifest = null,
+}) {
   const [rows, setRows] = useState(null);
   const [updatedAt, setUpdatedAt] = useState("");
   const [error, setError] = useState("");
@@ -96,10 +108,11 @@ export default function GauntletLegionClient({ season = 2025, legionKey = "", ti
 
     // Manifest-first: avoid an initial v=0 fetch before SectionManifestGate loads.
     if (!manifest) return () => { cancelled = true; };
+
     setError("");
     setRows(null);
 
-    fetchLeagues(season)
+    fetchLeagues(season, version)
       .then((out) => {
         if (cancelled) return;
         setRows(out.rows);
@@ -112,7 +125,7 @@ export default function GauntletLegionClient({ season = 2025, legionKey = "", ti
     return () => {
       cancelled = true;
     };
-  }, [season, version]);
+  }, [season, version, manifest]);
 
   const { headers, leaguesByLegion } = useMemo(() => buildIndex(rows), [rows]);
 
@@ -148,6 +161,7 @@ export default function GauntletLegionClient({ season = 2025, legionKey = "", ti
     imagePath: header.legion_image_path,
     imageKey: header.legion_image_key,
     updatedAt,
+    version,
   });
 
   return (
@@ -189,6 +203,7 @@ export default function GauntletLegionClient({ season = 2025, legionKey = "", ti
               imagePath: l.league_image_path,
               imageKey: l.league_image_key,
               updatedAt,
+              version,
             })}
             href={l.league_url || "#"}
             external={Boolean(l.league_url)}
