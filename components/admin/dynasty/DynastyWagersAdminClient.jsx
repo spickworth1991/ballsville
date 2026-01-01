@@ -6,7 +6,7 @@ import AdminStepTabs from "../AdminStepTabs";
 import { safeArray, safeStr } from "@/lib/safe";
 
 
-const season = CURRENT_SEASON;
+
 
 function parseLeagueNumberFromName(name) {
   // Expected suffix like "... 3/16" (we sort by the leading number)
@@ -529,7 +529,7 @@ function DecisionPill({ decision }) {
 
 
 export default function DynastyWagersAdminClient() {
-  const [season, setSeason] = useState(() => new Date().getFullYear());
+  const [season, setSeason] = useState(() => CURRENT_SEASON)
   const [doc, setDoc] = useState(() => buildEmptyState(new Date().getFullYear()));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
