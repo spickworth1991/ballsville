@@ -5,9 +5,9 @@
 // - type="page": writes to R2 key: content/mini-leagues/page_2025.json
 // - type="divisions": writes to R2 key: data/mini-leagues/divisions_2025.json
 
-import { getCurrentNflSeason } from "../../_lib/season";
+import { CURRENT_SEASON } from "@/lib/season";
 
-const DEFAULT_SEASON = getCurrentNflSeason();
+const DEFAULT_SEASON = CURRENT_SEASON;
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {

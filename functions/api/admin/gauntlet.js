@@ -11,7 +11,7 @@
 // - League rows per legion: is_legion_header=false
 //   { year, legion_slug, league_name, league_url, league_status, display_order, league_image_key, league_image_path, spots_available, fill_note, is_active }
 
-import { getCurrentNflSeason } from "../../_lib/season";
+import { CURRENT_SEASON } from "@/lib/season";
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -39,12 +39,12 @@ async function touchManifest(env, season) {
 
 
 function leaguesKeyForSeason(season) {
-  const s = String(season || "").trim() || String(getCurrentNflSeason());
+  const s = String(season || "").trim() || String(CURRENT_SEASON);
   return `data/gauntlet/leagues_${s}.json`;
 }
 
 function pageKeyForSeason(season) {
-  const s = String(season || "").trim() || String(getCurrentNflSeason());
+  const s = String(season || "").trim() || String(CURRENT_SEASON);
   return `content/gauntlet/page_${s}.json`;
 }
 
@@ -83,7 +83,7 @@ async function writeJSON(env, key, payload) {
 export async function onRequest(context) {
   const { request, env } = context;
   const url = new URL(request.url);
-  const season = url.searchParams.get("season") || url.searchParams.get("year") || String(getCurrentNflSeason());
+  const season = url.searchParams.get("season") || url.searchParams.get("year") || String(CURRENT_SEASON);
   const type = (url.searchParams.get("type") || "leagues").toLowerCase();
 
   const key = type === "page" ? pageKeyForSeason(season) : leaguesKeyForSeason(season);

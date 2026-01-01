@@ -9,10 +9,9 @@
 // - content/about/managers_<season>.json
 // - data/manifests/about-managers_<season>.json (updated on every PUT)
 
-import { getCurrentNflSeason } from "../../_lib/season";
+import { CURRENT_SEASON } from "@/lib/season";
 
-
-const DEFAULT_SEASON = getCurrentNflSeason();
+const DEFAULT_SEASON = CURRENT_SEASON;
 
 async function requireAdmin(request, env) {
   const auth = request.headers.get("authorization") || "";
