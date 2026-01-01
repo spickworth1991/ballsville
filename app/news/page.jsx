@@ -4,18 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import { CURRENT_SEASON } from "@/lib/season";
+import { safeArray, safeStr } from "@/lib/safe";
 
 const cardBase =
   "card bg-card-surface border border-subtle rounded-2xl shadow-md transition";
 
 const cardHover = "hover:border-accent hover:-translate-y-0.5";
 
-function safeArray(v) {
-  return Array.isArray(v) ? v : [];
-}
-function safeStr(v) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
 function fmtDate(iso) {
   if (!iso) return "";
   const d = new Date(iso);

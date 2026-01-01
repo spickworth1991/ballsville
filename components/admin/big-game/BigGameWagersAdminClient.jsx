@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import AdminStepTabs from "../AdminStepTabs";
+import { safeArray, safeStr } from "@/lib/safe";
 
 function isLocalhost() {
   if (typeof window === "undefined") return false;
@@ -16,12 +17,6 @@ function getWagersLoadUrl(season) {
   return `/api/admin/biggame-wagers?season=${encodeURIComponent(season)}`;
 }
 
-function safeArray(v) {
-  return Array.isArray(v) ? v : [];
-}
-function safeStr(v) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
 
 function entryKey(p) {
   const division = safeStr(p?.division || "").trim();

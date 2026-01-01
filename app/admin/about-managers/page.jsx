@@ -1,7 +1,8 @@
+// app/admin/about-managers/page.jsx
 "use client";
 
-// app/admin/about-managers/page.jsx
 
+import { safeArray } from "@/lib/safe";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 
@@ -10,9 +11,6 @@ import AdminNav from "@/components/admin/AdminNav";
 import { getSupabase } from "@/lib/supabaseClient";
 import { CURRENT_SEASON } from "@/lib/season";
 
-function safeArray(v) {
-  return Array.isArray(v) ? v : [];
-}
 
 function cleanStr(v, max = 4000) {
   return String(v || "").trim().slice(0, max);

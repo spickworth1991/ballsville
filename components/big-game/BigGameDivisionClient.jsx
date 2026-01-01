@@ -3,13 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { CURRENT_SEASON } from "@/lib/season";
 import MediaTabCard from "@/components/ui/MediaTabCard";
+import { safeStr } from "@/lib/safe";
 
 const DEFAULT_SEASON = CURRENT_SEASON;
 const R2_KEY_FOR = (season) => `data/biggame/leagues_${season}.json`;
 
-function safeStr(v) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
 
 function safeNum(v, fallback = null) {
   const n = Number(v);

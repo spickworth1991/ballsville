@@ -6,15 +6,13 @@ import AdminGuard from "@/components/AdminGuard";
 import AdminNav from "@/components/admin/AdminNav";
 import { getSupabase } from "@/lib/supabaseClient";
 import { CURRENT_SEASON } from "@/lib/season";
+import { safeStr } from "@/lib/safe";
 
 function uid() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
   return `id_${Math.random().toString(16).slice(2)}_${Date.now()}`;
 }
 
-function safeStr(v) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
 
 function normalizeTags(v) {
   const tags = Array.isArray(v)

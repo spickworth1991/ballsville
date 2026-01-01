@@ -1,12 +1,8 @@
 // functions/_lib/season.js
-// Keep this file tiny and dependency-free so it works in Cloudflare Pages Functions.
-// NFL season is named by the year it starts; Jan/Feb still belong to the previous season.
+// Re-export the site's season logic for Pages Functions.
+// Keep this dependency-free and in sync by routing everything through /lib/season.js.
 
-export function getCurrentNflSeason(date = new Date()) {
-  const d = date instanceof Date ? date : new Date(date);
-  const year = d.getFullYear();
-  const month = d.getMonth(); // 0=Jan
-  return month <= 1 ? year - 1 : year;
-}
+export { getCurrentSeason, CURRENT_SEASON } from "../../lib/season.js";
 
-export const CURRENT_SEASON = getCurrentNflSeason();
+// Back-compat: older functions import getCurrentNflSeason().
+export { getCurrentSeason as getCurrentNflSeason } from "../../lib/season.js";

@@ -1,6 +1,7 @@
+
 // src/lib/DynastyAdminClient.jsx
 "use client";
-
+import { safeStr } from "@/lib/safe";
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabaseClient";
 import { CURRENT_SEASON } from "@/lib/season";
@@ -32,9 +33,6 @@ function nowIso() {
   }
 }
 
-function safeStr(v) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
 
 function safeNum(v, fallback = null) {
   const n = Number(v);

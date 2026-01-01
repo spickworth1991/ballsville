@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import MediaTabCard from "@/components/ui/MediaTabCard";
 import { CURRENT_SEASON } from "@/lib/season";
+import { safeStr } from "@/lib/safe";
 
 function slugify(s) {
   return String(s || "")
@@ -13,9 +14,6 @@ function slugify(s) {
     .replace(/-+/g, "-");
 }
 
-function safeStr(v) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
 
 function resolveImageSrc({ imagePath, imageKey, updatedAt, version }) {
   const p = safeStr(imagePath).trim();

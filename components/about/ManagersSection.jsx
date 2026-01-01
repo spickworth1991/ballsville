@@ -1,12 +1,9 @@
 // components/about/ManagersSection.jsx
 "use client";
-
+import { safeArray } from "@/lib/safe";
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 
-function safeArray(v) {
-  return Array.isArray(v) ? v : [];
-}
 
 function initials(name) {
   const parts = String(name || "")

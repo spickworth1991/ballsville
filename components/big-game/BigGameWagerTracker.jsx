@@ -1,16 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { safeArray, safeStr } from "@/lib/safe";
 // import Link from "next/link";
 import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import { CURRENT_SEASON } from "@/lib/season";
 
-function safeArray(v) {
-  return Array.isArray(v) ? v : [];
-}
-function safeStr(v) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
 function fmtMoney(n) {
   const x = typeof n === "number" ? n : Number(n);
   if (!Number.isFinite(x)) return "$0";

@@ -1,6 +1,7 @@
+
 // app/redraft/RedraftLeaguesClient.jsx
 "use client";
-
+import { safeStr } from "@/lib/safe";
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { CURRENT_SEASON } from "@/lib/season";
@@ -14,9 +15,6 @@ const STATUS_LABEL = {
   tbd: "TBD",
 };
 
-function safeStr(v) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
 
 function statusBadge(raw) {
   const s = safeStr(raw).trim().toUpperCase();
@@ -35,7 +33,7 @@ function leagueImageSrc(l, updatedAt) {
   return base.includes("?") ? base : `${base}?v=${encodeURIComponent(updatedAt)}`;
 }
 
-export default function RedraftLeaguesClient({ season = CURRENT_SEASON, embedded = false, version = "0", manifest = null }) {
+export default function RedraftLeaguesClient({ SEASON = CURRENT_SEASON, embedded = false, version = "0", manifest = null }) {
   const [leagues, setLeagues] = useState([]);
   const [updatedAt, setUpdatedAt] = useState("");
   const [loading, setLoading] = useState(true);

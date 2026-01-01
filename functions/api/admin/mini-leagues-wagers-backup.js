@@ -1,3 +1,4 @@
+
 // functions/api/admin/mini-leagues-wagers-backup.js
 //
 // GET  /api/admin/mini-leagues-wagers-backup?season=2025
@@ -27,9 +28,6 @@ function ensureR2(env) {
   return b;
 }
 
-function safeStr(v) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
 
 function nowIso() {
   return new Date().toISOString();

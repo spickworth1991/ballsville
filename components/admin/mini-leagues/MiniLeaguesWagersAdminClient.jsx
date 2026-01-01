@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import AdminStepTabs from "../AdminStepTabs";
+import { safeArray, safeStr } from "@/lib/safe";
 
 function isLocalhost() {
   if (typeof window === "undefined") return false;
@@ -18,12 +19,6 @@ function getMiniWagersLoadUrl(season) {
   return `/api/admin/mini-leagues-wagers?season=${encodeURIComponent(season)}`;
 }
 
-function safeArray(v) {
-  return Array.isArray(v) ? v : [];
-}
-function safeStr(v) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
 
 // Owner names can appear in multiple leagues. Any wager/eligibility/points must be keyed
 // by the roster instance (division + leagueName + ownerName) — never by ownerName alone.

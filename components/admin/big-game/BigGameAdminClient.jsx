@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabaseClient";
 import { CURRENT_SEASON } from "@/lib/season";
+import { safeStr } from "@/lib/safe";
 
 const R2_KEY_FOR = (season) => `data/biggame/leagues_${season}.json`;
 
@@ -25,9 +26,6 @@ function nowIso() {
   }
 }
 
-function safeStr(v) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
 
 function safeNum(v, fallback = null) {
   const n = Number(v);

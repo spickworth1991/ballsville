@@ -1,15 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { safeArray, safeStr } from "@/lib/safe";
 // NOTE: The Dynasty wagers JSON currently lives behind a public (no-auth) admin API.
 // We fetch it directly so the public page works even if the manifest doesn't include this section.
 
-function safeArray(v) {
-  return Array.isArray(v) ? v : [];
-}
-function safeStr(v) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
 
 function entryKey(p) {
   const division = safeStr(p?.division || "").trim();

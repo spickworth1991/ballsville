@@ -3,15 +3,10 @@ import { CURRENT_SEASON } from "@/lib/season";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import AdminStepTabs from "../AdminStepTabs";
+import { safeArray, safeStr } from "@/lib/safe";
 
 
 
-function safeArray(v) {
-  return Array.isArray(v) ? v : [];
-}
-function safeStr(v) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
 
 function parseLeagueNumberFromName(name) {
   // Expected suffix like "... 3/16" (we sort by the leading number)

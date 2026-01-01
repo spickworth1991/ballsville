@@ -20,6 +20,7 @@ import { createClient } from "@supabase/supabase-js";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import fs from "fs";
 import path from "path";
+import { getCurrentSeason as getCurrentNflSeason } from "../lib/season.js";
 /* ================== LOGGING (OPTIONAL FILE + QUIET CONSOLE) ================== */
 
 // Toggle: set GAUNTLET_DEBUG_LOG=1 to enable file logging, 0/empty to disable.
@@ -140,13 +141,6 @@ process.on("unhandledRejection", (err) => {
 
 
 /* ================== CONFIG ================== */
-
-function getCurrentNflSeason(date = new Date()) {
-  const d = date instanceof Date ? date : new Date(date);
-  const year = d.getFullYear();
-  const month = d.getMonth(); // 0=Jan
-  return month <= 1 ? year - 1 : year;
-}
 
 const YEAR = getCurrentNflSeason();
 const SEEDS_TABLE = `gauntlet_seeds_${YEAR}`;
