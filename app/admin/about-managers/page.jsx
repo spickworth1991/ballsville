@@ -8,7 +8,6 @@ import Image from "next/image";
 
 import AdminGuard from "@/components/AdminGuard";
 import AdminNav from "@/components/admin/AdminNav";
-import { getSupabase } from "@/lib/supabaseClient";
 import { CURRENT_SEASON } from "@/lib/season";
 
 
@@ -42,11 +41,6 @@ function normalizeManager(m, idx) {
   };
 }
 
-async function getToken() {
-  const sb = getSupabase();
-  const { data } = await sb.auth.getSession();
-  return data?.session?.access_token || "";
-}
 
 export default function AdminAboutManagersPage() {
   const season = CURRENT_SEASON;
