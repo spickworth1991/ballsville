@@ -70,9 +70,9 @@ export default function AdminAboutManagersPage() {
     setNotice("");
     setLoading(true);
     try {
-      const token = await getToken();
+      
       const res = await fetch(`/api/admin/about-managers?season=${season}`, {
-        headers: { authorization: `Bearer ${token}` },
+        
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
