@@ -74,13 +74,18 @@ function buildEmptyState(season) {
       week: 15,
       resolvedAt: "",
 
+      // ✅ Added explicit "step completion" timestamps (fixes AdminStepTabs checkmarks)
+      rulesSavedAt: "",
+      decisionsSavedAt: "",
+      pointsPulledAt: "",
+
       // Rules (editable so the public tracker doesn't have magic numbers)
       coin: 30,
       divisionBonus: 30,
       champBonus: 100,
       wagerBonus: 60,
 
-      // decisions: { [entryKey]: { decision: "keep" | "wager" } }
+      // decisions: { [entryKey]: { decision: "keep" | "wager" | "pending" } }
       decisions: {},
 
       // points: { [entryKey]: number }
@@ -91,6 +96,7 @@ function buildEmptyState(season) {
         wagerPot: { pool: 0, bonus: 60, total: 60, winner: "", winnerKey: "", winnerDivision: "", winnerPts: 0 },
         divisionBonus: {}, // { [division]: { bonus, winner, winnerKey, pts } }
         championship: { bonus: 100, winner: "", winnerKey: "", winnerDivision: "", winnerPts: 0 },
+        wagerMisses: [],
       },
     },
   };
@@ -323,7 +329,22 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
         if (!cancelled) {
           setState(() => {
             const base = buildEmptyState(season);
-            return { ...base, ...(doc || {}), season: Number(season) };
+            const merged = { ...base, ...(doc || {}), season: Number(season) };
+
+            // ✅ ensure new timestamp fields exist even on old docs
+            merged.week15 = {
+              ...base.week15,
+              ...(merged.week15 || {}),
+              rulesSavedAt: safeStr(merged?.week15?.rulesSavedAt || ""),
+              decisionsSavedAt: safeStr(merged?.week15?.decisionsSavedAt || ""),
+              pointsPulledAt: safeStr(merged?.week15?.pointsPulledAt || ""),
+              results: {
+                ...base.week15.results,
+                ...(merged?.week15?.results || {}),
+              },
+            };
+
+            return merged;
           });
         }
       } catch {
@@ -355,12 +376,31 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
     const d = state?.week15?.decisions || {};
     let keep = 0;
     let wager = 0;
+    let pending = 0;
     for (const k of Object.keys(d)) {
       if (d[k]?.decision === "keep") keep++;
-      if (d[k]?.decision === "wager") wager++;
+      else if (d[k]?.decision === "wager") wager++;
+      else pending++;
     }
-    return { keep, wager };
+    return { keep, wager, pending };
   }, [state]);
+
+  const decisionsComplete = useMemo(() => {
+    const byDivision = state?.eligibility?.byDivision || {};
+    const total = totalEligibilityCount;
+    if (total <= 0) return false;
+
+    const d = state?.week15?.decisions || {};
+    let valid = 0;
+    for (const div of Object.keys(byDivision)) {
+      for (const e of safeArray(byDivision[div])) {
+        const k = entryKey({ division: div, leagueName: e.leagueName, ownerName: e.ownerName });
+        const dec = safeStr(d?.[k]?.decision || "").trim();
+        if (dec === "keep" || dec === "wager") valid++;
+      }
+    }
+    return valid === total;
+  }, [state, totalEligibilityCount]);
 
   async function save(nextState, note) {
     setSaving(true);
@@ -424,6 +464,7 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
             divisionBonus: {},
             wagerPot: { ...state.week15?.results?.wagerPot },
             championship: { ...state.week15?.results?.championship },
+            wagerMisses: [],
           },
         },
       };
@@ -460,7 +501,7 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
       const next = {
         ...state,
         source: { ...state.source, leaderboardUrl: url, lastFetchedAt: nowIso(), leaderboardEtag: etag },
-        week15: { ...state.week15, points },
+        week15: { ...state.week15, points, pointsPulledAt: nowIso() },
       };
       await save(next, "Pulled Week 15 points.");
     } catch (e) {
@@ -486,30 +527,30 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
   const divisionBonus = Number(state?.week15?.divisionBonus ?? 30) || 30;
   const champBonus = Number(state?.week15?.champBonus ?? 100) || 100;
 
+  // ✅ FIXED step checkmarks (no more “Step 2 always done”)
   const steps = useMemo(() => {
     const hasEligibility = Boolean(state?.eligibility?.computedAt) && Object.keys(state?.eligibility?.byDivision || {}).length > 0;
-    const hasRules =
-      Boolean(state?.week15?.coin ?? null) ||
-      Boolean(state?.week15?.wagerBonus ?? null) ||
-      Boolean(state?.week15?.divisionBonus ?? null) ||
-      Boolean(state?.week15?.champBonus ?? null);
-    const hasDecisions = Object.keys(state?.week15?.decisions || {}).length > 0;
-    const hasPoints = Object.keys(state?.week15?.points || {}).length > 0;
+
+    const rulesDone = Boolean(safeStr(state?.week15?.rulesSavedAt || "").trim());
+    const decisionsDone = Boolean(safeStr(state?.week15?.decisionsSavedAt || "").trim()) && decisionsComplete;
+
+    const pointsDone = Boolean(safeStr(state?.week15?.pointsPulledAt || "").trim());
     const resolved = Boolean(state?.week15?.resolvedAt);
+
     return [
       { key: "import", label: "1) Import Eligibility", done: hasEligibility },
-      { key: "rules", label: "2) Rules", done: hasRules },
-      { key: "decisions", label: "3) Decisions & Points", done: hasDecisions || hasPoints },
+      { key: "rules", label: "2) Rules", done: rulesDone },
+      { key: "decisions", label: "3) Decisions & Points", done: decisionsDone && pointsDone },
       { key: "resolve", label: "4) Resolve", done: resolved },
     ];
-  }, [state]);
+  }, [state, decisionsComplete]);
 
   const activeTab =
     tab === "auto"
       ? state?.week15?.resolvedAt
         ? "resolve"
         : state?.eligibility?.computedAt
-        ? Object.keys(state?.week15?.decisions || {}).length
+        ? safeStr(state?.week15?.rulesSavedAt || "").trim()
           ? "decisions"
           : "rules"
         : "import"
@@ -522,6 +563,11 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
       </Card>
     );
   }
+
+  // convenience for Step 4 tables
+  const pointsMap = state?.week15?.points || {};
+  const decisionsMap = state?.week15?.decisions || {};
+  const results = state?.week15?.results || {};
 
   return (
     <div className="space-y-6">
@@ -577,6 +623,9 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
             <div>
               Wager: <span className="text-foreground font-semibold">{decisionsCount.wager}</span>
             </div>
+            <div>
+              Pending: <span className="text-foreground font-semibold">{decisionsCount.pending}</span>
+            </div>
           </div>
         </Card>
       ) : null}
@@ -629,12 +678,20 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
             <PrimaryButton
               disabled={saving}
               onClick={async () => {
-                await save(state, "Saved rules.");
+                const next = {
+                  ...state,
+                  week15: { ...state.week15, rulesSavedAt: nowIso() },
+                };
+                await save(next, "Saved rules.");
                 setTab("decisions");
               }}
             >
               Save Rules
             </PrimaryButton>
+
+            {safeStr(state?.week15?.rulesSavedAt || "").trim() ? (
+              <p className="mt-2 text-xs text-muted">Saved at: {new Date(state.week15.rulesSavedAt).toLocaleString()}</p>
+            ) : null}
           </div>
         </Card>
       ) : null}
@@ -644,7 +701,7 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
           <h2 className="text-lg font-semibold text-white">Step 3 — Decisions (Keep vs Wager)</h2>
           <p className="mt-2 text-sm text-muted">
             Keepers keep their {fmtMoney(coin)} and can win Division (+{fmtMoney(divisionBonus)}) and Championship (+{fmtMoney(champBonus)}).
-            Wagerers put their {fmtMoney(coin)} into the pot and can win the pooled pot + +{fmtMoney(wagerBonus)}.
+            Wagerers put their {fmtMoney(coin)} into the pot and can win the pooled pot + {fmtMoney(wagerBonus)}.
           </p>
 
           <Divider />
@@ -709,9 +766,7 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
                                       type="button"
                                       onClick={() => setDecision(k, "pending")}
                                       className={`px-3 py-1 text-xs font-semibold rounded-lg transition ${
-                                        cur === "pending"
-                                          ? "bg-panel text-foreground border border-subtle"
-                                          : "text-muted hover:text-white"
+                                        cur === "pending" ? "bg-panel text-foreground border border-subtle" : "text-muted hover:text-white"
                                       }`}
                                     >
                                       —
@@ -734,12 +789,24 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
             <PrimaryButton
               disabled={saving}
               onClick={async () => {
-                await save(state, "Saved decisions.");
+                if (!decisionsComplete) {
+                  setMsg("Error: Decisions not complete. Every entry must be Keep or Wager.");
+                  return;
+                }
+                const next = {
+                  ...state,
+                  week15: { ...state.week15, decisionsSavedAt: nowIso() },
+                };
+                await save(next, "Saved decisions.");
                 setTab("resolve");
               }}
             >
               Save Decisions
             </PrimaryButton>
+
+            {safeStr(state?.week15?.decisionsSavedAt || "").trim() ? (
+              <p className="text-xs text-muted self-center">Saved at: {new Date(state.week15.decisionsSavedAt).toLocaleString()}</p>
+            ) : null}
           </div>
         </Card>
       ) : null}
@@ -747,7 +814,9 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
       {activeTab === "resolve" ? (
         <Card>
           <h2 className="text-lg font-semibold text-white">Step 4 — Pull Week 15 Points + Resolve</h2>
-          <p className="mt-2 text-sm text-muted">Pull Week 15 points from the leaderboard, then resolve winners.</p>
+          <p className="mt-2 text-sm text-muted">
+            Pull Week 15 points from the leaderboard, verify them below by division, then resolve winners.
+          </p>
 
           <div className="mt-4 flex flex-wrap gap-2">
             <PrimaryButton disabled={saving} onClick={pullWeek15Points}>
@@ -760,28 +829,145 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
 
           <Divider />
 
-          <div className="grid gap-3 sm:grid-cols-3 text-sm">
-            <div className="rounded-xl border border-subtle bg-panel/60 p-3">
-              <div className="text-xs uppercase tracking-[0.2em] text-muted">Wager Pot</div>
-              <div className="mt-1 text-foreground font-semibold">
-                {fmtMoney(state?.week15?.results?.wagerPot?.total ?? decisionsCount.wager * coin + wagerBonus)}
-              </div>
-              <div className="mt-1 text-xs text-muted">Winner: {safeStr(state?.week15?.results?.wagerPot?.winner).trim() || "—"}</div>
-            </div>
-            <div className="rounded-xl border border-subtle bg-panel/60 p-3">
-              <div className="text-xs uppercase tracking-[0.2em] text-muted">Championship Bonus</div>
-              <div className="mt-1 text-foreground font-semibold">{fmtMoney(champBonus)}</div>
-              <div className="mt-1 text-xs text-muted">Winner: {safeStr(state?.week15?.results?.championship?.winner).trim() || "—"}</div>
-            </div>
-            <div className="rounded-xl border border-subtle bg-panel/60 p-3">
-              <div className="text-xs uppercase tracking-[0.2em] text-muted">Resolved At</div>
-              <div className="mt-1 text-xs text-muted">{state?.week15?.resolvedAt ? new Date(state.week15.resolvedAt).toLocaleString() : "—"}</div>
-            </div>
-          </div>
+          {/* ✅ Verification tables: everyones points organized by division */}
+          {divisions.length === 0 ? (
+            <p className="text-sm text-muted">No eligibility — import first.</p>
+          ) : Object.keys(pointsMap).length === 0 ? (
+            <p className="text-sm text-muted">No Week 15 points yet — click “Pull Week 15 Points”.</p>
+          ) : (
+            <div className="space-y-5">
+              <div className="grid gap-3 sm:grid-cols-3 text-sm">
+                <div className="rounded-xl border border-subtle bg-panel/60 p-3">
+                  <div className="text-xs uppercase tracking-[0.2em] text-muted">Points Pulled At</div>
+                  <div className="mt-1 text-xs text-muted">
+                    {safeStr(state?.week15?.pointsPulledAt || "").trim()
+                      ? new Date(state.week15.pointsPulledAt).toLocaleString()
+                      : "—"}
+                  </div>
+                </div>
 
-          {safeArray(state?.week15?.results?.wagerMisses).length > 0 && (
-            <>
-              <Divider />
+                <div className="rounded-xl border border-subtle bg-panel/60 p-3">
+                  <div className="text-xs uppercase tracking-[0.2em] text-muted">Wager Pot (if resolved)</div>
+                  <div className="mt-1 text-foreground font-semibold">
+                    {fmtMoney(results?.wagerPot?.total ?? decisionsCount.wager * coin + wagerBonus)}
+                  </div>
+                  <div className="mt-1 text-xs text-muted">Winner: {safeStr(results?.wagerPot?.winner).trim() || "—"}</div>
+                </div>
+
+                <div className="rounded-xl border border-subtle bg-panel/60 p-3">
+                  <div className="text-xs uppercase tracking-[0.2em] text-muted">Resolved At</div>
+                  <div className="mt-1 text-xs text-muted">
+                    {state?.week15?.resolvedAt ? new Date(state.week15.resolvedAt).toLocaleString() : "—"}
+                  </div>
+                </div>
+              </div>
+
+              {divisions.map((div) => {
+                const elig = safeArray(state?.eligibility?.byDivision?.[div] || []);
+                const rows = elig
+                  .map((e) => {
+                    const leagueName = safeStr(e?.leagueName).trim();
+                    const ownerName = safeStr(e?.ownerName).trim();
+                    const k = entryKey({ division: div, leagueName, ownerName });
+                    const pts = Number(pointsMap?.[k] ?? 0) || 0;
+                    const decision = safeStr(decisionsMap?.[k]?.decision || "pending").trim();
+                    return { leagueName, ownerName, k, pts, decision };
+                  })
+                  .sort((a, b) => b.pts - a.pts);
+
+                return (
+                  <div key={div} className="rounded-2xl border border-subtle bg-panel/30 p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-xs uppercase tracking-[0.25em] text-muted">Division</div>
+                        <div className="mt-1 text-lg font-semibold text-white">{div}</div>
+                      </div>
+                      <SmallBadge>{rows.length} leagues</SmallBadge>
+                    </div>
+
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="min-w-[760px] w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-xs uppercase tracking-[0.2em] text-muted">
+                            <th className="py-2 pr-4">League</th>
+                            <th className="py-2 pr-4">Owner</th>
+                            <th className="py-2 pr-4">Decision</th>
+                            <th className="py-2 text-right">Week 15 Pts</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((r) => (
+                            <tr key={r.k} className="border-t border-subtle">
+                              <td className="py-2 pr-4 text-muted">{r.leagueName}</td>
+                              <td className="py-2 pr-4 text-foreground font-medium">{r.ownerName}</td>
+                              <td className="py-2 pr-4 text-muted">
+                                {r.decision === "wager" ? (
+                                  <span className="inline-flex rounded-full border border-amber-400/30 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-100">
+                                    Wager
+                                  </span>
+                                ) : r.decision === "keep" ? (
+                                  <span className="inline-flex rounded-full border border-cyan-400/30 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-100">
+                                    Keep
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex rounded-full border border-subtle bg-panel/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
+                                    Pending
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2 text-right text-foreground font-semibold">{Number(r.pts ?? 0).toFixed(2)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ✅ Who should have wagered: add message when top scorer wagered */}
+          <Divider />
+
+          {(() => {
+            const wagerMisses = safeArray(results?.wagerMisses);
+            const anyWagerers = decisionsCount.wager > 0;
+
+            // Find overall top scorer key + their decision (requires points + eligibility)
+            let champKey = safeStr(results?.championship?.winnerKey || "").trim();
+            let champDecision = champKey ? safeStr(decisionsMap?.[champKey]?.decision || "").trim() : "";
+
+            if (!anyWagerers) {
+              return (
+                <div>
+                  <h3 className="text-sm font-semibold text-white">Who should have wagered?</h3>
+                  <p className="mt-1 text-xs text-muted">No one wagered this week, so there’s no “missed out” list.</p>
+                </div>
+              );
+            }
+
+            if (wagerMisses.length === 0) {
+              return (
+                <div className="rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-4">
+                  <div className="text-xs uppercase tracking-[0.25em] text-emerald-200">No misses</div>
+                  <div className="mt-2 text-sm text-white font-semibold">
+                    {champDecision === "wager"
+                      ? "The top scorer wagered — nobody missed the pot."
+                      : "No Keep decision outscored the best wager score — nobody missed the pot."}
+                  </div>
+                  {champKey ? (
+                    <div className="mt-1 text-xs text-muted">
+                      Top scorer: <span className="text-white">{safeStr(results?.championship?.winner || "—")}</span>{" "}
+                      ({Number(results?.championship?.winnerPts ?? 0).toFixed(2)} pts) · Decision:{" "}
+                      <span className="text-white">{champDecision || "—"}</span>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }
+
+            return (
               <div>
                 <h3 className="text-sm font-semibold text-white">Who should have wagered?</h3>
                 <p className="mt-1 text-xs text-muted">
@@ -800,20 +986,20 @@ export default function MiniLeaguesWagersAdminClient({ season }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {safeArray(state?.week15?.results?.wagerMisses).map((m) => (
+                      {wagerMisses.map((m) => (
                         <tr key={safeStr(m?.key)} className="border-t border-subtle">
                           <td className="py-2 pr-4 text-muted">{safeStr(m?.division)}</td>
                           <td className="py-2 pr-4 text-muted">{safeStr(m?.leagueName)}</td>
                           <td className="py-2 pr-4 text-foreground">{safeStr(m?.ownerName)}</td>
-                          <td className="py-2 text-right text-foreground font-semibold">{Number(m?.wk15 ?? 0) || 0}</td>
+                          <td className="py-2 text-right text-foreground font-semibold">{Number(m?.wk15 ?? 0).toFixed(2)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
               </div>
-            </>
-          )}
+            );
+          })()}
         </Card>
       ) : null}
     </div>
