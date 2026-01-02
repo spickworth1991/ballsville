@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Navbar from "./_lb/components/Navbar";
-import Leaderboard from "./_lb/components/Leaderboard";
-import useAvailableYears from "./_lb/hooks/useAvailableYears";
-import useR2Live from "./_lb/hooks/useR2Live";
 import { CURRENT_SEASON } from "@/lib/season";
 
-const DEFAULT_YEAR = CURRENT_SEASON
+import Navbar from "./_lb/components/Navbar";
+import Leaderboard from "./_lb/components/Leaderboard";
+import { LeaderboardProvider } from "./_lb/context/LeaderboardContext";
+import useAvailableYears from "./_lb/hooks/useAvailableYears";
+import useR2Live from "./_lb/hooks/useR2Live";
+
+const DEFAULT_YEAR = CURRENT_SEASON;
 
 // Leaderboards JSONs live under: data/leaderboards/* in the R2 bucket.
 // In production, always go through the Pages Function at /r2/*.
@@ -16,7 +18,7 @@ const DEFAULT_YEAR = CURRENT_SEASON
 function getLeaderboardsR2Base() {
   // Optional override if you ever want to change it
   if (process.env.NEXT_PUBLIC_LEADERBOARDS_R2_PROXY_BASE) {
-    return process.env.NEXT_PUBLIC_LEADERBOARDS_R2_PROXY_BASE; // e.g. "/r2"
+    return process.env.NEXT_PUBLIC_LEADERBOARDS_R2_PROXY_BASE; // e.g. "/r2" or full public URL
   }
 
   if (typeof window !== "undefined" && window.location.hostname === "localhost") {
@@ -29,6 +31,27 @@ function getLeaderboardsR2Base() {
   }
 
   return "/r2";
+}
+
+function safeArray(v) {
+  return Array.isArray(v) ? v : [];
+}
+
+function stripUpdatedAt(obj) {
+  if (!obj || typeof obj !== "object") return obj;
+  // Avoid mutating the original object (hooks/cache)
+  const out = { ...obj };
+  delete out.updatedAt;
+  return out;
+}
+
+function formatDateTime(dt) {
+  if (!dt) return "";
+  try {
+    return new Date(dt).toLocaleString();
+  } catch {
+    return String(dt);
+  }
 }
 
 export default function LeaderboardsClient() {
@@ -44,10 +67,11 @@ export default function LeaderboardsClient() {
     setR2Base(getLeaderboardsR2Base());
   }, []);
 
-  const DATA_BASE = useMemo(
-    () => `${String(r2Base || "/r2").replace(/\/$/, "")}/data/leaderboards`,
-    [r2Base]
-  );
+  const DATA_BASE = useMemo(() => {
+    const b = String(r2Base || "/r2").replace(/\/$/, "");
+    return `${b}/data/leaderboards`;
+  }, [r2Base]);
+
   const { years, loading: yearsLoading } = useAvailableYears({
     basePath: DATA_BASE,
     fromYear: 2023,
@@ -60,147 +84,139 @@ export default function LeaderboardsClient() {
     return DEFAULT_YEAR;
   }, [years]);
 
-  const [year, setYear] = useState(initialYear);
+  // Navbar expects a { year: "2025", mode: "...", filterType, filterValue } object
+  const [current, setCurrent] = useState(() => ({
+    year: String(initialYear),
+    mode: "",
+    filterType: "all",
+    filterValue: null,
+  }));
 
+  // Keep year synced with available years.
   useEffect(() => {
-    setYear(initialYear);
+    setCurrent((c) => ({ ...c, year: String(initialYear) }));
   }, [initialYear]);
+
+  const yearStr = current.year;
+
+  // Weekly toggle lives in Navbar; Leaderboard reads it.
+  const [showWeeks, setShowWeeks] = useState(false);
 
   // Live leaderboards (poll). The hook will optionally poll a weekly manifest
   // to detect changes, but the main payload is leaderboards_<year>.json.
-  const { manifest, data: liveData, updatedAt, error: liveError } = useR2Live(year, {
-    enabled: Boolean(year),
+  const { data: liveData, updatedAt, error: liveError, loading: liveLoading } = useR2Live(yearStr, {
+    enabled: Boolean(yearStr),
     pollMs: 60_000,
     basePath: DATA_BASE,
   });
-  const weeklyManifest = manifest?.[year] || null;
 
   // The leaderboards JSON is written as either:
   // 1) { "2025": { big_game: {...}, ... } }
   // 2) { big_game: {...}, ... }  (some generators strip the year wrapper)
   // Normalize so the UI always reads the per-year object.
-  const yearData = useMemo(() => {
+  const rawYearBlock = useMemo(() => {
     if (!liveData) return null;
-    const yStr = String(year);
-    const pick =
-      (liveData?.[yStr] && typeof liveData[yStr] === "object" ? liveData[yStr] : null) ||
-      (liveData?.[Number(yStr)] && typeof liveData[Number(yStr)] === "object" ? liveData[Number(yStr)] : null) ||
-      (typeof liveData === "object" ? liveData : null);
+    const y = String(yearStr);
+    const maybeWrapped =
+      (liveData?.[y] && typeof liveData[y] === "object" ? liveData[y] : null) ||
+      (liveData?.[Number(y)] && typeof liveData[Number(y)] === "object" ? liveData[Number(y)] : null);
+    return maybeWrapped || (typeof liveData === "object" ? liveData : null);
+  }, [liveData, yearStr]);
 
-    // If the payload is already a single leaderboard category (has owners/weeks arrays),
-    // wrap it so the category selector works and the renderer gets the right shape.
-    if (pick && Array.isArray(pick.owners) && Array.isArray(pick.weeks)) {
-      return { main: pick };
-    }
+  // Keep updatedAt separate so it doesn't show up as a selectable "mode".
+  const lastUpdated = useMemo(() => {
+    // Prefer hook's updatedAt (from the payload) but fall back to rawYearBlock.updatedAt.
+    const dt = updatedAt || rawYearBlock?.updatedAt;
+    return dt ? formatDateTime(dt) : "";
+  }, [updatedAt, rawYearBlock]);
 
-    return pick;
-  }, [liveData, year]);
+  const yearBlock = useMemo(() => stripUpdatedAt(rawYearBlock), [rawYearBlock]);
 
-  const categories = useMemo(() => {
-    if (!yearData || typeof yearData !== "object") return [];
-    return Object.keys(yearData).filter((k) => yearData[k] && typeof yearData[k] === "object");
-  }, [yearData]);
+  // Build a stable object for Navbar/Provider: { [year]: {modeA:..., modeB:...} }
+  const lbData = useMemo(() => {
+    if (!yearBlock) return {};
+    return { [yearStr]: yearBlock };
+  }, [yearBlock, yearStr]);
 
-  const [category, setCategory] = useState("");
-  const [showWeeks, setShowWeeks] = useState(false);
-
-  // Keep the selected category valid when data loads or when year changes.
+  // Ensure current.mode stays valid as data loads/changes.
   useEffect(() => {
-    if (!categories.length) return;
-    if (!category || !categories.includes(category)) setCategory(categories[0]);
-  }, [categories, category]);
+    const modes = Object.keys(yearBlock || {}).filter((k) => yearBlock?.[k] && typeof yearBlock[k] === "object");
+    if (!modes.length) return;
+    if (current.mode && modes.includes(current.mode)) return;
+    setCurrent((c) => ({ ...c, mode: modes[0] }));
+  }, [yearBlock, current.mode]);
 
-  const leaderboardData = category ? yearData?.[category] || null : null;
+  const mode = current.mode;
+  const leaderboardData = mode ? yearBlock?.[mode] || null : null;
 
-  const leaderboardsUrl = `${DATA_BASE}/data/leaderboards/leaderboards_${year}.json`;
-  const weeklyManifestUrl = `${DATA_BASE}/data/leaderboards/weekly_manifest_${year}.json`;
+  const leaderboardsUrl = `${DATA_BASE}/leaderboards_${yearStr}.json`;
+  const weeklyManifestUrl = `${DATA_BASE}/weekly_manifest_${yearStr}.json`;
 
-  const lbLoading = !liveError && Boolean(year) && !liveData;
   const lbError = liveError;
+  const lbLoading = liveLoading || (!lbError && Boolean(yearStr) && !liveData);
 
-  const lastUpdated = updatedAt
-    ? (() => {
-        try {
-          return new Date(updatedAt).toLocaleString();
-        } catch {
-          return String(updatedAt);
-        }
-      })()
-    : null;
-
-  return (
-    <div className="min-h-screen">
-      <Navbar />
-
-      <main className="mx-auto w-full max-w-6xl px-4 py-6">
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold">Leaderboards</h1>
-            <p className="text-sm opacity-80">
-              {lastUpdated ? ` • Updated ${lastUpdated}` : ""}
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            {categories?.length ? (
-              <div className="flex items-center gap-2">
-                <label className="text-sm opacity-80">Mode</label>
-                <select
-                  className="rounded-md border border-white/10 bg-card-surface px-3 py-2 text-sm"
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                >
-                  {categories.map((c) => (
-                    <option key={c} value={c}>
-                      {String(c).replace(/_/g, " ")}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : null}
-
-            <label className="text-sm opacity-80">Season</label>
-            <select
-              className="rounded-md border border-white/10 bg-card-surface px-3 py-2 text-sm"
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-              disabled={yearsLoading || !years?.length}
-            >
-              {(years?.length ? years : [DEFAULT_YEAR]).map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {lbError ? (
-          <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm">
-            Failed to load leaderboards for {year}.<br />
-            {String(lbError)}
-            <div className="mt-2 opacity-80">
-              Expected JSON: <code>{leaderboardsUrl}</code>
-              <div className="mt-1">
-                Expected weekly manifest: <code>{weeklyManifestUrl}</code>
-              </div>
-            </div>
-          </div>
-        ) : lbLoading || !leaderboardData ? (
+  // Avoid hydration mismatch for any text derived from r2Base.
+  if (!mounted) {
+    return (
+      <div className="min-h-screen">
+        <Navbar />
+        <main className="mx-auto w-full max-w-6xl px-4 py-6">
           <div className="rounded-lg border border-white/10 bg-black/10 p-6 text-sm">
             Loading leaderboards…
           </div>
-        ) : (
-          <Leaderboard
-            data={leaderboardData}
-            year={year}
-            basePath={DATA_BASE}
-            category={category}
-            showWeeks={showWeeks}
-            setShowWeeks={setShowWeeks}
-          />
-        )}
-      </main>
-    </div>
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <LeaderboardProvider leaderboards={lbData}>
+      <div className="min-h-screen">
+        <Navbar
+          data={lbData}
+          years={safeArray(years)}
+          current={current}
+          setCurrent={setCurrent}
+          showWeeks={showWeeks}
+          setShowWeeks={setShowWeeks}
+        />
+
+        <main className="mx-auto w-full max-w-6xl px-4 py-6">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h1 className="text-2xl font-semibold">Leaderboards</h1>
+              <p className="text-sm opacity-80">{lastUpdated ? ` • Updated ${lastUpdated}` : ""}</p>
+            </div>
+          </div>
+
+          {lbError ? (
+            <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm">
+              Failed to load leaderboards for {yearStr}.
+              <br />
+              {String(lbError)}
+              <div className="mt-2 opacity-80">
+                Expected JSON: <code>{leaderboardsUrl}</code>
+                <div className="mt-1">
+                  Expected weekly manifest: <code>{weeklyManifestUrl}</code>
+                </div>
+              </div>
+            </div>
+          ) : lbLoading || !leaderboardData ? (
+            <div className="rounded-lg border border-white/10 bg-black/10 p-6 text-sm">
+              Loading leaderboards…
+            </div>
+          ) : (
+            <Leaderboard
+              data={leaderboardData}
+              year={Number(yearStr)}
+              basePath={DATA_BASE}
+              category={mode}
+              showWeeks={showWeeks}
+              setShowWeeks={setShowWeeks}
+            />
+          )}
+        </main>
+      </div>
+    </LeaderboardProvider>
   );
 }
