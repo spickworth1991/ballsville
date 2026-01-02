@@ -38,6 +38,7 @@ function isGameWindow(now = new Date()) {
   if (weekday === "Mon" && time >= 19) return true;
   // Thu: 19:00+
   if (weekday === "Thu" && time >= 19) return true;
+  if (weekday === "Fri" && time >= 9) return true;
 
   // Early spillover
   if ((weekday === "Mon" || weekday === "Tue" || weekday === "Fri") && time < 2) return true;
