@@ -1,10 +1,7 @@
 name: Update Leaderboards
 
 on:
-  workflow_dispatch:
-  schedule:
-    # Every 2 hours during NFL season is typical; you can adjust later.
-    - cron: "17 */2 * * *"
+  workflow_dispatch: {}
 
 jobs:
   build:
