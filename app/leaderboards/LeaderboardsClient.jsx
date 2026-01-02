@@ -10,8 +10,26 @@ import { CURRENT_SEASON } from "@/lib/season";
 const DEFAULT_YEAR = CURRENT_SEASON
 
 // R2 key base (served by Ballsville's existing /r2 proxy)
-const DATA_BASE =
-  process.env.NEXT_PUBLIC_LEADERBOARDS_DATA_BASE || "/r2/data/leaderboards";
+function getLeaderboardsR2Base() {
+  // Optional override (mirror Gauntlet's pattern)
+  if (process.env.NEXT_PUBLIC_LEADERBOARDS_R2_PROXY_BASE) {
+    return process.env.NEXT_PUBLIC_LEADERBOARDS_R2_PROXY_BASE; // e.g. "/r2"
+  }
+
+  // Local dev: Pages Functions don't run in `next dev`, so hit R2.dev directly.
+  if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+    if (process.env.NEXT_PUBLIC_LEADERBOARDS_R2_PUBLIC_BASE)
+      return process.env.NEXT_PUBLIC_LEADERBOARDS_R2_PUBLIC_BASE;
+    if (process.env.NEXT_PUBLIC_R2_PUBLIC_BASE) return process.env.NEXT_PUBLIC_R2_PUBLIC_BASE;
+    // ✅ Leaderboards bucket public dev URL
+    return "https://pub-153090242f5a4c0eb7bd0e499832a797.r2.dev";
+  }
+
+  // Production: go through the Pages Function proxy
+  return "/r2";
+}
+
+const DATA_BASE = process.env.NEXT_PUBLIC_LEADERBOARDS_DATA_BASE || `${getLeaderboardsR2Base().replace(/\/$/, "")}/data/leaderboards`;
 
 export default function LeaderboardsClient() {
   const { years, loading: yearsLoading } = useAvailableYears({

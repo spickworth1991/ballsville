@@ -6,22 +6,52 @@
 //
 // This keeps Gauntlet working AND makes Mini-Leagues CMS content load.
 
-function pickBucket(env) {
+function pickBucket(env, key) {
+  const k = String(key || "");
+
+  // ✅ Leaderboards live in a different R2 bucket than Gauntlet/Admin.
+  // If you bind it in Pages, it will show up on env as one of these names.
+  // (Bucket name is "leaderboard-data" but the binding name cannot contain dashes.)
+  if (k.startsWith("data/leaderboards/")) {
+    return (
+      env.leaderboard_bucket ||
+      env.LEADERBOARD_BUCKET ||
+      env.leaderboards_bucket ||
+      env.LEADERBOARDS_BUCKET ||
+      env.leaderboard_data ||
+      env.LEADERBOARD_DATA ||
+      env.leaderboards_data ||
+      env.LEADERBOARDS_DATA ||
+      null
+    );
+  }
+
   // Prefer a dedicated public bucket if you have it,
   // but fall back to admin_bucket since that’s what your CMS uses.
   return env.public_bucket || env.PUBLIC_BUCKET || env.admin_bucket || env.ADMIN_BUCKET || null;
 }
 
-// Leaderboards JSONs are stored in a separate R2 bucket (leaderboard-data).
-// We keep the URL shape consistent across the site by routing these keys
-// to a different binding, when present.
-function pickBucketForKey(env, key) {
-  // NOTE: the binding name must exist in Cloudflare Pages settings.
-  // Recommended: `leaderboards_bucket` -> R2 bucket `leaderboard-data`
-  if (key && key.startsWith("data/leaderboards/") && (env.leaderboards_bucket || env.LEADERBOARDS_BUCKET)) {
-    return env.leaderboards_bucket || env.LEADERBOARDS_BUCKET;
+function pickPublicBase(env, key) {
+  const k = String(key || "");
+
+  // ✅ Leaderboards public-dev base (r2.dev)
+  if (k.startsWith("data/leaderboards/")) {
+    return (
+      env.LEADERBOARDS_R2_PUBLIC_BASE ||
+      env.LEADERBOARD_R2_PUBLIC_BASE ||
+      env.LEADERBOARDS_PUBLIC_BASE ||
+      env.LEADERBOARD_PUBLIC_BASE ||
+      // your current bucket's public dev URL
+      "https://pub-153090242f5a4c0eb7bd0e499832a797.r2.dev"
+    );
   }
-  return pickBucket(env);
+
+  // ✅ Gauntlet / everything-else public-dev base
+  return (
+    env.GAUNTLET_R2_PUBLIC_BASE ||
+    env.R2_PUBLIC_BASE ||
+    "https://pub-eec34f38e47f4ffbbc39af58bda1bcc2.r2.dev"
+  );
 }
 
 function cacheControlForKey(key) {
@@ -70,8 +100,7 @@ export async function onRequest({ request, params, env }) {
   }
 
   // ✅ 1) Try bucket binding first (this is what fixes Mini-Leagues 404s)
-  // Route leaderboards to their dedicated bucket.
-  const bucket = pickBucketForKey(env, key);
+  const bucket = pickBucket(env, key);
   if (bucket && typeof bucket.get === "function") {
     const obj = await bucket.get(key);
 
@@ -197,10 +226,7 @@ export async function onRequest({ request, params, env }) {
   }
 
 // ✅ 2) Fallback to public r2.dev proxy (keeps Gauntlet working)
-  const base =
-    env.GAUNTLET_R2_PUBLIC_BASE ||
-    env.R2_PUBLIC_BASE ||
-    "https://pub-eec34f38e47f4ffbbc39af58bda1bcc2.r2.dev";
+  const base = pickPublicBase(env, key);
 
   const target = `${String(base).replace(/\/$/, "")}/${key}`;
 
