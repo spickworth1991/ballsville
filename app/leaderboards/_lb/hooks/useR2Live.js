@@ -27,8 +27,8 @@ export default function useR2Live(
   useEffect(() => {
     let timer, aborted = false;
 
-    const yManifest = (y) => `${basePath.replace(/\/$/, '')}/weekly_manifest_${y}`;
-    const yBoards   = (y) => `${basePath.replace(/\/$/, '')}/leaderboards_${y}`;
+    const yManifest = (y) => `${basePath.replace(/\/$/, '')}/weekly_manifest_${CURRENT_SEASON}.json`;
+    const yBoards   = (y) => `${basePath.replace(/\/$/, '')}/leaderboards_${CURRENT_SEASON}.json`;
 
     const headOrGet = async (url) => {
       try {
