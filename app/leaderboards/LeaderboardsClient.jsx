@@ -5,17 +5,18 @@ import Navbar from "./_lb/components/Navbar";
 import Leaderboard from "./_lb/components/Leaderboard";
 import useAvailableYears from "./_lb/hooks/useAvailableYears";
 import useR2Live from "./_lb/hooks/useR2Live";
+import { CURRENT_SEASON } from "@/lib/season";
 
-const DEFAULT_YEAR = new Date().getFullYear();
+const DEFAULT_YEAR = CURRENT_SEASON
 
 // R2 key base (served by Ballsville's existing /r2 proxy)
 const DATA_BASE =
-  process.env.NEXT_PUBLIC_LEADERBOARDS_DATA_BASE || "/r2/data/leaderboards";
+  process.env.NEXT_PUBLIC_LEADERBOARDS_DATA_BASE || "/r2/leaderboard-data/";
 
 export default function LeaderboardsClient() {
   const { years, loading: yearsLoading } = useAvailableYears({
     basePath: DATA_BASE,
-    fromYear: 2021,
+    fromYear: 2023,
     toYear: DEFAULT_YEAR,
   });
 

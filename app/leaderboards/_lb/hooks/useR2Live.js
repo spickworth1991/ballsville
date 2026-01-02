@@ -1,5 +1,5 @@
 'use client';
-
+import { CURRENT_SEASON } from "@/lib/season";
 import { useEffect, useRef, useState } from 'react';
 
 /**
@@ -15,20 +15,20 @@ import { useEffect, useRef, useState } from 'react';
  */
 export default function useR2Live(
   year,
-  { pollMs = 60000, basePath = '/r2/data/leaderboards' } = {}
+  { pollMs = 60000, basePath = '/r2/leaderboard-data/' } = {}
 ) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const etagRef = useRef(null);
-  const activeYearRef = useRef(year);
+  const activeYearRef = useRef(CURRENT_SEASON)
 
   useEffect(() => { activeYearRef.current = year; }, [year]);
 
   useEffect(() => {
     let timer, aborted = false;
 
-    const yManifest = (y) => `${basePath.replace(/\/$/, '')}/weekly_manifest_${y}.json`;
-    const yBoards   = (y) => `${basePath.replace(/\/$/, '')}/leaderboards_${y}.json`;
+    const yManifest = (y) => `${basePath.replace(/\/$/, '')}/weekly_manifest_${y}`;
+    const yBoards   = (y) => `${basePath.replace(/\/$/, '')}/leaderboards_${y}`;
 
     const headOrGet = async (url) => {
       try {

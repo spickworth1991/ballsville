@@ -12,13 +12,13 @@ function getNflSeasonYear(d = new Date()) {
 
 /**
  * Discovers available years by checking for /<basePath>/weekly_manifest_<year>.json
- * Defaults to basePath='/r2/data/leaderboards' to match Ballsville's R2 proxy.
+ * Defaults to basePath='/r2/leaderboard-data/' to match Ballsville's R2 proxy.
  */
 export default function useAvailableYears({
   startYear = getNflSeasonYear(),
   maxYearsBack = 3,
   pollMs = null,
-  basePath = '/r2/data/leaderboards',
+  basePath = '/r2/leaderboard-data/',
 } = {}) {
   const [years, setYears] = useState(null);
   const [error, setError] = useState(null);
