@@ -31,9 +31,23 @@ function getLeaderboardsR2Base() {
   return "/r2";
 }
 
-const DATA_BASE = `${getLeaderboardsR2Base().replace(/\/$/, "")}/data/leaderboards`;
-
 export default function LeaderboardsClient() {
+  // IMPORTANT: Client Components still render on the server for the initial HTML.
+  // If we compute a different base URL on the client during hydration (e.g. localhost
+  // choosing the public R2 dev domain), React will throw a hydration mismatch.
+  // Start with "/r2" (server-safe) and then swap after mount.
+  const [r2Base, setR2Base] = useState("/r2");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    setR2Base(getLeaderboardsR2Base());
+  }, []);
+
+  const DATA_BASE = useMemo(
+    () => `${String(r2Base || "/r2").replace(/\/$/, "")}/data/leaderboards`,
+    [r2Base]
+  );
   const { years, loading: yearsLoading } = useAvailableYears({
     basePath: DATA_BASE,
     fromYear: 2023,
@@ -52,17 +66,20 @@ export default function LeaderboardsClient() {
     setYear(initialYear);
   }, [initialYear]);
 
-  // Live manifest + leaderboards (poll)
-  const { manifest, boards, updatedAt, error: liveError } = useR2Live(year, {
+  // Live leaderboards (poll). The hook will optionally poll a weekly manifest
+  // to detect changes, but the main payload is leaderboards_<year>.json.
+  const { manifest, data: liveData, updatedAt, error: liveError } = useR2Live(year, {
     enabled: Boolean(year),
     pollMs: 60_000,
     basePath: DATA_BASE,
   });
-
   const weeklyManifest = manifest?.[year] || null;
-  const leaderboardData = boards?.[year] || null;
-  const lbLoading = !liveError && Boolean(year) && (!manifest || !boards);
+  const leaderboardsUrl = useMemo(() => `${DATA_BASE}/leaderboards_${year}.json`, [DATA_BASE, year]);
+
+  const leaderboardData = liveData?.[year] || null;
+  const lbLoading = !liveError && Boolean(year) && !liveData;
   const lbError = liveError;
+
   const lastUpdated = updatedAt
     ? (() => {
         try {
@@ -109,7 +126,10 @@ export default function LeaderboardsClient() {
             Failed to load leaderboards for {year}.<br />
             {String(lbError)}
             <div className="mt-2 opacity-80">
-              Expected JSON: <code>{leaderboardUrl}</code>
+              Expected JSON: <code>{leaderboardsUrl}</code>
+              <div className="mt-1">
+                Expected weekly manifest: <code>{weeklyManifestUrl}</code>
+              </div>
             </div>
           </div>
         ) : lbLoading || !leaderboardData ? (

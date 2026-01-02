@@ -5,7 +5,7 @@ import OwnerModal from "./OwnerModal";
 
 const WEEKS_WINDOW = 3; // how many weeks to show at once
 
-export default function Leaderboard({ data, year, category, showWeeks, setShowWeeks }) {
+export default function Leaderboard({ data, year, category, basePath, showWeeks, setShowWeeks }) {
   const { statsByYear } = useLeaderboard();
   const { totalTeams = 0, uniqueOwners = 0 } = statsByYear?.[year] || {};
 
@@ -153,14 +153,15 @@ useEffect(() => {
       return weeklyCache.current[year];
     }
     try {
-      const manRes = await fetch(`/data/weekly_manifest_${year}.json`, { cache: "no-store" });
+      const base = (basePath || "/r2/data/leaderboards").replace(/\/$/, "");
+      const manRes = await fetch(`${base}/weekly_manifest_${year}.json`, { cache: "no-store" });
       if (!manRes.ok) {
         return null;
       }
       const manifest = await manRes.json(); // { parts: ["weekly_rosters_YYYY_part1.json", ...] }
       let combined = {};
       for (const part of (manifest.parts || [])) {
-        const url = `/data/${part}`;
+        const url = `${base}/${part}`;
         const res = await fetch(url, { cache: "no-store" });
         if (!res.ok) continue;
         const chunk = await res.json();
