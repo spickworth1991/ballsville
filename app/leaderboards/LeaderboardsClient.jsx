@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { CURRENT_SEASON } from "@/lib/season";
 
-import Navbar from "./_lb/components/Navbar";
 import Leaderboard from "./_lb/components/Leaderboard";
 import { LeaderboardProvider } from "./_lb/context/LeaderboardContext";
 import useAvailableYears from "./_lb/hooks/useAvailableYears";
@@ -159,7 +158,6 @@ export default function LeaderboardsClient() {
   if (!mounted) {
     return (
       <div className="min-h-screen">
-        <Navbar />
         <main className="mx-auto w-full max-w-6xl px-4 py-6">
           <div className="rounded-lg border border-white/10 bg-black/10 p-6 text-sm">
             Loading leaderboards…
@@ -172,23 +170,7 @@ export default function LeaderboardsClient() {
   return (
     <LeaderboardProvider leaderboards={lbData}>
       <div className="min-h-screen">
-        <Navbar
-          data={lbData}
-          years={safeArray(years)}
-          current={current}
-          setCurrent={setCurrent}
-          showWeeks={showWeeks}
-          setShowWeeks={setShowWeeks}
-        />
-
         <main className="mx-auto w-full max-w-6xl px-4 py-6">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold">Leaderboards</h1>
-              <p className="text-sm opacity-80">{lastUpdated ? ` • Updated ${lastUpdated}` : ""}</p>
-            </div>
-          </div>
-
           {lbError ? (
             <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm">
               Failed to load leaderboards for {yearStr}.
@@ -207,10 +189,12 @@ export default function LeaderboardsClient() {
             </div>
           ) : (
             <Leaderboard
-              data={leaderboardData}
-              year={Number(yearStr)}
+              data={lbData}
+              years={safeArray(years)}
+              current={current}
+              setCurrent={setCurrent}
               basePath={DATA_BASE}
-              category={mode}
+              lastUpdated={lastUpdated}
               showWeeks={showWeeks}
               setShowWeeks={setShowWeeks}
             />
