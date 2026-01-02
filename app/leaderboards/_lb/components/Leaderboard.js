@@ -407,7 +407,7 @@ const handleRowClickLatest = async (owner) => {
       )}
 
       {/* Table */}
-      <table className="w-full text-left border border-gray-700 rounded-lg text-xs sm:text-sm md:text-base">
+      <table className="w-full text-left border border-gray-700 bg-card-trans rounded-lg text-xs sm:text-sm md:text-base">
         <thead>
           <tr className="bg-gray-800 sticky top-0">
             <th className="p-2">Rank</th>

@@ -74,9 +74,47 @@ export default function LeaderboardsClient() {
     basePath: DATA_BASE,
   });
   const weeklyManifest = manifest?.[year] || null;
-  const leaderboardsUrl = useMemo(() => `${DATA_BASE}/leaderboards_${year}.json`, [DATA_BASE, year]);
 
-  const leaderboardData = liveData?.[year] || null;
+  // The leaderboards JSON is written as either:
+  // 1) { "2025": { big_game: {...}, ... } }
+  // 2) { big_game: {...}, ... }  (some generators strip the year wrapper)
+  // Normalize so the UI always reads the per-year object.
+  const yearData = useMemo(() => {
+    if (!liveData) return null;
+    const yStr = String(year);
+    const pick =
+      (liveData?.[yStr] && typeof liveData[yStr] === "object" ? liveData[yStr] : null) ||
+      (liveData?.[Number(yStr)] && typeof liveData[Number(yStr)] === "object" ? liveData[Number(yStr)] : null) ||
+      (typeof liveData === "object" ? liveData : null);
+
+    // If the payload is already a single leaderboard category (has owners/weeks arrays),
+    // wrap it so the category selector works and the renderer gets the right shape.
+    if (pick && Array.isArray(pick.owners) && Array.isArray(pick.weeks)) {
+      return { main: pick };
+    }
+
+    return pick;
+  }, [liveData, year]);
+
+  const categories = useMemo(() => {
+    if (!yearData || typeof yearData !== "object") return [];
+    return Object.keys(yearData).filter((k) => yearData[k] && typeof yearData[k] === "object");
+  }, [yearData]);
+
+  const [category, setCategory] = useState("");
+  const [showWeeks, setShowWeeks] = useState(false);
+
+  // Keep the selected category valid when data loads or when year changes.
+  useEffect(() => {
+    if (!categories.length) return;
+    if (!category || !categories.includes(category)) setCategory(categories[0]);
+  }, [categories, category]);
+
+  const leaderboardData = category ? yearData?.[category] || null : null;
+
+  const leaderboardsUrl = `${DATA_BASE}/data/leaderboards/leaderboards_${year}.json`;
+  const weeklyManifestUrl = `${DATA_BASE}/data/leaderboards/weekly_manifest_${year}.json`;
+
   const lbLoading = !liveError && Boolean(year) && !liveData;
   const lbError = liveError;
 
@@ -99,15 +137,31 @@ export default function LeaderboardsClient() {
           <div>
             <h1 className="text-2xl font-semibold">Leaderboards</h1>
             <p className="text-sm opacity-80">
-              Data source: R2 ({DATA_BASE})
               {lastUpdated ? ` • Updated ${lastUpdated}` : ""}
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            {categories?.length ? (
+              <div className="flex items-center gap-2">
+                <label className="text-sm opacity-80">Mode</label>
+                <select
+                  className="rounded-md border border-white/10 bg-card-surface px-3 py-2 text-sm"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                >
+                  {categories.map((c) => (
+                    <option key={c} value={c}>
+                      {String(c).replace(/_/g, " ")}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
             <label className="text-sm opacity-80">Season</label>
             <select
-              className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm"
+              className="rounded-md border border-white/10 bg-card-surface px-3 py-2 text-sm"
               value={year}
               onChange={(e) => setYear(Number(e.target.value))}
               disabled={yearsLoading || !years?.length}
@@ -140,9 +194,10 @@ export default function LeaderboardsClient() {
           <Leaderboard
             data={leaderboardData}
             year={year}
-            // weeklyManifest is optional; the Leaderboard component can still render without it
-            weeklyManifest={weeklyManifest}
             basePath={DATA_BASE}
+            category={category}
+            showWeeks={showWeeks}
+            setShowWeeks={setShowWeeks}
           />
         )}
       </main>
