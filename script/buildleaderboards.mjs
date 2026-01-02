@@ -1,6 +1,6 @@
 // Build + upload Ballsville leaderboards JSONs to R2.
 //
-// Produces files in ./auto/ (via scripts/leaderboards/auto-gen.js), then uploads them to
+// Produces files in ./auto/ (via script/leaderboards/auto-gen.js), then uploads them to
 // R2 under the prefix: data/leaderboards/
 //
 // Required env vars (same pattern as buildgauntlet.mjs):
@@ -80,7 +80,7 @@ async function main() {
   if (fs.existsSync(autoDir)) fs.rmSync(autoDir, { recursive: true, force: true });
 
   console.log("\n=== Generating leaderboards JSONs ===\n");
-  run("node", [path.join(ROOT, "scripts/leaderboards/auto-gen.js")], { cwd: ROOT });
+  run("node", [path.join(ROOT, "script/leaderboards/auto-gen.js")], { cwd: ROOT });
 
   if (!fs.existsSync(autoDir)) {
     throw new Error("auto/ folder was not created by auto-gen.js");
