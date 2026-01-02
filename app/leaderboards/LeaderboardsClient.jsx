@@ -11,12 +11,12 @@ const DEFAULT_YEAR = CURRENT_SEASON
 
 // R2 key base (served by Ballsville's existing /r2 proxy)
 const DATA_BASE =
-  process.env.NEXT_PUBLIC_LEADERBOARDS_DATA_BASE || "/r2/";
+  process.env.NEXT_PUBLIC_LEADERBOARDS_DATA_BASE || "/r2/data/leaderboards";
 
 export default function LeaderboardsClient() {
   const { years, loading: yearsLoading } = useAvailableYears({
     basePath: DATA_BASE,
-    fromYear: 2023,
+    fromYear: 2021,
     toYear: DEFAULT_YEAR,
   });
 

@@ -15,7 +15,7 @@ import { useEffect, useRef, useState } from 'react';
  */
 export default function useR2Live(
   year,
-  { pollMs = 60000, basePath = '/r2/' } = {}
+  { pollMs = 60000, basePath = '/r2/data/leaderboards' } = {}
 ) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
