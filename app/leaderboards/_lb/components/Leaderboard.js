@@ -11,13 +11,14 @@ export default function Leaderboard({ data, year, category, showWeeks, setShowWe
 
   // Build a globally-ranked list 
   const rankedOwners = useMemo(() => {
-    const list = [...data.owners].sort((a, b) =>
-      (b.total - a.total) ||
-      a.ownerName.localeCompare(b.ownerName) ||
-      (a.leagueName || "").localeCompare(b.leagueName || "")
+    const owners = Array.isArray(data?.owners) ? data.owners : [];
+    const list = [...owners].sort((a, b) =>
+      (Number(b?.total || 0) - Number(a?.total || 0)) ||
+      String(a?.ownerName || "").localeCompare(String(b?.ownerName || "")) ||
+      String(a?.leagueName || "").localeCompare(String(b?.leagueName || ""))
     );
     return list.map((o, i) => ({ ...o, globalRank: i + 1 }));
-  }, [data.owners]);
+  }, [data]);
 
   // -------- Owner Search ----------
   const [query, setQuery] = useState("");

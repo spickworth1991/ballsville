@@ -15,6 +15,10 @@ import { useEffect, useRef, useState } from 'react';
  */
 export default function useR2Live(
   year,
+  // basePath should point at the leaderboards directory.
+  // Examples:
+  //   /r2/data/leaderboards (production via Pages Function)
+  //   https://pub-XXXX.r2.dev/data/leaderboards (local dev)
   { pollMs = 60000, basePath = '/r2/data/leaderboards' } = {}
 ) {
   const [data, setData] = useState(null);
@@ -27,8 +31,9 @@ export default function useR2Live(
   useEffect(() => {
     let timer, aborted = false;
 
-    const yManifest = (y) => `${basePath.replace(/\/$/, '')}/weekly_manifest_${CURRENT_SEASON}.json`;
-    const yBoards   = (y) => `${basePath.replace(/\/$/, '')}/leaderboards_${CURRENT_SEASON}.json`;
+    const base = String(basePath || '').replace(/\/$/, '');
+    const yManifest = (y) => `${base}/weekly_manifest_${y}.json`;
+    const yBoards   = (y) => `${base}/leaderboards_${y}.json`;
 
     const headOrGet = async (url) => {
       try {

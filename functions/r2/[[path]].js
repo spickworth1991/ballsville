@@ -9,49 +9,22 @@
 function pickBucket(env, key) {
   const k = String(key || "");
 
-  // ✅ Leaderboards live in a different R2 bucket than Gauntlet/Admin.
-  // If you bind it in Pages, it will show up on env as one of these names.
-  // (Bucket name is "leaderboard-data" but the binding name cannot contain dashes.)
+  // If you bind the leaderboards bucket separately in Pages, use it for leaderboard keys.
+  // (Binding names are flexible; these cover the common ones.)
   if (k.startsWith("data/leaderboards/")) {
-    return (
+    const lb =
       env.leaderboard_bucket ||
       env.LEADERBOARD_BUCKET ||
       env.leaderboards_bucket ||
       env.LEADERBOARDS_BUCKET ||
-      env.leaderboard_data ||
-      env.LEADERBOARD_DATA ||
-      env.leaderboards_data ||
-      env.LEADERBOARDS_DATA ||
-      null
-    );
+      env.leaderboard_data_bucket ||
+      env.LEADERBOARD_DATA_BUCKET ||
+      null;
+    if (lb) return lb;
   }
 
-  // Prefer a dedicated public bucket if you have it,
-  // but fall back to admin_bucket since that’s what your CMS uses.
+  // Default: prefer a dedicated public bucket, otherwise fall back to the admin bucket.
   return env.public_bucket || env.PUBLIC_BUCKET || env.admin_bucket || env.ADMIN_BUCKET || null;
-}
-
-function pickPublicBase(env, key) {
-  const k = String(key || "");
-
-  // ✅ Leaderboards public-dev base (r2.dev)
-  if (k.startsWith("data/leaderboards/")) {
-    return (
-      env.LEADERBOARDS_R2_PUBLIC_BASE ||
-      env.LEADERBOARD_R2_PUBLIC_BASE ||
-      env.LEADERBOARDS_PUBLIC_BASE ||
-      env.LEADERBOARD_PUBLIC_BASE ||
-      // your current bucket's public dev URL
-      "https://pub-153090242f5a4c0eb7bd0e499832a797.r2.dev"
-    );
-  }
-
-  // ✅ Gauntlet / everything-else public-dev base
-  return (
-    env.GAUNTLET_R2_PUBLIC_BASE ||
-    env.R2_PUBLIC_BASE ||
-    "https://pub-eec34f38e47f4ffbbc39af58bda1bcc2.r2.dev"
-  );
 }
 
 function cacheControlForKey(key) {
@@ -226,7 +199,18 @@ export async function onRequest({ request, params, env }) {
   }
 
 // ✅ 2) Fallback to public r2.dev proxy (keeps Gauntlet working)
-  const base = pickPublicBase(env, key);
+  // ✅ 2) Fallback to public r2.dev proxy
+  // - Gauntlet + legacy content: GAUNTLET_R2_PUBLIC_BASE / R2_PUBLIC_BASE
+  // - Leaderboards: LEADERBOARDS_R2_PUBLIC_BASE
+  const base = key.startsWith("data/leaderboards/")
+    ? (env.LEADERBOARDS_R2_PUBLIC_BASE ||
+        env.LEADERBOARD_R2_PUBLIC_BASE ||
+        env.R2_LEADERBOARDS_PUBLIC_BASE ||
+        // ...and finally a hard fallback (your current leaderboards bucket public URL)
+        "https://pub-153090242f5a4c0eb7bd0e499832a797.r2.dev")
+    : (env.GAUNTLET_R2_PUBLIC_BASE ||
+        env.R2_PUBLIC_BASE ||
+        "https://pub-eec34f38e47f4ffbbc39af58bda1bcc2.r2.dev");
 
   const target = `${String(base).replace(/\/$/, "")}/${key}`;
 

@@ -9,32 +9,34 @@ import { CURRENT_SEASON } from "@/lib/season";
 
 const DEFAULT_YEAR = CURRENT_SEASON
 
-// R2 key base (served by Ballsville's existing /r2 proxy)
+// Leaderboards JSONs live under: data/leaderboards/* in the R2 bucket.
+// In production, always go through the Pages Function at /r2/*.
+// In local dev (next dev), Pages Functions do NOT run, so we must hit the
+// bucket's public r2.dev URL directly.
 function getLeaderboardsR2Base() {
-  // Optional override (mirror Gauntlet's pattern)
+  // Optional override if you ever want to change it
   if (process.env.NEXT_PUBLIC_LEADERBOARDS_R2_PROXY_BASE) {
     return process.env.NEXT_PUBLIC_LEADERBOARDS_R2_PROXY_BASE; // e.g. "/r2"
   }
 
-  // Local dev: Pages Functions don't run in `next dev`, so hit R2.dev directly.
   if (typeof window !== "undefined" && window.location.hostname === "localhost") {
-    if (process.env.NEXT_PUBLIC_LEADERBOARDS_R2_PUBLIC_BASE)
-      return process.env.NEXT_PUBLIC_LEADERBOARDS_R2_PUBLIC_BASE;
-    if (process.env.NEXT_PUBLIC_R2_PUBLIC_BASE) return process.env.NEXT_PUBLIC_R2_PUBLIC_BASE;
-    // ✅ Leaderboards bucket public dev URL
-    return "https://pub-153090242f5a4c0eb7bd0e499832a797.r2.dev";
+    // Local dev: use public bucket URL
+    return (
+      process.env.NEXT_PUBLIC_LEADERBOARDS_R2_PUBLIC_BASE ||
+      process.env.NEXT_PUBLIC_R2_PUBLIC_BASE ||
+      "https://pub-153090242f5a4c0eb7bd0e499832a797.r2.dev"
+    );
   }
 
-  // Production: go through the Pages Function proxy
   return "/r2";
 }
 
-const DATA_BASE = process.env.NEXT_PUBLIC_LEADERBOARDS_DATA_BASE || `${getLeaderboardsR2Base().replace(/\/$/, "")}/data/leaderboards`;
+const DATA_BASE = `${getLeaderboardsR2Base().replace(/\/$/, "")}/data/leaderboards`;
 
 export default function LeaderboardsClient() {
   const { years, loading: yearsLoading } = useAvailableYears({
     basePath: DATA_BASE,
-    fromYear: 2021,
+    fromYear: 2023,
     toYear: DEFAULT_YEAR,
   });
 
@@ -50,38 +52,26 @@ export default function LeaderboardsClient() {
     setYear(initialYear);
   }, [initialYear]);
 
-  const leaderboardUrl = `${DATA_BASE}/leaderboards_${year}.json`;
-  const manifestUrl = `${DATA_BASE}/weekly_manifest_${year}.json`;
-
-  const {
-    data: leaderboardData,
-    loading: lbLoading,
-    error: lbError,
-    lastModified: lbLastModified,
-  } = useR2Live(leaderboardUrl, {
+  // Live manifest + leaderboards (poll)
+  const { manifest, boards, updatedAt, error: liveError } = useR2Live(year, {
     enabled: Boolean(year),
     pollMs: 60_000,
-    initialDelayMs: 0,
+    basePath: DATA_BASE,
   });
 
-  const {
-    data: weeklyManifest,
-    lastModified: manifestLastModified,
-  } = useR2Live(manifestUrl, {
-    enabled: Boolean(year),
-    pollMs: 60_000,
-    initialDelayMs: 0,
-  });
-
-  const lastUpdated = useMemo(() => {
-    const lm = lbLastModified || manifestLastModified;
-    if (!lm) return null;
-    try {
-      return new Date(lm).toLocaleString();
-    } catch {
-      return String(lm);
-    }
-  }, [lbLastModified, manifestLastModified]);
+  const weeklyManifest = manifest?.[year] || null;
+  const leaderboardData = boards?.[year] || null;
+  const lbLoading = !liveError && Boolean(year) && (!manifest || !boards);
+  const lbError = liveError;
+  const lastUpdated = updatedAt
+    ? (() => {
+        try {
+          return new Date(updatedAt).toLocaleString();
+        } catch {
+          return String(updatedAt);
+        }
+      })()
+    : null;
 
   return (
     <div className="min-h-screen">
