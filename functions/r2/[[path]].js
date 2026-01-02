@@ -12,6 +12,18 @@ function pickBucket(env) {
   return env.public_bucket || env.PUBLIC_BUCKET || env.admin_bucket || env.ADMIN_BUCKET || null;
 }
 
+// Leaderboards JSONs are stored in a separate R2 bucket (leaderboard-data).
+// We keep the URL shape consistent across the site by routing these keys
+// to a different binding, when present.
+function pickBucketForKey(env, key) {
+  // NOTE: the binding name must exist in Cloudflare Pages settings.
+  // Recommended: `leaderboards_bucket` -> R2 bucket `leaderboard-data`
+  if (key && key.startsWith("data/leaderboards/") && (env.leaderboards_bucket || env.LEADERBOARDS_BUCKET)) {
+    return env.leaderboards_bucket || env.LEADERBOARDS_BUCKET;
+  }
+  return pickBucket(env);
+}
+
 function cacheControlForKey(key) {
   const k = String(key || "").toLowerCase();
 
@@ -58,7 +70,8 @@ export async function onRequest({ request, params, env }) {
   }
 
   // ✅ 1) Try bucket binding first (this is what fixes Mini-Leagues 404s)
-  const bucket = pickBucket(env);
+  // Route leaderboards to their dedicated bucket.
+  const bucket = pickBucketForKey(env, key);
   if (bucket && typeof bucket.get === "function") {
     const obj = await bucket.get(key);
 
