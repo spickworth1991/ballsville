@@ -18,7 +18,7 @@ export default function useAvailableYears({
   startYear = getNflSeasonYear(),
   maxYearsBack = 3,
   pollMs = null,
-  basePath = '/r2/leaderboard-data/',
+  basePath = '/r2/',
 } = {}) {
   const [years, setYears] = useState(null);
   const [error, setError] = useState(null);
