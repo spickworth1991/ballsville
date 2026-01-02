@@ -581,13 +581,18 @@ if (typeof LEAGUE_MAP === "undefined") {
 }
 
 /** =================== HELPERS =================== */
-// Optional env overrides for CI / automation
+// Optional env overrides (still supported, but NOT required)
 const ENV_YEARS = process.env.LEADERBOARD_YEARS
   ? process.env.LEADERBOARD_YEARS.split(",").map(s => s.trim()).filter(Boolean)
   : null;
 
-// If unset, we'll default to true in CI mode
 const ENV_USE_CACHED_PLAYERS = process.env.USE_CACHED_PLAYERS;
+
+// Detect CI (GitHub Actions sets GITHUB_ACTIONS=true automatically)
+const IS_CI =
+  process.env.GITHUB_ACTIONS === "true" ||
+  process.env.CI === "true";
+
 
 // ---- BEST BALL HELPERS -------------------------------------------------
 const normId = (x) => (x == null ? null : String(x).trim());
@@ -989,23 +994,29 @@ async function main() {
   let SELECTED_YEARS;
   let USE_CACHED_PLAYERS;
 
-  // 🔹 Non-interactive mode for CI / automation
-  if (ENV_YEARS && ENV_YEARS.length) {
-    SELECTED_YEARS = ENV_YEARS;
-    // default to true if not explicitly set
+  // ✅ CI mode: never prompt, always run current NFL season only
+  if (IS_CI) {
+    SELECTED_YEARS = [CURRENT_YEAR];
     USE_CACHED_PLAYERS =
-      ENV_USE_CACHED_PLAYERS === undefined
-        ? true
-        : ENV_USE_CACHED_PLAYERS === "true";
+      ENV_USE_CACHED_PLAYERS === undefined ? true : ENV_USE_CACHED_PLAYERS === "true";
 
     console.log(
-      `⚙️  Non-interactive mode: years = ${SELECTED_YEARS.join(
-        ", "
-      )}, useCachedPlayers = ${USE_CACHED_PLAYERS}`
+      `🤖 CI mode: year=${CURRENT_YEAR}, useCachedPlayers=${USE_CACHED_PLAYERS}`
     );
-  } else {
-    // 🔹 Local interactive mode: default to "current season + 3 back".
-    // This keeps the prompt clean while still letting you add more years to LEAGUE_MAP later.
+  }
+  // ✅ Optional env override (still works locally if you want it)
+  else if (ENV_YEARS && ENV_YEARS.length) {
+    SELECTED_YEARS = ENV_YEARS;
+
+    USE_CACHED_PLAYERS =
+      ENV_USE_CACHED_PLAYERS === undefined ? true : ENV_USE_CACHED_PLAYERS === "true";
+
+    console.log(
+      `⚙️  Env override: years=${SELECTED_YEARS.join(", ")}, useCachedPlayers=${USE_CACHED_PLAYERS}`
+    );
+  }
+  // ✅ Local interactive mode
+  else {
     const defaultYears = [
       String(getCurrentSeason()),
       String(getCurrentSeason() - 1),
@@ -1022,7 +1033,6 @@ async function main() {
       .sort()
       .map((y) => ({ title: y, value: y }));
 
-    // Select all shown years by default
     const initialYears = yearChoices.map((_, i) => i);
 
     const ans = await prompts(
