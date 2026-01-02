@@ -103,7 +103,13 @@ export default function DynastyPageClient({ season = CURRENT_SEASON, version = "
                 All BALLSVILLE Dynasty Empire Leagues follow the same core documents and structure.
                 Anyone who joins is expected to have read them.
               </p>
-
+              <Link
+                  prefetch={false}
+                  href="/dynasty/wagers"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-emerald-500/35 bg-gradient-to-r from-emerald-600/20 via-lime-600/10 to-cyan-600/10 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-lg shadow-emerald-900/25 hover:shadow-xl hover:shadow-emerald-900/35 hover:-translate-y-0.5 transition"
+                >
+                  💰 Wager Tracker
+                </Link>
               <div className="mt-4 inline-flex flex-wrap gap-2 text-xs sm:text-sm">
                 <span className="rounded-full border border-subtle bg-card-surface px-3 py-1">
                   12-team · Superflex · 3WR
@@ -165,6 +171,7 @@ export default function DynastyPageClient({ season = CURRENT_SEASON, version = "
                 <span className="font-semibold">Derby</span>: one shuffle, then managers choose draft spots, which also
                 sets rookie draft order (reverse order).
               </div>
+              
             </div>
           </div>
 

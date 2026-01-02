@@ -10,7 +10,7 @@
     "start": "next start",
     "lint": "next lint",
     "icons": "node scripts/make-icons.mjs public/logo-source.webp",
-    "git": "git add . && git commit -m \"tweaking\" && git push origin main", 
+    "git": "git add . && git commit -m \"IntergrateLeaderboards\" && git push origin main", 
     "leg3": "node script/buildgauntlet.mjs"
   },
   "dependencies": {

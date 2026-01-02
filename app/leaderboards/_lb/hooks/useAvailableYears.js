@@ -1,0 +1,70 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+
+// NFL season is named by the year it starts.
+// Jan/Feb are still the prior season (playoffs/SB).
+function getNflSeasonYear(d = new Date()) {
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1; // 0=Jan, 1=Feb, ...
+  return m <= 2 ? y - 1 : y;
+}
+
+/**
+ * Discovers available years by checking for /<basePath>/weekly_manifest_<year>.json
+ * Defaults to basePath='/r2/data/leaderboards' to match Ballsville's R2 proxy.
+ */
+export default function useAvailableYears({
+  startYear = getNflSeasonYear(),
+  maxYearsBack = 3,
+  pollMs = null,
+  basePath = '/r2/data/leaderboards',
+} = {}) {
+  const [years, setYears] = useState(null);
+  const [error, setError] = useState(null);
+
+  const base = basePath.replace(/\/$/, '');
+
+  async function urlExists(url) {
+    try {
+      const h = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+      if (h.ok) return true;
+    } catch {}
+    try {
+      const g = await fetch(url, { method: 'GET', cache: 'no-store' });
+      return g.ok;
+    } catch {}
+    return false;
+  }
+
+  useEffect(() => {
+    let aborted = false;
+    const candidates = Array.from({ length: maxYearsBack + 1 }, (_, i) =>
+      String(startYear - i)
+    );
+
+    const run = async () => {
+      try {
+        const results = await Promise.all(
+          candidates.map((y) => urlExists(`${base}/weekly_manifest_${y}.json`))
+        );
+        if (aborted) return;
+        setYears(candidates.filter((_, i) => results[i])); // newest → oldest
+        setError(null);
+      } catch (e) {
+        if (aborted) return;
+        setError(String(e));
+      }
+    };
+
+    run();
+    let t;
+    if (pollMs) t = setInterval(run, pollMs);
+    return () => {
+      aborted = true;
+      if (t) clearInterval(t);
+    };
+  }, [startYear, maxYearsBack, pollMs, base]);
+
+  return { years, error };
+}
