@@ -28,7 +28,6 @@ export default function RedraftDynamicBlocks({
       {showLeagues ? (
         <RedraftLeaguesClient
           embedded={embeddedLeagues}
-          title="League Directory"
           season={season}
           version={version}
           manifest={manifest}

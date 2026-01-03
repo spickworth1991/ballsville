@@ -114,29 +114,7 @@ export default function RedraftLeaguesClient({ SEASON = CURRENT_SEASON, embedded
     });
   }, [leagues]);
 
-  if (embedded) {
-    if (loading) return <p className="text-muted">Loading…</p>;
-    return (
-      <>
-        {error ? (
-          <div className="card bg-card-surface border border-subtle p-5">
-            <p className="text-red-300">{error}</p>
-          </div>
-        ) : null}
-        {grid}
-      </>
-    );
-  }
-
-  if (loading) {
-    return (
-      <main className="section">
-        <div className="container-site">
-          <p className="text-muted">Loading…</p>
-        </div>
-      </main>
-    );
-  }
+  if (loading) return <p className="text-sm text-muted">Loading leagues…</p>;
   if (error) return <p className="text-sm text-danger">{error}</p>;
 
   return (
