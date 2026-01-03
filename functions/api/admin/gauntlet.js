@@ -34,6 +34,7 @@ async function touchManifest(env, season) {
   const key = season ? `data/manifests/gauntlet_${season}.json` : `data/manifests/gauntlet.json`;
   const body = JSON.stringify({ section: "gauntlet", season: season || null, updatedAt: Date.now() }, null, 2);
   await b.put(key, body, { httpMetadata: { contentType: "application/json; charset=utf-8" } });
+    await touchManifest(env, season);
 }
 
 
@@ -81,8 +82,6 @@ async function writeJSON(env, key, payload) {
 
 export async function onRequest(context) {
   const { request, env } = context;
-  const url = new URL(request.url);
-  const season = url.searchParams.get("season") || url.searchParams.get("year") || String(CURRENT_SEASON);
   const type = (url.searchParams.get("type") || "leagues").toLowerCase();
 
   const key = type === "page" ? pageKeyForSeason(season) : leaguesKeyForSeason(season);
@@ -112,7 +111,8 @@ export async function onRequest(context) {
       if (bodyType === "page") {
         const payload = sanitizePageInput(body?.data || body, s);
         await writeJSON(env, pageKeyForSeason(s), payload);
-        await touchManifest(env, s);
+        await touchManifest(env, "gauntlet", s);
+        await touchManifest(env, "gauntlet", null);
         return json({ ok: true, season: Number(s) || s, key: pageKeyForSeason(s), type: "page", updated_at: now });
       }
 
@@ -130,7 +130,8 @@ export async function onRequest(context) {
         rows,
       };
       await writeJSON(env, leaguesKeyForSeason(s), payload);
-      await touchManifest(env, s);
+      await touchManifest(env, "gauntlet", s);
+      await touchManifest(env, "gauntlet", null);
       return json({ ok: true, season: Number(s) || s, key: leaguesKeyForSeason(s), type: "leagues", updated_at: now });
     }
 

@@ -1,22 +1,11 @@
 "use client";
 
+import { r2Url } from "@/lib/r2Url";
 import React, { useEffect, useMemo, useState } from "react";
 
 // In-memory cache so multiple SectionManifestGate instances on the same client session
 // don't refetch the same manifest repeatedly.
 const __MANIFEST_CACHE = new Map();
-
-function isLocalhost() {
-  if (typeof window === "undefined") return false;
-  const h = String(window.location?.hostname || "").toLowerCase();
-  return h === "localhost" || h === "127.0.0.1";
-}
-
-function joinUrl(base, path) {
-  const b = String(base || "").replace(/\/$/, "");
-  const p = String(path || "").replace(/^\//, "");
-  return `${b}/${p}`;
-}
 
 
 /**
@@ -28,14 +17,10 @@ function joinUrl(base, path) {
  * If season is omitted, key: /r2/data/manifests/{section}.json
  */
 function manifestUrl(section, season) {
-  // In production we fetch through /r2 (Pages Functions) so bucket bindings + caching work.
-  // In localhost dev, /r2 may not exist, so we fetch directly from the public r2.dev base.
-  const localBase = process.env.NEXT_PUBLIC_ADMIN_R2_PROXY_BASE || "https://pub-b20eaa361fb04ee5afea1a9cf22eeb57.r2.dev";
-  const base = isLocalhost() ? localBase : "/r2";
-  const key = season
-    ? `data/manifests/${section}_${season}.json`
-    : `data/manifests/${section}.json`;
-  return joinUrl(base, key);
+  const s = String(section || "").trim();
+  const y = season == null ? "" : String(season).trim();
+  const key = y ? `data/manifests/${s}_${y}.json` : `data/manifests/${s}.json`;
+  return r2Url(key);
 }
 
 async function tryFetchJson(url) {

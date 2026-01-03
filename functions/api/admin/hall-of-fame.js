@@ -208,6 +208,7 @@ export async function onRequest(context) {
 
       // Bust manifest-first client caches on update
       await touchManifest(env, Number.isFinite(season) ? season : undefined);
+      await touchManifest(env, undefined);
 
       return json({ ok: true, entries: cleaned });
     }

@@ -1,32 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { r2Url } from "@/lib/r2Url";
 import Image from "next/image";
 
 const FALLBACK = {
   title: "Hall of Fame",
   entries: [],
 };
-
-function isLocalhost() {
-  if (typeof window === "undefined") return false;
-  const h = String(window.location?.hostname || "").toLowerCase();
-  return h === "localhost" || h === "127.0.0.1" || h === "::1";
-}
-
-function adminR2Base() {
-  // Production: go through /r2 (bucket binding + caching)
-  // Localhost: hit the public r2.dev base directly (no Pages Functions required)
-  if (!isLocalhost()) return "/r2";
-
-  const base =
-    process.env.NEXT_PUBLIC_ADMIN_R2_PROXY_BASE ||
-    process.env.NEXT_PUBLIC_ADMIN_R2_PUBLIC_BASE ||
-    // Last-resort: your admin bucket public URL (only used on localhost)
-    "https://pub-b20eaa361fb04ee5afea1a9cf22eeb57.r2.dev";
-
-  return String(base).replace(/\/$/, "");
-}
 
 function normalizeEntry(e, idx) {
   const id = String(e?.id || e?.slug || idx);
@@ -39,7 +20,7 @@ function normalizeEntry(e, idx) {
   const imageKey = imageKeyRaw.replace(/^\/+/, "");
   const imageUrl = typeof e?.imageUrl === "string" ? e.imageUrl : "";
 
-  const img = imageKey ? `${adminR2Base()}/${imageKey}` : imageUrl;
+  const img = imageKey ? r2Url(imageKey) : imageUrl;
 
   return {
     id,
@@ -255,7 +236,7 @@ export default function HallOfFameClient({ version = "0", manifest = null }) {
         }
 
         const res = await fetch(
-          `${adminR2Base()}/data/hall-of-fame/hall_of_fame.json?v=${encodeURIComponent(v)}`,
+          `/r2/data/hall-of-fame/hall_of_fame.json?v=${encodeURIComponent(v)}`,
           { cache: "default" }
         );
         if (!res.ok) {

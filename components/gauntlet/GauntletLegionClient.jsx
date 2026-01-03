@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import MediaTabCard from "@/components/ui/MediaTabCard";
 import { CURRENT_SEASON } from "@/lib/season";
 import { safeStr } from "@/lib/safe";
-import { adminR2Url } from "@/lib/r2Client";
+import { r2Url } from "@/lib/r2Url";
 
 function slugify(s) {
   return String(s || "")
@@ -30,10 +30,10 @@ function resolveImageSrc({ imagePath, imageKey, updatedAt, version }) {
     if (p.includes("?")) return p;
     return `${p}?v=${bust}`;
   }
-  // If we stored only the key, build a public /r2 URL.
-  if (k) return adminR2Url(`${k}?v=${bust}`);
+  if (imageUrl) return imageUrl;
+  const k = safeStr(imageKey).trim();
+  if (k) return `${r2Url(k)}?v=${bust}`;
   return "";
-}
 
 function buildIndex(rows) {
   const active = Array.isArray(rows) ? rows.filter((r) => r && r.is_active !== false) : [];
@@ -80,8 +80,9 @@ function buildIndex(rows) {
 }
 
 async function fetchLeagues(season, version) {
-  const v = String(version || "0");
-  const url = adminR2Url(`data/gauntlet/leagues_${season}.json?v=${encodeURIComponent(v)}`);
+  const v = version || Date.now();
+  const leaguesKey = `data/gauntlet/leagues_${season}.json`;
+  const url = `${r2Url(leaguesKey)}?v=${encodeURIComponent(v)}`;
   const res = await fetch(url, { cache: "default" });
   if (!res.ok) throw new Error(`Failed to load gauntlet leagues (${res.status})`);
   const data = await res.json();

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import SectionManifestGate from "@/components/manifest/SectionManifestGate";
+import { r2Url } from "@/lib/r2Url";
 import { CURRENT_SEASON } from "@/lib/season";
 import { safeArray, safeStr } from "@/lib/safe";
 
@@ -10,24 +11,6 @@ const cardBase =
   "card bg-card-surface border border-subtle rounded-2xl shadow-md transition";
 
 const cardHover = "hover:border-accent hover:-translate-y-0.5";
-
-function isLocalhost() {
-  if (typeof window === "undefined") return false;
-  const h = String(window.location?.hostname || "").toLowerCase();
-  return h === "localhost" || h === "127.0.0.1" || h === "::1";
-}
-
-function adminR2Base() {
-  // In production we go through the /r2 Pages Function so bucket bindings + caching work.
-  // In local dev we fetch directly from the public r2.dev base.
-  if (isLocalhost()) {
-    return (
-      process.env.NEXT_PUBLIC_ADMIN_R2_PROXY_BASE ||
-      "https://pub-b20eaa361fb04ee5afea1a9cf22eeb57.r2.dev"
-    ).replace(/\/$/, "");
-  }
-  return "/r2";
-}
 
 function fmtDate(iso) {
   if (!iso) return "";
@@ -43,7 +26,7 @@ function isVideoUrl(u) {
 
   // ✅ if it's an R2 proxied key (no extension), treat as video if it includes common hints
   // (your uploader section is "posts-image" but the file is video/*, and the key often won't have extension)
-  if (url.startsWith("/r2/") || url.includes(".r2.dev/")) {
+  if (url.startsWith("/r2/")) {
     // If you ever embed a hint in key names (recommended), catch it:
     if (url.includes(".mp4") || url.includes(".webm") || url.includes(".ogg")) return true;
     // Otherwise we can’t know by URL alone — we’ll rely on a runtime fallback below (see MediaBlock)
@@ -80,7 +63,7 @@ function normalizePost(p, idx) {
 
   const imageKey = safeStr(o.imageKey || o.image_key || "").trim();
   const imageUrl = safeStr(o.image_url || o.imageUrl || "").trim();
-  const mediaSrc = imageKey ? `${adminR2Base()}/${imageKey}` : imageUrl;
+  const mediaSrc = imageKey ? r2Url(imageKey) : imageUrl;
 
   const pinned = Boolean(o.pinned ?? o.pin);
   const is_coupon = Boolean(o.is_coupon);
@@ -117,8 +100,10 @@ function MediaBlock({ src, updatedAt, forceVideo = false }) {
   const s = safeStr(src).trim();
   if (!s) return null;
 
-  const looksLikeR2 = s.startsWith("/r2/") || s.includes(".r2.dev/");
-  const finalSrc = looksLikeR2 && updatedAt ? (s.includes("?") ? s : `${s}?v=${encodeURIComponent(updatedAt)}`) : s;
+  const finalSrc =
+    updatedAt
+      ? (s.includes("?") ? s : `${s}?v=${encodeURIComponent(updatedAt)}`)
+      : s;
 
   const lower = finalSrc.toLowerCase();
   const inferredType = lower.endsWith(".webm")
@@ -304,7 +289,7 @@ function NewsInner({ version = "0", manifest = null }) {
       }
 
       try {
-        const res = await fetch(`${adminR2Base()}/data/posts/posts.json?v=${encodeURIComponent(v)}`, { cache: "default" });
+        const res = await fetch(`/r2/data/posts/posts.json?v=${encodeURIComponent(v)}`, { cache: "default" });
         if (!res.ok) {
           if (!cancelled) setPosts([]);
           return;
