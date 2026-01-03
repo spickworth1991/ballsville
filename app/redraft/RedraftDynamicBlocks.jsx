@@ -2,11 +2,11 @@
 
 import OwnerHeroBlock from "@/components/blocks/OwnerHeroBlock";
 import RedraftLeaguesClient from "./RedraftLeaguesClient";
-import { CURRENT_SEASON } from "@/lib/season";
+
 
 
 export default function RedraftDynamicBlocks({
-  season = CURRENT_SEASON,
+  season,
   version = "0",
   manifest = null,
   showOwner = true,
