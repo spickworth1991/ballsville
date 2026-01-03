@@ -135,7 +135,7 @@ export default function RedraftPage() {
 
         {/* Live leagues (R2) */}{/* League description */}
         <SectionManifestGate section="redraft" season={CURRENT_SEASON}>
-            <RedraftDynamicBlocks season={CURRENT_SEASON} showOwner={false} showLeagues embeddedLegions={false} />
+            <RedraftDynamicBlocks season={CURRENT_SEASON} showOwner={false} showLeagues embeddedLeagues={false} />
           </SectionManifestGate>
         <article
           id="how-it-works"
