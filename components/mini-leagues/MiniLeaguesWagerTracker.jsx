@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import { safeArray, safeStr } from "@/lib/safe";
+import { adminR2Url } from "@/lib/r2Client";
 
 
 // Owner names can appear in multiple leagues.
@@ -116,7 +117,7 @@ function normalizeDoc(doc) {
 }
 
 function buildWagersUrl(season, version) {
-  return `/r2/data/mini-leagues/wagers_${encodeURIComponent(season)}.json?v=${version}`;
+  return adminR2Url(`data/mini-leagues/wagers_${encodeURIComponent(season)}.json?v=${version}`);
 }
 
 export default function MiniLeaguesWagerTracker({ season, version }) {

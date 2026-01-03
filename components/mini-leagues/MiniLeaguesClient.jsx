@@ -6,6 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import OwnerHeroBlock from "@/components/blocks/OwnerHeroBlock";
 import { CURRENT_SEASON } from "@/lib/season";
+import { adminR2Url } from "@/lib/r2Client";
 
 
 // ==============================
@@ -133,15 +134,15 @@ export default function MiniLeaguesClient({ season = CURRENT_SEASON, version = "
   const bust = `v=${version}`;
 
   const updatesSrc = editable?.hero?.promoImageKey
-    ? `/r2/${editable.hero.promoImageKey}?v=${encodeURIComponent(editable.hero.promoImageKey)}`
+    ? adminR2Url(`${editable.hero.promoImageKey}?v=${encodeURIComponent(editable.hero.promoImageKey)}`)
     : editable?.hero?.promoImageUrl || DEFAULT_EDITABLE.hero.promoImageUrl;
 
   const winners1Src = editable?.winners?.imageKey1
-    ? `/r2/${editable.winners.imageKey1}?v=${encodeURIComponent(editable.winners.imageKey1)}`
+    ? adminR2Url(`${editable.winners.imageKey1}?v=${encodeURIComponent(editable.winners.imageKey1)}`)
     : editable?.winners?.imageUrl1 || DEFAULT_EDITABLE.winners.imageUrl1;
 
   const winners2Src = editable?.winners?.imageKey2
-    ? `/r2/${editable.winners.imageKey2}?v=${encodeURIComponent(editable.winners.imageKey2)}`
+    ? adminR2Url(`${editable.winners.imageKey2}?v=${encodeURIComponent(editable.winners.imageKey2)}`)
     : editable?.winners?.imageUrl2 || DEFAULT_EDITABLE.winners.imageUrl2;
 
   async function loadAll() {
@@ -150,7 +151,7 @@ export default function MiniLeaguesClient({ season = CURRENT_SEASON, version = "
 
     try {
       // 1) editable blocks
-      const pageRes = await fetch(`/r2/content/mini-leagues/page_${season}.json?${bust}`);
+      const pageRes = await fetch(adminR2Url(`content/mini-leagues/page_${season}.json?${bust}`));
       if (pageRes.ok) {
         const pageData = await pageRes.json();
 
@@ -187,7 +188,7 @@ export default function MiniLeaguesClient({ season = CURRENT_SEASON, version = "
       }
 
       // 2) divisions
-      const divRes = await fetch(`/r2/data/mini-leagues/divisions_${season}.json?${bust}`);
+      const divRes = await fetch(adminR2Url(`data/mini-leagues/divisions_${season}.json?${bust}`));
       if (divRes.ok) {
         const divData = await divRes.json();
         const list = Array.isArray(divData?.divisions) ? divData.divisions : Array.isArray(divData) ? divData : [];
@@ -370,7 +371,7 @@ export default function MiniLeaguesClient({ season = CURRENT_SEASON, version = "
             ) : (
               <div className="grid gap-6 lg:grid-cols-2">
                 {divisions.map((d) => {
-                  const divImage = d.imageKey ? `/r2/${d.imageKey}` : d.imageUrl || "";
+                  const divImage = d.imageKey ? adminR2Url(d.imageKey) : d.imageUrl || "";
                   return (
                     <div
                       key={d.divisionCode}
@@ -399,7 +400,7 @@ export default function MiniLeaguesClient({ season = CURRENT_SEASON, version = "
                         {d.leagues.map((l, idx) => {
                           const badge = STATUS_BADGE[l.status] || STATUS_BADGE.tbd;
                           const label = STATUS_LABEL[l.status] || "TBD";
-                          const img = l.imageKey ? `/r2/${l.imageKey}` : l.imageUrl || "";
+                          const img = l.imageKey ? adminR2Url(l.imageKey) : l.imageUrl || "";
                           return (
                             <a
                               key={`${d.divisionCode}-${idx}-${l.name}`}

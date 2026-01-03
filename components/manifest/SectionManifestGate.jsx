@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { adminR2Url } from "@/lib/r2Client";
 
 // In-memory cache so multiple SectionManifestGate instances on the same client session
 // don't refetch the same manifest repeatedly.
@@ -16,8 +17,10 @@ const __MANIFEST_CACHE = new Map();
  * If season is omitted, key: /r2/data/manifests/{section}.json
  */
 function manifestUrl(section, season) {
-  const base = season ? `/r2/data/manifests/${section}_${season}.json` : `/r2/data/manifests/${section}.json`;
-  return base;
+  const key = season
+    ? `data/manifests/${section}_${season}.json`
+    : `data/manifests/${section}.json`;
+  return adminR2Url(key);
 }
 
 async function tryFetchJson(url) {

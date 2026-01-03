@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import MediaTabCard from "@/components/ui/MediaTabCard";
 import { CURRENT_SEASON } from "@/lib/season";
 import { safeStr } from "@/lib/safe";
+import { adminR2Url } from "@/lib/r2Client";
 
 function slugify(s) {
   return String(s || "")
@@ -30,7 +31,7 @@ function resolveImageSrc({ imagePath, imageKey, updatedAt, version }) {
     return `${p}?v=${bust}`;
   }
   // If we stored only the key, build a public /r2 URL.
-  if (k) return `/r2/${k}?v=${bust}`;
+  if (k) return adminR2Url(`${k}?v=${bust}`);
   return "";
 }
 
@@ -80,7 +81,7 @@ function buildIndex(rows) {
 
 async function fetchLeagues(season, version) {
   const v = String(version || "0");
-  const url = `/r2/data/gauntlet/leagues_${season}.json?v=${encodeURIComponent(v)}`;
+  const url = adminR2Url(`data/gauntlet/leagues_${season}.json?v=${encodeURIComponent(v)}`);
   const res = await fetch(url, { cache: "default" });
   if (!res.ok) throw new Error(`Failed to load gauntlet leagues (${res.status})`);
   const data = await res.json();

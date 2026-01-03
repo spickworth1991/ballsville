@@ -5,6 +5,7 @@ import { safeStr } from "@/lib/safe";
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { CURRENT_SEASON } from "@/lib/season";
+import { adminR2Url } from "@/lib/r2Client";
 
 const SEASON = CURRENT_SEASON;
 
@@ -27,7 +28,7 @@ function statusBadge(raw) {
 function leagueImageSrc(l, updatedAt) {
   const key = safeStr(l?.imageKey || l?.image_key || "").trim();
   const url = safeStr(l?.image_url || l?.imageUrl || "").trim();
-  const base = key ? `/r2/${key}` : url;
+  const base = key ? adminR2Url(key) : url;
   if (!base) return "";
   if (!updatedAt) return base;
   return base.includes("?") ? base : `${base}?v=${encodeURIComponent(updatedAt)}`;
@@ -81,11 +82,22 @@ export default function RedraftLeaguesClient({
           // ignore storage errors
         }
 
-        const leaguesRes = await fetch(`/r2/data/redraft/leagues_${SEASON}.json?v=${encodeURIComponent(v)}`, { cache: "default" });
+        const leaguesRes = await fetch(
+          adminR2Url(`data/redraft/leagues_${SEASON}.json?v=${encodeURIComponent(v)}`),
+          { cache: "default" }
+        );
         if (!leaguesRes.ok) throw new Error(`Failed to load Redraft leagues (${leaguesRes.status})`);
 
         const json = await leaguesRes.json();
-        const rows = Array.isArray(json?.rows) ? json.rows : Array.isArray(json) ? json : [];
+        const rows = Array.isArray(json?.leagues)
+          ? json.leagues
+          : Array.isArray(json?.data?.leagues)
+            ? json.data.leagues
+            : Array.isArray(json?.rows)
+              ? json.rows
+              : Array.isArray(json)
+                ? json
+                : [];
         const stamp = safeStr(json?.updatedAt || json?.updated_at || "");
 
         if (cancelled) return;

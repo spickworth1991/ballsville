@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import MediaTabCard from "@/components/ui/MediaTabCard";
+import { adminR2Url } from "@/lib/r2Client";
 
 const R2_ROWS_KEY = "data/dynasty/leagues.json";
 
@@ -104,7 +105,7 @@ function imageSrcForRow(row, updatedAt) {
   const url = typeof row?.image_url === "string" ? row.image_url.trim() : "";
   // Prefer R2 keys when present. In some older rows, image_url points to
   // local /public paths that may not exist in production.
-  const base = (key ? `/r2/${key}` : "") || url;
+  const base = (key ? adminR2Url(key) : "") || url;
   if (!base) return "";
 
   const bust = updatedAt ? `v=${encodeURIComponent(updatedAt)}` : "";
@@ -216,7 +217,7 @@ export default function DynastyLeaguesClient({
 
         // Let the /r2 proxy + Cloudflare caching do the heavy lifting (ETag / must-revalidate).
         // We only refetch the big JSON when the manifest version changes.
-        const res = await fetch(`/r2/${R2_ROWS_KEY}?v=${encodeURIComponent(v)}`, { cache: "default" });
+        const res = await fetch(adminR2Url(`${R2_ROWS_KEY}?v=${encodeURIComponent(v)}`), { cache: "default" });
         if (!res.ok) {
           if (!cancelled) setRows([]);
           return;
@@ -442,7 +443,7 @@ const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows])
                       const themeImgKey = typeof first?.theme_imageKey === "string" ? first.theme_imageKey.trim() : "";
                       const themeImgUrl = typeof first?.theme_image_url === "string" ? first.theme_image_url.trim() : "";
                       const img = themeImgKey
-                        ? `/r2/${themeImgKey}${updatedAt ? `?v=${encodeURIComponent(updatedAt)}` : ""}`
+                        ? `${adminR2Url(themeImgKey)}${updatedAt ? `?v=${encodeURIComponent(updatedAt)}` : ""}`
                         : themeImgUrl
                           ? themeImgUrl
                           : first

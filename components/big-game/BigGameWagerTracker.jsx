@@ -5,6 +5,7 @@ import { safeArray, safeStr } from "@/lib/safe";
 // import Link from "next/link";
 import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import { CURRENT_SEASON } from "@/lib/season";
+import { adminR2Url } from "@/lib/r2Client";
 
 function fmtMoney(n) {
   const x = typeof n === "number" ? n : Number(n);
@@ -343,8 +344,9 @@ function TrackerInner({ season: seasonProp, version }) {
       setLoading(true);
       setError("");
       try {
-        const wagersUrl = `/r2/data/biggame/wagers_${encodeURIComponent(season)}.json?v=${encodeURIComponent(version || "")}`;
-        const metaUrl = `/r2/data/biggame/leagues_${encodeURIComponent(season)}.json?v=${encodeURIComponent(version || "")}`;
+        const vq = encodeURIComponent(version || "");
+        const wagersUrl = adminR2Url(`data/biggame/wagers_${encodeURIComponent(season)}.json?v=${vq}`);
+        const metaUrl = adminR2Url(`data/biggame/leagues_${encodeURIComponent(season)}.json?v=${vq}`);
 
         const [wagersRes, metaRes] = await Promise.all([
           fetch(wagersUrl, { cache: "no-store" }),
