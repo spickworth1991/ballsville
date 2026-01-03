@@ -78,7 +78,19 @@ export default function RedraftLeaguesClient({ SEASON = CURRENT_SEASON, embedded
         if (!leaguesRes.ok) throw new Error(`Failed to load Redraft leagues (${leaguesRes.status})`);
 
         const json = await leaguesRes.json();
-        const rows = Array.isArray(json?.rows) ? json.rows : Array.isArray(json) ? json : [];
+
+        // Support both shapes:
+        // - Admin CMS writes: { rows: [...] }
+        // - Generator/legacy: { leagues: [...] }
+        // - Direct array: [ ... ]
+        const rows =
+          Array.isArray(json?.rows)
+            ? json.rows
+            : Array.isArray(json?.leagues)
+              ? json.leagues
+              : Array.isArray(json)
+                ? json
+                : [];
         const stamp = safeStr(json?.updatedAt || json?.updated_at || "");
 
         if (cancelled) return;

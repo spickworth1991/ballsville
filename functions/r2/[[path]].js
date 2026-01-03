@@ -2,27 +2,18 @@
 //
 // Universal /r2/* handler:
 // 1) Try the appropriate bound R2 bucket first
-//    - ADMIN_BUCKET (admin + all public pages)
+//    - ADMIN_BUCKET (admin + all admin-managed public pages)
 //    - LEADERBOARDS (global leaderboards)
 //    - GAUNTLET_LEADERBOARD (Gauntlet Leg3 leaderboard)
-// 2) Fallback to proxying a public r2.dev base per section
+// 2) Fallback to proxying a public r2.dev base per section (for localhost/dev)
 //
 // This keeps Gauntlet working AND makes Mini-Leagues CMS content load.
 
 function pickBucket(env, key) {
   const k = String(key || "");
 
-  // Bucket wiring rules (your current setup):
-  // - Admin + all admin-managed public pages => ADMIN_BUCKET
-  // - Global leaderboards => LEADERBOARDS
-  // - Gauntlet Leg3 leaderboard => GAUNTLET_LEADERBOARD
-  //
-  // IMPORTANT: we do *not* try to auto-fallback between buckets based on "public vs admin".
-  // In your setup there is no separate public bucket; attempting to read from one causes
-  // confusing stale/empty reads.
-
-  // Helper: accept multiple possible binding names without needing extra .env vars.
-  // In Cloudflare Pages, bindings appear as env.<BINDING_NAME>.
+  // Cloudflare Pages bindings appear as env.<BINDING_NAME>.
+  // We only treat a value as a bucket if it has a .get() function.
   const pick = (...names) => {
     for (const n of names) {
       const b = env?.[n];
@@ -31,25 +22,26 @@ function pickBucket(env, key) {
     return null;
   };
 
-  // 1) Leaderboards bucket
+  // 1) Global leaderboards bucket
   if (k.startsWith("data/leaderboards/")) {
-    return (
-      pick("LEADERBOARDS") ||
-      pick("LEADERBOARDS_BUCKET", "LEADERBOARD_BUCKET") ||
-      pick("leaderboards_bucket", "leaderboard_bucket", "leaderboard_data_bucket", "LEADERBOARD_DATA_BUCKET")
-    );
+    return pick("LEADERBOARDS");
   }
 
-  // 2) Gauntlet Leg3 leaderboard bucket (these keys are *not* under data/)
+  // 2) Gauntlet Leg3 leaderboard bucket (keys are under gauntlet/leg3/)
   if (k.startsWith("gauntlet/leg3/")) {
-    return (
-      pick("GAUNTLET_LEADERBOARD") ||
-      pick("GAUNTLET_LEADERBOARD_BUCKET", "gauntlet_leaderboard_bucket")
-    );
+    return pick("GAUNTLET_LEADERBOARD");
   }
 
-  // 3) Everything else (including gauntlet pages + admin CMS content)
-  return pick("ADMIN_BUCKET") || pick("admin_bucket", "ADMIN") || pick("ADMIN_BUCKET_BINDING");
+  // 3) Everything else: admin + all admin-managed public pages
+  return pick("ADMIN_BUCKET") || pick("ADMIN");
+}
+
+function pickBaseUrl(env, ...names) {
+  for (const n of names) {
+    const v = env?.[n];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return "";
 }
 
 function cacheControlForKey(key) {
@@ -64,6 +56,23 @@ function cacheControlForKey(key) {
 
   // Images/fonts/etc: slightly longer edge TTL, still revalidate on navigation.
   return "public, max-age=0, must-revalidate, s-maxage=300, stale-while-revalidate=86400";
+}
+
+function contentTypeFromKey(key) {
+  const k = String(key || "").toLowerCase();
+  if (k.endsWith(".json")) return "application/json; charset=utf-8";
+  if (k.endsWith(".webp")) return "image/webp";
+  if (k.endsWith(".png")) return "image/png";
+  if (k.endsWith(".jpg") || k.endsWith(".jpeg")) return "image/jpeg";
+  if (k.endsWith(".gif")) return "image/gif";
+  if (k.endsWith(".svg")) return "image/svg+xml";
+  if (k.endsWith(".ico")) return "image/x-icon";
+  if (k.endsWith(".css")) return "text/css; charset=utf-8";
+  if (k.endsWith(".js")) return "application/javascript; charset=utf-8";
+  if (k.endsWith(".woff2")) return "font/woff2";
+  if (k.endsWith(".woff")) return "font/woff";
+  if (k.endsWith(".ttf")) return "font/ttf";
+  return "";
 }
 
 function shouldReturnNotModified(request, etag, lastModified) {
@@ -97,16 +106,49 @@ export async function onRequest({ request, params, env }) {
     });
   }
 
-  // ✅ 1) Try the correct bound bucket first.
+  // ✅ 1) Try bucket binding first (this is what fixes Mini-Leagues 404s)
   const bucket = pickBucket(env, key);
   if (bucket && typeof bucket.get === "function") {
-    const obj = await bucket.get(key);
+    // First try the preferred bucket.
+    let obj = await bucket.get(key);
+
+    // ⚠️ Some sections (like Redraft) may be written to the admin bucket,
+    // while public reads default to the public bucket.
+    // If the object isn't found in the public bucket, fall back to admin.
+    if (!obj) {
+      const publicBucket = env.public_bucket || env.PUBLIC_BUCKET || null;
+      const adminBucket = env.admin_bucket || env.ADMIN_BUCKET || null;
+      const leaderboardsBucket =
+        env.leaderboard_bucket ||
+        env.LEADERBOARD_BUCKET ||
+        env.leaderboards_bucket ||
+        env.LEADERBOARDS_BUCKET ||
+        env.leaderboard_data_bucket ||
+        env.LEADERBOARD_DATA_BUCKET ||
+        null;
+
+      // If we chose the public bucket (default), try admin next.
+      if (publicBucket && bucket === publicBucket && adminBucket && typeof adminBucket.get === "function") {
+        obj = await adminBucket.get(key);
+      }
+
+      // If we chose the leaderboards bucket for this key, try public/admin as a safety net.
+      if (!obj && leaderboardsBucket && bucket === leaderboardsBucket) {
+        if (publicBucket && typeof publicBucket.get === "function") {
+          obj = await publicBucket.get(key);
+        }
+        if (!obj && adminBucket && typeof adminBucket.get === "function") {
+          obj = await adminBucket.get(key);
+        }
+      }
+    }
 
     if (obj) {
       const headers = new Headers();
 
       // Preserve stored content-type when present (important for webp + json)
-      const ct = obj.httpMetadata?.contentType;
+      // but also infer it from the file extension if the object metadata is missing.
+      const ct = obj.httpMetadata?.contentType || contentTypeFromKey(key);
       if (ct) headers.set("content-type", ct);
 
       // ETag/Last-Modified allow fast 304 revalidation ("only update when new data")
@@ -160,11 +202,8 @@ export async function onRequest({ request, params, env }) {
           // News/Posts feed
           candidates.push("data/posts/posts.json");
         } else if (section === "hall-of-fame" || section === "hall_of_fame") {
-          candidates.push("data/hall-of-fame/hall_of_fame.json");}
-        } else if (section === "redraft") {
-          candidates.push(season ? `data/redraft/leagues_${season}.json` : `data/redraft/leagues_${new Date().getFullYear()}.json`);
-
-        
+          candidates.push("data/hall-of-fame/hall_of_fame.json");
+        }
 
         for (const sourceKey of candidates) {
           const src = await bucket.get(sourceKey);
@@ -226,24 +265,26 @@ export async function onRequest({ request, params, env }) {
     }
   }
 
-    // ✅ 2) Fallback to public r2.dev proxy (for localhost / when a key isn't in the bound bucket)
-    // IMPORTANT: These must be URL strings, not R2 bucket bindings.
-    let base;
-    if (key.startsWith("data/leaderboards/")) {
-      base =
-        env.NEXT_PUBLIC_LEADERBOARDS_R2_PUBLIC_BASE ||
-        "https://pub-153090242f5a4c0eb7bd0e499832a797.r2.dev";
-    } else if (key.startsWith("gauntlet/leg3/")) {
-      base =
-        env.NEXT_PUBLIC_GAUNTLET_LEADERBOARD_R2_PUBLIC_BASE ||
-        "https://pub-eec34f38e47f4ffbbc39af58bda1bcc2.r2.dev";
-    } else {
-      base =
-        env.NEXT_PUBLIC_ADMIN_R2_PUBLIC_BASE ||
-        env.NEXT_PUBLIC_R2_PUBLIC_BASE ||
-        "https://pub-b20eaa361fb04ee5afea1a9cf22eeb57.r2.dev";
-    }
-
+  // ✅ 2) Fallback to public r2.dev proxy
+  // This is what makes localhost work even if you don't bind buckets locally.
+  //
+  // Buckets:
+  // - Admin content (and gauntlet admin/public pages) => ADMIN bucket base
+  // - Global leaderboards => leaderboards base
+  // - Gauntlet Leg3 leaderboard => gauntlet-leg3 base
+  const base = key.startsWith("data/leaderboards/")
+    ? (env.NEXT_PUBLIC_LEADERBOARDS_R2_PUBLIC_BASE ||
+        env.R2_LEADERBOARDS_PUBLIC_BASE ||
+        // Hard fallback: your current leaderboards bucket public URL
+        "https://pub-153090242f5a4c0eb7bd0e499832a797.r2.dev")
+    : key.startsWith("gauntlet/leg3/")
+      ? (env.NEXT_PUBLIC_GAUNTLET_LEADERBOARD_R2_PUBLIC_BASE ||
+          env.R2_GAUNTLET_LEADERBOARD_PUBLIC_BASE ||
+          // Hard fallback: your current gauntlet-leg3 bucket public URL
+          "https://pub-eec34f38e47f4ffbbc39af58bda1bcc2.r2.dev")
+      : (env.NEXT_PUBLIC_R2_PUBLIC_BASE ||
+          // Hard fallback: your current admin bucket public URL
+          "https://pub-b20eaa361fb04ee5afea1a9cf22eeb57.r2.dev");
 
   const target = `${String(base).replace(/\/$/, "")}/${key}`;
 
@@ -260,7 +301,9 @@ export async function onRequest({ request, params, env }) {
 
   // Clone headers and ensure a content-type exists (helps previews)
   const headers = new Headers(res.headers);
-  if (!headers.get("content-type")) headers.set("content-type", "application/octet-stream");
+  if (!headers.get("content-type")) {
+    headers.set("content-type", contentTypeFromKey(key) || "application/octet-stream");
+  }
 
   // Align caching behavior with bucket reads.
   headers.set("cache-control", cacheControlForKey(key));
