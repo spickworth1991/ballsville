@@ -1,30 +1,55 @@
 // functions/r2/[[path]].js
 //
 // Universal /r2/* handler:
-// 1) Try bound R2 bucket first (admin_bucket / ADMIN_BUCKET / public_bucket / PUBLIC_BUCKET)
-// 2) Fallback to proxying a public r2.dev base (GAUNTLET_R2_PUBLIC_BASE / R2_PUBLIC_BASE)
+// 1) Try the appropriate bound R2 bucket first
+//    - ADMIN_BUCKET (admin + all public pages)
+//    - LEADERBOARDS (global leaderboards)
+//    - GAUNTLET_LEADERBOARD (Gauntlet Leg3 leaderboard)
+// 2) Fallback to proxying a public r2.dev base per section
 //
 // This keeps Gauntlet working AND makes Mini-Leagues CMS content load.
 
 function pickBucket(env, key) {
   const k = String(key || "");
 
-  // If you bind the leaderboards bucket separately in Pages, use it for leaderboard keys.
-  // (Binding names are flexible; these cover the common ones.)
+  // Bucket wiring rules (your current setup):
+  // - Admin + all admin-managed public pages => ADMIN_BUCKET
+  // - Global leaderboards => LEADERBOARDS
+  // - Gauntlet Leg3 leaderboard => GAUNTLET_LEADERBOARD
+  //
+  // IMPORTANT: we do *not* try to auto-fallback between buckets based on "public vs admin".
+  // In your setup there is no separate public bucket; attempting to read from one causes
+  // confusing stale/empty reads.
+
+  // Helper: accept multiple possible binding names without needing extra .env vars.
+  // In Cloudflare Pages, bindings appear as env.<BINDING_NAME>.
+  const pick = (...names) => {
+    for (const n of names) {
+      const b = env?.[n];
+      if (b && typeof b.get === "function") return b;
+    }
+    return null;
+  };
+
+  // 1) Leaderboards bucket
   if (k.startsWith("data/leaderboards/")) {
-    const lb =
-      env.leaderboard_bucket ||
-      env.LEADERBOARD_BUCKET ||
-      env.leaderboards_bucket ||
-      env.LEADERBOARDS_BUCKET ||
-      env.leaderboard_data_bucket ||
-      env.LEADERBOARD_DATA_BUCKET ||
-      null;
-    if (lb) return lb;
+    return (
+      pick("LEADERBOARDS") ||
+      pick("LEADERBOARDS_BUCKET", "LEADERBOARD_BUCKET") ||
+      pick("leaderboards_bucket", "leaderboard_bucket", "leaderboard_data_bucket", "LEADERBOARD_DATA_BUCKET")
+    );
   }
 
-  // Default: prefer a dedicated public bucket, otherwise fall back to the admin bucket.
-  return env.public_bucket || env.PUBLIC_BUCKET || env.admin_bucket || env.ADMIN_BUCKET || null;
+  // 2) Gauntlet Leg3 leaderboard bucket (these keys are *not* under data/)
+  if (k.startsWith("gauntlet/leg3/")) {
+    return (
+      pick("GAUNTLET_LEADERBOARD") ||
+      pick("GAUNTLET_LEADERBOARD_BUCKET", "gauntlet_leaderboard_bucket")
+    );
+  }
+
+  // 3) Everything else (including gauntlet pages + admin CMS content)
+  return pick("ADMIN_BUCKET") || pick("admin_bucket", "ADMIN") || pick("ADMIN_BUCKET_BINDING");
 }
 
 function cacheControlForKey(key) {
@@ -72,42 +97,10 @@ export async function onRequest({ request, params, env }) {
     });
   }
 
-  // ✅ 1) Try bucket binding first (this is what fixes Mini-Leagues 404s)
+  // ✅ 1) Try the correct bound bucket first.
   const bucket = pickBucket(env, key);
   if (bucket && typeof bucket.get === "function") {
-    // First try the preferred bucket.
-    let obj = await bucket.get(key);
-
-    // ⚠️ Some sections (like Redraft) may be written to the admin bucket,
-    // while public reads default to the public bucket.
-    // If the object isn't found in the public bucket, fall back to admin.
-    if (!obj) {
-      const publicBucket = env.public_bucket || env.PUBLIC_BUCKET || null;
-      const adminBucket = env.admin_bucket || env.ADMIN_BUCKET || null;
-      const leaderboardsBucket =
-        env.leaderboard_bucket ||
-        env.LEADERBOARD_BUCKET ||
-        env.leaderboards_bucket ||
-        env.LEADERBOARDS_BUCKET ||
-        env.leaderboard_data_bucket ||
-        env.LEADERBOARD_DATA_BUCKET ||
-        null;
-
-      // If we chose the public bucket (default), try admin next.
-      if (publicBucket && bucket === publicBucket && adminBucket && typeof adminBucket.get === "function") {
-        obj = await adminBucket.get(key);
-      }
-
-      // If we chose the leaderboards bucket for this key, try public/admin as a safety net.
-      if (!obj && leaderboardsBucket && bucket === leaderboardsBucket) {
-        if (publicBucket && typeof publicBucket.get === "function") {
-          obj = await publicBucket.get(key);
-        }
-        if (!obj && adminBucket && typeof adminBucket.get === "function") {
-          obj = await adminBucket.get(key);
-        }
-      }
-    }
+    const obj = await bucket.get(key);
 
     if (obj) {
       const headers = new Headers();
@@ -230,19 +223,30 @@ export async function onRequest({ request, params, env }) {
     }
   }
 
-// ✅ 2) Fallback to public r2.dev proxy (keeps Gauntlet working)
   // ✅ 2) Fallback to public r2.dev proxy
-  // - Gauntlet + legacy content: GAUNTLET_R2_PUBLIC_BASE / R2_PUBLIC_BASE
-  // - Leaderboards: LEADERBOARDS_R2_PUBLIC_BASE
-  const base = key.startsWith("data/leaderboards/")
-    ? (env.LEADERBOARDS_R2_PUBLIC_BASE ||
-        env.LEADERBOARD_R2_PUBLIC_BASE ||
-        env.R2_LEADERBOARDS_PUBLIC_BASE ||
-        // ...and finally a hard fallback (your current leaderboards bucket public URL)
-        "https://pub-153090242f5a4c0eb7bd0e499832a797.r2.dev")
-    : (env.GAUNTLET_R2_PUBLIC_BASE ||
-        env.R2_PUBLIC_BASE ||
-        "https://pub-eec34f38e47f4ffbbc39af58bda1bcc2.r2.dev");
+  // - Admin content (and gauntlet admin/public): ADMIN_R2_PUBLIC_BASE / R2_PUBLIC_BASE
+  // - Global leaderboards: LEADERBOARDS_R2_PUBLIC_BASE
+  // - Gauntlet Leg3 leaderboard: GAUNTLET_LEADERBOARD_R2_PUBLIC_BASE
+  let base;
+  if (key.startsWith("data/leaderboards/")) {
+    base =
+      env.R2_BUCKET_LEADERBOARDS ||
+      env.NEXT_PUBLIC_LEADERBOARDS_R2_PUBLIC_BASE ||
+      // Hard fallback: your current leaderboards bucket public URL
+      "https://pub-153090242f5a4c0eb7bd0e499832a797.r2.dev";
+  } else if (key.startsWith("gauntlet/leg3/")) {
+    base =
+      env.GAUNTLET_LEADERBOARD ||
+      env.NEXT_PUBLIC_GAUNTLET_LEG3_BASE_URL ||
+      // Hard fallback: keep legacy gauntlet-leg3 bucket proxy working
+      "https://pub-eec34f38e47f4ffbbc39af58bda1bcc2.r2.dev";
+  } else {
+    base =
+      env.ADMIN_BUCKET ||
+      env.NEXT_PUBLIC_R2_PUBLIC_BASE ||
+      // Hard fallback: your current admin bucket public URL (legacy)
+      "https://pub-b20eaa361fb04ee5afea1a9cf22eeb57.r2.dev";
+  }
 
   const target = `${String(base).replace(/\/$/, "")}/${key}`;
 
