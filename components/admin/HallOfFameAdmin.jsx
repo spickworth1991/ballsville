@@ -227,7 +227,8 @@ export default function HallOfFameAdmin() {
         ) : (
           <div className="grid gap-4">
             {entries.map((e) => {
-              const src = e.imageKey ? `/r2/${e.imageKey}` : e.imageUrl || "";
+              const safeKey = e.imageKey ? String(e.imageKey).replace(/^\/+/, "") : "";
+              const src = safeKey ? `/r2/${safeKey}` : e.imageUrl || "";
               return (
                 <div key={e.id} className="card bg-card-surface border border-subtle p-5 rounded-2xl">
                   <div className="flex flex-col lg:flex-row gap-4">

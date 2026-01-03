@@ -33,7 +33,14 @@ function leagueImageSrc(l, updatedAt) {
   return base.includes("?") ? base : `${base}?v=${encodeURIComponent(updatedAt)}`;
 }
 
-export default function RedraftLeaguesClient({ SEASON = CURRENT_SEASON, embedded = false, version = "0", manifest = null }) {
+export default function RedraftLeaguesClient({
+  SEASON = CURRENT_SEASON,
+  embedded = false,
+  version = "0",
+  manifest = null,
+  title,
+  subtitle,
+}) {
   const [leagues, setLeagues] = useState([]);
   const [updatedAt, setUpdatedAt] = useState("");
   const [loading, setLoading] = useState(true);
@@ -78,19 +85,7 @@ export default function RedraftLeaguesClient({ SEASON = CURRENT_SEASON, embedded
         if (!leaguesRes.ok) throw new Error(`Failed to load Redraft leagues (${leaguesRes.status})`);
 
         const json = await leaguesRes.json();
-
-        // Support both shapes:
-        // - Admin CMS writes: { rows: [...] }
-        // - Generator/legacy: { leagues: [...] }
-        // - Direct array: [ ... ]
-        const rows =
-          Array.isArray(json?.rows)
-            ? json.rows
-            : Array.isArray(json?.leagues)
-              ? json.leagues
-              : Array.isArray(json)
-                ? json
-                : [];
+        const rows = Array.isArray(json?.rows) ? json.rows : Array.isArray(json) ? json : [];
         const stamp = safeStr(json?.updatedAt || json?.updated_at || "");
 
         if (cancelled) return;
@@ -130,7 +125,17 @@ export default function RedraftLeaguesClient({ SEASON = CURRENT_SEASON, embedded
   if (error) return <p className="text-sm text-danger">{error}</p>;
 
   return (
-    <section className="mt-8">
+    <section className={embedded ? "" : "mt-8"}>
+      {(title || subtitle) && (
+        <header className="mb-5">
+          {title && (
+            <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">{title}</h2>
+          )}
+          {subtitle && (
+            <p className="mt-1 text-sm sm:text-base text-white/70 max-w-3xl">{subtitle}</p>
+          )}
+        </header>
+      )}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {sorted.map((l, idx) => {
           const href = safeStr(l?.url || l?.sleeper_url || l?.sleeperUrl || "").trim();
@@ -173,9 +178,7 @@ export default function RedraftLeaguesClient({ SEASON = CURRENT_SEASON, embedded
             </a>
           );
         })}
-        
       </div>
-      
     </section>
   );
 }

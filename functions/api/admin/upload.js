@@ -218,8 +218,11 @@ function baseKeyForUpload({
   // ==============
   // HALL OF FAME
   // ==============
-  if (section === "hall-of-fame-entry") {
-    if (!entryId) return "";
+  // Hall of Fame entry images
+  // - New UI uses section="hall-of-fame-image"
+  // - Older code used section="hall-of-fame-entry"
+  if (section === "hall-of-fame-entry" || section === "hall-of-fame-image") {
+    if (!season || !entryId) return "";
     return `media/hall-of-fame/${season}/${entryId}`;
   }
 
@@ -351,7 +354,7 @@ export async function onRequest(context) {
       return json({ ok: false, error: "Missing postId" }, 400);
     }
 
-    if (section === "hall-of-fame-entry" && !entryId) {
+    if ((section === "hall-of-fame-entry" || section === "hall-of-fame-image") && !entryId) {
       return json({ ok: false, error: "Missing entryId" }, 400);
     }
 
@@ -363,7 +366,7 @@ export async function onRequest(context) {
       return json({ ok: false, error: "Missing postId" }, 400);
     }
 
-    if (section === "hall-of-fame-entry" && !entryId) {
+    if ((section === "hall-of-fame-entry" || section === "hall-of-fame-image") && !entryId) {
       return json({ ok: false, error: "Missing entryId" }, 400);
     }
 

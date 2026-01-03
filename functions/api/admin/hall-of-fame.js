@@ -24,9 +24,12 @@ function ensureR2(env) {
 async function touchManifest(env, season) {
   const b = ensureR2(env);
   const key = season ? `data/manifests/hall-of-fame_${season}.json` : `data/manifests/hall-of-fame.json`;
-  const body = JSON.stringify({ section: "hall-of-fame", season: season || null, updatedAt: Date.now() }, null, 2);
+  const body = JSON.stringify(
+    { section: "hall-of-fame", season: season || null, updatedAt: new Date().toISOString() },
+    null,
+    2
+  );
   await b.put(key, body, { httpMetadata: { contentType: "application/json; charset=utf-8" } });
-    await touchManifest(env, season);
 }
 
 

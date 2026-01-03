@@ -13,7 +13,10 @@ function normalizeEntry(e, idx) {
   const title = String(e?.title || e?.name || "").trim();
   const subtitle = String(e?.subtitle || e?.note || "").trim();
   const year = e?.year != null ? String(e.year) : "";
-  const imageKey = typeof e?.imageKey === "string" ? e.imageKey : "";
+  // imageKey should be an R2 key like "media/hall-of-fame/2025/<id>.png".
+  // Be tolerant of accidental leading slashes.
+  const imageKeyRaw = typeof e?.imageKey === "string" ? e.imageKey : "";
+  const imageKey = imageKeyRaw.replace(/^\/+/, "");
   const imageUrl = typeof e?.imageUrl === "string" ? e.imageUrl : "";
 
   const img = imageKey ? `/r2/${imageKey}` : imageUrl;
