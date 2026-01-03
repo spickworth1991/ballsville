@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { CURRENT_SEASON } from "@/lib/season";
 
-import Leaderboard from "./_lb/components/Leaderboard";
-import { LeaderboardProvider } from "./_lb/context/LeaderboardContext";
-import useAvailableYears from "./_lb/hooks/useAvailableYears";
-import useR2Live from "./_lb/hooks/useR2Live";
+import Leaderboard from "./Leaderboard";
+import { LeaderboardProvider } from "../../app/leaderboards/context/LeaderboardContext";
+import useAvailableYears from "./useAvailableYears";
+import useR2Live from "./useR2Live";
 
 const DEFAULT_YEAR = CURRENT_SEASON;
 

@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useLeaderboard } from "../context/LeaderboardContext";
-import OwnerModal from "./OwnerModal";
+import { useLeaderboard } from "../../app/leaderboards/context/LeaderboardContext";
+import  OwnerModal from "./OwnerModal";
 
 const WEEKS_WINDOW = 3; // how many weeks to show at once
 

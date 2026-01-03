@@ -1,4 +1,4 @@
-import LeaderboardsClient from "./LeaderboardsClient";
+import LeaderboardsClient from "../../components/leaderboards/LeaderboardsClient";
 
 export const metadata = {
   title: "BALLSVILLE Leaderboards",
