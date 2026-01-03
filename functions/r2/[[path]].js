@@ -160,8 +160,11 @@ export async function onRequest({ request, params, env }) {
           // News/Posts feed
           candidates.push("data/posts/posts.json");
         } else if (section === "hall-of-fame" || section === "hall_of_fame") {
-          candidates.push("data/hall-of-fame/hall_of_fame.json");
-        }
+          candidates.push("data/hall-of-fame/hall_of_fame.json");}
+        } else if (section === "redraft") {
+          candidates.push(season ? `data/redraft/leagues_${season}.json` : `data/redraft/leagues_${new Date().getFullYear()}.json`);
+
+        
 
         for (const sourceKey of candidates) {
           const src = await bucket.get(sourceKey);
@@ -223,30 +226,24 @@ export async function onRequest({ request, params, env }) {
     }
   }
 
-  // ✅ 2) Fallback to public r2.dev proxy
-  // - Admin content (and gauntlet admin/public): ADMIN_R2_PUBLIC_BASE / R2_PUBLIC_BASE
-  // - Global leaderboards: LEADERBOARDS_R2_PUBLIC_BASE
-  // - Gauntlet Leg3 leaderboard: GAUNTLET_LEADERBOARD_R2_PUBLIC_BASE
-  let base;
-  if (key.startsWith("data/leaderboards/")) {
-    base =
-      env.R2_BUCKET_LEADERBOARDS ||
-      env.NEXT_PUBLIC_LEADERBOARDS_R2_PUBLIC_BASE ||
-      // Hard fallback: your current leaderboards bucket public URL
-      "https://pub-153090242f5a4c0eb7bd0e499832a797.r2.dev";
-  } else if (key.startsWith("gauntlet/leg3/")) {
-    base =
-      env.GAUNTLET_LEADERBOARD ||
-      env.NEXT_PUBLIC_GAUNTLET_LEG3_BASE_URL ||
-      // Hard fallback: keep legacy gauntlet-leg3 bucket proxy working
-      "https://pub-eec34f38e47f4ffbbc39af58bda1bcc2.r2.dev";
-  } else {
-    base =
-      env.ADMIN_BUCKET ||
-      env.NEXT_PUBLIC_R2_PUBLIC_BASE ||
-      // Hard fallback: your current admin bucket public URL (legacy)
-      "https://pub-b20eaa361fb04ee5afea1a9cf22eeb57.r2.dev";
-  }
+    // ✅ 2) Fallback to public r2.dev proxy (for localhost / when a key isn't in the bound bucket)
+    // IMPORTANT: These must be URL strings, not R2 bucket bindings.
+    let base;
+    if (key.startsWith("data/leaderboards/")) {
+      base =
+        env.NEXT_PUBLIC_LEADERBOARDS_R2_PUBLIC_BASE ||
+        "https://pub-153090242f5a4c0eb7bd0e499832a797.r2.dev";
+    } else if (key.startsWith("gauntlet/leg3/")) {
+      base =
+        env.NEXT_PUBLIC_GAUNTLET_LEADERBOARD_R2_PUBLIC_BASE ||
+        "https://pub-eec34f38e47f4ffbbc39af58bda1bcc2.r2.dev";
+    } else {
+      base =
+        env.NEXT_PUBLIC_ADMIN_R2_PUBLIC_BASE ||
+        env.NEXT_PUBLIC_R2_PUBLIC_BASE ||
+        "https://pub-b20eaa361fb04ee5afea1a9cf22eeb57.r2.dev";
+    }
+
 
   const target = `${String(base).replace(/\/$/, "")}/${key}`;
 
