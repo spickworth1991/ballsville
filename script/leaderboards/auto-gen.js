@@ -1083,7 +1083,7 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, isBest
     owner.latestRoster = { week: targetWeek, starters, bench };
   });
 
-  return { leagueName, owners, weeklyRosters };
+  return { leagueId, leagueName, owners, weeklyRosters };
 }
 
 
@@ -1245,6 +1245,7 @@ async function main() {
       const allResults = [];
       const weeklyCategoryData = {};
       const leagueNamesByDivision = {};
+      const leagueIdsByName = {}; // leagueName -> leagueId (best-effort; assumes unique names per category)
 
       for (const [division, leagues] of Object.entries(details.divisions)) {
         leagueNamesByDivision[division] = [];
@@ -1259,6 +1260,7 @@ async function main() {
                 isBestBall
               );
               leagueNamesByDivision[division].push(result.leagueName);
+              leagueIdsByName[result.leagueName] = result.leagueId; // <-- add this
               allResults.push(...result.owners);
               weeklyCategoryData[result.leagueName] = result.weeklyRosters;
             })
@@ -1293,6 +1295,43 @@ async function main() {
           : [];
       }
 
+      // ✅ Explicit ordering metadata so downstream can sort without name parsing
+      const divisionMeta = {};
+      divisionsSorted.forEach((divName, i) => {
+        divisionMeta[divName] = { order: i + 1 }; // 1-based feels nicer for humans
+      });
+
+      const leagueMeta = {};
+      for (const divName of divisionsSorted) {
+        const divOrder = divisionMeta[divName]?.order ?? 999;
+        const leaguesInDiv = leaguesByDivisionSorted[divName] || [];
+        leaguesInDiv.forEach((leagueName, j) => {
+          leagueMeta[leagueName] = {
+            leagueId: leagueIdsByName[leagueName] || null, // optional, but handy
+            division: divName,
+            divisionOrder: divOrder,
+            leagueOrder: j + 1, // order within division
+          };
+        });
+      }
+
+      // ✅ Enrich owners so tables can sort instantly (no parsing)
+      for (const o of allResults) {
+        const dm = divisionMeta[o.division] || { order: 999 };
+        const lm = leagueMeta[o.leagueName] || {
+          divisionOrder: dm.order,
+          leagueOrder: 999,
+        };
+
+        o.divisionOrder = dm.order;
+        o.leagueOrder = lm.leagueOrder;
+
+        // Single numeric key for stable sorting anywhere:
+        // (divisionOrder 1..N) * 1000 + (leagueOrder 1..999)
+        o.orderKey = (Number(lm.divisionOrder || dm.order || 999) * 1000) + Number(lm.leagueOrder || 999);
+      }
+
+
       // ✅ Stable ordering for the owners list (prevents "random" ordering due to concurrency).
       const divisionIndex = new Map(divisionsSorted.map((d, i) => [d, i]));
       allResults.sort((a, b) => {
@@ -1326,7 +1365,12 @@ async function main() {
         owners: allResults,
         divisions: divisionsSorted,
         leaguesByDivision: leaguesByDivisionSorted,
+
+        // ✅ New: explicit ordering + lookup metadata
+        divisionMeta,
+        leagueMeta,
       };
+
 
       if (String(year) === CURRENT_YEAR) {
         catPayload.updatedAt = new Date().toISOString();
