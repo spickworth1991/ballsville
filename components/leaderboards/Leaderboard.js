@@ -132,7 +132,8 @@ function LeaderboardControls({
   const resetFilter = () => handleSelect({ filterType: "all", filterValue: null });
 
   const filteredDivisions = useMemo(() => {
-    const list = [...(activeBlock?.divisions || [])].sort((a, b) => a.localeCompare(b));
+    // Preserve backend-provided ordering (it already reflects divisionOrder/leagueOrder).
+    const list = [...(activeBlock?.divisions || [])];
     if (!search.trim()) return list;
     const q = search.toLowerCase();
     return list.filter((d) => String(d).toLowerCase().includes(q));
@@ -140,12 +141,17 @@ function LeaderboardControls({
 
   const filteredLeaguesByDivision = useMemo(() => {
     const map = activeBlock?.leaguesByDivision || {};
-    const divisions = Object.keys(map).sort((a, b) => a.localeCompare(b));
+    // Preserve backend-provided ordering (it already reflects divisionOrder/leagueOrder).
+    // Fallback to object keys if the backend didn't provide a divisions array.
+    const divisions = (Array.isArray(activeBlock?.divisions) && activeBlock.divisions.length)
+      ? [...activeBlock.divisions]
+      : Object.keys(map);
     const q = search.trim().toLowerCase();
 
     const result = {};
     divisions.forEach((division) => {
-      const leagues = [...(map[division] || [])].sort((a, b) => a.localeCompare(b));
+      // Preserve backend-provided ordering (it already reflects divisionOrder/leagueOrder).
+      const leagues = [...(map[division] || [])];
       if (!q) {
         result[division] = leagues;
         return;

@@ -815,14 +815,14 @@ function leagueSortKey(leagueName) {
   }
 
   // Redraft: match "#12" anywhere.
-  m = s.match(/\b#\s*(\d+)\b/);
+  m = s.match(/#\s*(\d+)\b/);
   if (m) {
     return { kind: 2, a: Number(m[1]) || 0, b: 0, t: s.toLowerCase() };
   }
 
   // Some league names use "11/20" style (sort by the leading number).
   // We match both suffix and in-string forms to avoid lexicographic fallbacks (1,10,11,12...).
-  m = s.match(/\b(\d+)\s*\/\s*(\d+)\b/);
+  m = s.match(/(\d+)\s*\/\s*(\d+)\b/);
   if (m) {
     return { kind: 2, a: Number(m[1]) || 0, b: 0, t: s.toLowerCase() };
   }
