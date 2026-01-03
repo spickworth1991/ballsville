@@ -26,7 +26,7 @@ export default function RedraftDynamicBlocks({
       ) : null}
 
       {showLeagues ? (
-        <section className="mt-8">
+        <section className="mt-8 rounded-2xl border border-subtle bg-card-surface p-4 ">
           <div className="mb-4">
             <h2 className="text-xl font-semibold text-white">Leagues</h2>
             <p className="text-sm text-white/70">Browse all active Redraft leagues for this season.</p>
