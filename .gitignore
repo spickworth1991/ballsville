@@ -46,4 +46,4 @@ wrangler.toml
 /unused/
 /public/wagers/*.json
 backup.zip
-
+/auto/
