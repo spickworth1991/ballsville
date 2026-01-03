@@ -11,6 +11,24 @@ function uid() {
   return `id_${Math.random().toString(16).slice(2)}${Date.now().toString(16)}`;
 }
 
+function isLocalhost() {
+  if (typeof window === "undefined") return false;
+  const h = String(window.location?.hostname || "").toLowerCase();
+  return h === "localhost" || h === "127.0.0.1" || h === "::1";
+}
+
+function adminR2Base() {
+  // Production uses the /r2 handler (bucket binding + caching). Local dev can bypass
+  // Pages Functions and hit the public r2.dev bucket directly.
+  if (isLocalhost()) {
+    return (
+      process.env.NEXT_PUBLIC_ADMIN_R2_PROXY_BASE ||
+      "https://pub-b20eaa361fb04ee5afea1a9cf22eeb57.r2.dev"
+    ).replace(/\/$/, "");
+  }
+  return "/r2";
+}
+
 function normalize(e, idx) {
   return {
     id: String(e?.id || idx || uid()),
@@ -228,7 +246,7 @@ export default function HallOfFameAdmin() {
           <div className="grid gap-4">
             {entries.map((e) => {
               const safeKey = e.imageKey ? String(e.imageKey).replace(/^\/+/, "") : "";
-              const src = safeKey ? `/r2/${safeKey}` : e.imageUrl || "";
+              const src = safeKey ? `${adminR2Base()}/${safeKey}` : e.imageUrl || "";
               return (
                 <div key={e.id} className="card bg-card-surface border border-subtle p-5 rounded-2xl">
                   <div className="flex flex-col lg:flex-row gap-4">
