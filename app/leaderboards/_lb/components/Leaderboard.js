@@ -497,7 +497,6 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
   // -------- Weekly sort/filter ----------
   const [weeklySortWeek, setWeeklySortWeek] = useState(null); // number | null
   const [weeklySortDir, setWeeklySortDir] = useState("desc"); // "asc" | "desc"
-  const [weeklyHighsOnly, setWeeklyHighsOnly] = useState(false);
 
   // Suggestions / filtered list
   const filteredOwners = useMemo(() => {
@@ -512,18 +511,9 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
         if (av === bv) return (a.globalRank || 0) - (b.globalRank || 0);
         return weeklySortDir === "asc" ? av - bv : bv - av;
       });
-      if (weeklyHighsOnly) {
-        const max = base.reduce((m, o) => {
-          const v = typeof o.weekly?.[w] === "number" ? o.weekly[w] : -Infinity;
-          return Math.max(m, v);
-        }, -Infinity);
-        base = base.filter(
-          (o) => (typeof o.weekly?.[w] === "number" ? o.weekly[w] : -Infinity) === max
-        );
-      }
     }
     return base;
-  }, [q, scopedOwners, showWeeks, weeklySortWeek, weeklySortDir, weeklyHighsOnly, norm]);
+  }, [q, scopedOwners, showWeeks, weeklySortWeek, weeklySortDir, norm]);
 
   const ownerSuggestions = useMemo(() => {
     if (!q) return [];
@@ -556,7 +546,6 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
   }, [year, category, showWeeks]);
   useEffect(() => {
     setWeeklySortWeek(null);
-    setWeeklyHighsOnly(false);
   }, [year, category, showWeeks]);
 
   const sumPoints = (arr = []) =>
@@ -807,24 +796,11 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
       {/* Weekly sort options */}
       {showWeeks && (
         <div className="flex flex-wrap items-center gap-2 mb-4">
-          <button
-            type="button"
-            onClick={() => setWeeklyHighsOnly((v) => !v)}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold border transition ${
-              weeklyHighsOnly
-                ? "bg-accent/15 border-accent/40 text-foreground"
-                : "bg-panel/40 border-subtle text-muted hover:border-accent/30 hover:text-foreground"
-            }`}
-            title="Show only the highest scorer for the selected week"
-          >
-            Weekly Highs Only
-          </button>
           {weeklySortWeek != null && (
             <button
               type="button"
               onClick={() => {
                 setWeeklySortWeek(null);
-                setWeeklyHighsOnly(false);
               }}
               className="px-3 py-2 rounded-xl text-xs font-semibold bg-panel/60 border border-subtle text-foreground hover:border-accent/30"
             >

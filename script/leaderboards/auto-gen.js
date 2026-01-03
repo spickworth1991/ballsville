@@ -1,9 +1,11 @@
 // scripts/auto-gen.js
 import fs from "fs";
+import "dotenv/config";
 import path from "path";
 import axios from "axios";
 import pLimit from "p-limit";
 import prompts from "prompts";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
 // NFL season year helper:
 // Jan/Feb still count as previous season; March+ counts as the new season year.
@@ -593,6 +595,85 @@ const IS_CI =
   process.env.GITHUB_ACTIONS === "true" ||
   process.env.CI === "true";
 
+// ---- Optional local upload to R2 (prompted in interactive mode) ------------
+// Uses the same env vars as script/buildleaderboards.mjs:
+// - R2_ACCOUNT_ID
+// - R2_ACCESS_KEY_ID
+// - R2_SECRET_ACCESS_KEY
+// - R2_BUCKET_LEADERBOARDS
+// Upload prefix: data/leaderboards/
+function mustEnv(name) {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing required env var for R2 upload: ${name}`);
+  return v;
+}
+
+function makeR2Client() {
+  const accountId = mustEnv("R2_ACCOUNT_ID");
+  const accessKeyId = mustEnv("R2_ACCESS_KEY_ID");
+  const secretAccessKey = mustEnv("R2_SECRET_ACCESS_KEY");
+  return new S3Client({
+    region: "auto",
+    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    credentials: { accessKeyId, secretAccessKey },
+  });
+}
+
+function listLeaderboardOutputFiles(selectedYears) {
+  // Only upload the public artifacts (not the Sleeper player DB cache).
+  const years = new Set((selectedYears || []).map(String));
+  const out = [];
+  if (!fs.existsSync(BACKUP_DIR)) return out;
+
+  for (const f of fs.readdirSync(BACKUP_DIR)) {
+    if (f === path.basename(PLAYER_FILE)) continue; // sleeper_players.json
+    // leaderboards_YYYY.json, weekly_manifest_YYYY.json, weekly_rosters_YYYY_partN.json
+    const m = f.match(/^(leaderboards|weekly_manifest|weekly_rosters)_(\d{4})(?:_part\d+)?\.json$/);
+    if (!m) continue;
+    const y = m[2];
+    if (!years.has(String(y))) continue;
+    out.push(path.join(BACKUP_DIR, f));
+  }
+  // deterministic order
+  out.sort((a, b) => a.localeCompare(b));
+  return out;
+}
+
+async function uploadFilesToR2(selectedYears) {
+  const bucket = mustEnv("R2_BUCKET_LEADERBOARDS");
+  const s3 = makeR2Client();
+  const files = listLeaderboardOutputFiles(selectedYears);
+
+  if (!files.length) {
+    console.log("ℹ️  No leaderboard output files found to upload.");
+    return;
+  }
+
+  console.log(`\n☁️  Uploading ${files.length} file(s) to R2 bucket "${bucket}"…`);
+  const putLimit = pLimit(CONCURRENCY);
+
+  await Promise.all(
+    files.map((localPath) =>
+      putLimit(async () => {
+        const rel = path.basename(localPath); // files are directly under /auto
+        const key = `data/leaderboards/${rel}`;
+        const body = fs.readFileSync(localPath);
+        console.log(`PUT r2://${bucket}/${key}`);
+        await s3.send(
+          new PutObjectCommand({
+            Bucket: bucket,
+            Key: key,
+            Body: body,
+            ContentType: "application/json; charset=utf-8",
+          })
+        );
+      })
+    )
+  );
+
+  console.log("✅ Upload complete.");
+}
+
 
 // ---- BEST BALL HELPERS -------------------------------------------------
 const normId = (x) => (x == null ? null : String(x).trim());
@@ -993,6 +1074,7 @@ function removeYearFiles(year) {
 async function main() {
   let SELECTED_YEARS;
   let USE_CACHED_PLAYERS;
+  let UPLOAD_TO_R2 = false;
 
   // ✅ CI mode: never prompt, always run current NFL season only
   if (IS_CI) {
@@ -1054,6 +1136,14 @@ async function main() {
           active: "Yes",
           inactive: "No",
         },
+        {
+          type: "toggle",
+          name: "uploadToR2",
+          message: "Upload generated leaderboard files to R2 when finished?",
+          initial: false,
+          active: "Yes",
+          inactive: "No",
+        },
       ],
       {
         onCancel: () => {
@@ -1065,6 +1155,8 @@ async function main() {
 
     SELECTED_YEARS = ans.years;
     USE_CACHED_PLAYERS = ans.useCachedPlayers;
+
+    UPLOAD_TO_R2 = !!ans.uploadToR2;
   }
 
   const playersDB = await getSleeperPlayers(USE_CACHED_PLAYERS);
@@ -1204,6 +1296,18 @@ async function main() {
       `🧭 Wrote weekly_manifest_${year}.json with ${parts.length} part(s)`
     );
   }
+
+  // Optional local upload step
+  if (UPLOAD_TO_R2) {
+    try {
+      await uploadFilesToR2(SELECTED_YEARS);
+    } catch (err) {
+      console.error("\n❌ R2 upload failed:", err?.message || err);
+      process.exit(1);
+    }
+  }
+
+
 
   console.log("\n✅ Done (per-year only). Upload the year files you rebuilt.");
 }

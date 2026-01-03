@@ -19,17 +19,30 @@ export default function useR2Live(
   // Examples:
   //   /r2/data/leaderboards (production via Pages Function)
   //   https://pub-XXXX.r2.dev/data/leaderboards (local dev)
-  { pollMs = 60000, basePath = '/r2/data/leaderboards' } = {}
+  { enabled = true, pollMs = 60000, basePath = '/r2/data/leaderboards' } = {}
 ) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const etagRef = useRef(null);
   const activeYearRef = useRef(CURRENT_SEASON)
+  const dataRef = useRef(null);
 
   useEffect(() => { activeYearRef.current = year; }, [year]);
 
+  // When switching years, clear cached state so the UI never shows the previous year's payload
+  // under the newly-selected year.
+  useEffect(() => {
+    if (!enabled) return;
+    etagRef.current = null;
+    dataRef.current = null;
+    setData(null);
+    setError(null);
+  }, [year, basePath, enabled]);
+
   useEffect(() => {
     let timer, aborted = false;
+
+    if (!enabled || !year) return;
 
     const base = String(basePath || '').replace(/\/$/, '');
     const yManifest = (y) => `${base}/weekly_manifest_${y}.json`;
@@ -55,6 +68,8 @@ export default function useR2Live(
       if (aborted) return;
       const y = activeYearRef.current;
 
+      if (!enabled || !y) return;
+
       try {
         const meta = await headOrGet(yManifest(y));
         const tag =
@@ -63,13 +78,14 @@ export default function useR2Live(
           meta.headers.get('content-length') ||
           etagRef.current || 'init';
 
-        if (etagRef.current === tag && data !== null) return;
+        if (etagRef.current === tag && dataRef.current !== null) return;
 
         const yearObj = await getJson(yBoards(y));
         const shaped = yearObj && yearObj[y] ? yearObj : { [y]: yearObj[y] || yearObj };
 
         if (aborted) return;
         etagRef.current = tag;
+        dataRef.current = shaped;
         setData(shaped);
         setError(null);
       } catch (e) {
@@ -81,7 +97,7 @@ export default function useR2Live(
     tick();
     timer = setInterval(tick, pollMs);
     return () => { aborted = true; clearInterval(timer); };
-  }, [pollMs, basePath]);
+  }, [enabled, pollMs, basePath, year]);
 
   return { data, error, etag: etagRef.current };
 }

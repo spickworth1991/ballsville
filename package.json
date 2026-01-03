@@ -11,7 +11,8 @@
     "lint": "next lint",
     "icons": "node scripts/make-icons.mjs public/logo-source.webp",
     "git": "git add . && git commit -m \"IntergrateLeaderboards\" && git push origin main",
-    "leg3": "node script/buildgauntlet.mjs"
+    "leg3": "node script/buildgauntlet.mjs",
+    "leaderboards": "node script/leaderboards/auto-gen.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.946.0",
