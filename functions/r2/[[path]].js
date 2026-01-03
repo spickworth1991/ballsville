@@ -75,7 +75,39 @@ export async function onRequest({ request, params, env }) {
   // ✅ 1) Try bucket binding first (this is what fixes Mini-Leagues 404s)
   const bucket = pickBucket(env, key);
   if (bucket && typeof bucket.get === "function") {
-    const obj = await bucket.get(key);
+    // First try the preferred bucket.
+    let obj = await bucket.get(key);
+
+    // ⚠️ Some sections (like Redraft) may be written to the admin bucket,
+    // while public reads default to the public bucket.
+    // If the object isn't found in the public bucket, fall back to admin.
+    if (!obj) {
+      const publicBucket = env.public_bucket || env.PUBLIC_BUCKET || null;
+      const adminBucket = env.admin_bucket || env.ADMIN_BUCKET || null;
+      const leaderboardsBucket =
+        env.leaderboard_bucket ||
+        env.LEADERBOARD_BUCKET ||
+        env.leaderboards_bucket ||
+        env.LEADERBOARDS_BUCKET ||
+        env.leaderboard_data_bucket ||
+        env.LEADERBOARD_DATA_BUCKET ||
+        null;
+
+      // If we chose the public bucket (default), try admin next.
+      if (publicBucket && bucket === publicBucket && adminBucket && typeof adminBucket.get === "function") {
+        obj = await adminBucket.get(key);
+      }
+
+      // If we chose the leaderboards bucket for this key, try public/admin as a safety net.
+      if (!obj && leaderboardsBucket && bucket === leaderboardsBucket) {
+        if (publicBucket && typeof publicBucket.get === "function") {
+          obj = await publicBucket.get(key);
+        }
+        if (!obj && adminBucket && typeof adminBucket.get === "function") {
+          obj = await adminBucket.get(key);
+        }
+      }
+    }
 
     if (obj) {
       const headers = new Headers();
