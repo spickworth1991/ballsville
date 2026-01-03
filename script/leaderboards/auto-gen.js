@@ -796,8 +796,9 @@ function mergeDeep(target, src) {
 function leagueSortKey(leagueName) {
   const s = String(leagueName || "").trim();
 
-  // Big Game: allow "D8L1" with optional parens and optional spaces.
-  let m = s.match(/^\(?\s*D\s*(\d+)\s*L\s*(\d+)\s*\)?/i);
+  // Big Game: match D#L# anywhere in the string (names often have prefixes/suffixes).
+  // Examples: "D12L1", "(D9L12)", "The Boys (D12L1)", "D12L1 - The Boys".
+  let m = s.match(/\bD\s*(\d+)\s*L\s*(\d+)\b/i);
   if (m) {
     return { kind: 0, a: Number(m[1]) || 0, b: Number(m[2]) || 0, t: s.toLowerCase() };
   }
@@ -813,14 +814,78 @@ function leagueSortKey(leagueName) {
     }
   }
 
-  // Redraft: #1, #2, ...
-  m = s.match(/^#\s*(\d+)\b/);
+  // Redraft: match "#12" anywhere.
+  m = s.match(/\b#\s*(\d+)\b/);
+  if (m) {
+    return { kind: 2, a: Number(m[1]) || 0, b: 0, t: s.toLowerCase() };
+  }
+
+  // Some league names use "11/20" style (sort by the leading number).
+  // We match both suffix and in-string forms to avoid lexicographic fallbacks (1,10,11,12...).
+  m = s.match(/\b(\d+)\s*\/\s*(\d+)\b/);
+  if (m) {
+    return { kind: 2, a: Number(m[1]) || 0, b: 0, t: s.toLowerCase() };
+  }
+
+  // Plain numeric prefix
+  m = s.match(/^\s*(\d+)\b/);
   if (m) {
     return { kind: 2, a: Number(m[1]) || 0, b: 0, t: s.toLowerCase() };
   }
 
   // Fallback alphabetical
   return { kind: 9, a: 0, b: 0, t: s.toLowerCase() };
+}
+
+function divisionSortKey(divisionName, leagueNames = []) {
+  const name = String(divisionName || "").trim();
+
+  // Mini Leagues: "Division 400s" => 4, "Division 100s" => 1, etc.
+  let m = name.match(/\bDivision\s+(\d{3})s\b/i);
+  if (m) {
+    const n = Number(m[1]);
+    if (Number.isFinite(n)) return { kind: 1, a: Math.floor(n / 100), t: name.toLowerCase() };
+  }
+
+  // Big Game (and anything else): derive from the league names inside the division.
+  // We take the smallest (kind,a,b) key we can find among the division's leagues.
+  let best = null;
+  for (const ln of Array.isArray(leagueNames) ? leagueNames : []) {
+    const k = leagueSortKey(ln);
+    if (!best) {
+      best = k;
+      continue;
+    }
+    if (k.kind !== best.kind) {
+      if (k.kind < best.kind) best = k;
+      continue;
+    }
+    if (k.a !== best.a) {
+      if (k.a < best.a) best = k;
+      continue;
+    }
+    if (k.b !== best.b) {
+      if (k.b < best.b) best = k;
+      continue;
+    }
+  }
+
+  if (best) return { kind: best.kind, a: best.a, t: name.toLowerCase() };
+  return { kind: 9, a: 0, t: name.toLowerCase() };
+}
+
+function sortDivisionNames(category, divisionNames, leagueNamesByDivision) {
+  const divs = (divisionNames || []).slice();
+  divs.sort((a, b) => {
+    const ka = divisionSortKey(a, leagueNamesByDivision?.[a]);
+    const kb = divisionSortKey(b, leagueNamesByDivision?.[b]);
+    // For Big Game, division order should be based on D# (i.e., kind 0 key from leagues).
+    // For Mini, division order should be 100s, 200s, 300s, 400s (handled above).
+    if (ka.kind !== kb.kind) return ka.kind - kb.kind;
+    if (ka.a !== kb.a) return ka.a - kb.a;
+    return ka.t.localeCompare(kb.t);
+  });
+  return divs;
 }
 
 function sortLeagueNamesInDivisions(leagueNamesByDivision) {
@@ -1205,9 +1270,31 @@ async function main() {
       // (Big Game: D#L#, Mini: 101/201..., Redraft: #1/#2...)
       sortLeagueNamesInDivisions(leagueNamesByDivision);
 
+      // ✅ Stable ordering for division lists.
+      // Big Game divisions are labels ("The Boys", etc.) and should be ordered by their D#.
+      // Mini Game divisions should be ordered by their numeric hundreds (100s, 200s, ...).
+      const divisionsOriginal = Object.keys(details.divisions || {});
+      let divisionsSorted = divisionsOriginal;
+      if (category === "big_game" || category === "mini_game") {
+        divisionsSorted = divisionsOriginal.slice().sort((a, b) => {
+          const ka = divisionSortKey(a, leagueNamesByDivision[a]);
+          const kb = divisionSortKey(b, leagueNamesByDivision[b]);
+          if (ka.kind !== kb.kind) return ka.kind - kb.kind;
+          if (ka.a !== kb.a) return ka.a - kb.a;
+          return ka.t.localeCompare(kb.t);
+        });
+      }
+
+      // Ensure JSON key order matches the divisions array (some UIs iterate keys).
+      const leaguesByDivisionSorted = {};
+      for (const div of divisionsSorted) {
+        leaguesByDivisionSorted[div] = Array.isArray(leagueNamesByDivision[div])
+          ? leagueNamesByDivision[div]
+          : [];
+      }
+
       // ✅ Stable ordering for the owners list (prevents "random" ordering due to concurrency).
-      const divisionOrder = Object.keys(details.divisions || {});
-      const divisionIndex = new Map(divisionOrder.map((d, i) => [d, i]));
+      const divisionIndex = new Map(divisionsSorted.map((d, i) => [d, i]));
       allResults.sort((a, b) => {
         const da = divisionIndex.has(a.division) ? divisionIndex.get(a.division) : 999;
         const db = divisionIndex.has(b.division) ? divisionIndex.get(b.division) : 999;
@@ -1237,8 +1324,8 @@ async function main() {
         name: details.name,
         weeks,
         owners: allResults,
-        divisions: Object.keys(details.divisions),
-        leaguesByDivision: leagueNamesByDivision,
+        divisions: divisionsSorted,
+        leaguesByDivision: leaguesByDivisionSorted,
       };
 
       if (String(year) === CURRENT_YEAR) {
