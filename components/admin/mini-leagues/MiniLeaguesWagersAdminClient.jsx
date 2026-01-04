@@ -33,7 +33,7 @@ function nowIso() {
 }
 
 const LEADERBOARD_URL_BY_SEASON = (season) =>
-  `https://ballsville-leaderboard.pages.dev/data/leaderboards_${encodeURIComponent(season)}.json`;
+  `https://ballsville.pages.dev/data/leaderboards_${encodeURIComponent(season)}.json`;
 
 function sumWeeks(weeklyMap, maxWeek) {
   let total = 0;

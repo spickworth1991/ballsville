@@ -1,5 +1,5 @@
 "use client";
-
+import { adminR2Url } from "@/lib/r2Client";
 import { useEffect, useMemo, useState } from "react";
 import { safeArray, safeStr } from "@/lib/safe";
 // NOTE: The Dynasty wagers JSON currently lives behind a public (no-auth) admin API.
@@ -247,13 +247,14 @@ function DynastyWagerTrackerInner({ season }) {
       setLoading(true);
       setError("");
       try {
-        const res = await fetch(`/api/admin/dynasty-wagers?season=${encodeURIComponent(season)}`, { cache: "no-store" });
+        const url = adminR2Url(`data/dynasty/wagers_${encodeURIComponent(season)}.json?v=${Date.now()}`);
+        const res = await fetch(url, { cache: "no-store" });
         if (!res.ok) {
           setDoc(null);
           return;
         }
-        const saved = await res.json();
-        const json = saved && typeof saved === "object" && "data" in saved ? saved.data : saved;
+        const json = await res.json();
+        setDoc(json && typeof json === "object" ? json : null);
         if (!mounted) return;
         setDoc(json);
       } catch (e) {
