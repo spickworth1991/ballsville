@@ -536,6 +536,8 @@ export default function DynastyWagersAdminClient() {
   const [errorMsg, setErrorMsg] = useState("");
   const [infoMsg, setInfoMsg] = useState("");
   const [step, setStep] = useState("finalists");
+  const [hasExistingDoc, setHasExistingDoc] = useState(false);
+
 
   const [leagueOrderIndex, setLeagueOrderIndex] = useState(() => new Map());
   // { [division]: { [leagueName]: string[] } }
@@ -618,26 +620,35 @@ export default function DynastyWagersAdminClient() {
     } catch {}
   }
 
-  async function loadDoc(seasonToLoad) {
-    setLoading(true);
-    setErrorMsg("");
-    setInfoMsg("");
-    try {
-      await loadLeagueOrderIndex(seasonToLoad);
-      const res = await fetch(`/api/admin/dynasty-wagers?season=${encodeURIComponent(seasonToLoad)}`, {
-        cache: "no-store",
-      });
-      const saved = await res.json().catch(() => null);
-      const next = normalizeLoadedDoc(saved, seasonToLoad);
-      setDoc(next);
-      setSeason(Number(seasonToLoad));
-    } catch (e) {
-      setErrorMsg(e?.message || "Failed to load Dynasty wagers.");
-      setDoc(buildEmptyState(seasonToLoad));
-    } finally {
-      setLoading(false);
+    async function loadDoc(seasonToLoad) {
+      setLoading(true);
+      setErrorMsg("");
+      setInfoMsg("");
+      try {
+        await loadLeagueOrderIndex(seasonToLoad);
+
+        const res = await fetch(`/api/admin/dynasty-wagers?season=${encodeURIComponent(seasonToLoad)}`, {
+          cache: "no-store",
+        });
+
+        const saved = await res.json().catch(() => null);
+
+        // ✅ only "start over" when there is no JSON doc (data: null)
+        const exists = Boolean(saved?.data && typeof saved.data === "object");
+        setHasExistingDoc(exists);
+
+        const next = normalizeLoadedDoc(saved, seasonToLoad);
+        setDoc(next);
+        setSeason(Number(seasonToLoad));
+      } catch (e) {
+        setHasExistingDoc(false);
+        setErrorMsg(e?.message || "Failed to load Dynasty wagers.");
+        setDoc(buildEmptyState(seasonToLoad));
+      } finally {
+        setLoading(false);
+      }
     }
-  }
+
 
   useEffect(() => {
     setSeason(CURRENT_SEASON);
@@ -858,6 +869,11 @@ export default function DynastyWagersAdminClient() {
       setSaving(false);
     }
   }
+  async function saveLeagueProgress() {
+    // No validation. Just persist whatever you have so far.
+    await save(doc);
+    setInfoMsg("Saved league progress.");
+  }
 
   async function resolveWeek18AndNext() {
     setSaving(true);
@@ -975,9 +991,12 @@ export default function DynastyWagersAdminClient() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <PrimaryButton onClick={loadOwners} disabled={loading || saving}>
-              Load Leagues & Owners
-            </PrimaryButton>
+            {!hasExistingDoc && (
+              <PrimaryButton onClick={loadOwners} disabled={loading || saving}>
+                Load Owners (Start)
+              </PrimaryButton>
+            )}
+
             <PrimaryButton tone="accent2" onClick={() => save(doc)} disabled={loading || saving}>
               Save
             </PrimaryButton>
@@ -1041,7 +1060,20 @@ export default function DynastyWagersAdminClient() {
 
                       return (
                         <div key={`${d.division}|||${l.leagueName}`} className="rounded-2xl border border-subtle bg-card-surface p-4">
-                          <div className="text-white font-semibold">{l.leagueName}</div>
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-white font-semibold min-w-0 truncate">{l.leagueName}</div>
+
+                            <button
+                              type="button"
+                              onClick={saveLeagueProgress}
+                              disabled={saving}
+                              className="shrink-0 rounded-xl border border-subtle bg-panel px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-white hover:border-accent/40 disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Save progress for this league (no validation)"
+                            >
+                              Save League
+                            </button>
+                          </div>
+
 
                           <div className="mt-3 grid gap-2 sm:grid-cols-2">
                             {[0, 1].map((idx) => (
