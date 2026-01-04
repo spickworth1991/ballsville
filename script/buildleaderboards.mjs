@@ -7,7 +7,7 @@
 // - R2_ACCOUNT_ID
 // - R2_ACCESS_KEY_ID
 // - R2_SECRET_ACCESS_KEY
-// - R2_BUCKET_LEADERBOARDS  (bucket name)
+// - ADMIN_BUCKET  (bucket name)
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -32,7 +32,7 @@ function must(name) {
 const accountId = must("R2_ACCOUNT_ID");
 const accessKeyId = must("R2_ACCESS_KEY_ID");
 const secretAccessKey = must("R2_SECRET_ACCESS_KEY");
-const bucket = must("R2_BUCKET_LEADERBOARDS");
+const bucket = must("ADMIN_BUCKET");
 
 const s3 = new S3Client({
   region: "auto",

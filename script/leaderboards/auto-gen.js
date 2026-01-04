@@ -600,7 +600,7 @@ const IS_CI =
 // - R2_ACCOUNT_ID
 // - R2_ACCESS_KEY_ID
 // - R2_SECRET_ACCESS_KEY
-// - R2_BUCKET_LEADERBOARDS
+// - ADMIN_BUCKET
 // Upload prefix: data/leaderboards/
 function mustEnv(name) {
   const v = process.env[name];
@@ -640,7 +640,7 @@ function listLeaderboardOutputFiles(selectedYears) {
 }
 
 async function uploadFilesToR2(selectedYears) {
-  const bucket = mustEnv("R2_BUCKET_LEADERBOARDS");
+  const bucket = mustEnv("ADMIN_BUCKET");
   const s3 = makeR2Client();
   const files = listLeaderboardOutputFiles(selectedYears);
 
