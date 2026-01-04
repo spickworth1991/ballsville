@@ -54,13 +54,17 @@ function legacyKeyForSeason(season) {
   return `admin/dynasty-wagers_${season}.json`;
 }
 
-function normalizeRows(payload) {
-  // Support both shapes:
-  // - legacy: { rows: [...] }
-  // - raw array: [...]
-  if (Array.isArray(payload)) return payload;
-  if (payload && typeof payload === "object" && Array.isArray(payload.rows)) return payload.rows;
-  return [];
+function normalizeDoc(payload, season) {
+  // Dynasty wagers is a single JSON "document" (not a rows list).
+  // Support older wrappers like { data: <doc> }.
+  const doc = payload?.data && typeof payload.data === "object" ? payload.data : payload;
+  if (!doc || typeof doc !== "object") return null;
+  // Ensure season is present/consistent.
+  const s = Number(doc.season ?? season);
+  return {
+    ...doc,
+    season: Number.isFinite(s) ? s : Number(season),
+  };
 }
 
 export async function onRequest({ request, env }) {
@@ -80,7 +84,7 @@ export async function onRequest({ request, env }) {
       if (!obj) {
         const legacyObj = await bucket.get(legacyKey);
         if (!legacyObj) {
-          return json({ ok: true, season, key, rows: [], data: null });
+          return json({ ok: true, season, key, legacyKey, data: null });
         }
         obj = legacyObj;
         usedKey = legacyKey;
@@ -88,16 +92,11 @@ export async function onRequest({ request, env }) {
 
       const text = await obj.text();
       const parsed = text ? JSON.parse(text) : null;
-      const rows = normalizeRows(parsed);
+      const doc = normalizeDoc(parsed, season);
 
       // If we had to read legacy data, migrate it forward so the UI stops "resetting".
       if (usedKey === legacyKey) {
         try {
-          const doc = {
-            season,
-            updatedAt: String(parsed?.updatedAt || parsed?.updated_at || new Date().toISOString()),
-            rows,
-          };
           await bucket.put(key, JSON.stringify(doc, null, 2), {
             httpMetadata: { contentType: "application/json" },
           });
@@ -106,7 +105,7 @@ export async function onRequest({ request, env }) {
         }
       }
 
-      return json({ ok: true, season, key: usedKey, rows, data: parsed });
+      return json({ ok: true, season, key: usedKey, data: doc });
     }
 
     if (request.method === "PUT") {
@@ -115,19 +114,14 @@ export async function onRequest({ request, env }) {
         return json({ ok: false, error: "Invalid JSON body." }, 400);
       }
 
-      const rows = normalizeRows(body);
-      const doc = {
-        season,
-        updatedAt: new Date().toISOString(),
-        rows,
-      };
+      const doc = normalizeDoc(body, season);
 
       // Always write to the standard location.
       await bucket.put(key, JSON.stringify(doc, null, 2), {
         httpMetadata: { contentType: "application/json" },
       });
 
-      return json({ ok: true, season, key, rows });
+      return json({ ok: true, season, key, data: doc });
     }
 
     if (request.method === "DELETE") {
