@@ -27,13 +27,19 @@ function resolveImageSrc({ imagePath, imageKey, updatedAt, version }) {
 
   // If we already stored a full URL (/r2/... or https://...), just ensure it has a cache-bust.
   if (p) {
+    // /r2/* paths must go through r2Url() so localhost uses the public R2 base.
+    if (p.startsWith("/r2/")) {
+      const keyFromPath = p.replace(/^\/r2\//, "");
+      return `${r2Url(keyFromPath)}?v=${bust}`;
+    }
     if (p.includes("?")) return p;
     return `${p}?v=${bust}`;
   }
-  if (imageUrl) return imageUrl;
-  const k = safeStr(imageKey).trim();
+
   if (k) return `${r2Url(k)}?v=${bust}`;
   return "";
+}
+
 
 function buildIndex(rows) {
   const active = Array.isArray(rows) ? rows.filter((r) => r && r.is_active !== false) : [];

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import MediaTabCard from "@/components/ui/MediaTabCard";
 import { CURRENT_SEASON } from "@/lib/season";
 import { safeStr } from "@/lib/safe";
+import { r2Url } from "@/lib/r2Url";
 
 
 function resolveImageSrc({ imagePath, imageKey, updatedAt, bustVersion }) {
@@ -16,10 +17,16 @@ function resolveImageSrc({ imagePath, imageKey, updatedAt, bustVersion }) {
       : `v=0`;
 
   if (p) {
+    // If the stored path is a relative /r2/* URL, route it through r2Url() so
+    // localhost uses the public R2 base (no Pages Functions runtime).
+    if (p.startsWith("/r2/")) {
+      const keyFromPath = p.replace(/^\/r2\//, "");
+      return `${r2Url(keyFromPath)}?${bust}`;
+    }
     if (p.includes("?")) return p;
     return `${p}?${bust}`;
   }
-  if (k) return `/r2/${k}?${bust}`;
+  if (k) return `${r2Url(k)}?${bust}`;
   return "";
 }
 
@@ -93,8 +100,7 @@ export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedde
           // ignore storage errors
         }
 
-        const r2Base = process.env.NEXT_PUBLIC_ADMIN_R2_PROXY_BASE || "/r2";
-        const url = `${r2Base}/data/gauntlet/leagues_${season}.json?v=${encodeURIComponent(v)}`;
+        const url = `${r2Url(`data/gauntlet/leagues_${season}.json`)}?v=${encodeURIComponent(v)}`;
         const res = await fetch(url, { cache: "default" });
         if (!res.ok) throw new Error(`Failed to load gauntlet data (${res.status})`);
         const json = await res.json();

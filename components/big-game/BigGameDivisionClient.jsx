@@ -83,9 +83,12 @@ function withBust(url, bust) {
 }
 
 function resolveImageSrc({ key, url }) {
-  if (key) return `/r2/${key}`;
+  if (key) return r2Url(key); // <-- uses /r2/ in prod, public r2.dev on localhost
   return url || "";
 }
+
+
+
 
 function transformForDivision(rows, divisionSlug) {
   const filtered = rows.filter((r) => r.division_slug === divisionSlug && r.is_active !== false);

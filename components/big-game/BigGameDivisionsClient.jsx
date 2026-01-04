@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { CURRENT_SEASON } from "@/lib/season";
 import MediaTabCard from "@/components/ui/MediaTabCard";
 import { safeStr } from "@/lib/safe";
+import { adminR2Url } from "@/lib/r2Client";
 
 const DEFAULT_SEASON = CURRENT_SEASON;
 const R2_KEY_FOR = (season) => `data/biggame/leagues_${season}.json`;
@@ -169,15 +170,21 @@ function buildDivisionsFromRows(rows) {
 function resolveDivisionImage(div, updatedAt) {
   const key = safeStr(div?.division_image_key).trim();
   const url = safeStr(div?.division_image).trim();
-  const base = key ? `/r2/${key}` : url;
+
+  // If we have an R2 key, always resolve through adminR2Url()
+  // so localhost uses the public r2.dev base and production uses /r2/.
+  const base = key ? adminR2Url(key) : url;
+
   if (!base) return "";
   if (!updatedAt) return base;
+
   return base.includes("?") ? base : `${base}?v=${encodeURIComponent(updatedAt)}`;
 }
 
+
 export default function BigGameDivisionsClient({ year = DEFAULT_SEASON, version = "0", manifest = null }) {
   const season = safeNum(year, DEFAULT_SEASON);
-
+  const bust = `v=${version}`;
   const [divisions, setDivisions] = useState([]);
   const [updatedAt, setUpdatedAt] = useState("");
   const [loading, setLoading] = useState(true);
@@ -219,7 +226,7 @@ export default function BigGameDivisionsClient({ year = DEFAULT_SEASON, version 
           // ignore storage errors
         }
 
-        const res = await fetch(`${r2Url(R2_KEY_FOR(season))}?v=${encodeURIComponent(v)}`, { cache: "default" });
+        const res = await fetch(adminR2Url(`data/biggame/leagues_${season}.json?${bust}`), { cache: "default" });
         if (!res.ok) throw new Error(`Failed to load Big Game data (${res.status})`);
 
         const json = await res.json();
