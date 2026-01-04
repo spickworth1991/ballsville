@@ -35,13 +35,17 @@ function leagueImageSrc(l, updatedAt) {
 }
 
 export default function RedraftLeaguesClient({
-  SEASON = CURRENT_SEASON,
+  // Prefer `season` (lowercase) because that's what callers pass.
+  // Keep backwards-compat by tolerating the older `SEASON` prop too.
+  season,
+  SEASON,
   embedded = false,
   version = "0",
   manifest = null,
   title,
   subtitle,
 }) {
+  const seasonValue = season ?? SEASON ?? CURRENT_SEASON;
   const [leagues, setLeagues] = useState([]);
   const [updatedAt, setUpdatedAt] = useState("");
   const [loading, setLoading] = useState(true);
@@ -59,9 +63,9 @@ export default function RedraftLeaguesClient({
         setLoading(true);
 
         const v = String(version || "0");
-        const cacheKeyV = `redraft:leagues:${SEASON}:version`;
-        const cacheKeyData = `redraft:leagues:${SEASON}:data`;
-        const cacheKeyUpdated = `redraft:leagues:${SEASON}:updatedAt`;
+        const cacheKeyV = `redraft:leagues:${seasonValue}:version`;
+        const cacheKeyData = `redraft:leagues:${seasonValue}:data`;
+        const cacheKeyUpdated = `redraft:leagues:${seasonValue}:updatedAt`;
 
         try {
           const cachedV = sessionStorage.getItem(cacheKeyV);
@@ -82,12 +86,17 @@ export default function RedraftLeaguesClient({
           // ignore storage errors
         }
 
-        const leaguesKey = `data/redraft/leagues_${SEASON}.json`;
+        const leaguesKey = `data/redraft/leagues_${seasonValue}.json`;
         const leaguesRes = await fetch(`${r2Url(leaguesKey)}?v=${encodeURIComponent(v)}`, { cache: "default" });
         if (!leaguesRes.ok) throw new Error(`Failed to load Redraft leagues (${leaguesRes.status})`);
 
         const json = await leaguesRes.json();
-        const rows = Array.isArray(json?.rows) ? json.rows : Array.isArray(json) ? json : [];
+        // Admin API stores this as { season, leagues: [...] }.
+        const rows =
+          Array.isArray(json?.leagues) ? json.leagues :
+          Array.isArray(json?.rows) ? json.rows :
+          Array.isArray(json) ? json :
+          [];
         const stamp = safeStr(json?.updatedAt || json?.updated_at || "");
 
         if (cancelled) return;
@@ -112,7 +121,7 @@ export default function RedraftLeaguesClient({
     return () => {
       cancelled = true;
     };
-  }, [version, manifest]);
+  }, [version, manifest, seasonValue]);
 
   const sorted = useMemo(() => {
     return [...leagues].sort((a, b) => {
