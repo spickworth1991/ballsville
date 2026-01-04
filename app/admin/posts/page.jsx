@@ -7,8 +7,6 @@ import AdminNav from "@/components/admin/AdminNav";
 import { getSupabase } from "@/lib/supabaseClient";
 import { CURRENT_SEASON } from "@/lib/season";
 import { safeStr } from "@/lib/safe";
-import { r2Url } from "@/lib/r2Url";
-import { adminR2UrlForKey } from "@/lib/r2Client";
 
 function uid() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
@@ -276,9 +274,7 @@ function AdminPostsInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const mediaSrc = selected?.imageKey
-    ? adminR2UrlForKey(selected.imageKey)
-    : r2Url(safeStr(selected?.imageUrl || ""));
+  const mediaSrc = selected?.imageKey ? `/r2/${selected.imageKey}` : safeStr(selected?.imageUrl || "");
   const isMiniClosed = !!(selected?.is_coupon && selected?.expires_at && new Date(selected.expires_at) < new Date());
 
   return (

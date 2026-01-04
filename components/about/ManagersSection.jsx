@@ -3,8 +3,6 @@
 import { safeArray } from "@/lib/safe";
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import { r2Url } from "@/lib/r2Url";
-import { adminR2UrlForKey } from "@/lib/r2Client";
 
 
 function initials(name) {
@@ -123,7 +121,7 @@ export default function ManagersSection({ season, version = "0", manifest = null
       }
 
       try {
-        const url = r2Url(`/r2/content/about/managers_${season}.json?v=${encodeURIComponent(v)}`);
+        const url = `/r2/content/about/managers_${season}.json?v=${encodeURIComponent(v)}`;
         const res = await fetch(url, { cache: "default" });
         if (res.status === 404) {
           if (!cancelled) setManagers([]);
@@ -199,7 +197,7 @@ export default function ManagersSection({ season, version = "0", manifest = null
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {cards.map((m) => {
             const src = m.imageKey
-              ? `${adminR2UrlForKey(m.imageKey)}?v=${encodeURIComponent(version)}`
+              ? `/r2/${m.imageKey}?v=${encodeURIComponent(version)}`
               : m.imageUrl || "";
             return (
               <button
@@ -272,7 +270,7 @@ export default function ManagersSection({ season, version = "0", manifest = null
               <div className="relative overflow-hidden rounded-2xl border border-subtle bg-black/20" style={{ aspectRatio: "1/1" }}>
                 {active.imageKey || active.imageUrl ? (
                   <Image
-                    src={active.imageKey ? `${adminR2UrlForKey(active.imageKey)}?v=${encodeURIComponent(version)}` : r2Url(active.imageUrl)}
+                    src={active.imageKey ? `/r2/${active.imageKey}?v=${encodeURIComponent(version)}` : active.imageUrl}
                     alt={active.name}
                     fill
                     sizes="220px"
