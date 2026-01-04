@@ -43,8 +43,14 @@ function parseSeason(url) {
 }
 
 function keyForSeason(season) {
-  // NOTE: This is intentionally separate from `dynasty-wagers`.
-  // It preserves the legacy doc shape `{ season, updatedAt, rows }`.
+  // ✅ Standard location used by the rest of the gamemode admin/public pages.
+  // Stored in the ADMIN_BUCKET (via binding), but namespaced under /data.
+  return `data/dynasty/wagers_${season}.json`;
+}
+
+// Legacy key used briefly during the bucket wiring work.
+// Keep read-compat so existing data doesn't "disappear".
+function legacyKeyForSeason(season) {
   return `admin/dynasty-wagers_${season}.json`;
 }
 
@@ -64,18 +70,43 @@ export async function onRequest({ request, env }) {
 
     const bucket = ensureR2(env);
     const key = keyForSeason(season);
+    const legacyKey = legacyKeyForSeason(season);
 
     if (request.method === "GET") {
-      const obj = await bucket.get(key);
+      // Prefer the standard key; fall back to the legacy key if needed.
+      let obj = await bucket.get(key);
+      let usedKey = key;
+
       if (!obj) {
-        return json({ ok: true, season, key, rows: [], data: null });
+        const legacyObj = await bucket.get(legacyKey);
+        if (!legacyObj) {
+          return json({ ok: true, season, key, rows: [], data: null });
+        }
+        obj = legacyObj;
+        usedKey = legacyKey;
       }
 
       const text = await obj.text();
       const parsed = text ? JSON.parse(text) : null;
       const rows = normalizeRows(parsed);
 
-      return json({ ok: true, season, key, rows, data: parsed });
+      // If we had to read legacy data, migrate it forward so the UI stops "resetting".
+      if (usedKey === legacyKey) {
+        try {
+          const doc = {
+            season,
+            updatedAt: String(parsed?.updatedAt || parsed?.updated_at || new Date().toISOString()),
+            rows,
+          };
+          await bucket.put(key, JSON.stringify(doc, null, 2), {
+            httpMetadata: { contentType: "application/json" },
+          });
+        } catch {
+          // ignore migration errors; still return the data we found
+        }
+      }
+
+      return json({ ok: true, season, key: usedKey, rows, data: parsed });
     }
 
     if (request.method === "PUT") {
@@ -91,6 +122,7 @@ export async function onRequest({ request, env }) {
         rows,
       };
 
+      // Always write to the standard location.
       await bucket.put(key, JSON.stringify(doc, null, 2), {
         httpMetadata: { contentType: "application/json" },
       });
@@ -99,8 +131,18 @@ export async function onRequest({ request, env }) {
     }
 
     if (request.method === "DELETE") {
-      await bucket.delete(key);
-      return json({ ok: true, season, key, deleted: true });
+      // Delete both the standard + legacy keys, so "Delete and start over" is reliable.
+      try {
+        await bucket.delete(key);
+      } catch {
+        // ignore
+      }
+      try {
+        await bucket.delete(legacyKey);
+      } catch {
+        // ignore
+      }
+      return json({ ok: true, season, key, legacyKey, deleted: true });
     }
 
     return json({ ok: false, error: "Method not allowed" }, 405);

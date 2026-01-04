@@ -42,6 +42,9 @@ const NAV_ITEMS = [
     children: [
       { name: "Leaderboards", to: "/leaderboards" },
       { name: "Gauntlet Bracket", to: "/gauntlet/leaderboard" },
+      { name: "Big Game Wagers", to: "/big-game/wagers" },
+      { name: "Dynasty Wagers", to: "/dynasty/wagers" },
+      { name: "Mini-League Wagers", to: "/mini-leagues/wagers" },
     ],
   },
   {
