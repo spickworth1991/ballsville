@@ -24,7 +24,7 @@ function pickBucket(env, key) {
 
   // 1) Global leaderboards bucket
   if (k.startsWith("data/leaderboards/")) {
-    return pick("LEADERBOARDS");
+    return pick("ADMIN_BUCKET");
   }
 
   // 2) Gauntlet Leg3 leaderboard bucket (keys are under gauntlet/leg3/)
@@ -273,10 +273,9 @@ export async function onRequest({ request, params, env }) {
   // - Global leaderboards => leaderboards base
   // - Gauntlet Leg3 leaderboard => gauntlet-leg3 base
   const base = key.startsWith("data/leaderboards/")
-    ? (env.NEXT_PUBLIC_LEADERBOARDS_R2_PUBLIC_BASE ||
-        env.R2_LEADERBOARDS_PUBLIC_BASE ||
+    ? (env.NEXT_PUBLIC_R2_PUBLIC_BASE ||
         // Hard fallback: your current leaderboards bucket public URL
-        "https://pub-153090242f5a4c0eb7bd0e499832a797.r2.dev")
+        "https://pub-b20eaa361fb04ee5afea1a9cf22eeb57.r2.dev")
     : key.startsWith("gauntlet/leg3/")
       ? (env.NEXT_PUBLIC_GAUNTLET_LEADERBOARD_R2_PUBLIC_BASE ||
           env.R2_GAUNTLET_LEADERBOARD_PUBLIC_BASE ||

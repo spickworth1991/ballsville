@@ -23,9 +23,8 @@ function getLeaderboardsR2Base() {
   if (typeof window !== "undefined" && window.location.hostname === "localhost") {
     // Local dev: use public bucket URL
     return (
-      process.env.NEXT_PUBLIC_LEADERBOARDS_R2_PUBLIC_BASE ||
       process.env.NEXT_PUBLIC_R2_PUBLIC_BASE ||
-      "https://pub-153090242f5a4c0eb7bd0e499832a797.r2.dev"
+      "https://pub-b20eaa361fb04ee5afea1a9cf22eeb57.r2.dev"
     );
   }
 
