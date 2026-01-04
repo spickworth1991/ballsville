@@ -10,7 +10,8 @@ export default function robots() {
   return {
     rules: [
       { userAgent: "*", allow: "/" },
-      { userAgent: "*", disallow: ["/admin", "/admin/"] },
+      // Keep admin + admin API out of search engines
+      { userAgent: "*", disallow: ["/admin", "/admin/", "/api/admin", "/api/admin/"] },
     ],
     sitemap: `${base}/sitemap.xml`,
     host: base,
