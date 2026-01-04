@@ -7,19 +7,6 @@ import { safeArray, safeStr } from "@/lib/safe";
 
 
 
-function isLocalhost() {
-  if (typeof window === "undefined") return false;
-  const h = window.location.hostname;
-  return h === "localhost" || h === "127.0.0.1";
-}
-
-function getDynastyWagersLoadUrl(season) {
-  // local dev override: static JSON served from /public
-  if (isLocalhost()) return "/wagers/dynasty-wagers.json";
-
-  // normal behavior: load from admin API
-  return `/api/admin/dynasty-wagers?season=${encodeURIComponent(seasonToLoad)}`;
-}
 
 function parseLeagueNumberFromName(name) {
   // Expected suffix like "... 3/16" (we sort by the leading number)
@@ -637,7 +624,9 @@ export default function DynastyWagersAdminClient() {
     setInfoMsg("");
     try {
       await loadLeagueOrderIndex(seasonToLoad);
-      const res = await fetch(getdynastyWagersLoadUrl(season), { cache: "no-store" });
+      const res = await fetch(`/api/admin/dynasty-wagers?season=${encodeURIComponent(seasonToLoad)}`, {
+        cache: "no-store",
+      });
       const saved = await res.json().catch(() => null);
       const next = normalizeLoadedDoc(saved, seasonToLoad);
       setDoc(next);
