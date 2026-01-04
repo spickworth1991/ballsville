@@ -289,7 +289,7 @@ function NewsInner({ version = "0", manifest = null }) {
       }
 
       try {
-        const res = await fetch(`/r2/data/posts/posts.json?v=${encodeURIComponent(v)}`, { cache: "default" });
+        const res = await fetch(r2Url(`/r2/data/posts/posts.json?v=${encodeURIComponent(v)}`), { cache: "default" });
         if (!res.ok) {
           if (!cancelled) setPosts([]);
           return;

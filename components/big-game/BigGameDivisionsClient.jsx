@@ -9,23 +9,6 @@ import { adminR2Url } from "@/lib/r2Client";
 const DEFAULT_SEASON = CURRENT_SEASON;
 const R2_KEY_FOR = (season) => `data/biggame/leagues_${season}.json`;
 
-function isLocalhost() {
-  if (typeof window === "undefined") return false;
-  const h = String(window.location?.hostname || "").toLowerCase();
-  return h === "localhost" || h === "127.0.0.1" || h === "::1";
-}
-
-function r2Url(key) {
-  const k = String(key || "").replace(/^\/+/, "");
-  if (!isLocalhost()) return `/r2/${k}`;
-
-  // Local dev (no Pages Functions): hit the public bucket URL directly.
-  const base =
-    process.env.NEXT_PUBLIC_ADMIN_R2_PROXY_BASE ||
-    "https://pub-b20eaa361fb04ee5afea1a9cf22eeb57.r2.dev";
-  return `${String(base).replace(/\/$/, "")}/${k}`;
-}
-
 
 function safeNum(v, fallback = null) {
   const n = Number(v);

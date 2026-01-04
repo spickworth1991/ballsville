@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { CURRENT_SEASON } from "@/lib/season";
+import { r2Url } from "@/lib/r2Url";
+import { adminR2UrlForKey } from "@/lib/r2Client";
 
 function safeMode(mode) {
   const m = String(mode || "").trim().toLowerCase();
@@ -44,8 +46,8 @@ export default function OwnerHeroBlock({
   }, [cfg?.updated_at, cfg?.hero?.promoImageKey]);
 
   const imgSrc = cfg?.hero?.promoImageKey
-    ? `/r2/${cfg.hero.promoImageKey}?v=${encodeURIComponent(String(imgVer))}`
-    : cfg?.hero?.promoImageUrl || "";
+    ? `${adminR2UrlForKey(cfg.hero.promoImageKey)}?v=${encodeURIComponent(String(imgVer))}`
+    : (cfg?.hero?.promoImageUrl ? r2Url(cfg.hero.promoImageUrl) : "");
 
   useEffect(() => {
     let cancelled = false;
@@ -93,12 +95,12 @@ if (!m) {
         // Let the /r2 proxy handle caching + ETag revalidation.
         // Some sections may not be season-scoped yet; fall back to page.json if page_{season}.json is missing.
         let res = await fetch(
-          `/r2/content/${m}/page_${season}.json?v=${encodeURIComponent(v)}`,
+          r2Url(`/r2/content/${m}/page_${season}.json?v=${encodeURIComponent(v)}`),
           { cache: "default" }
         );
 
         if (res.status === 404) {
-          res = await fetch(`/r2/content/${m}/page.json?v=${encodeURIComponent(v)}`, { cache: "default" });
+          res = await fetch(r2Url(`/r2/content/${m}/page.json?v=${encodeURIComponent(v)}`), { cache: "default" });
         }
 
         if (!res.ok) {

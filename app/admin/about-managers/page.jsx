@@ -10,6 +10,7 @@ import AdminGuard from "@/components/AdminGuard";
 import AdminNav from "@/components/admin/AdminNav";
 import { CURRENT_SEASON } from "@/lib/season";
 import { getAccessTokenWithRetry } from "@/lib/adminAuth";
+import { adminR2UrlForKey } from "@/lib/r2Client";
 
 
 function cleanStr(v, max = 4000) {
@@ -221,7 +222,7 @@ export default function AdminAboutManagersPage() {
   }
 
   const previewSrc = selected?.imageKey
-    ? `/r2/${selected.imageKey}?v=${encodeURIComponent(selected.imageKey)}`
+    ? `${adminR2UrlForKey(selected.imageKey)}?v=${encodeURIComponent(selected.imageKey)}`
     : selected?.imageUrl || "";
 
   return (
@@ -275,7 +276,7 @@ export default function AdminAboutManagersPage() {
                             <div className="relative h-12 w-12 overflow-hidden rounded-xl border border-subtle bg-black/20 shrink-0">
                               {m.imageKey ? (
                                 <Image
-                                  src={`/r2/${m.imageKey}?v=${encodeURIComponent(m.imageKey)}`}
+                                  src={`${adminR2UrlForKey(m.imageKey)}?v=${encodeURIComponent(m.imageKey)}`}
                                   alt={m.name || "Manager"}
                                   fill
                                   sizes="48px"

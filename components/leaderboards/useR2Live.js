@@ -1,5 +1,6 @@
 'use client';
 import { CURRENT_SEASON } from "@/lib/season";
+import { r2Url } from "@/lib/r2Url";
 import { useEffect, useRef, useState } from 'react';
 
 /**
@@ -19,7 +20,7 @@ export default function useR2Live(
   // Examples:
   //   /r2/data/leaderboards (production via Pages Function)
   //   https://pub-XXXX.r2.dev/data/leaderboards (local dev)
-  { enabled = true, pollMs = 60000, basePath = '/r2/data/leaderboards' } = {}
+  { enabled = true, pollMs = 60000, basePath = r2Url('/r2/data/leaderboards') } = {}
 ) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
