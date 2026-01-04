@@ -4,27 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { CURRENT_SEASON } from "@/lib/season";
 import MediaTabCard from "@/components/ui/MediaTabCard";
 import { safeStr } from "@/lib/safe";
+import { r2Url } from "@/lib/r2Url";
 
 const DEFAULT_SEASON = CURRENT_SEASON;
 const R2_KEY_FOR = (season) => `data/biggame/leagues_${season}.json`;
-
-function isLocalhost() {
-  if (typeof window === "undefined") return false;
-  const h = String(window.location?.hostname || "").toLowerCase();
-  return h === "localhost" || h === "127.0.0.1" || h === "::1";
-}
-
-function r2Url(key) {
-  const k = String(key || "").replace(/^\/+/, "");
-  if (!isLocalhost()) return `/r2/${k}`;
-
-  const base =
-    process.env.NEXT_PUBLIC_ADMIN_R2_PROXY_BASE ||
-    // Admin bucket public URL (hard fallback for localhost only)
-    "https://pub-b20eaa361fb04ee5afea1a9cf22eeb57.r2.dev";
-
-  return `${String(base).replace(/\/$/, "")}/${k}`;
-}
 
 
 function safeNum(v, fallback = null) {
@@ -83,7 +66,7 @@ function withBust(url, bust) {
 }
 
 function resolveImageSrc({ key, url }) {
-  if (key) return r2Url(key); // <-- uses /r2/ in prod, public r2.dev on localhost
+  if (key) return r2Url(key, { kind: "biggame" });
   return url || "";
 }
 
@@ -136,7 +119,7 @@ export default function BigGameDivisionClient({year = DEFAULT_SEASON,
       setError(null);
       setLoading(true);
       try {
-        const res = await fetch(`${r2Url(R2_KEY_FOR(year))}?${bust}`, { cache: "no-store" });
+        const res = await fetch(`${r2Url(R2_KEY_FOR(year), { kind: "biggame" })}?${bust}`, { cache: "no-store" });
         if (!res.ok) throw new Error(`Failed to load Big Game data (${res.status})`);
         const data = await res.json();
         const list = Array.isArray(data?.rows) ? data.rows : Array.isArray(data) ? data : [];

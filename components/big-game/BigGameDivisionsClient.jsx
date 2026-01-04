@@ -4,28 +4,11 @@ import { useEffect, useState } from "react";
 import { CURRENT_SEASON } from "@/lib/season";
 import MediaTabCard from "@/components/ui/MediaTabCard";
 import { safeStr } from "@/lib/safe";
-import { adminR2Url } from "@/lib/r2Client";
+import { r2Url } from "@/lib/r2Url";
+
 
 const DEFAULT_SEASON = CURRENT_SEASON;
 const R2_KEY_FOR = (season) => `data/biggame/leagues_${season}.json`;
-
-function isLocalhost() {
-  if (typeof window === "undefined") return false;
-  const h = String(window.location?.hostname || "").toLowerCase();
-  return h === "localhost" || h === "127.0.0.1" || h === "::1";
-}
-
-function r2Url(key) {
-  const k = String(key || "").replace(/^\/+/, "");
-  if (!isLocalhost()) return `/r2/${k}`;
-
-  // Local dev (no Pages Functions): hit the public bucket URL directly.
-  const base =
-    process.env.NEXT_PUBLIC_ADMIN_R2_PROXY_BASE ||
-    "https://pub-b20eaa361fb04ee5afea1a9cf22eeb57.r2.dev";
-  return `${String(base).replace(/\/$/, "")}/${k}`;
-}
-
 
 function safeNum(v, fallback = null) {
   const n = Number(v);
@@ -173,7 +156,7 @@ function resolveDivisionImage(div, updatedAt) {
 
   // If we have an R2 key, always resolve through adminR2Url()
   // so localhost uses the public r2.dev base and production uses /r2/.
-  const base = key ? adminR2Url(key) : url;
+  const base = key ? r2Url(key) : url;
 
   if (!base) return "";
   if (!updatedAt) return base;
@@ -226,7 +209,7 @@ export default function BigGameDivisionsClient({ year = DEFAULT_SEASON, version 
           // ignore storage errors
         }
 
-        const res = await fetch(adminR2Url(`data/biggame/leagues_${season}.json?${bust}`), { cache: "default" });
+        const res = await fetch(`${r2Url(`data/biggame/leagues_${season}.json`, { kind: "biggame" })}?${bust}`, { cache: "default" });
         if (!res.ok) throw new Error(`Failed to load Big Game data (${res.status})`);
 
         const json = await res.json();

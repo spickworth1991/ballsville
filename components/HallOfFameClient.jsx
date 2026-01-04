@@ -235,10 +235,10 @@ export default function HallOfFameClient({ version = "0", manifest = null }) {
           // ignore storage errors
         }
 
-        const res = await fetch(
-          `/r2/data/hall-of-fame/hall_of_fame.json?v=${encodeURIComponent(v)}`,
+        const res = await fetch(`${r2Url(
+          `data/hall-of-fame/hall_of_fame.json?v=${encodeURIComponent(v)}`,
           { cache: "default" }
-        );
+        )}`);
         if (!res.ok) {
           if (!cancelled) setData(FALLBACK);
           return;

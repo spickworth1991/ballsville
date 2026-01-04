@@ -19,21 +19,19 @@ function fmtDate(iso) {
   return d.toLocaleString();
 }
 function isVideoUrl(u) {
-  const url = safeStr(u).toLowerCase();
+  const raw = safeStr(u);
+  const lower = raw.toLowerCase();
+
+  // ✅ strip query/hash so ".mp4?v=123" still matches
+  const clean = lower.split("#")[0].split("?")[0];
 
   // extension check
-  if (url.endsWith(".mp4") || url.endsWith(".webm") || url.endsWith(".ogg")) return true;
+  if (clean.endsWith(".mp4") || clean.endsWith(".webm") || clean.endsWith(".ogg")) return true;
 
-  // ✅ if it's an R2 proxied key (no extension), treat as video if it includes common hints
-  // (your uploader section is "posts-image" but the file is video/*, and the key often won't have extension)
-  if (url.startsWith("/r2/")) {
-    // If you ever embed a hint in key names (recommended), catch it:
-    if (url.includes(".mp4") || url.includes(".webm") || url.includes(".ogg")) return true;
-    // Otherwise we can’t know by URL alone — we’ll rely on a runtime fallback below (see MediaBlock)
-  }
-
+  // If it's an R2 proxied key (no extension), we can't know by URL alone.
   return false;
 }
+
 
 function normalizeTags(v) {
   const tags = Array.isArray(v) ? v.map(String) : typeof v === "string" ? v.split(",").map((s) => s.trim()) : [];
@@ -105,12 +103,15 @@ function MediaBlock({ src, updatedAt, forceVideo = false }) {
       ? (s.includes("?") ? s : `${s}?v=${encodeURIComponent(updatedAt)}`)
       : s;
 
-  const lower = finalSrc.toLowerCase();
-  const inferredType = lower.endsWith(".webm")
-    ? "video/webm"
-    : lower.endsWith(".ogg")
-    ? "video/ogg"
-    : "video/mp4";
+    const lower = finalSrc.toLowerCase();
+    const clean = lower.split("#")[0].split("?")[0];
+
+    const inferredType = clean.endsWith(".webm")
+      ? "video/webm"
+      : clean.endsWith(".ogg")
+      ? "video/ogg"
+      : "video/mp4";
+
 
   // ✅ Try video when:
   // - looks like video by extension OR
@@ -289,7 +290,7 @@ function NewsInner({ version = "0", manifest = null }) {
       }
 
       try {
-        const res = await fetch(`/r2/data/posts/posts.json?v=${encodeURIComponent(v)}`, { cache: "default" });
+        const res = await fetch(`${r2Url(`data/posts/posts.json?v=${encodeURIComponent(v)}`, { cache: "default" })}`);
         if (!res.ok) {
           if (!cancelled) setPosts([]);
           return;
