@@ -81,6 +81,27 @@ export default function Navbar() {
 
   const overflow = NAV_ITEMS.slice(visibleLinks);
 
+ 
+
+  // Mobile rotation can report stale widths briefly. Schedule (and de-dupe)
+  // re-measurements with a double rAF so layout/styles settle before we decide
+  // which links fit.
+  const measureRaf1Ref = useRef(0);
+  const measureRaf2Ref = useRef(0);
+
+  const scheduleMeasure = () => {
+    if (typeof window === "undefined") return;
+    if (measureRaf1Ref.current) cancelAnimationFrame(measureRaf1Ref.current);
+    if (measureRaf2Ref.current) cancelAnimationFrame(measureRaf2Ref.current);
+
+    measureRaf1Ref.current = requestAnimationFrame(() => {
+      updateVisibleLinks();
+      measureRaf2Ref.current = requestAnimationFrame(() => {
+        updateVisibleLinks();
+      });
+    });
+  };
+
   // ---------------- THEME ----------------
   // useEffect(() => {
   //   const saved =
@@ -167,23 +188,42 @@ export default function Navbar() {
     setVisibleLinks(Math.max(MIN_VISIBLE, Math.min(count, NAV_ITEMS.length)));
   };
 
-  // ✅ Measure immediately (layout) + 2 RAF passes (fonts/icons settle)
+  // ✅ Measure immediately (layout) + re-measure on rotation/resizes.
+  // iOS/Android can briefly report stale widths during orientation changes,
+  // so we use scheduleMeasure (double rAF) and listen to visualViewport too.
   useLayoutEffect(() => {
-    updateVisibleLinks();
-    const r1 = requestAnimationFrame(() => {
-      updateVisibleLinks();
-      const r2 = requestAnimationFrame(updateVisibleLinks);
-      // cleanup for r2
-      (updateVisibleLinks._r2 = r2);
-    });
+    if (typeof window === "undefined") return;
 
-    const onResize = () => updateVisibleLinks();
+    scheduleMeasure();
+
+    const onResize = () => scheduleMeasure();
     window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+
+    // Some mobile browsers resize via visualViewport without firing a normal resize
+    const vv = window.visualViewport;
+    if (vv) vv.addEventListener("resize", onResize);
+
+    // Observe the navbar container itself (covers cases where fonts swap / layout shifts)
+    let ro;
+    if (typeof ResizeObserver !== "undefined" && innerRef.current) {
+      ro = new ResizeObserver(() => scheduleMeasure());
+      ro.observe(innerRef.current);
+    }
+
+    // If fonts load after first paint, widths can change
+    const fonts = document.fonts;
+    if (fonts && fonts.ready) {
+      fonts.ready.then(() => {
+        scheduleMeasure();
+      });
+    }
 
     return () => {
       window.removeEventListener("resize", onResize);
-      cancelAnimationFrame(r1);
-      if (updateVisibleLinks._r2) cancelAnimationFrame(updateVisibleLinks._r2);
+      window.removeEventListener("orientationchange", onResize);
+      if (vv) vv.removeEventListener("resize", onResize);
+      if (ro) ro.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -248,7 +288,7 @@ export default function Navbar() {
               />
             </Link>
 
-            <ul className="flex items-center space-x-4 ml-6 flex-nowrap relative min-w-0">
+            <ul className="flex flex-1 min-w-0 items-center space-x-4 ml-6 flex-nowrap overflow-hidden">
               {NAV_ITEMS.map((item, i) => {
                 const hasChildren =
                   Array.isArray(item.children) && item.children.length > 0;
