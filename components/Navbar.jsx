@@ -288,7 +288,7 @@ export default function Navbar() {
               />
             </Link>
 
-            <ul className="flex flex-1 min-w-0 items-center space-x-4 ml-6 flex-nowrap overflow-hidden">
+            <ul className="flex flex-1 min-w-0 items-center space-x-4 ml-6 flex-nowrap overflow-visible">
               {NAV_ITEMS.map((item, i) => {
                 const hasChildren =
                   Array.isArray(item.children) && item.children.length > 0;
