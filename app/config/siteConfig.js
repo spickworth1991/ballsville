@@ -13,7 +13,7 @@ export const siteConfig = {
   // Core SEO
   description:
     "The BALLSVILLE formula was developed to combine big fantasy football payouts with great odds across bestball, redraft, dynasty, and more.",
-  domain: "https://ballsville.pages.dev",
+  domain: "https://www.theballsvillegame.com",
   ogImage: "/og/home.jpg",
 
   // "Business" details (for schema.org / footer)
