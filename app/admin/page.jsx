@@ -78,6 +78,18 @@ export default function AdminHomePage() {
               <p className="mt-1 text-sm text-muted">Manage the Gauntlet.</p>
             </Link>
 
+              
+            <Link
+              prefetch={false}
+              href="/admin/draft-compare"
+              className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
+            >
+              <h2 className="text-lg font-semibold text-primary">Draft Compare</h2>
+              <p className="mt-1 text-sm text-muted">
+                Upload mode draft JSON and customize the Draft Compare landing page. Users can select which leagues to compare.
+              </p>
+            </Link>
+
             <Link
               prefetch={false}
               href="/admin/hall-of-fame"

@@ -165,6 +165,7 @@ function baseKeyForUpload({
   postId,
   entryId,
   managerId,
+  modeSlug,
 }) {
   // ============
   // MINI-LEAGUES
@@ -190,6 +191,16 @@ function baseKeyForUpload({
   // =======
   if (section === "dynasty-updates") return `media/dynasty/updates_${season}`;
   if (section === "dynasty-league") return `media/dynasty/leagues/${season}/${leagueId}`;
+
+  // ============
+  // DRAFT COMPARE
+  // ============
+  if (section === "draft-compare-mode") {
+    if (!season) throw new Error("Missing season");
+    if (!modeSlug) throw new Error("Missing modeSlug");
+    return `media/draft-compare/mode_${season}_${modeSlug}`;
+  }
+
   if (section === "dynasty-division") return `media/dynasty/divisions/${season}/${divisionSlug}`;
 
   // =======
@@ -309,6 +320,8 @@ export async function onRequest(context) {
     const divisionSlug = cleanLooseId(form.get("divisionSlug"));
     const legionCode = cleanLooseId(form.get("legionCode"));
 
+    const modeSlug = cleanLooseId(form.get("modeSlug"));
+
     const postId = cleanLooseId(form.get("postId"));
     const entryId = cleanLooseId(form.get("entryId"));
     const managerId = cleanLooseId(form.get("managerId"));
@@ -378,6 +391,7 @@ export async function onRequest(context) {
       leagueId,
       divisionSlug,
       legionCode,
+      modeSlug,
       postId,
       entryId,
       managerId,
@@ -418,6 +432,9 @@ export async function onRequest(context) {
 
       // Dynasty
       if (section.startsWith("dynasty-")) return "dynasty";
+
+      // Draft Compare
+      if (section.startsWith("draft-compare-")) return "draft-compare";
 
       // News / posts
       if (section === "posts-image") return "posts";
