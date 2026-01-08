@@ -102,7 +102,9 @@ export default function DraftCompareHomeClient() {
                 <Link
                   key={m.modeSlug}
                   prefetch={false}
-                  href={`/draft-compare/${encodeURIComponent(m.modeSlug)}?year=${encodeURIComponent(String(season))}`}
+                  // NOTE: This site uses Next output: "export" (static export), so dynamic
+                  // route segments cannot be generated at runtime. Use the query-based mode page.
+                  href={`/draft-compare/mode?mode=${encodeURIComponent(m.modeSlug)}&year=${encodeURIComponent(String(season))}`}
                   className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
                 >
                   <h2 className="text-lg font-semibold text-primary">{m.title}</h2>
