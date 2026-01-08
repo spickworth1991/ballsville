@@ -94,7 +94,7 @@ export default function DraftCompareHomeClient({ version }) {
               ) : null}
 
               {!visible.length && !err ? (
-                <div className="mt-6 rounded-2xl bg-card-surface/40 p-6 text-muted">
+                <div className="mt-6 rounded-2xl bg-card-surface text-muted">
                   No modes yet. Add one in Admin → Draft Compare.
                 </div>
               ) : null}
@@ -107,7 +107,7 @@ export default function DraftCompareHomeClient({ version }) {
                       href={`/draft-compare/mode?mode=${encodeURIComponent(m.slug)}&year=${encodeURIComponent(
                         season
                       )}&v=${encodeURIComponent(_v || "")}`}
-                      className="group rounded-2xl border border-white/10 bg-card-surface/40 p-5 shadow-sm transition hover:border-white/20 hover:bg-card-surface/60"
+                      className="group rounded-2xl border border-white/10 bg-card-surface p-5 shadow-sm transition hover:border-white/20 hover:bg-card-surface/60"
                     >
                       <h2 className="text-lg font-semibold text-primary">{m.title}</h2>
                       {m.subtitle ? <p className="mt-1 text-sm text-muted">{m.subtitle}</p> : null}

@@ -31,7 +31,7 @@ function DraftboardGrid({ meta, cells }) {
       const list = safeArr(cells?.[key]);
       const top = list[0];
       cols.push(
-        <div key={key} className="min-h-[64px] rounded-lg border border-white/10 bg-card-surface/30 p-2">
+        <div key={key} className="min-h-[64px] rounded-lg border border-white/10 bg-card-surface p-2">
           {top ? (
             <div className="text-xs leading-tight">
               <div className="font-semibold text-primary">{top.name}</div>
@@ -175,7 +175,7 @@ export default function DraftCompareModeClient() {
             </div>
 
             {loading ? (
-              <div className="mt-6 rounded-2xl bg-card-surface/40 p-6 text-muted">Loading…</div>
+              <div className="mt-6 rounded-2xl bg-card-surface p-6 text-muted">Loading…</div>
             ) : null}
 
             {err ? (
@@ -188,7 +188,7 @@ export default function DraftCompareModeClient() {
               <>
                 {/* Controls */}
                 <div className="mt-6 grid gap-4 lg:grid-cols-3">
-                  <div className="rounded-2xl border border-white/10 bg-card-surface/40 p-4">
+                  <div className="rounded-2xl border border-white/10 bg-card-surface p-4">
                     <div className="flex items-center justify-between">
                       <div className="font-semibold text-primary">View</div>
                       <div className="flex gap-2">
@@ -240,7 +240,7 @@ export default function DraftCompareModeClient() {
                     </div>
                   </div>
 
-                  <div className="lg:col-span-2 rounded-2xl border border-white/10 bg-card-surface/40 p-4">
+                  <div className="lg:col-span-2 rounded-2xl border border-white/10 bg-card-surface p-4">
                     <div className="flex items-center justify-between">
                       <div className="font-semibold text-primary">Select leagues</div>
                       <button
@@ -296,7 +296,7 @@ export default function DraftCompareModeClient() {
 
                 {/* Content */}
                 {view === "board" ? (
-                  <div className="mt-6 rounded-2xl border border-white/10 bg-card-surface/30 p-4">
+                  <div className="mt-6 rounded-2xl border border-white/10 bg-card-surface p-4">
                     <div className="mb-3 flex items-center justify-between">
                       <div className="font-semibold text-primary">
                         Draftboard {isCompare ? `(showing Side ${compareBoardSide})` : ""}
@@ -311,7 +311,7 @@ export default function DraftCompareModeClient() {
                     <DraftboardGrid meta={norm.meta} cells={boardCells} />
                   </div>
                 ) : (
-                  <div className="mt-6 rounded-2xl border border-white/10 bg-card-surface/30 p-4 overflow-x-auto">
+                  <div className="mt-6 rounded-2xl border border-white/10 bg-card-surface p-4 overflow-x-auto">
                     <div className="mb-3 flex items-center justify-between">
                       <div className="font-semibold text-primary">{isCompare ? "Compare list" : "Aggregated list"}</div>
                       <div className="text-xs text-muted">{isCompare ? "Δ = A - B" : ""}</div>
