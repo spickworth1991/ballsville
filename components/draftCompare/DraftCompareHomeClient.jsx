@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import { CURRENT_SEASON } from "@/lib/season";
+import { r2Url } from "@/lib/r2Url";
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
@@ -32,9 +33,9 @@ export default function DraftCompareHomeClient({ version }) {
     async function load() {
       setErr("");
       try {
-        const url = `/r2/data/draft-compare/modes_${encodeURIComponent(season)}.json?v=${encodeURIComponent(
+        const url = await fetch(`${r2Url(`data/draft-compare/modes_${encodeURIComponent(season)}.json?v=${encodeURIComponent(
           version || ""
-        )}`;
+        )}`)}`);
 
         const r = await fetch(url, { cache: "no-store" });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
