@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -6,135 +7,136 @@ import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import { CURRENT_SEASON } from "@/lib/season";
 import { r2Url } from "@/lib/r2Url";
 
-function safeArray(v) {
+function safeArr(v) {
   return Array.isArray(v) ? v : [];
 }
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
-function cleanSlug(s) {
-  return safeStr(s)
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-_]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
 
-export default function DraftCompareHomeClient() {
-  const season = String(CURRENT_SEASON || "2025");
-  const [rows, setRows] = useState([]);
+export default function DraftCompareHomeClient({ year }) {
+  const season = year ?? CURRENT_SEASON;
+
+  const [modes, setModes] = useState([]);
   const [err, setErr] = useState("");
 
   return (
-    <SectionManifestGate
-      manifestKey={`data/manifests/draft-compare_${season}.json`}
-      title="Draft Compare"
-      description="Compare draft tendencies by league groups."
-    >
-      {({ version }) => {
-        const modesKey = `data/draft-compare/modes_${season}.json?v=${encodeURIComponent(version || "")}`;
-        const fetchUrl = useMemo(() => r2Url(modesKey), [modesKey]);
+    <SectionManifestGate section="draft-compare" season={season} title="Draft Compare" description="Compare draft tendencies by mode.">
+      {({ version, error }) => {
+        const v = safeStr(version || "");
+        const modesKey = `data/draft-compare/modes_${season}.json${v ? `?v=${encodeURIComponent(v)}` : ""}`;
+        const modesUrl = useMemo(() => r2Url(modesKey, { kind: "data" }), [modesKey]);
 
         useEffect(() => {
           let alive = true;
           setErr("");
-          fetch(fetchUrl)
-            .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+          setModes([]);
+
+          fetch(modesUrl)
+            .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`Failed to load modes (${r.status})`))))
             .then((j) => {
               if (!alive) return;
-              const raw = safeArray(j?.rows || j?.modes || j || []);
-              const next = raw
-                .map((r0, idx) => {
-                  const r1 = r0 || {};
-                  const slug = cleanSlug(r1.slug || r1.modeSlug || r1.id || r1.name || `mode-${idx + 1}`);
+              const rows = safeArr(j?.rows || j?.modes || j || []);
+              // Normalize minimal fields
+              const out = rows
+                .map((x) => {
+                  const o = x || {};
+                  const slug = safeStr(o.slug || o.mode || o.id).trim();
+                  if (!slug) return null;
                   return {
-                    id: safeStr(r1.id || slug || idx),
                     slug,
-                    title: safeStr(r1.title || r1.name || r1.modeName || "Draft Compare"),
-                    subtitle: safeStr(r1.subtitle || r1.blurb || ""),
-                    order: Number(r1.order ?? r1.sort ?? idx),
-                    image_url: safeStr(r1.image_url || r1.imageUrl || r1.image || ""),
+                    title: safeStr(o.title || o.name || slug).trim(),
+                    subtitle: safeStr(o.subtitle || o.blurb || "").trim(),
+                    order: Number.isFinite(Number(o.order)) ? Number(o.order) : 9999,
+                    imageKey: safeStr(o.imageKey || o.image_key || "").trim(),
+                    imageUrl: safeStr(o.imageUrl || o.image_url || "").trim(),
                   };
                 })
-                .filter((x) => x.slug)
-                .sort((a, b) => (a.order || 0) - (b.order || 0));
-              setRows(next);
+                .filter(Boolean)
+                .sort((a, b) => (a.order - b.order) || a.title.localeCompare(b.title));
+
+              setModes(out);
             })
             .catch((e) => {
               if (!alive) return;
-              setErr(e?.message || "Failed to load modes");
+              setErr(safeStr(e?.message || e));
             });
+
           return () => {
             alive = false;
           };
-        }, [fetchUrl]);
+        }, [modesUrl]);
+
+        const finalErr = err || safeStr(error || "");
 
         return (
-          <section className="mx-auto max-w-6xl px-4 py-10">
-            <div className="flex items-end justify-between gap-4">
+          <div className="mx-auto w-full max-w-6xl px-4 pb-16 pt-6">
+            <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
-                <h1 className="text-3xl font-bold tracking-tight">Draft Compare</h1>
+                <h1 className="text-3xl font-semibold tracking-tight">Draft Compare</h1>
                 <p className="mt-2 text-sm text-muted">
-                  Pick a mode, then build Side A / Side B sets to compare.
+                  Pick a mode to view its draftboard and player list — then select leagues to compare.
                 </p>
               </div>
-              <Link
-                href="/"
-                className="rounded-xl border border-subtle bg-black/10 px-4 py-2 text-sm hover:bg-black/15"
-              >
-                Home
-              </Link>
+              <div className="flex items-center gap-2">
+                <Link href="/admin" className="rounded-xl border border-subtle bg-card-surface px-3 py-2 text-sm hover:bg-card-surface/80">
+                  Admin
+                </Link>
+              </div>
             </div>
 
-            {err ? (
+            {finalErr ? (
               <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-                {err}
+                {finalErr}
               </div>
             ) : null}
 
-            {rows.length ? (
-              <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {rows.map((m) => (
+            {!finalErr && modes.length === 0 ? (
+              <div className="mt-10 rounded-2xl border border-subtle bg-card-surface p-6 text-sm text-muted">
+                Loading modes…
+              </div>
+            ) : null}
+
+            <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {modes.map((m) => {
+                const img = m.imageUrl ? m.imageUrl : m.imageKey ? r2Url(m.imageKey, { kind: "media" }) : "";
+                return (
                   <Link
-                    key={m.id}
-                    href={`/draft-compare/mode?mode=${encodeURIComponent(m.slug)}&year=${encodeURIComponent(
-                      season
-                    )}`}
-                    className="group relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-soft hover:shadow-glow transition-shadow"
+                    key={m.slug}
+                    href={`/draft-compare/mode?mode=${encodeURIComponent(m.slug)}&year=${encodeURIComponent(String(season))}`}
+                    className="group relative overflow-hidden rounded-2xl border border-subtle bg-card-surface shadow-soft transition hover:-translate-y-[1px] hover:shadow-md"
                   >
-                    <div className="absolute inset-0 opacity-20">
-                      {m.image_url ? (
+                    <div className="absolute inset-0 opacity-70">
+                      {img ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={m.image_url}
-                          alt=""
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                        />
-                      ) : null}
-                    </div>
-                    <div className="relative p-6">
-                      <div className="text-xs text-muted">Mode</div>
-                      <div className="mt-1 text-lg font-semibold">{m.title}</div>
-                      {m.subtitle ? (
-                        <div className="mt-2 text-sm text-muted line-clamp-3">{m.subtitle}</div>
+                        <img src={img} alt="" className="h-full w-full object-cover opacity-40 blur-[0px] transition group-hover:opacity-50" />
                       ) : (
-                        <div className="mt-2 text-sm text-muted">Open this mode</div>
+                        <div className="h-full w-full bg-gradient-to-br from-white/5 via-transparent to-white/5" />
                       )}
-                      <div className="mt-5 inline-flex items-center gap-2 text-sm text-accent">
-                        Open <span aria-hidden>→</span>
+                    </div>
+                    <div className="relative p-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-lg font-semibold">{m.title}</div>
+                          {m.subtitle ? <div className="mt-1 line-clamp-2 text-sm text-muted">{m.subtitle}</div> : null}
+                        </div>
+                        <div className="shrink-0 rounded-xl border border-subtle bg-black/10 px-2 py-1 text-[11px] text-muted">
+                          {m.slug}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex items-center justify-between text-xs text-muted">
+                        <span>View draftboard</span>
+                        <span className="rounded-lg border border-subtle bg-black/10 px-2 py-1 transition group-hover:bg-black/15">
+                          Open →
+                        </span>
                       </div>
                     </div>
                   </Link>
-                ))}
-              </div>
-            ) : (
-              <div className="mt-8 rounded-2xl border border-subtle bg-black/5 p-6 text-sm text-muted">
-                No modes yet. Add one in <span className="font-semibold">Admin → Draft Compare</span>.
-              </div>
-            )}
-          </section>
+                );
+              })}
+            </div>
+          </div>
         );
       }}
     </SectionManifestGate>
