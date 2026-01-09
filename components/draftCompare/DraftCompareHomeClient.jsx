@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from "next/link";
@@ -7,138 +6,157 @@ import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import { CURRENT_SEASON } from "@/lib/season";
 import { r2Url } from "@/lib/r2Url";
 
-function safeArr(v) {
+function safeArray(v) {
   return Array.isArray(v) ? v : [];
 }
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
+function cleanSlug(s) {
+  return safeStr(s)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
-export default function DraftCompareHomeClient({ year }) {
-  const season = year ?? CURRENT_SEASON;
+function withV(url, v) {
+  if (!v) return url;
+  const hasQ = url.includes("?");
+  return `${url}${hasQ ? "&" : "?"}v=${encodeURIComponent(v)}`;
+}
 
+export default function DraftCompareHomeClient() {
+  const season = CURRENT_SEASON;
   const [modes, setModes] = useState([]);
   const [err, setErr] = useState("");
 
   return (
-    <SectionManifestGate section="draft-compare" season={season} title="Draft Compare" description="Compare draft tendencies by mode.">
-      {({ version, error }) => {
-        const v = safeStr(version || "");
-        const modesKey = `data/draft-compare/modes_${season}.json${v ? `?v=${encodeURIComponent(v)}` : ""}`;
-        const modesUrl = useMemo(() => r2Url(modesKey, { kind: "data" }), [modesKey]);
-
-        useEffect(() => {
-          let alive = true;
-          setErr("");
-          setModes([]);
-
-          fetch(modesUrl)
-            .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`Failed to load modes (${r.status})`))))
-            .then((j) => {
-              if (!alive) return;
-              const rows = safeArr(j?.rows || j?.modes || j || []);
-              // Normalize minimal fields
-              const out = rows
-                .map((x) => {
-                  const o = x || {};
-                  const slug = safeStr(o.slug || o.mode || o.id).trim();
-                  if (!slug) return null;
-                  return {
-                    slug,
-                    title: safeStr(o.title || o.name || slug).trim(),
-                    subtitle: safeStr(o.subtitle || o.blurb || "").trim(),
-                    order: Number.isFinite(Number(o.order)) ? Number(o.order) : 9999,
-                    imageKey: safeStr(o.imageKey || o.image_key || "").trim(),
-                    imageUrl: safeStr(o.imageUrl || o.image_url || "").trim(),
-                  };
-                })
-                .filter(Boolean)
-                .sort((a, b) => (a.order - b.order) || a.title.localeCompare(b.title));
-
-              setModes(out);
-            })
-            .catch((e) => {
-              if (!alive) return;
-              setErr(safeStr(e?.message || e));
-            });
-
-          return () => {
-            alive = false;
-          };
-        }, [modesUrl]);
-
-        const finalErr = err || safeStr(error || "");
-
-        return (
-          <div className="mx-auto w-full max-w-6xl px-4 pb-16 pt-6">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <h1 className="text-3xl font-semibold tracking-tight">Draft Compare</h1>
-                <p className="mt-2 text-sm text-muted">
-                  Pick a mode to view its draftboard and player list — then select leagues to compare.
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Link href="/admin" className="rounded-xl border border-subtle bg-card-surface px-3 py-2 text-sm hover:bg-card-surface/80">
-                  Admin
-                </Link>
-              </div>
-            </div>
-
-            {finalErr ? (
-              <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-                {finalErr}
-              </div>
-            ) : null}
-
-            {!finalErr && modes.length === 0 ? (
-              <div className="mt-10 rounded-2xl border border-subtle bg-card-surface p-6 text-sm text-muted">
-                Loading modes…
-              </div>
-            ) : null}
-
-            <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {modes.map((m) => {
-                const img = m.imageUrl ? m.imageUrl : m.imageKey ? r2Url(m.imageKey, { kind: "media" }) : "";
-                return (
-                  <Link
-                    key={m.slug}
-                    href={`/draft-compare/mode?mode=${encodeURIComponent(m.slug)}&year=${encodeURIComponent(String(season))}`}
-                    className="group relative overflow-hidden rounded-2xl border border-subtle bg-card-surface shadow-soft transition hover:-translate-y-[1px] hover:shadow-md"
-                  >
-                    <div className="absolute inset-0 opacity-70">
-                      {img ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={img} alt="" className="h-full w-full object-cover opacity-40 blur-[0px] transition group-hover:opacity-50" />
-                      ) : (
-                        <div className="h-full w-full bg-gradient-to-br from-white/5 via-transparent to-white/5" />
-                      )}
-                    </div>
-                    <div className="relative p-5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="truncate text-lg font-semibold">{m.title}</div>
-                          {m.subtitle ? <div className="mt-1 line-clamp-2 text-sm text-muted">{m.subtitle}</div> : null}
-                        </div>
-                        <div className="shrink-0 rounded-xl border border-subtle bg-black/10 px-2 py-1 text-[11px] text-muted">
-                          {m.slug}
-                        </div>
-                      </div>
-
-                      <div className="mt-4 flex items-center justify-between text-xs text-muted">
-                        <span>View draftboard</span>
-                        <span className="rounded-lg border border-subtle bg-black/10 px-2 py-1 transition group-hover:bg-black/15">
-                          Open →
-                        </span>
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        );
-      }}
+    <SectionManifestGate section="draft-compare" season={season}>
+      {({ version, error }) => (
+        <HomeInner
+          season={season}
+          version={version}
+          gateError={error}
+          modes={modes}
+          setModes={setModes}
+          err={err}
+          setErr={setErr}
+        />
+      )}
     </SectionManifestGate>
+  );
+}
+
+function HomeInner({ season, version, gateError, modes, setModes, err, setErr }) {
+  const modesUrl = useMemo(() => {
+    const key = `data/draft-compare/modes_${season}.json`;
+    return withV(r2Url(key), version);
+  }, [season, version]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        setErr("");
+        const res = await fetch(modesUrl, { cache: "no-store" });
+        if (!res.ok) throw new Error(`modes fetch failed (${res.status})`);
+        const data = await res.json();
+        const rows = safeArray(data?.rows ?? data?.modes ?? data);
+        const normalized = rows
+          .map((r) => {
+            const o = r && typeof r === "object" ? r : {};
+            const slug = cleanSlug(o.slug || o.mode || o.id || "");
+            return {
+              slug,
+              title: safeStr(o.title || o.name || slug).trim(),
+              subtitle: safeStr(o.subtitle || o.blurb || "").trim(),
+              order: Number.isFinite(Number(o.order)) ? Number(o.order) : 9999,
+              imageUrl: safeStr(o.imageUrl || o.image_url || o.image || "").trim(),
+            };
+          })
+          .filter((x) => x.slug);
+
+        normalized.sort((a, b) => (a.order - b.order) || a.title.localeCompare(b.title));
+        if (!cancelled) setModes(normalized);
+      } catch (e) {
+        if (!cancelled) setErr(e?.message || "Failed to load modes");
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [modesUrl, setModes, setErr]);
+
+  return (
+    <section className="mx-auto max-w-6xl px-4 py-10">
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight text-primary">Draft Compare</h1>
+          <p className="mt-2 text-sm text-muted">
+            Pick a mode, then select leagues for Side A and Side B to compare drafts.
+          </p>
+        </div>
+      </div>
+
+      {gateError ? (
+        <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+          Manifest error: {String(gateError)}
+        </div>
+      ) : null}
+
+      {err ? (
+        <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+          {err}
+        </div>
+      ) : null}
+
+      {!err && modes.length === 0 ? (
+        <div className="mt-8 rounded-2xl border border-border bg-card-surface p-6 text-sm text-muted">
+          Loading…
+        </div>
+      ) : null}
+
+      {modes.length ? (
+        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {modes.map((m) => {
+            const href = `/draft-compare/mode?mode=${encodeURIComponent(m.slug)}&year=${encodeURIComponent(
+              String(season)
+            )}`;
+            return (
+              <Link
+                key={m.slug}
+                href={href}
+                className="group relative overflow-hidden rounded-2xl border border-border bg-card-surface shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+              >
+                <div className="absolute inset-0 opacity-0 transition group-hover:opacity-100">
+                  <div className="absolute -left-24 -top-24 h-56 w-56 rounded-full bg-accent/10 blur-2xl" />
+                  <div className="absolute -right-24 -bottom-24 h-56 w-56 rounded-full bg-primary/10 blur-2xl" />
+                </div>
+
+                <div className="relative p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className="text-lg font-semibold text-primary">{m.title}</h2>
+                      {m.subtitle ? <p className="mt-1 text-sm text-muted">{m.subtitle}</p> : null}
+                    </div>
+                    <span className="inline-flex items-center rounded-full border border-border bg-background/60 px-2 py-1 text-xs text-muted">
+                      {String(season)}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 inline-flex items-center gap-2 text-sm text-accent">
+                    Open <span aria-hidden>→</span>
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
+    </section>
   );
 }
