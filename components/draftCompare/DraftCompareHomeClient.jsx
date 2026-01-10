@@ -12,6 +12,10 @@ function safeArray(v) {
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
+function safeNum(v) {
+  const x = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(x) ? x : 0;
+}
 function cleanSlug(s) {
   return safeStr(s)
     .trim()
@@ -20,155 +24,208 @@ function cleanSlug(s) {
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
 }
+function cls(...a) {
+  return a.filter(Boolean).join(" ");
+}
+function withV(url, v) {
+  if (!v) return url;
+  const hasQ = url.includes("?");
+  return `${url}${hasQ ? "&" : "?"}v=${encodeURIComponent(v)}`;
+}
 
-export default function DraftCompareHomeClient() {
-  const startYear = Number(CURRENT_SEASON || 2025);
-  const years = useMemo(() => {
-    // Show the current season and a few past seasons if they exist.
+async function fetchJsonMaybe(url) {
+  const res = await fetch(url, { cache: "no-store" });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Request failed (${res.status})`);
+  return res.json();
+}
+
+function normalizeModesFromJson(j, season) {
+  const rows = safeArray(j?.rows || j?.modes || j || []);
+  const cleaned = rows
+    .map((r, idx) => {
+      const slug = cleanSlug(r?.modeSlug || r?.slug || r?.id || r?.name || `mode-${idx + 1}`);
+      const title = safeStr(r?.title || r?.name || r?.modeName || slug);
+      const subtitle = safeStr(r?.subtitle || r?.blurb || "");
+      const order = safeNum(r?.order || r?.sort || 0);
+      return { season, slug, title, subtitle, order };
+    })
+    .filter((x) => x.slug && x.title);
+
+  // Stable sort: order -> title
+  cleaned.sort((a, b) => safeNum(a.order) - safeNum(b.order) || safeStr(a.title).localeCompare(safeStr(b.title)));
+  return cleaned;
+}
+
+function useDraftCompareHomeData(seasons, manifestVersion) {
+  const [state, setState] = useState({
+    loading: true,
+    err: "",
+    page: null,
+    modesBySeason: {},
+    seasonsWithModes: [],
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      setState((s) => ({ ...s, loading: true, err: "" }));
+      try {
+        // Page content: keep using CURRENT_SEASON for the hero (simple + consistent)
+        const heroSeason = seasons?.[0] ?? Number(CURRENT_SEASON || 2025);
+        const pageUrl = withV(r2Url(`content/draft-compare/page_${heroSeason}.json`), manifestVersion);
+        const pageJson = await fetchJsonMaybe(pageUrl);
+
+        // Modes per season
+        const results = await Promise.all(
+          safeArray(seasons).map(async (y) => {
+            const modesUrl = withV(r2Url(`data/draft-compare/modes_${y}.json`), manifestVersion);
+            const j = await fetchJsonMaybe(modesUrl);
+            if (!j) return { season: y, modes: [] };
+            return { season: y, modes: normalizeModesFromJson(j, y) };
+          })
+        );
+
+        const modesBySeason = Object.create(null);
+        const seasonsWithModes = [];
+        for (const r of results) {
+          modesBySeason[r.season] = safeArray(r.modes);
+          if (safeArray(r.modes).length) seasonsWithModes.push(r.season);
+        }
+
+        seasonsWithModes.sort((a, b) => Number(b) - Number(a));
+
+        if (cancelled) return;
+        setState({
+          loading: false,
+          err: "",
+          page: pageJson,
+          modesBySeason,
+          seasonsWithModes,
+        });
+      } catch (e) {
+        if (cancelled) return;
+        setState((s) => ({
+          ...s,
+          loading: false,
+          err: e?.message || "Failed to load Draft Compare content.",
+        }));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [seasons.join("|"), manifestVersion]);
+
+  return state;
+}
+
+function ModeCard({ season, mode }) {
+  return (
+    <Link
+      prefetch={false}
+      href={`/draft-compare/mode?mode=${encodeURIComponent(mode.slug)}&year=${encodeURIComponent(String(season))}`}
+      className={cls(
+        "group relative overflow-hidden rounded-2xl border border-subtle bg-card-surface p-5 shadow-sm",
+        "transition hover:-translate-y-[1px] hover:shadow-lg"
+      )}
+    >
+      <div className="pointer-events-none absolute inset-x-0 -top-24 h-48 bg-white/10 blur-3xl opacity-0 transition group-hover:opacity-100" />
+      <div className="relative">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">{season}</div>
+        <div className="mt-1 text-lg font-semibold text-primary">{mode.title}</div>
+        {mode.subtitle ? <div className="mt-1 text-sm text-muted">{mode.subtitle}</div> : null}
+        <div className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-accent">
+          Open <span className="transition group-hover:translate-x-0.5">→</span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function HomeInner({ manifest }) {
+  const base = Number(CURRENT_SEASON || 2025);
+
+  // Try current + previous few seasons; only render sections that actually have modes JSON.
+  const seasonsToTry = useMemo(() => {
     const out = [];
-    for (let i = 0; i < 6; i++) out.push(String(startYear - i));
+    for (let i = 0; i < 4; i++) out.push(base - i); // 4 seasons (adjust if you want)
     return out;
-  }, [startYear]);
+  }, [base]);
+
+  const manifestVersion = safeStr(manifest?.updatedAt || manifest?.nonce || "");
+
+  const { loading, err, page, modesBySeason, seasonsWithModes } = useDraftCompareHomeData(seasonsToTry, manifestVersion);
+
+  const hero = page?.hero || {};
+  const heroTitle = safeStr(hero.title || "Draft Compare");
+  const heroSubtitle = safeStr(hero.subtitle || "Pick leagues to compare and view ADP + a draftboard.");
 
   return (
-    <section className="mx-auto max-w-6xl px-4 py-10">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Draft Compare</h1>
-          <p className="mt-2 text-sm text-muted">Compare draft tendencies by league groups.</p>
-        </div>
-        <Link href="/" className="rounded-xl border border-subtle bg-black/10 px-4 py-2 text-sm hover:bg-black/15">
-          Home
-        </Link>
-      </div>
-
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Link
-          href="/draft-compare/compare-modes"
-          className="group relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-soft transition-shadow hover:shadow-glow"
-        >
-          <div className="relative p-6">
-            <div className="text-xs text-muted">Mode</div>
-            <div className="mt-1 text-lg font-semibold">Compare gamemodes</div>
-            <div className="mt-2 text-sm text-muted line-clamp-3">
-              Compare two full gamemodes (no league selection).
-            </div>
-            <div className="mt-5 inline-flex items-center gap-2 text-sm text-accent">
-              Open <span aria-hidden>→</span>
-            </div>
+    <section className="section">
+      <div className="container-site space-y-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Tools</div>
+            <h1 className="mt-1 text-3xl font-semibold text-primary">{heroTitle}</h1>
+            <p className="mt-2 max-w-3xl text-sm text-muted">{heroSubtitle}</p>
           </div>
-        </Link>
-      </div>
 
-      <div className="mt-10 space-y-10">
-        {years.map((year) => (
-          <YearSection key={year} year={year} />
-        ))}
+          <div className="flex flex-wrap rounded-2xl border border-subtle bg-card-surface items-center gap-2">
+            <Link href="/draft-compare/compare-modes" className="btn btn-secondary">
+              Compare gamemodes
+            </Link>
+          </div>
+        </div>
+
+        {err ? (
+          <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 p-4 text-sm text-rose-100">{err}</div>
+        ) : null}
+
+        {loading ? (
+          <div className="rounded-2xl border border-subtle bg-card-surface p-4 text-sm text-muted">Loading…</div>
+        ) : null}
+
+        {!loading ? (
+          <div className="space-y-8">
+            {seasonsWithModes.map((season) => {
+              const modes = safeArray(modesBySeason?.[season]);
+              if (!modes.length) return null;
+
+              return (
+                <div key={season} className="space-y-3">
+                  <div className="flex items-end justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                        {season} Modes
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {modes.map((m) => (
+                      <ModeCard key={`${season}|||${m.slug}`} season={season} mode={m} />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+
+            {!seasonsWithModes.length ? (
+              <div className="rounded-2xl border border-subtle bg-card-surface p-6 text-sm text-muted">
+                No mode data found for recent seasons.
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </section>
   );
 }
 
-function YearSection({ year }) {
-  const [rows, setRows] = useState([]);
-  const [err, setErr] = useState("");
-
-  return (
-    <SectionManifestGate
-      manifestKey={`data/manifests/draft-compare_${year}.json`}
-      title="Draft Compare"
-      description="Compare draft tendencies by league groups."
-    >
-      {({ version }) => {
-        const modesKey = `data/draft-compare/modes_${year}.json?v=${encodeURIComponent(version || "")}`;
-        const fetchUrl = useMemo(() => r2Url(modesKey), [modesKey]);
-
-        useEffect(() => {
-          let alive = true;
-          setErr("");
-
-          fetch(fetchUrl, { cache: "no-store" })
-            .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-            .then((j) => {
-              if (!alive) return;
-              const raw = safeArray(j?.rows || j?.modes || j || []);
-              const next = raw
-                .map((r0, idx) => {
-                  const r1 = r0 || {};
-                  const slug = cleanSlug(r1.modeSlug || r1.slug || r1.id || r1.name || `mode-${idx + 1}`);
-                  return {
-                    id: safeStr(r1.id || slug || idx),
-                    slug,
-                    title: safeStr(r1.title || r1.name || r1.modeName || "Draft Compare"),
-                    subtitle: safeStr(r1.subtitle || r1.blurb || ""),
-                    order: Number(r1.order ?? r1.sort ?? idx),
-                    image_url: safeStr(r1.image_url || r1.imageUrl || r1.image || ""),
-                    year: safeStr(r1.year || year),
-                  };
-                })
-                .filter((x) => x.slug)
-                .sort((a, b) => (a.order || 0) - (b.order || 0));
-              setRows(next);
-            })
-            .catch((e) => {
-              // Missing season is normal — we just hide the section.
-              if (!alive) return;
-              setErr(e?.message || "Failed to load modes");
-              setRows([]);
-            });
-
-          return () => {
-            alive = false;
-          };
-        }, [fetchUrl]);
-
-        if (err || !rows.length) return null;
-
-        return (
-          <div>
-            <div className="mb-4 flex items-baseline justify-between gap-3">
-              <h2 className="text-xl font-semibold text-primary">{year}</h2>
-              <div className="text-xs text-muted">Modes: {rows.length}</div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {rows.map((m) => (
-                // inside your map() where you render mode cards/links:
-
-                  <Link
-                    key={m.id}
-                    // IMPORTANT: mode "year" is for display/sorting only.
-                    // Draft JSON is stored under the season bucket (this page's `year`), not mode.year.
-                    href={`/draft-compare/mode?mode=${encodeURIComponent(m.slug)}&year=${encodeURIComponent(String(year))}`}
-                    className={(
-                      "group relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-soft transition-shadow hover:shadow-glow"
-                    )}
-                  >
-
-                  <div className="absolute inset-0 opacity-20">
-                    {m.image_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={m.image_url} alt="" className="h-full w-full object-cover" loading="lazy" />
-                    ) : null}
-                  </div>
-                  <div className="relative p-6">
-                    <div className="text-xs text-muted">Mode</div>
-                    <div className="mt-1 text-lg font-semibold">{m.title}</div>
-                    {m.subtitle ? (
-                      <div className="mt-2 text-sm text-muted line-clamp-3">{m.subtitle}</div>
-                    ) : (
-                      <div className="mt-2 text-sm text-muted">Open this mode</div>
-                    )}
-                    <div className="mt-5 inline-flex items-center gap-2 text-sm text-accent">
-                      Open <span aria-hidden>→</span>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        );
-      }}
-    </SectionManifestGate>
-  );
+export default function DraftCompareHomeClient() {
+  // Use global manifest so updates to any season invalidate the home list.
+  return <SectionManifestGate section="draft-compare">{(manifest) => <HomeInner manifest={manifest} />}</SectionManifestGate>;
 }

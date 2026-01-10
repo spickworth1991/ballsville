@@ -26,6 +26,12 @@ function deriveSlug(row) {
   return cleanSlug(row?.title || row?.name);
 }
 
+async function getAccessToken() {
+  const supabase = getSupabase();
+  const { data } = await supabase.auth.getSession();
+  return data?.session?.access_token || "";
+}
+
 async function apiGet(url) {
   const res = await fetch(url, { cache: "no-store" });
   if (res.status === 404) return null;
@@ -44,16 +50,6 @@ async function apiPost(url, body) {
   return data;
 }
 
-async function getAccessToken() {
-  try {
-    const supabase = getSupabase();
-    const { data } = await supabase.auth.getSession();
-    return data?.session?.access_token || "";
-  } catch {
-    return "";
-  }
-}
-
 export default function DraftCompareAdminClient() {
   const [season, setSeason] = useState(CURRENT_SEASON);
   const [rows, setRows] = useState([]);
@@ -62,23 +58,18 @@ export default function DraftCompareAdminClient() {
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
 
-  // Image selection should preview immediately, but only upload on "Save modes".
-  // Map: modeSlug -> { file: File, previewUrl: string }
-  const [pendingImages, setPendingImages] = useState(() => Object.create(null));
-  const pendingImagesRef = useRef(pendingImages);
-  useEffect(() => {
-    pendingImagesRef.current = pendingImages;
-  }, [pendingImages]);
+  // pending image files (preview now, upload on Save)
+  // { [modeSlug]: { file: File, previewUrl: string } }
+  const [pendingImages, setPendingImages] = useState({});
+  const pendingUrlsRef = useRef(new Set());
 
-  // Cleanup object URLs on unmount
   useEffect(() => {
     return () => {
-      const current = pendingImagesRef.current || {};
-      for (const k of Object.keys(current)) {
-        try {
-          URL.revokeObjectURL(current[k]?.previewUrl);
-        } catch {}
-      }
+      // cleanup object URLs on unmount
+      try {
+        for (const u of pendingUrlsRef.current) URL.revokeObjectURL(u);
+      } catch {}
+      pendingUrlsRef.current = new Set();
     };
   }, []);
 
@@ -92,7 +83,20 @@ export default function DraftCompareAdminClient() {
       try {
         const data = await apiGet(`/api/admin/draft-compare?season=${encodeURIComponent(String(season))}&type=modes`);
         const next = safeArray(data?.rows || data || []);
-        if (!cancelled) setRows(next);
+        if (!cancelled) {
+          setRows(next);
+          // Clear pending images when switching seasons (prevents accidental cross-season save)
+          setPendingImages((prev) => {
+            try {
+              for (const k of Object.keys(prev || {})) {
+                const u = prev?.[k]?.previewUrl;
+                if (u) URL.revokeObjectURL(u);
+              }
+            } catch {}
+            pendingUrlsRef.current = new Set();
+            return {};
+          });
+        }
       } catch (e) {
         if (!cancelled) setErr(e?.message || "Failed to load.");
       } finally {
@@ -113,7 +117,7 @@ export default function DraftCompareAdminClient() {
       title: safeStr(r?.title || r?.name || ""),
       subtitle: safeStr(r?.subtitle || r?.blurb || ""),
       order: Number(r?.order || 0) || 0,
-      year: Number(r?.year || season) || season,
+      year: Number(r?.year || season) || season, // purely display/sort metadata
       imageKey: safeStr(r?.imageKey || r?.image_key || ""),
       image_url: safeStr(r?.image_url || r?.imageUrl || r?.image || ""),
       hasDraftJson: !!r?.hasDraftJson,
@@ -124,7 +128,7 @@ export default function DraftCompareAdminClient() {
     setRows((prev) => [
       ...safeArray(prev),
       {
-        modeSlug: "", // auto-derived from title on save
+        modeSlug: "",
         title: "",
         subtitle: "",
         order: safeArray(prev).length + 1,
@@ -146,127 +150,6 @@ export default function DraftCompareAdminClient() {
 
   const removeRow = (idx) => {
     setRows((prev) => safeArray(prev).filter((_, i) => i !== idx));
-  };
-
-  function stageModeImage(modeSlug, file) {
-    const slug = cleanSlug(modeSlug);
-    if (!slug) {
-      setErr("Mode slug is required before selecting an image. Add a Title first, then Save modes.");
-      return;
-    }
-    if (!file) return;
-
-    setErr("");
-    setMsg("");
-
-    const previewUrl = URL.createObjectURL(file);
-
-    setPendingImages((prev) => {
-      const next = { ...(prev || {}) };
-      try {
-        if (next[slug]?.previewUrl) URL.revokeObjectURL(next[slug].previewUrl);
-      } catch {}
-      next[slug] = { file, previewUrl };
-      return next;
-    });
-  }
-
-  const saveModes = async () => {
-    setErr("");
-    setMsg("");
-    setSaving(true);
-    try {
-      // 1) Build payload from current form state
-      let payload = normalized
-        .map((r) => ({
-          // IMPORTANT: do not auto-change existing slugs (modeSlug is derived
-          // from the stored slug when present; otherwise it is derived from title).
-          modeSlug: cleanSlug(r.modeSlug),
-          title: safeStr(r.title).trim(),
-          subtitle: safeStr(r.subtitle).trim(),
-          order: Number(r.order || 0) || 0,
-          year: Number(r.year || season) || season,
-          imageKey: safeStr(r.imageKey).trim(),
-          image_url: safeStr(r.image_url).trim(),
-        }))
-        .filter((r) => r.modeSlug && r.title);
-
-      // 2) Upload any staged images (auth required), then patch payload + rows.
-      const staged = pendingImagesRef.current || {};
-      const stagedSlugs = Object.keys(staged);
-
-      if (stagedSlugs.length) {
-        const token = await getAccessToken();
-        if (!token) throw new Error("Not authenticated. Please re-login to admin.");
-
-        const uploadedBySlug = Object.create(null);
-
-        for (const slug of stagedSlugs) {
-          const file = staged?.[slug]?.file;
-          if (!file) continue;
-
-          const form = new FormData();
-          form.append("file", file);
-          form.append("section", "draft-compare-mode");
-          form.append("season", String(season));
-          form.append("modeSlug", slug);
-
-          const res = await fetch(`/api/admin/upload`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
-            body: form,
-          });
-
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok || !data?.ok) throw new Error(data?.error || `Upload failed (${res.status})`);
-
-          uploadedBySlug[slug] = {
-            imageKey: safeStr(data?.key),
-            image_url: safeStr(data?.url),
-          };
-        }
-
-        // patch payload
-        payload = payload.map((r) => {
-          const up = uploadedBySlug[r.modeSlug];
-          return up ? { ...r, ...up } : r;
-        });
-
-        // patch rows so UI reflects newly uploaded key/url
-        setRows((prev) =>
-          safeArray(prev).map((r) => {
-            const slug = cleanSlug(r?.modeSlug || r?.slug || r?.id || r?.name) || deriveSlug(r);
-            const up = uploadedBySlug[slug];
-            return up ? { ...r, imageKey: up.imageKey, image_url: up.image_url } : r;
-          })
-        );
-
-        // clear staged previews + revoke URLs
-        setPendingImages((prev) => {
-          const next = { ...(prev || {}) };
-          for (const slug of Object.keys(uploadedBySlug)) {
-            try {
-              if (next[slug]?.previewUrl) URL.revokeObjectURL(next[slug].previewUrl);
-            } catch {}
-            delete next[slug];
-          }
-          return next;
-        });
-      }
-
-      // 3) Save modes JSON to R2
-      await apiPost(`/api/admin/draft-compare`, {
-        season,
-        type: "modes",
-        rows: payload,
-      });
-
-      setMsg("Saved.");
-    } catch (e) {
-      setErr(e?.message || "Save failed.");
-    } finally {
-      setSaving(false);
-    }
   };
 
   const uploadDraftJson = async (modeSlug, file) => {
@@ -293,7 +176,6 @@ export default function DraftCompareAdminClient() {
         data: json,
       });
 
-      // Mark as uploaded in UI
       setRows((prev) =>
         safeArray(prev).map((r) => {
           const slug = cleanSlug(r?.modeSlug || r?.slug || r?.id || r?.name);
@@ -309,6 +191,134 @@ export default function DraftCompareAdminClient() {
     }
   };
 
+  function setPendingModeImage(modeSlug, file) {
+    if (!modeSlug) {
+      setErr("Mode slug is required before selecting an image.");
+      return;
+    }
+    setErr("");
+    setMsg("");
+
+    const url = URL.createObjectURL(file);
+    pendingUrlsRef.current.add(url);
+
+    setPendingImages((prev) => {
+      const next = { ...(prev || {}) };
+      // revoke old preview if replacing
+      const old = next?.[modeSlug]?.previewUrl;
+      if (old) {
+        try {
+          URL.revokeObjectURL(old);
+          pendingUrlsRef.current.delete(old);
+        } catch {}
+      }
+      next[modeSlug] = { file, previewUrl: url };
+      return next;
+    });
+  }
+
+  async function uploadModeImageNow(modeSlug, file) {
+    const token = await getAccessToken();
+    if (!token) throw new Error("Not signed in as admin.");
+
+    const form = new FormData();
+    form.append("file", file);
+    form.append("section", "draft-compare-mode");
+    form.append("season", String(season));
+    form.append("modeSlug", modeSlug);
+
+    const res = await fetch(`/api/admin/upload`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.ok) throw new Error(data?.error || `Upload failed (${res.status})`);
+
+    return {
+      imageKey: safeStr(data?.key).trim(),
+      image_url: safeStr(data?.url).trim(),
+    };
+  }
+
+  const saveModes = async () => {
+    setErr("");
+    setMsg("");
+    setSaving(true);
+
+    try {
+      // 1) Upload any pending images first (so rows payload includes final URLs)
+      const uploadedBySlug = Object.create(null);
+
+      for (const r of normalized) {
+        const slug = cleanSlug(r.modeSlug);
+        const pending = pendingImages?.[slug];
+        if (!slug || !pending?.file) continue;
+
+        const uploaded = await uploadModeImageNow(slug, pending.file);
+        uploadedBySlug[slug] = uploaded;
+      }
+
+      // 2) Merge uploaded image data into the outgoing payload (and local rows)
+      const payload = normalized
+        .map((r) => {
+          const slug = cleanSlug(r.modeSlug);
+          const uploaded = uploadedBySlug?.[slug];
+
+          const nextImageKey = uploaded?.imageKey ?? safeStr(r.imageKey).trim();
+          const nextImageUrl = uploaded?.image_url ?? safeStr(r.image_url).trim();
+
+          return {
+            modeSlug: slug,
+            title: safeStr(r.title).trim(),
+            subtitle: safeStr(r.subtitle).trim(),
+            order: Number(r.order || 0) || 0,
+            // NOTE: year is purely metadata for sorting/display on the home page; it should NOT affect which draft JSON file is used.
+            year: Number(r.year || season) || season,
+            imageKey: nextImageKey,
+            image_url: nextImageUrl,
+          };
+        })
+        .filter((r) => r.modeSlug && r.title);
+
+      await apiPost(`/api/admin/draft-compare`, {
+        season,
+        type: "modes",
+        rows: payload,
+      });
+
+      // Update local rows with any uploaded image info, and clear pending previews
+      if (Object.keys(uploadedBySlug).length) {
+        setRows((prev) =>
+          safeArray(prev).map((r0) => {
+            const slug = cleanSlug(r0?.modeSlug || r0?.slug || r0?.id || r0?.name);
+            const up = uploadedBySlug?.[slug];
+            if (!up) return r0;
+            return { ...r0, imageKey: up.imageKey, image_url: up.image_url };
+          })
+        );
+      }
+
+      setPendingImages((prev) => {
+        try {
+          for (const k of Object.keys(prev || {})) {
+            const u = prev?.[k]?.previewUrl;
+            if (u) URL.revokeObjectURL(u);
+          }
+        } catch {}
+        pendingUrlsRef.current = new Set();
+        return {};
+      });
+
+      setMsg("Saved.");
+    } catch (e) {
+      setErr(e?.message || "Save failed.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <section className="section">
       <div className="container-site space-y-6">
@@ -316,7 +326,9 @@ export default function DraftCompareAdminClient() {
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Admin</div>
             <h1 className="mt-1 text-2xl font-semibold text-primary">Draft Compare</h1>
-            <p className="mt-2 text-sm text-muted">Define modes, upload draft JSON per mode, and optional header images.</p>
+            <p className="mt-2 text-sm text-muted">
+              Define modes, upload draft JSON per mode, and optional header images (preview then Save).
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <Link href="/admin" className="btn btn-secondary">
@@ -348,7 +360,9 @@ export default function DraftCompareAdminClient() {
           <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 p-4 text-sm text-rose-100">{err}</div>
         ) : null}
         {msg ? (
-          <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm text-emerald-100">{msg}</div>
+          <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm text-emerald-100">
+            {msg}
+          </div>
         ) : null}
 
         {loading ? (
@@ -359,8 +373,9 @@ export default function DraftCompareAdminClient() {
           <div className="grid gap-4">
             {normalized.map((r, idx) => {
               const slug = cleanSlug(r.modeSlug);
-              const stagedPreview = pendingImages?.[slug]?.previewUrl || "";
-              const previewUrl = stagedPreview || r.image_url || "";
+              const pending = pendingImages?.[slug];
+              const previewUrl = pending?.previewUrl || "";
+              const showUrl = previewUrl || r.image_url;
 
               return (
                 <div key={`${idx}-${r.modeSlug}`} className="rounded-2xl border border-subtle bg-card-surface p-4">
@@ -375,15 +390,9 @@ export default function DraftCompareAdminClient() {
                       </span>
                     )}
 
-                    {previewUrl ? (
+                    {showUrl ? (
                       <span className="rounded-full border border-border/60 bg-black/5 px-3 py-1 text-[11px] font-semibold text-muted">
-                        Image set
-                      </span>
-                    ) : null}
-
-                    {stagedPreview ? (
-                      <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold text-amber-100">
-                        Pending save
+                        {previewUrl ? "Image pending (save to upload)" : "Image set"}
                       </span>
                     ) : null}
                   </div>
@@ -394,6 +403,7 @@ export default function DraftCompareAdminClient() {
                       <input className="input bg-black/5 text-muted" value={safeStr(r.modeSlug)} disabled readOnly />
                       <div className="text-[11px] text-muted">Auto-filled from Title for new modes.</div>
                     </div>
+
                     <div className="space-y-2">
                       <label className="block text-xs text-muted">Order</label>
                       <input
@@ -405,7 +415,7 @@ export default function DraftCompareAdminClient() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="block text-xs text-muted">Year</label>
+                      <label className="block text-xs text-muted">Year (display only)</label>
                       <input
                         className="input"
                         value={safeStr(r.year)}
@@ -414,6 +424,10 @@ export default function DraftCompareAdminClient() {
                         min={2000}
                         max={2100}
                       />
+                      <div className="text-[11px] text-muted">
+                        This does <span className="font-semibold text-primary">not</span> control which draft JSON is used.
+                        Season sections on the public home control that.
+                      </div>
                     </div>
 
                     <div className="space-y-2">
@@ -425,6 +439,7 @@ export default function DraftCompareAdminClient() {
                         placeholder="Mode display name"
                       />
                     </div>
+
                     <div className="space-y-2">
                       <label className="block text-xs text-muted">Subtitle (optional)</label>
                       <input
@@ -452,7 +467,7 @@ export default function DraftCompareAdminClient() {
                     </label>
 
                     <label className="btn btn-secondary">
-                      Select mode image
+                      Choose mode image
                       <input
                         type="file"
                         accept="image/*"
@@ -460,15 +475,15 @@ export default function DraftCompareAdminClient() {
                         onChange={(e) => {
                           const f = e.target.files?.[0];
                           e.target.value = "";
-                          if (f) stageModeImage(cleanSlug(r.modeSlug), f);
+                          if (f) setPendingModeImage(cleanSlug(r.modeSlug), f);
                         }}
                       />
                     </label>
 
-                    {previewUrl ? (
+                    {showUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={previewUrl}
+                        src={showUrl}
                         alt=""
                         className="h-10 w-10 rounded-lg border border-subtle object-cover"
                         loading="lazy"
