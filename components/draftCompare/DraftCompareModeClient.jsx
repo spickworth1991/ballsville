@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import { CURRENT_SEASON } from "@/lib/season";
 import { r2Url } from "@/lib/r2Url";
@@ -39,10 +38,62 @@ function cls(...a) {
   return a.filter(Boolean).join(" ");
 }
 
+// NOTE: We intentionally do NOT use next/navigation's useSearchParams here.
+// On static export + Cloudflare Pages, useSearchParams can leave the page
+// stuck on the Suspense fallback if hydration fails or is delayed.
+// This hook reads window.location.search directly and also listens for
+// history changes triggered by Next client navigation.
+function useLiveSearchParams() {
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const read = () => setSearch(window.location.search || "");
+    read();
+
+    const onPop = () => read();
+    window.addEventListener("popstate", onPop);
+
+    // Patch pushState/replaceState once per session so we can react to Next Link navs.
+    const w = window;
+    if (!w.__BALLSVILLE_HISTORY_PATCHED__) {
+      w.__BALLSVILLE_HISTORY_PATCHED__ = true;
+      const origPush = history.pushState;
+      const origReplace = history.replaceState;
+
+      history.pushState = function (...args) {
+        const ret = origPush.apply(this, args);
+        try {
+          window.dispatchEvent(new Event("ballsville:locationchange"));
+        } catch {}
+        return ret;
+      };
+      history.replaceState = function (...args) {
+        const ret = origReplace.apply(this, args);
+        try {
+          window.dispatchEvent(new Event("ballsville:locationchange"));
+        } catch {}
+        return ret;
+      };
+    }
+
+    const onLoc = () => read();
+    window.addEventListener("ballsville:locationchange", onLoc);
+
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      window.removeEventListener("ballsville:locationchange", onLoc);
+    };
+  }, []);
+
+  return useMemo(() => new URLSearchParams(search || ""), [search]);
+}
+
 export default function DraftCompareModeClient() {
-  const sp = useSearchParams();
-  const mode = cleanSlug(sp.get("mode") || "");
-  const year = safeStr(sp.get("year") || CURRENT_SEASON);
+  const sp = useLiveSearchParams();
+  const mode = useMemo(() => cleanSlug(sp.get("mode") || ""), [sp]);
+  const year = useMemo(() => safeStr(sp.get("year") || CURRENT_SEASON), [sp]);
 
   return (
     <SectionManifestGate section="draft-compare" season={year}>
@@ -72,7 +123,15 @@ function ModeInner({ mode, year, version, gateError }) {
     let cancelled = false;
 
     async function load() {
-      if (!dataUrl) return;
+      // If mode is missing (or the URL hasn't been parsed yet), don't spin forever.
+      if (!dataUrl) {
+        if (!cancelled) {
+          setRaw(null);
+          setErr(mode ? "Draft data is not available for this mode." : "Missing mode in URL.");
+          setLoading(false);
+        }
+        return;
+      }
       try {
         setErr("");
         setLoading(true);
