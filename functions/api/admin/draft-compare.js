@@ -25,17 +25,6 @@ function json(data, status = 200) {
     },
   });
 }
-// -------- small shared helpers (avoid 500s if this file is used standalone) --------
-function safeArray(v) {
-  return Array.isArray(v) ? v : [];
-}
-function safeStr(v) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
-function safeNum(v) {
-  const x = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(x) ? x : 0;
-}
 
 
 function ensureR2(env) {
