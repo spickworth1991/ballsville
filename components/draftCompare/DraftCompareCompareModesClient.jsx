@@ -60,8 +60,8 @@ export default function DraftCompareCompareModesClient() {
   const [modes, setModes] = useState([]); // flattened options
   const [loadErr, setLoadErr] = useState("");
 
-  const [selA, setSelA] = useState(""); // "year|||slug"
-  const [selB, setSelB] = useState("");
+  const [selA, setSelA] = useState("2025|||big-game"); // "year|||slug"
+  const [selB, setSelB] = useState("2025|||gauntlet"); // "year|||slug"
 
   const [rawA, setRawA] = useState(null);
   const [rawB, setRawB] = useState(null);
