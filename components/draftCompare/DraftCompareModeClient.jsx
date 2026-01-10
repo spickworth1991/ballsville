@@ -368,7 +368,7 @@ function ModeInner({ mode, season, version, gateError }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex overflow-hidden rounded-xl border border-border bg-background/30">
+          <div className="inline-flex overflow-hidden rounded-xl border border-border bg-card-surface">
             <button
               type="button"
               onClick={() => setView("list")}
@@ -645,51 +645,117 @@ function DraftBoard({ group }) {
   const m = g?.meta;
   const [openKey, setOpenKey] = useState(null);
 
+  // --- premium "landscape recommended" overlay (phone only, draftboard only) ---
+  const [showLandscapeTip, setShowLandscapeTip] = useState(false);
+  const [isPortrait, setIsPortrait] = useState(true);
+  const [isPhoneLike, setIsPhoneLike] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let mounted = true;
+
+    // phone-like = touch device with no hover; avoid large tablets/trackpads
+    const mqPhone = window.matchMedia("(hover: none) and (pointer: coarse) and (max-width: 1024px)");
+    const mqPortrait = window.matchMedia("(orientation: portrait)");
+
+    function safeSetSeen() {
+      try {
+        sessionStorage.setItem("draftboard_landscape_tip_seen", "1");
+      } catch {
+        // ignore
+      }
+    }
+
+    function compute() {
+      if (!mounted) return;
+
+      const phone = !!mqPhone.matches;
+      const portrait = !!mqPortrait.matches;
+
+      setIsPhoneLike(phone);
+      setIsPortrait(portrait);
+
+      // Tip only for phone-like + portrait
+      if (!phone) {
+        setShowLandscapeTip(false);
+        return;
+      }
+
+      // Auto-close when rotated to landscape
+      if (!portrait) {
+        setShowLandscapeTip(false);
+        safeSetSeen();
+        return;
+      }
+
+      // On EVERY page visit: show if phone-like + portrait
+      setShowLandscapeTip(true);
+    }
+
+    compute();
+
+    const onChange = () => compute();
+
+    try {
+      mqPhone.addEventListener?.("change", onChange);
+      mqPortrait.addEventListener?.("change", onChange);
+    } catch {
+      mqPhone.addListener?.(onChange);
+      mqPortrait.addListener?.(onChange);
+    }
+
+    window.addEventListener("resize", onChange);
+    window.addEventListener("orientationchange", onChange);
+
+    return () => {
+      mounted = false;
+      try {
+        mqPhone.removeEventListener?.("change", onChange);
+        mqPortrait.removeEventListener?.("change", onChange);
+      } catch {
+        mqPhone.removeListener?.(onChange);
+        mqPortrait.removeListener?.(onChange);
+      }
+      window.removeEventListener("resize", onChange);
+      window.removeEventListener("orientationchange", onChange);
+    };
+  }, []);
+
+  function acknowledgeLandscapeTip() {
+    try {
+      sessionStorage.setItem("draftboard_landscape_tip_seen", "1");
+    } catch {
+      // ignore
+    }
+    setShowLandscapeTip(false);
+  }
+  // --- end overlay ---
+
   function posTheme(posRaw) {
     const pos = safeStr(posRaw).toUpperCase().trim();
-    // Sleeper-ish: WR blue, RB mint/green, QB red, TE orange.
-    // Colors should fill the entire pick square (not just badges/pills).
-    if (pos === "WR") {
-      return {
-        // Tailwind only generates certain opacity steps for color/opacity shorthand.
-        // Use standard steps so classes aren't purged/missing (e.g. /20, /25, /30).
-        cell: "bg-sky-400/20 hover:bg-sky-400/30",
-        border: "border-sky-400/25",
-      };
-    }
-    if (pos === "RB") {
-      return {
-        cell: "bg-emerald-400/20 hover:bg-emerald-400/30",
-        border: "border-emerald-400/25",
-      };
-    }
-    if (pos === "QB") {
-      return {
-        cell: "bg-rose-400/20 hover:bg-rose-400/30",
-        border: "border-rose-400/25",
-      };
-    }
-    if (pos === "TE") {
-      return {
-        cell: "bg-amber-300/20 hover:bg-amber-300/30",
-        border: "border-amber-300/25",
-      };
-    }
-    return {
-      cell: "bg-background/12 hover:bg-background/25",
-      border: "border-border/70",
-    };
+    if (pos === "WR") return { cell: "bg-sky-400/20 hover:bg-sky-400/30", border: "border-sky-400/25" };
+    if (pos === "RB") return { cell: "bg-emerald-400/20 hover:bg-emerald-400/30", border: "border-emerald-400/25" };
+    if (pos === "QB") return { cell: "bg-rose-400/20 hover:bg-rose-400/30", border: "border-rose-400/25" };
+    if (pos === "TE") return { cell: "bg-amber-300/20 hover:bg-amber-300/30", border: "border-amber-300/25" };
+    return { cell: "bg-background/12 hover:bg-background/25", border: "border-border/70" };
+  }
+
+  function nameTwoLines(fullName) {
+    const s = safeStr(fullName).trim();
+    if (!s) return { first: "", last: "" };
+    const parts = s.split(/\s+/).filter(Boolean);
+    if (parts.length === 1) return { first: parts[0], last: "" };
+    return { first: parts[0], last: parts.slice(1).join(" ") };
   }
 
   if (!g || !m) return null;
   const teams = safeNum(m.teams) || 12;
   const rounds = safeNum(m.rounds) || 18;
 
-  // Original slot distributions (real drafters at each pick position)
+  const boardMinWidthPx = teams * 86;
   const cells = g?.draftboard?.cells || {};
 
-  // Build an "adjusted" order: players sorted by avg pick, then renumbered 1..N.
-  // This avoids duplicate round.pick labels on the board while keeping the list's true ADP.
   const playersArr = Array.isArray(g?.players)
     ? g.players
     : g?.players && typeof g.players === "object"
@@ -706,7 +772,6 @@ function DraftBoard({ group }) {
     .filter((p) => p.name)
     .sort((a, b) => safeNum(a.adp) - safeNum(b.adp));
 
-  // grid[r][c] => cell
   const grid = [];
   for (let r = 1; r <= rounds; r++) {
     const row = [];
@@ -720,10 +785,8 @@ function DraftBoard({ group }) {
     const r = Math.floor((overall - 1) / teams) + 1;
     const pickInRound = ((overall - 1) % teams) + 1;
 
-    // Snake display: even rounds reverse the column order.
     const displayCol = r % 2 === 1 ? pickInRound : teams - pickInRound + 1;
 
-    // For the modal, we want the *real* pick-slot distribution for this round/pick.
     const origKey = `${r}-${pickInRound}`;
     const dist = safeArray(cells[origKey]);
     const top = dist[0] || null;
@@ -742,65 +805,167 @@ function DraftBoard({ group }) {
 
   return (
     <div className="space-y-3">
-      {/* No scroll: board fits the container; cells shrink fluidly */}
       <div className="overflow-hidden rounded-2xl border border-border bg-background/10 shadow-sm">
-        {grid.map((row, i) => (
-          <div key={i} className="grid" style={{ gridTemplateColumns: `repeat(${teams}, minmax(0, 1fr))` }}>
-            {row.map((cell, j) => {
-              if (!cell) {
-                return (
-                  <div
-                    key={`blank-${i}-${j}`}
-                    className="h-[74px] border-r border-b border-border/70 bg-background/5"
-                  />
-                );
-              }
-              const rpAdjusted = `${cell.r}.${String(cell.pickInRound).padStart(2, "0")}`;
-              const theme = posTheme(cell.player?.position);
-              return (
-                <button
-                  key={`${cell.r}-${cell.displayCol}`}
-                  onClick={() => setOpenKey(cell.origKey)}
-                  className={cls(
-                    "group relative h-[74px] border-r border-b p-2 text-left transition",
-                    theme.border,
-                    theme.cell,
-                    "hover:shadow-[0_6px_16px_rgba(0,0,0,0.25)] hover:shadow-black/20",
-                    "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                  )}
-                  title={cell.player ? `${cell.player.name} (${cell.player.position})` : rpAdjusted}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span
+        {/* swipe hint only on phone */}
+        {isPhoneLike ? (
+          <div className="flex items-center justify-between px-3 py-2 text-[11px] text-muted">
+            <span>Swipe to view all picks</span>
+            <span className="font-semibold text-white/90">→</span>
+          </div>
+        ) : null}
+
+        {/* Phones: horizontal swipe; non-phones: locked */}
+        <div className={cls(isPhoneLike ? "overflow-x-auto overflow-y-hidden" : "overflow-hidden")}>
+          <div className="relative" style={{ minWidth: isPhoneLike ? `max(100%, ${boardMinWidthPx}px)` : "100%" }}>
+            {grid.map((row, i) => (
+              <div key={i} className="grid" style={{ gridTemplateColumns: `repeat(${teams}, minmax(0, 1fr))` }}>
+                {row.map((cell, j) => {
+                  if (!cell) {
+                    return (
+                      <div
+                        key={`blank-${i}-${j}`}
+                        className="h-[88px] border-r border-b border-border/70 bg-background/5"
+                      />
+                    );
+                  }
+
+                  const rpAdjusted = `${cell.r}.${String(cell.pickInRound).padStart(2, "0")}`;
+                  const theme = posTheme(cell.player?.position);
+                  const nm = nameTwoLines(cell.player?.name);
+
+                  return (
+                    <button
+                      key={`${cell.r}-${cell.displayCol}`}
+                      onClick={() => setOpenKey(cell.origKey)}
                       className={cls(
-                        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
-                        "shadow-[0_2px_10px_rgba(0,0,0,0.16)]",
-                        "backdrop-blur",
-                        "border-border/70 bg-background/35 text-primary"
+                        "group relative h-[88px] border-r border-b p-2.5 text-left transition",
+                        theme.border,
+                        theme.cell,
+                        "hover:shadow-[0_6px_16px_rgba(0,0,0,0.25)] hover:shadow-black/20",
+                        "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                       )}
+                      title={cell.player ? `${cell.player.name} (${cell.player.position})` : rpAdjusted}
                     >
-                      {rpAdjusted}
-                    </span>
-                    <span className="inline-flex items-center rounded-full border border-border/70 bg-background/20 px-2 py-0.5 text-[10px] font-medium text-primary/80 shadow-[0_2px_10px_rgba(0,0,0,0.16)] backdrop-blur">
-                      #{cell.overall}
-                    </span>
+                      {/* Always show ONLY round.pick pill (white text) */}
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className={cls(
+                            "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                            "shadow-[0_2px_10px_rgba(0,0,0,0.16)] backdrop-blur",
+                            "border-white/20 bg-black/25 text-white"
+                          )}
+                        >
+                          {rpAdjusted}
+                        </span>
+                      </div>
+
+                      {cell.player ? (
+                        <div className="mt-2">
+                          {/* Always two-line split name */}
+                          <div className="truncate text-[13px] font-semibold leading-4 text-white">{nm.first}</div>
+                          <div className="truncate text-[12px] leading-4 text-white/90">{nm.last || " "}</div>
+                        </div>
+                      ) : (
+                        <div className="mt-6 text-[11px] text-white/60">—</div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Premium overlay: phone-like + portrait only */}
+      {showLandscapeTip ? (
+        <div
+          className="fixed inset-0 z-[75] flex items-center justify-center bg-black/60 p-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) acknowledgeLandscapeTip();
+          }}
+        >
+          <div
+            className={cls(
+              "w-full max-w-md overflow-hidden rounded-2xl border border-border bg-card-surface shadow-2xl",
+              isPortrait ? "opacity-100 scale-100" : "opacity-0 scale-[0.98]",
+              "transition-all duration-300"
+            )}
+          >
+            <div className="relative p-6">
+              <div className="pointer-events-none absolute inset-x-0 -top-24 h-48 bg-primary/15 blur-3xl" />
+
+              <div className="relative">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs text-white/70">Draftboard</div>
+                    <div className="mt-1 text-lg font-semibold text-white">Landscape recommended</div>
+                    <div className="mt-2 text-sm text-white/80">
+                      For the clearest view, rotate your phone sideways. (This closes automatically when you do.)
+                    </div>
                   </div>
 
-                  {cell.player ? (
-                    <div className="mt-2">
-                      <div className="truncate text-[12.5px] font-medium leading-4 text-primary">
-                        {cell.player.name}
+                  <button
+                    type="button"
+                    onClick={acknowledgeLandscapeTip}
+                    className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/15"
+                  >
+                    Got it
+                  </button>
+                </div>
+
+                <div className="mt-6 flex items-center justify-center">
+                  <div className="relative">
+                    <div className="pointer-events-none absolute inset-0 rounded-[36px] bg-accent/10 blur-2xl" />
+
+                    <div className="relative h-[132px] w-[78px] rounded-[22px] border border-white/15 bg-white/10 shadow-xl backdrop-blur">
+                      <div className="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-white/30" />
+                      <div className="absolute inset-2 rounded-[16px] border border-white/15 bg-black/10" />
+                    </div>
+
+                    <div
+                      className={cls(
+                        "pointer-events-none absolute inset-0 flex items-center justify-center",
+                        isPortrait ? "opacity-100" : "opacity-0",
+                        "transition-opacity duration-150",
+                        "animate-[draftPhoneFlip_1.6s_ease-in-out_infinite]"
+                      )}
+                    >
+                      <div className="h-[132px] w-[78px] rounded-[22px] border border-white/10 bg-white/5 shadow-lg backdrop-blur">
+                        <div className="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-white/25" />
+                        <div className="absolute inset-2 rounded-[16px] border border-white/10 bg-black/5" />
                       </div>
                     </div>
-                  ) : (
-                    <div className="mt-6 text-[11px] text-muted opacity-60">—</div>
-                  )}
-                </button>
-              );
-            })}
+                  </div>
+                </div>
+
+                <div className="mt-4 text-center text-[11px] text-white/70">Tip: landscape + swipe = fastest scanning.</div>
+              </div>
+            </div>
+
+            <style jsx>{`
+              @keyframes draftPhoneFlip {
+                0% {
+                  transform: rotate(0deg) scale(1);
+                  opacity: 0.35;
+                }
+                35% {
+                  transform: rotate(0deg) scale(1);
+                  opacity: 0.35;
+                }
+                70% {
+                  transform: rotate(90deg) scale(1.02);
+                  opacity: 0.9;
+                }
+                100% {
+                  transform: rotate(90deg) scale(1.02);
+                  opacity: 0.9;
+                }
+              }
+            `}</style>
           </div>
-        ))}
-      </div>
+        </div>
+      ) : null}
 
       {openKey ? (
         <CellModal cellKey={openKey} teams={teams} list={safeArray(cells[openKey])} onClose={() => setOpenKey(null)} />

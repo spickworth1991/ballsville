@@ -63,6 +63,7 @@ export default function DraftCompareCompareModesClient() {
 
   const [modes, setModes] = useState([]); // flattened options
   const [loadErr, setLoadErr] = useState("");
+  
 
   const [selA, setSelA] = useState("2025|||big-game"); // "year|||slug"
   const [selB, setSelB] = useState("2025|||gauntlet"); // "year|||slug"
@@ -187,6 +188,27 @@ export default function DraftCompareCompareModesClient() {
   const teams = safeNum(groupA?.meta?.teams) || safeNum(groupB?.meta?.teams) || 12;
   const rounds = safeNum(groupA?.meta?.rounds) || safeNum(groupB?.meta?.rounds) || 18;
 
+    const metaA = useMemo(() => {
+    return {
+      teams: safeNum(groupA?.meta?.teams) || 0,
+      rounds: safeNum(groupA?.meta?.rounds) || 0,
+    };
+  }, [groupA]);
+
+  const metaB = useMemo(() => {
+    return {
+      teams: safeNum(groupB?.meta?.teams) || 0,
+      rounds: safeNum(groupB?.meta?.rounds) || 0,
+    };
+  }, [groupB]);
+
+  const showReliabilityNote = useMemo(() => {
+    if (!groupA || !groupB) return false;
+    if (!metaA.teams || !metaA.rounds || !metaB.teams || !metaB.rounds) return false;
+    return metaA.teams !== metaB.teams || metaA.rounds !== metaB.rounds;
+  }, [groupA, groupB, metaA.teams, metaA.rounds, metaB.teams, metaB.rounds]);
+
+
   const compareRows = useMemo(() => {
     if (!groupA || !groupB) return [];
     return buildPlayerResults(groupA, groupB);
@@ -286,6 +308,14 @@ export default function DraftCompareCompareModesClient() {
   }, [modes, selB]);
 
   const comparing = !!groupA && !!groupB;
+    const boardMeta = useMemo(() => {
+    const g = boardSide === "B" ? groupB : groupA;
+    return {
+      teams: safeNum(g?.meta?.teams) || 12,
+      rounds: safeNum(g?.meta?.rounds) || 18,
+    };
+  }, [boardSide, groupA, groupB]);
+
 
   useEffect(() => {
     if (!comparing) setBoardSide("A");
@@ -307,7 +337,7 @@ export default function DraftCompareCompareModesClient() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex overflow-hidden rounded-xl border border-border bg-background/30">
+          <div className="inline-flex overflow-hidden rounded-xl border border-border bg-card-surface">
             <button
               type="button"
               onClick={() => setView("list")}
@@ -393,13 +423,23 @@ export default function DraftCompareCompareModesClient() {
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
                 <div>
                   <h2 className="text-lg font-semibold text-primary">Draftboard</h2>
-                  <p className="text-xs text-muted">Click a pick square to see all players drafted at that slot.</p>
+                  <p className="text-xs text-muted">
+                    Click a pick square to see all players drafted at that slot.
+                  </p>
+                  {showReliabilityNote ? (
+                    <p className="mt-1 text-xs text-white/60">
+                      Note: late-round slots can be less reliable because this compares drafts from different league sizes and round counts.
+                    </p>
+                  ) : null}
+
                 </div>
 
                 <div className="flex items-center gap-2 text-xs text-muted">
-                  Teams: <span className="font-semibold text-primary">{teams}</span> · Rounds:{" "}
-                  <span className="font-semibold text-primary">{rounds}</span>
+                  Teams: <span className="font-semibold text-primary">{boardMeta.teams}</span> · Rounds:{" "}
+                  <span className="font-semibold text-primary">{boardMeta.rounds}</span>
                 </div>
+
+
 
                 <div className="ml-auto inline-flex overflow-hidden rounded-xl border border-border bg-background/30">
                   <button
@@ -433,6 +473,13 @@ export default function DraftCompareCompareModesClient() {
             <div className="rounded-2xl border border-border bg-card-surface shadow-sm">
               <div className="border-b border-border px-5 py-4">
                 <h2 className="text-lg font-semibold text-primary">Compare List</h2>
+                  {showReliabilityNote ? (
+                    <p className="mt-1 text-xs text-white/60">
+                      Note: late-round ranks can be less reliable because this compares drafts from different league sizes and round counts.
+                    </p>
+                  ) : null}
+
+
 
                 <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex flex-1 items-center gap-2">
@@ -513,7 +560,7 @@ export default function DraftCompareCompareModesClient() {
                               delta == null && "text-muted"
                             )}
                           >
-                            {delta == null ? "—" : `${delta > 0 ? "+" : ""}${delta.toFixed(1)}`}
+                            {delta == null ? "—" : `${delta > 0 ? "+" : ""}${delta.toFixed(3)}`}
                           </td>
                         </tr>
                       );
@@ -561,26 +608,106 @@ function DraftBoard({ group }) {
   const m = g?.meta;
   const [openKey, setOpenKey] = useState(null);
 
+  // --- premium "landscape recommended" overlay (phone only, draftboard only) ---
+  const [showLandscapeTip, setShowLandscapeTip] = useState(false);
+  const [isPortrait, setIsPortrait] = useState(true);
+  const [isPhoneLike, setIsPhoneLike] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let mounted = true;
+
+    // "phone-like" = touch device (coarse pointer) with no hover.
+    // add max-width guard to avoid big tablets
+    const mqPhone = window.matchMedia("(hover: none) and (pointer: coarse) and (max-width: 1024px)");
+    const mqPortrait = window.matchMedia("(orientation: portrait)");
+
+    function compute() {
+      if (!mounted) return;
+
+      const phone = !!mqPhone.matches;
+      const portrait = !!mqPortrait.matches;
+
+      setIsPhoneLike(phone);
+      setIsPortrait(portrait);
+
+      // Only show tip for phone-like + portrait.
+      // Auto-close when rotated to landscape.
+      if (!phone) {
+        setShowLandscapeTip(false);
+        return;
+      }
+      if (!portrait) {
+        setShowLandscapeTip(false);
+        return;
+      }
+
+      // On EVERY page visit: show if phone-like + portrait.
+      setShowLandscapeTip(true);
+    }
+
+    compute();
+
+    const onChange = () => compute();
+
+    try {
+      mqPhone.addEventListener?.("change", onChange);
+      mqPortrait.addEventListener?.("change", onChange);
+    } catch {
+      mqPhone.addListener?.(onChange);
+      mqPortrait.addListener?.(onChange);
+    }
+
+    window.addEventListener("resize", onChange);
+    window.addEventListener("orientationchange", onChange);
+
+    return () => {
+      mounted = false;
+      try {
+        mqPhone.removeEventListener?.("change", onChange);
+        mqPortrait.removeEventListener?.("change", onChange);
+      } catch {
+        mqPhone.removeListener?.(onChange);
+        mqPortrait.removeListener?.(onChange);
+      }
+      window.removeEventListener("resize", onChange);
+      window.removeEventListener("orientationchange", onChange);
+    };
+  }, []);
+
+  function acknowledgeLandscapeTip() {
+    setShowLandscapeTip(false);
+  }
+  // --- end overlay ---
+
   function posTheme(posRaw) {
     const pos = safeStr(posRaw).toUpperCase().trim();
-    if (pos === "WR") {
-      return { cell: "bg-sky-400/20 hover:bg-sky-400/30", border: "border-sky-400/25" };
-    }
-    if (pos === "RB") {
-      return { cell: "bg-emerald-400/20 hover:bg-emerald-400/30", border: "border-emerald-400/25" };
-    }
-    if (pos === "QB") {
-      return { cell: "bg-rose-400/20 hover:bg-rose-400/30", border: "border-rose-400/25" };
-    }
-    if (pos === "TE") {
-      return { cell: "bg-amber-300/20 hover:bg-amber-300/30", border: "border-amber-300/25" };
-    }
+    if (pos === "WR") return { cell: "bg-sky-400/20 hover:bg-sky-400/30", border: "border-sky-400/25" };
+    if (pos === "RB") return { cell: "bg-emerald-400/20 hover:bg-emerald-400/30", border: "border-emerald-400/25" };
+    if (pos === "QB") return { cell: "bg-rose-400/20 hover:bg-rose-400/30", border: "border-rose-400/25" };
+    if (pos === "TE") return { cell: "bg-amber-300/20 hover:bg-amber-300/30", border: "border-amber-300/25" };
     return { cell: "bg-background/12 hover:bg-background/25", border: "border-border/70" };
+  }
+
+  function nameTwoLines(fullName) {
+    const s = safeStr(fullName).trim();
+    if (!s) return { first: "", last: "" };
+    const parts = s.split(/\s+/).filter(Boolean);
+    if (parts.length === 1) return { first: parts[0], last: "" };
+    return { first: parts[0], last: parts.slice(1).join(" ") };
   }
 
   if (!g || !m) return null;
   const teams = safeNum(m.teams) || 12;
   const rounds = safeNum(m.rounds) || 18;
+  
+
+
+  // If it doesn't fit, phones can scroll horizontally (portrait + landscape).
+  // Non-phones remain locked.
+  const boardMinWidthPx = teams * 86;
+
   const cells = g?.draftboard?.cells || {};
 
   const playersArr = Array.isArray(g?.players)
@@ -598,6 +725,7 @@ function DraftBoard({ group }) {
     .filter((p) => p.name)
     .sort((a, b) => safeNum(a.adp) - safeNum(b.adp));
 
+  // grid[r][c] => cell
   const grid = [];
   for (let r = 1; r <= rounds; r++) {
     const row = [];
@@ -610,70 +738,210 @@ function DraftBoard({ group }) {
     const player = ranked[idx] || null;
     const r = Math.floor((overall - 1) / teams) + 1;
     const pickInRound = ((overall - 1) % teams) + 1;
+
+    // Snake display: even rounds reverse the column order.
     const displayCol = r % 2 === 1 ? pickInRound : teams - pickInRound + 1;
+
+    // For the modal, keep real slot distributions.
     const origKey = `${r}-${pickInRound}`;
     const dist = safeArray(cells[origKey]);
     const top = dist[0] || null;
-    grid[r - 1][displayCol - 1] = { origKey, r, displayCol, pickInRound, overall, player, dist, top };
+
+    grid[r - 1][displayCol - 1] = {
+      origKey,
+      r,
+      displayCol,
+      pickInRound,
+      overall,
+      player,
+      dist,
+      top,
+    };
   }
 
   return (
     <div className="space-y-3">
       <div className="overflow-hidden rounded-2xl border border-border bg-background/10 shadow-sm">
-        {grid.map((row, i) => (
-          <div key={i} className="grid" style={{ gridTemplateColumns: `repeat(${teams}, minmax(0, 1fr))` }}>
-            {row.map((cell, j) => {
-              if (!cell) {
-                return (
-                  <div key={`blank-${i}-${j}`} className="h-[74px] border-r border-b border-border/70 bg-background/5" />
-                );
-              }
+        {/* phone swipe hint */}
+        {isPhoneLike ? (
+          <div className="flex items-center justify-between px-3 py-2 text-[11px] text-white/70">
+            <span>Swipe to view all picks</span>
+            <span className="font-semibold text-white">→</span>
+          </div>
+        ) : null}
 
-              const rpAdjusted = `${cell.r}.${String(cell.pickInRound).padStart(2, "0")}`;
-              const theme = posTheme(cell.player?.position);
+        {/* Phones: horizontal swipe; non-phones: locked */}
+        <div className={cls(isPhoneLike ? "overflow-x-auto overflow-y-hidden" : "overflow-hidden")}>
+          <div className="relative" style={{ minWidth: isPhoneLike ? `max(100%, ${boardMinWidthPx}px)` : "100%" }}>
+            {grid.map((row, i) => (
+              <div key={i} className="grid" style={{ gridTemplateColumns: `repeat(${teams}, minmax(0, 1fr))` }}>
+                {row.map((cell, j) => {
+                  if (!cell) {
+                    return (
+                      <div
+                        key={`blank-${i}-${j}`}
+                        className={cls(
+                          isPhoneLike ? "h-[88px]" : "h-[74px]",
+                          "border-r border-b border-border/70 bg-background/5"
+                        )}
+                      />
+                    );
+                  }
 
-              return (
-                <button
-                  key={`${cell.r}-${cell.displayCol}`}
-                  onClick={() => setOpenKey(cell.origKey)}
-                  className={cls(
-                    "group relative h-[74px] border-r border-b p-2 text-left transition",
-                    theme.border,
-                    theme.cell,
-                    "hover:shadow-[0_6px_16px_rgba(0,0,0,0.25)] hover:shadow-black/20",
-                    "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                  )}
-                  title={cell.player ? `${cell.player.name} (${cell.player.position})` : rpAdjusted}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span
+                  const rpAdjusted = `${cell.r}.${String(cell.pickInRound).padStart(2, "0")}`;
+                  const theme = posTheme(cell.player?.position);
+                  const nm = nameTwoLines(cell.player?.name);
+
+                  return (
+                    <button
+                      key={`${cell.r}-${cell.displayCol}`}
+                      onClick={() => setOpenKey(cell.origKey)}
                       className={cls(
-                        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
-                        "shadow-[0_2px_10px_rgba(0,0,0,0.16)]",
-                        "backdrop-blur",
-                        "border-border/70 bg-background/35 text-primary"
+                        "group relative border-r border-b text-left transition",
+                        isPhoneLike ? "h-[88px] p-2.5" : "h-[74px] p-2",
+                        theme.border,
+                        theme.cell,
+                        "hover:shadow-[0_6px_16px_rgba(0,0,0,0.25)] hover:shadow-black/20",
+                        "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                       )}
+                      title={cell.player ? `${cell.player.name} (${cell.player.position})` : rpAdjusted}
                     >
-                      {rpAdjusted}
-                    </span>
-                    <span className="inline-flex items-center rounded-full border border-border/70 bg-background/20 px-2 py-0.5 text-[10px] font-medium text-primary/80 shadow-[0_2px_10px_rgba(0,0,0,0.16)] backdrop-blur">
-                      #{cell.overall}
-                    </span>
+                      {/* ONLY round.pick badge (no overall pick badge anywhere) */}
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className={cls(
+                            "inline-flex items-center rounded-full border px-2 py-0.5 font-medium",
+                            isPhoneLike ? "text-[11px]" : "text-[10px]",
+                            "shadow-[0_2px_10px_rgba(0,0,0,0.16)] backdrop-blur",
+                            "border-white/15 bg-black/25 text-white"
+                          )}
+                        >
+                          {rpAdjusted}
+                        </span>
+                      </div>
+
+                      {cell.player ? (
+                        <div className="mt-2">
+                          <div
+                            className={cls(
+                              "truncate font-semibold leading-4 text-white",
+                              isPhoneLike ? "text-[13px]" : "text-[12.5px]"
+                            )}
+                          >
+                            {nm.first}
+                          </div>
+                          <div
+                            className={cls(
+                              "truncate leading-4 text-white/80",
+                              isPhoneLike ? "text-[12px]" : "text-[12px]"
+                            )}
+                          >
+                            {nm.last || " "}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-6 text-[11px] text-white/50">—</div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Premium overlay: phone-like + portrait only. As you rotate, the portrait view fades out. */}
+      {showLandscapeTip ? (
+        <div
+          className="fixed inset-0 z-[75] flex items-center justify-center bg-black/60 p-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) acknowledgeLandscapeTip();
+          }}
+        >
+          <div
+            className={cls(
+              "w-full max-w-md overflow-hidden rounded-2xl border border-white/15 bg-card-surface shadow-2xl",
+              isPortrait ? "opacity-100 scale-100" : "opacity-0 scale-[0.98]",
+              "transition-all duration-300"
+            )}
+          >
+            <div className="relative p-6">
+              <div className="pointer-events-none absolute inset-x-0 -top-24 h-48 bg-white/10 blur-3xl" />
+
+              <div className="relative">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs text-white/70">Draftboard</div>
+                    <div className="mt-1 text-lg font-semibold text-white">Landscape recommended</div>
+                    <div className="mt-2 text-sm text-white/70">
+                      For the clearest view, rotate your phone sideways. (This closes automatically when you do.)
+                    </div>
                   </div>
 
-                  {cell.player ? (
-                    <div className="mt-2">
-                      <div className="truncate text-[12.5px] font-medium leading-4 text-primary">{cell.player.name}</div>
+                  <button
+                    type="button"
+                    onClick={acknowledgeLandscapeTip}
+                    className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/15"
+                  >
+                    Got it
+                  </button>
+                </div>
+
+                <div className="mt-6 flex items-center justify-center">
+                  <div className="relative">
+                    <div className="pointer-events-none absolute inset-0 rounded-[36px] bg-white/10 blur-2xl" />
+
+                    <div className="relative h-[132px] w-[78px] rounded-[22px] border border-white/15 bg-white/10 shadow-xl backdrop-blur">
+                      <div className="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-white/25" />
+                      <div className="absolute inset-2 rounded-[16px] border border-white/10 bg-black/10" />
                     </div>
-                  ) : (
-                    <div className="mt-6 text-[11px] text-muted opacity-60">—</div>
-                  )}
-                </button>
-              );
-            })}
+
+                    <div
+                      className={cls(
+                        "pointer-events-none absolute inset-0 flex items-center justify-center",
+                        isPortrait ? "opacity-100" : "opacity-0",
+                        "transition-opacity duration-150",
+                        "animate-[draftPhoneFlip_1.6s_ease-in-out_infinite]"
+                      )}
+                    >
+                      <div className="h-[132px] w-[78px] rounded-[22px] border border-white/15 bg-white/5 shadow-lg backdrop-blur">
+                        <div className="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-white/20" />
+                        <div className="absolute inset-2 rounded-[16px] border border-white/10 bg-black/10" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 text-center text-[11px] text-white/60">
+                  Tip: landscape + swipe = fastest scanning.
+                </div>
+              </div>
+            </div>
+
+            <style jsx>{`
+              @keyframes draftPhoneFlip {
+                0% {
+                  transform: rotate(0deg) scale(1);
+                  opacity: 0.35;
+                }
+                35% {
+                  transform: rotate(0deg) scale(1);
+                  opacity: 0.35;
+                }
+                70% {
+                  transform: rotate(90deg) scale(1.02);
+                  opacity: 0.9;
+                }
+                100% {
+                  transform: rotate(90deg) scale(1.02);
+                  opacity: 0.9;
+                }
+              }
+            `}</style>
           </div>
-        ))}
-      </div>
+        </div>
+      ) : null}
 
       {openKey ? (
         <CellModal
@@ -686,6 +954,15 @@ function DraftBoard({ group }) {
     </div>
   );
 }
+
+function nameTwoLines(fullName) {
+  const s = safeStr(fullName).trim();
+  if (!s) return { first: "", last: "" };
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return { first: parts[0], last: "" };
+  return { first: parts[0], last: parts.slice(1).join(" ") };
+}
+
 
 function CellModal({ cellKey, teams, list, onClose }) {
   const [rStr, pStr] = safeStr(cellKey).split("-");
@@ -701,18 +978,20 @@ function CellModal({ cellKey, teams, list, onClose }) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card-surface shadow-xl">
-        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+      <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-white/15 bg-card-surface shadow-xl">
+        <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-4">
           <div>
-            <div className="text-xs text-muted">Pick</div>
-            <div className="text-lg font-semibold text-primary">
-              {rp} <span className="text-sm text-muted">•</span> <span className="text-sm text-muted">#{overall}</span>
+            <div className="text-xs text-white/70">Pick</div>
+            <div className="text-lg font-semibold text-white">
+              {rp} <span className="text-sm text-white/60">•</span>{" "}
+              <span className="text-sm text-white/60">#{overall}</span>
             </div>
-            <div className="mt-1 text-xs text-muted">{list.length ? `${list.length} unique players` : "No data"}</div>
+            <div className="mt-1 text-xs text-white/60">{list.length ? `${list.length} unique players` : "No data"}</div>
           </div>
+
           <button
             onClick={onClose}
-            className="rounded-xl border border-border bg-background/40 px-3 py-2 text-sm text-primary hover:bg-background/60"
+            className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/15"
           >
             Close
           </button>
@@ -721,7 +1000,7 @@ function CellModal({ cellKey, teams, list, onClose }) {
         <div className="max-h-[60vh] overflow-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-card-surface/95 backdrop-blur">
-              <tr className="text-left text-xs text-muted">
+              <tr className="text-left text-xs text-white/70">
                 <th className="px-5 py-3">Player</th>
                 <th className="px-5 py-3">Pos</th>
                 <th className="px-5 py-3">%</th>
@@ -733,16 +1012,27 @@ function CellModal({ cellKey, teams, list, onClose }) {
                 .slice()
                 .sort((a, b) => safeNum(b?.pct) - safeNum(a?.pct) || safeStr(a?.name).localeCompare(safeStr(b?.name)))
                 .map((p) => (
-                  <tr key={`${p.name}|||${p.position}`} className="border-t border-border/60">
-                    <td className="px-5 py-3 text-primary">{p.name}</td>
-                    <td className="px-5 py-3 text-muted">{p.position}</td>
-                    <td className="px-5 py-3 text-muted">{pctFmt(safeNum(p.pct))}</td>
-                    <td className="px-5 py-3 text-muted">{safeNum(p.count)}</td>
+                  <tr key={`${p.name}|||${p.position}`} className="border-t border-white/10">
+                    <td className="px-5 py-3 text-white">
+                      {(() => {
+                        const nm = nameTwoLines(p.name);
+                        return (
+                          <div className="min-w-0">
+                            <div className="truncate font-semibold leading-4 text-white">{nm.first}</div>
+                            <div className="truncate text-white/70 leading-4">{nm.last || " "}</div>
+                          </div>
+                        );
+                      })()}
+                    </td>
+                    <td className="px-5 py-3 text-white/70">{p.position}</td>
+                    <td className="px-5 py-3 text-white/70">{pctFmt(safeNum(p.pct))}</td>
+                    <td className="px-5 py-3 text-white/70">{safeNum(p.count)}</td>
                   </tr>
                 ))}
+
               {!list.length ? (
                 <tr>
-                  <td colSpan={4} className="px-5 py-8 text-center text-sm text-muted">
+                  <td colSpan={4} className="px-5 py-8 text-center text-sm text-white/60">
                     Nothing recorded at this slot.
                   </td>
                 </tr>
@@ -754,3 +1044,4 @@ function CellModal({ cellKey, teams, list, onClose }) {
     </div>
   );
 }
+
