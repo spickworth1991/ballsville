@@ -237,13 +237,18 @@ export default function DraftCompareAdminClient() {
             <p className="mt-2 text-sm text-muted">Define modes, upload draft JSON per mode, and optional header images.</p>
           </div>
           <div className="flex items-center gap-2">
-            <Link href="/admin" className="btn btn-secondary">Admin home</Link>
+            <Link href="/admin" className="btn btn-secondary">
+              Admin home
+            </Link>
           </div>
         </div>
 
         <div className="rounded-2xl border border-subtle bg-card-surface p-4 flex flex-wrap items-center gap-3">
           <label className="text-sm text-muted">Season</label>
+
+          {/* ✅ prevent hydration mismatch from extension-injected attributes */}
           <input
+            suppressHydrationWarning
             className="input"
             value={season}
             onChange={(e) => setSeason(Number(e.target.value) || CURRENT_SEASON)}
@@ -252,8 +257,14 @@ export default function DraftCompareAdminClient() {
             max={2100}
             style={{ width: 120 }}
           />
-          <button className="btn btn-secondary" onClick={addMode}>Add mode</button>
-          <button className="btn btn-primary" disabled={saving} onClick={saveModes}>
+
+          {/* ✅ prevent hydration mismatch from extension-injected attributes */}
+          <button suppressHydrationWarning className="btn btn-secondary" onClick={addMode}>
+            Add mode
+          </button>
+
+          {/* ✅ prevent hydration mismatch from extension-injected attributes */}
+          <button suppressHydrationWarning className="btn btn-primary" disabled={saving} onClick={saveModes}>
             {saving ? "Saving…" : "Save modes"}
           </button>
         </div>
@@ -294,12 +305,7 @@ export default function DraftCompareAdminClient() {
                 <div className="grid gap-3 md:grid-cols-2">
                   <div className="space-y-2">
                     <label className="block text-xs text-muted">Mode slug</label>
-                    <input
-                      className="input bg-black/5 text-muted"
-                      value={safeStr(r.modeSlug)}
-                      disabled
-                      readOnly
-                    />
+                    <input className="input bg-black/5 text-muted" value={safeStr(r.modeSlug)} disabled readOnly />
                     <div className="text-[11px] text-muted">Auto-filled from Title for new modes.</div>
                   </div>
                   <div className="space-y-2">
@@ -386,12 +392,16 @@ export default function DraftCompareAdminClient() {
                   <Link
                     prefetch={false}
                     className="btn btn-secondary"
-                  href={`/draft-compare/mode?mode=${encodeURIComponent(cleanSlug(r.modeSlug))}&year=${encodeURIComponent(String(r.year || season))}`}
+                    href={`/draft-compare/mode?mode=${encodeURIComponent(cleanSlug(r.modeSlug))}&year=${encodeURIComponent(
+                      String(r.year || season)
+                    )}`}
                   >
                     View public
                   </Link>
 
-                  <button className="btn btn-secondary" onClick={() => removeRow(idx)}>Remove</button>
+                  <button className="btn btn-secondary" onClick={() => removeRow(idx)}>
+                    Remove
+                  </button>
                 </div>
               </div>
             ))}
