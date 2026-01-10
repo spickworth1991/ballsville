@@ -1,10 +1,14 @@
-// DraftCompareCompareModesClient.jsx
 "use client";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { r2Url } from "@/lib/r2Url";
 import { CURRENT_SEASON } from "@/lib/season";
+import { r2Url } from "@/lib/r2Url";
+import {
+  buildGroupFromDraftJson,
+  buildPlayerResults,
+  formatRoundPickFromAvgOverall,
+} from "@/lib/draftCompareUtils";
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
@@ -12,146 +16,724 @@ function safeArray(v) {
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
-function safeNum(v, d = 0) {
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n : d;
+function safeNum(v) {
+  const x = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(x) ? x : 0;
 }
 function cleanSlug(s) {
-  return safeStr(s).trim().toLowerCase().replace(/[^a-z0-9-_]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  return safeStr(s)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+function cls(...a) {
+  return a.filter(Boolean).join(" ");
+}
+function withV(url, v) {
+  if (!v) return url;
+  const hasQ = url.includes("?");
+  return `${url}${hasQ ? "&" : "?"}v=${encodeURIComponent(v)}`;
+}
+function pctFmt(x) {
+  if (!Number.isFinite(x)) return "—";
+  return `${(x * 100).toFixed(0)}%`;
+}
+
+function deriveAllLeagueIds(raw) {
+  const per = raw?.perLeague;
+  const all = [...safeArray(per?.sideA), ...safeArray(per?.sideB), ...safeArray(raw?.leagues)];
+  const m = new Map();
+  for (const l of all) {
+    const id = safeStr(l?.leagueId || l?.id).trim();
+    if (!id) continue;
+    m.set(id, true);
+  }
+  return Array.from(m.keys());
 }
 
 export default function DraftCompareCompareModesClient() {
-  const season = String(CURRENT_SEASON || "2025");
-  const [rows, setRows] = useState([]);
-  const [err, setErr] = useState("");
+  const baseYear = Number(CURRENT_SEASON || 2025);
+  const years = useMemo(() => Array.from({ length: 6 }, (_, i) => String(baseYear - i)), [baseYear]);
 
-  const modesUrl = useMemo(() => r2Url(`data/draft-compare/modes_all.json?v=${Date.now()}`), []);
+  const [modes, setModes] = useState([]); // flattened options
+  const [loadErr, setLoadErr] = useState("");
+
+  const [selA, setSelA] = useState(""); // "year|||slug"
+  const [selB, setSelB] = useState("");
+
+  const [rawA, setRawA] = useState(null);
+  const [rawB, setRawB] = useState(null);
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // view toggle
+  const [view, setView] = useState("list");
+  const [boardSide, setBoardSide] = useState("A");
+
+  // list controls
+  const [query, setQuery] = useState("");
+  const [pos, setPos] = useState("ALL");
+  const [sortKey, setSortKey] = useState("adp");
+  const [sortDir, setSortDir] = useState("asc");
 
   useEffect(() => {
     let alive = true;
-    setErr("");
-
-    async function load() {
+    (async () => {
+      setLoadErr("");
       try {
-        const res = await fetch(modesUrl, { cache: "no-store" });
-        if (!res.ok) throw new Error(`Failed to load modes (${res.status})`);
-        const j = await res.json();
+        const results = await Promise.all(
+          years.map(async (y) => {
+            const url = r2Url(`data/draft-compare/modes_${y}.json`);
+            const res = await fetch(url, { cache: "no-store" });
+            if (!res.ok) return null;
+            const j = await res.json().catch(() => null);
+            const rows = safeArray(j?.rows || j?.modes || j || []);
+            const cleaned = rows
+              .map((r, idx) => {
+                const slug = cleanSlug(r?.modeSlug || r?.slug || r?.id || r?.name || `mode-${idx + 1}`);
+                const title = safeStr(r?.title || r?.name || r?.modeName || slug);
+                return { year: y, slug, title };
+              })
+              .filter((x) => x.slug && x.title);
+            return cleaned.length ? cleaned : null;
+          })
+        );
+
+        const flat = results
+          .filter(Boolean)
+          .flat()
+          .sort((a, b) => Number(b.year) - Number(a.year) || a.title.localeCompare(b.title));
+
         if (!alive) return;
-        setRows(safeArray(j?.rows || j || []));
+        setModes(flat);
+        // initialize defaults if empty
+        if (!selA && flat[0]) setSelA(`${flat[0].year}|||${flat[0].slug}`);
+        if (!selB && flat[1]) setSelB(`${flat[1].year}|||${flat[1].slug}`);
       } catch (e) {
         if (!alive) return;
-        setErr(e?.message || "Failed to load modes");
+        setLoadErr(e?.message || "Failed to load modes");
       }
-    }
-
-    load();
+    })();
     return () => {
       alive = false;
     };
-  }, [modesUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [years.join("|")]);
 
-  const normalized = useMemo(() => {
-    return safeArray(rows)
-      .map((r, idx) => ({
-        year: safeNum(r?.year, safeNum(season)),
-        slug: cleanSlug(r?.modeSlug || r?.slug || r?.id || `mode-${idx + 1}`),
-        title: safeStr(r?.title || r?.name || "Mode"),
-      }))
-      .filter((x) => x.year && x.slug)
-      .sort((a, b) => (b.year - a.year) || a.title.localeCompare(b.title));
-  }, [rows, season]);
+  const selAInfo = useMemo(() => {
+    const [year, slug] = safeStr(selA).split("|||");
+    return { year: safeStr(year), slug: cleanSlug(slug) };
+  }, [selA]);
+  const selBInfo = useMemo(() => {
+    const [year, slug] = safeStr(selB).split("|||");
+    return { year: safeStr(year), slug: cleanSlug(slug) };
+  }, [selB]);
 
-  const [a, setA] = useState(null);
-  const [b, setB] = useState(null);
+  const urlA = useMemo(() => {
+    if (!selAInfo.year || !selAInfo.slug) return "";
+    return r2Url(`data/draft-compare/drafts_${selAInfo.year}_${selAInfo.slug}.json`);
+  }, [selAInfo.year, selAInfo.slug]);
+  const urlB = useMemo(() => {
+    if (!selBInfo.year || !selBInfo.slug) return "";
+    return r2Url(`data/draft-compare/drafts_${selBInfo.year}_${selBInfo.slug}.json`);
+  }, [selBInfo.year, selBInfo.slug]);
 
-  const options = normalized;
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      if (!urlA || !urlB) return;
+      setErr("");
+      setLoading(true);
+      try {
+        const [ra, rb] = await Promise.all([
+          fetch(withV(urlA, Date.now()), { cache: "no-store" }),
+          fetch(withV(urlB, Date.now()), { cache: "no-store" }),
+        ]);
+        if (!ra.ok) throw new Error(`Mode A JSON missing (HTTP ${ra.status})`);
+        if (!rb.ok) throw new Error(`Mode B JSON missing (HTTP ${rb.status})`);
+        const [ja, jb] = await Promise.all([ra.json(), rb.json()]);
+        if (cancelled) return;
+        setRawA(ja);
+        setRawB(jb);
+      } catch (e) {
+        if (!cancelled) setErr(e?.message || "Failed to load drafts");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [urlA, urlB]);
 
-  const goHref = useMemo(() => {
-    if (!a || !b) return "";
-    return `/draft-compare/compare-modes/view?yearA=${encodeURIComponent(String(a.year))}&modeA=${encodeURIComponent(
-      a.slug
-    )}&yearB=${encodeURIComponent(String(b.year))}&modeB=${encodeURIComponent(b.slug)}`;
-  }, [a, b]);
+  const groupA = useMemo(() => {
+    if (!rawA) return null;
+    const ids = deriveAllLeagueIds(rawA);
+    return buildGroupFromDraftJson(rawA, ids);
+  }, [rawA]);
+  const groupB = useMemo(() => {
+    if (!rawB) return null;
+    const ids = deriveAllLeagueIds(rawB);
+    return buildGroupFromDraftJson(rawB, ids);
+  }, [rawB]);
+
+  const teams = safeNum(groupA?.meta?.teams) || safeNum(groupB?.meta?.teams) || 12;
+  const rounds = safeNum(groupA?.meta?.rounds) || safeNum(groupB?.meta?.rounds) || 18;
+
+  const compareRows = useMemo(() => {
+    if (!groupA || !groupB) return [];
+    return buildPlayerResults(groupA, groupB);
+  }, [groupA, groupB]);
+
+  // adjusted rank map based on Mode A ADP ordering
+  const adjustedRankByKey = useMemo(() => {
+    if (!groupA) return Object.create(null);
+    const base = safeArray(compareRows).map((r) => ({
+      key: `${safeStr(r?.name)}|||${safeStr(r?.position)}`,
+      adp: safeNum(r?.adpA),
+    }));
+    const sorted = base
+      .filter((x) => x.key && Number.isFinite(x.adp) && x.adp > 0)
+      .slice()
+      .sort((a, b) => a.adp - b.adp);
+    const out = Object.create(null);
+    let rank = 0;
+    for (const it of sorted) {
+      rank += 1;
+      out[it.key] = {
+        adjustedOverall: rank,
+        adjustedRoundPick: formatRoundPickFromAvgOverall(rank, teams),
+      };
+    }
+    return out;
+  }, [compareRows, groupA, teams]);
+
+  const positions = useMemo(() => {
+    const set = new Set();
+    for (const r of safeArray(compareRows)) {
+      const p = safeStr(r?.position).toUpperCase().trim();
+      if (p) set.add(p);
+    }
+    return ["ALL", ...Array.from(set).sort()];
+  }, [compareRows]);
+
+  const listRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const pFilter = pos;
+    const base = safeArray(compareRows).map((r) => {
+      const key = `${safeStr(r.name)}|||${safeStr(r.position)}`;
+      const adj = adjustedRankByKey?.[key];
+      const adpA = safeNum(r.adpA);
+      return {
+        key,
+        name: r.name,
+        position: r.position,
+        adp: adpA,
+        avgRoundPick: formatRoundPickFromAvgOverall(adpA, teams),
+        adjustedOverall: adj?.adjustedOverall ?? null,
+        adjustedRoundPick: adj?.adjustedRoundPick ?? "—",
+        delta: r.delta == null ? null : safeNum(r.delta),
+      };
+    });
+
+    const filtered = base.filter((r) => {
+      if (pFilter !== "ALL" && safeStr(r.position).toUpperCase() !== pFilter) return false;
+      if (q && !safeStr(r.name).toLowerCase().includes(q)) return false;
+      return true;
+    });
+
+    const dir = sortDir === "desc" ? -1 : 1;
+    filtered.sort((a, b) => {
+      if (sortKey === "name") return dir * safeStr(a.name).localeCompare(safeStr(b.name));
+      if (sortKey === "pos") return dir * safeStr(a.position).localeCompare(safeStr(b.position));
+      if (sortKey === "adj") return dir * (safeNum(a.adjustedOverall) - safeNum(b.adjustedOverall));
+      if (sortKey === "delta") return dir * (safeNum(a.delta) - safeNum(b.delta));
+      if (sortKey === "rp") return dir * (safeNum(a.adp) - safeNum(b.adp));
+      return dir * (safeNum(a.adp) - safeNum(b.adp));
+    });
+    return filtered;
+  }, [adjustedRankByKey, compareRows, pos, query, sortDir, sortKey, teams]);
+
+  function toggleSort(k) {
+    setSortDir((prevDir) => (sortKey === k ? (prevDir === "asc" ? "desc" : "asc") : "asc"));
+    setSortKey(k);
+  }
+
+  const labelA = useMemo(() => {
+    const found = modes.find((m) => `${m.year}|||${m.slug}` === selA);
+    return found ? `${found.year} — ${found.title}` : "Mode A";
+  }, [modes, selA]);
+  const labelB = useMemo(() => {
+    const found = modes.find((m) => `${m.year}|||${m.slug}` === selB);
+    return found ? `${found.year} — ${found.title}` : "Mode B";
+  }, [modes, selB]);
+
+  const comparing = !!groupA && !!groupB;
+
+  useEffect(() => {
+    if (!comparing) setBoardSide("A");
+  }, [comparing]);
 
   return (
-    <section className="mx-auto max-w-4xl px-4 py-10">
-      <div className="flex items-end justify-between gap-4">
+    <section className="mx-auto max-w-[1400px] px-4 py-8">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-3">
             <Link href="/draft-compare" className="text-sm text-accent hover:underline">
               ← Draft Compare
             </Link>
+            <span className="text-xs text-muted">/</span>
+            <span className="text-sm text-muted">Compare gamemodes</span>
           </div>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight">Compare gamemodes</h1>
-          <p className="mt-2 text-sm text-muted">
-            This compares full gamemodes (no league selection). Choose Mode A and Mode B.
-          </p>
+          <h1 className="mt-2 text-2xl font-semibold text-primary">Compare gamemodes</h1>
+          <p className="mt-1 text-sm text-muted">Compare full mode drafts (no league selection).</p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex overflow-hidden rounded-xl border border-border bg-background/30">
+            <button
+              type="button"
+              onClick={() => setView("list")}
+              className={cls(
+                "px-3 py-2 text-sm font-semibold transition",
+                view === "list" ? "bg-primary/15 text-primary" : "text-muted hover:bg-background/40"
+              )}
+            >
+              List
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("board")}
+              className={cls(
+                "px-3 py-2 text-sm font-semibold transition",
+                view === "board" ? "bg-primary/15 text-primary" : "text-muted hover:bg-background/40"
+              )}
+            >
+              Board
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {loadErr ? (
+        <div className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+          {loadErr}
+        </div>
+      ) : null}
+
+      <div className="mt-6 rounded-2xl border border-border bg-card-surface p-4 shadow-sm">
+        <div className="grid gap-3 md:grid-cols-2">
+          <div>
+            <div className="text-xs text-muted">Mode A</div>
+            <select
+              value={selA}
+              onChange={(e) => setSelA(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-border bg-background/60 px-3 py-2 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              {modes.map((m) => (
+                <option key={`A-${m.year}-${m.slug}`} value={`${m.year}|||${m.slug}`}>
+                  {m.year} — {m.title}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <div className="text-xs text-muted">Mode B</div>
+            <select
+              value={selB}
+              onChange={(e) => setSelB(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-border bg-background/60 px-3 py-2 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              {modes.map((m) => (
+                <option key={`B-${m.year}-${m.slug}`} value={`${m.year}|||${m.slug}`}>
+                  {m.year} — {m.title}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-3 text-xs text-muted">
+          <span className="font-semibold text-primary">A:</span> {labelA} <span className="mx-2 opacity-50">•</span>
+          <span className="font-semibold text-accent">B:</span> {labelB}
         </div>
       </div>
 
       {err ? (
-        <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{err}</div>
+        <div className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+          {err}
+        </div>
       ) : null}
 
-      <div className="mt-8 rounded-2xl border border-border bg-card-surface p-6">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <div className="text-xs text-muted">Mode A</div>
-            <select
-              className="mt-2 w-full rounded-xl border border-border bg-background/60 px-3 py-2 text-sm text-primary"
-              value={a ? `${a.year}|||${a.slug}` : ""}
-              onChange={(e) => {
-                const [y, s] = e.target.value.split("|||");
-                const found = options.find((o) => String(o.year) === String(y) && o.slug === s);
-                setA(found || null);
-              }}
-            >
-              <option value="">Select…</option>
-              {options.map((o) => (
-                <option key={`A-${o.year}-${o.slug}`} value={`${o.year}|||${o.slug}`}>
-                  {o.year} — {o.title}
-                </option>
-              ))}
-            </select>
-          </div>
+      {loading ? (
+        <div className="mt-6 rounded-2xl border border-border bg-card-surface p-6 text-sm text-muted">Loading…</div>
+      ) : null}
 
-          <div>
-            <div className="text-xs text-muted">Mode B</div>
-            <select
-              className="mt-2 w-full rounded-xl border border-border bg-background/60 px-3 py-2 text-sm text-primary"
-              value={b ? `${b.year}|||${b.slug}` : ""}
-              onChange={(e) => {
-                const [y, s] = e.target.value.split("|||");
-                const found = options.find((o) => String(o.year) === String(y) && o.slug === s);
-                setB(found || null);
-              }}
-            >
-              <option value="">Select…</option>
-              {options.map((o) => (
-                <option key={`B-${o.year}-${o.slug}`} value={`${o.year}|||${o.slug}`}>
-                  {o.year} — {o.title}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+      {!loading && comparing ? (
+        <div className="mt-6">
+          {view === "board" ? (
+            <div className="rounded-2xl border border-border bg-card-surface shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-primary">Draftboard</h2>
+                  <p className="text-xs text-muted">Click a pick square to see all players drafted at that slot.</p>
+                </div>
 
-        <div className="mt-6 flex items-center justify-end gap-2">
-          <Link href="/draft-compare" className="btn btn-secondary">
-            Cancel
-          </Link>
-          {goHref ? (
-            <Link href={goHref} className="btn btn-primary">
-              Compare →
-            </Link>
+                <div className="flex items-center gap-2 text-xs text-muted">
+                  Teams: <span className="font-semibold text-primary">{teams}</span> · Rounds:{" "}
+                  <span className="font-semibold text-primary">{rounds}</span>
+                </div>
+
+                <div className="ml-auto inline-flex overflow-hidden rounded-xl border border-border bg-background/30">
+                  <button
+                    type="button"
+                    onClick={() => setBoardSide("A")}
+                    className={cls(
+                      "px-3 py-2 text-xs font-semibold transition",
+                      boardSide === "A" ? "bg-primary/15 text-primary" : "text-muted hover:bg-background/40"
+                    )}
+                  >
+                    Side A
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBoardSide("B")}
+                    className={cls(
+                      "px-3 py-2 text-xs font-semibold transition",
+                      boardSide === "B" ? "bg-accent/15 text-accent" : "text-muted hover:bg-background/40"
+                    )}
+                  >
+                    Side B
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-5">
+                <DraftBoard group={boardSide === "B" ? groupB : groupA} />
+              </div>
+            </div>
           ) : (
-            <button className="btn btn-primary" disabled>
-              Compare →
-            </button>
+            <div className="rounded-2xl border border-border bg-card-surface shadow-sm">
+              <div className="border-b border-border px-5 py-4">
+                <h2 className="text-lg font-semibold text-primary">Compare List</h2>
+
+                <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-1 items-center gap-2">
+                    <input
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Search player…"
+                      className="w-full rounded-xl border border-border bg-background/60 px-3 py-2 text-sm text-primary placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                    <select
+                      value={pos}
+                      onChange={(e) => setPos(e.target.value)}
+                      className="rounded-xl border border-border bg-background/60 px-3 py-2 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                      {positions.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="text-xs text-muted">
+                    Rows: <span className="font-semibold text-primary">{listRows.length}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="max-h-[70vh] overflow-auto">
+                <table className="w-full border-separate border-spacing-0 text-sm">
+                  <thead className="sticky top-0 bg-card-surface/95 backdrop-blur">
+                    <tr className="text-left text-xs text-muted">
+                      <Th onClick={() => toggleSort("adp")} active={sortKey === "adp"} dir={sortDir}>
+                        Avg Pick
+                      </Th>
+                      <Th onClick={() => toggleSort("rp")} active={sortKey === "rp"} dir={sortDir}>
+                        Avg R.P.
+                      </Th>
+                      <Th onClick={() => toggleSort("adj")} active={sortKey === "adj"} dir={sortDir}>
+                        Adj Pick
+                      </Th>
+                      <Th onClick={() => toggleSort("name")} active={sortKey === "name"} dir={sortDir}>
+                        Player
+                      </Th>
+                      <Th onClick={() => toggleSort("pos")} active={sortKey === "pos"} dir={sortDir}>
+                        Pos
+                      </Th>
+                      <Th onClick={() => toggleSort("delta")} active={sortKey === "delta"} dir={sortDir}>
+                        Δ (B − A)
+                      </Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {listRows.map((r) => {
+                      const delta = r.delta;
+                      const deltaGood = delta != null && delta > 0;
+                      const deltaBad = delta != null && delta < 0;
+                      return (
+                        <tr key={r.key} className="border-t border-border/60 hover:bg-background/30">
+                          <td className="px-4 py-3 font-semibold text-primary tabular-nums">
+                            {safeNum(r.adp) ? safeNum(r.adp).toFixed(3) : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-muted tabular-nums">{r.avgRoundPick || "—"}</td>
+                          <td className="px-4 py-3 font-semibold text-primary tabular-nums">
+                            {r.adjustedRoundPick || "—"}
+                            <div className="text-[11px] text-muted">#{r.adjustedOverall || "—"}</div>
+                          </td>
+                          <td className="px-4 py-3 text-primary">{r.name}</td>
+                          <td className="px-4 py-3 text-muted">{r.position}</td>
+                          <td
+                            className={cls(
+                              "px-4 py-3 font-semibold tabular-nums",
+                              deltaGood && "text-emerald-300",
+                              deltaBad && "text-rose-300",
+                              delta == null && "text-muted"
+                            )}
+                          >
+                            {delta == null ? "—" : `${delta > 0 ? "+" : ""}${delta.toFixed(1)}`}
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                    {!listRows.length ? (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted">
+                          No results.
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
         </div>
-      </div>
+      ) : null}
     </section>
   );
 }
 
+function Th({ children, onClick, active, dir }) {
+  return (
+    <th
+      onClick={onClick}
+      className={cls(
+        onClick ? "cursor-pointer" : "cursor-default",
+        "select-none px-4 py-3",
+        active ? "text-primary" : "text-muted",
+        "border-b border-border"
+      )}
+    >
+      <div className="inline-flex items-center gap-2">
+        {children}
+        {active ? <span className="text-[10px] text-muted">{dir === "asc" ? "▲" : "▼"}</span> : null}
+      </div>
+    </th>
+  );
+}
+
+function DraftBoard({ group }) {
+  const g = group;
+  const m = g?.meta;
+  const [openKey, setOpenKey] = useState(null);
+
+  function posTheme(posRaw) {
+    const pos = safeStr(posRaw).toUpperCase().trim();
+    if (pos === "WR") {
+      return { cell: "bg-sky-400/20 hover:bg-sky-400/30", border: "border-sky-400/25" };
+    }
+    if (pos === "RB") {
+      return { cell: "bg-emerald-400/20 hover:bg-emerald-400/30", border: "border-emerald-400/25" };
+    }
+    if (pos === "QB") {
+      return { cell: "bg-rose-400/20 hover:bg-rose-400/30", border: "border-rose-400/25" };
+    }
+    if (pos === "TE") {
+      return { cell: "bg-amber-300/20 hover:bg-amber-300/30", border: "border-amber-300/25" };
+    }
+    return { cell: "bg-background/12 hover:bg-background/25", border: "border-border/70" };
+  }
+
+  if (!g || !m) return null;
+  const teams = safeNum(m.teams) || 12;
+  const rounds = safeNum(m.rounds) || 18;
+  const cells = g?.draftboard?.cells || {};
+
+  const playersArr = Array.isArray(g?.players)
+    ? g.players
+    : g?.players && typeof g.players === "object"
+    ? Object.values(g.players)
+    : safeArray(g?.playersList);
+
+  const ranked = safeArray(playersArr)
+    .map((p) => ({
+      name: safeStr(p?.name).trim(),
+      position: safeStr(p?.position).trim() || "UNK",
+      adp: safeNum(p?.avgOverallPick ?? p?.adp ?? p?.avgPick),
+    }))
+    .filter((p) => p.name)
+    .sort((a, b) => safeNum(a.adp) - safeNum(b.adp));
+
+  const grid = [];
+  for (let r = 1; r <= rounds; r++) {
+    const row = [];
+    for (let c = 1; c <= teams; c++) row.push(null);
+    grid.push(row);
+  }
+
+  for (let overall = 1; overall <= teams * rounds; overall++) {
+    const idx = overall - 1;
+    const player = ranked[idx] || null;
+    const r = Math.floor((overall - 1) / teams) + 1;
+    const pickInRound = ((overall - 1) % teams) + 1;
+    const displayCol = r % 2 === 1 ? pickInRound : teams - pickInRound + 1;
+    const origKey = `${r}-${pickInRound}`;
+    const dist = safeArray(cells[origKey]);
+    const top = dist[0] || null;
+    grid[r - 1][displayCol - 1] = { origKey, r, displayCol, pickInRound, overall, player, dist, top };
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="overflow-hidden rounded-2xl border border-border bg-background/10 shadow-sm">
+        {grid.map((row, i) => (
+          <div key={i} className="grid" style={{ gridTemplateColumns: `repeat(${teams}, minmax(0, 1fr))` }}>
+            {row.map((cell, j) => {
+              if (!cell) {
+                return (
+                  <div key={`blank-${i}-${j}`} className="h-[74px] border-r border-b border-border/70 bg-background/5" />
+                );
+              }
+
+              const rpAdjusted = `${cell.r}.${String(cell.pickInRound).padStart(2, "0")}`;
+              const theme = posTheme(cell.player?.position);
+
+              return (
+                <button
+                  key={`${cell.r}-${cell.displayCol}`}
+                  onClick={() => setOpenKey(cell.origKey)}
+                  className={cls(
+                    "group relative h-[74px] border-r border-b p-2 text-left transition",
+                    theme.border,
+                    theme.cell,
+                    "hover:shadow-[0_6px_16px_rgba(0,0,0,0.25)] hover:shadow-black/20",
+                    "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  )}
+                  title={cell.player ? `${cell.player.name} (${cell.player.position})` : rpAdjusted}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span
+                      className={cls(
+                        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                        "shadow-[0_2px_10px_rgba(0,0,0,0.16)]",
+                        "backdrop-blur",
+                        "border-border/70 bg-background/35 text-primary"
+                      )}
+                    >
+                      {rpAdjusted}
+                    </span>
+                    <span className="inline-flex items-center rounded-full border border-border/70 bg-background/20 px-2 py-0.5 text-[10px] font-medium text-primary/80 shadow-[0_2px_10px_rgba(0,0,0,0.16)] backdrop-blur">
+                      #{cell.overall}
+                    </span>
+                  </div>
+
+                  {cell.player ? (
+                    <div className="mt-2">
+                      <div className="truncate text-[12.5px] font-medium leading-4 text-primary">{cell.player.name}</div>
+                    </div>
+                  ) : (
+                    <div className="mt-6 text-[11px] text-muted opacity-60">—</div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      {openKey ? (
+        <CellModal
+          cellKey={openKey}
+          teams={teams}
+          list={safeArray(cells[openKey])}
+          onClose={() => setOpenKey(null)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function CellModal({ cellKey, teams, list, onClose }) {
+  const [rStr, pStr] = safeStr(cellKey).split("-");
+  const round = safeNum(rStr);
+  const pickInRound = safeNum(pStr);
+  const overall = (round - 1) * (safeNum(teams) || 12) + pickInRound;
+  const rp = `${round}.${String(pickInRound).padStart(2, "0")}`;
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card-surface shadow-xl">
+        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+          <div>
+            <div className="text-xs text-muted">Pick</div>
+            <div className="text-lg font-semibold text-primary">
+              {rp} <span className="text-sm text-muted">•</span> <span className="text-sm text-muted">#{overall}</span>
+            </div>
+            <div className="mt-1 text-xs text-muted">{list.length ? `${list.length} unique players` : "No data"}</div>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-xl border border-border bg-background/40 px-3 py-2 text-sm text-primary hover:bg-background/60"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="max-h-[60vh] overflow-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-card-surface/95 backdrop-blur">
+              <tr className="text-left text-xs text-muted">
+                <th className="px-5 py-3">Player</th>
+                <th className="px-5 py-3">Pos</th>
+                <th className="px-5 py-3">%</th>
+                <th className="px-5 py-3">Count</th>
+              </tr>
+            </thead>
+            <tbody>
+              {safeArray(list)
+                .slice()
+                .sort((a, b) => safeNum(b?.pct) - safeNum(a?.pct) || safeStr(a?.name).localeCompare(safeStr(b?.name)))
+                .map((p) => (
+                  <tr key={`${p.name}|||${p.position}`} className="border-t border-border/60">
+                    <td className="px-5 py-3 text-primary">{p.name}</td>
+                    <td className="px-5 py-3 text-muted">{p.position}</td>
+                    <td className="px-5 py-3 text-muted">{pctFmt(safeNum(p.pct))}</td>
+                    <td className="px-5 py-3 text-muted">{safeNum(p.count)}</td>
+                  </tr>
+                ))}
+              {!list.length ? (
+                <tr>
+                  <td colSpan={4} className="px-5 py-8 text-center text-sm text-muted">
+                    Nothing recorded at this slot.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -56,6 +56,11 @@ function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
+function safeNum(v) {
+  const x = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(x) ? x : 0;
+}
+
 function cleanSlug(v) {
   return safeStr(v)
     .trim()
@@ -113,6 +118,42 @@ async function readJSON(env, key) {
   }
 }
 
+async function hasObject(env, key) {
+  if (!key) return false;
+  const r2 = ensureR2(env);
+  try {
+    const head = await r2.head(key);
+    return !!head;
+  } catch {
+    return false;
+  }
+}
+
+function sanitizeModesInput(rows, season) {
+  const y = seasonOrDefault(season);
+  return safeArray(rows)
+    .map((r0) => {
+      const r = r0 || {};
+      const modeSlug = cleanSlug(r.modeSlug || r.slug || r.id || r.name);
+      const title = safeStr(r.title || r.name || "").trim();
+      const subtitle = safeStr(r.subtitle || r.blurb || "").trim();
+      const order = safeNum(r.order || r.sort || 0);
+      const year = safeNum(r.year || r.season || y) || y;
+      const imageKey = safeStr(r.imageKey || r.image_key || "").trim();
+      const image_url = safeStr(r.image_url || r.imageUrl || r.image || "").trim();
+      return {
+        modeSlug,
+        title,
+        subtitle,
+        order,
+        year,
+        imageKey,
+        image_url,
+      };
+    })
+    .filter((r) => r.modeSlug && r.title);
+}
+
 async function writeJSON(env, key, payload) {
   if (!key) throw new Error("Missing key");
   const r2 = ensureR2(env);
@@ -144,8 +185,19 @@ export async function onRequest(context) {
 
       // modes
       const existing = await readJSON(env, modesKey(season));
-      const rows = Array.isArray(existing?.rows) ? existing.rows : Array.isArray(existing) ? existing : [];
-      return json({ season, rows });
+      const rawRows = Array.isArray(existing?.rows) ? existing.rows : Array.isArray(existing) ? existing : [];
+      const rows = sanitizeModesInput(rawRows, season);
+
+      // Add "hasDraftJson" so the admin UI can show a clear status per mode.
+      const withStatus = await Promise.all(
+        rows.map(async (r) => {
+          const key = draftsKey(season, r.modeSlug);
+          const hasDraftJson = await hasObject(env, key);
+          return { ...r, hasDraftJson };
+        })
+      );
+
+      return json({ season, rows: withStatus });
     }
 
     if (request.method === "POST" || request.method === "PUT") {
@@ -182,7 +234,8 @@ export async function onRequest(context) {
             ? body.data
             : [];
 
-      const payload = { season: s, updated_at: now, rows };
+      const sanitized = sanitizeModesInput(rows, s);
+      const payload = { season: s, updated_at: now, rows: sanitized };
       await writeJSON(env, modesKey(s), payload);
       await touchManifest(env, "draft-compare", s);
       await touchManifest(env, "draft-compare", null);
