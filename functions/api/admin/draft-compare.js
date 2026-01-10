@@ -53,6 +53,11 @@ async function touchManifest(env, section, season) {
   }
 }
 
+function safeArray(v) {
+  return Array.isArray(v) ? v : [];
+}
+
+
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
