@@ -48,7 +48,12 @@ function normalizeModesFromJson(j, season) {
       const title = safeStr(r?.title || r?.name || r?.modeName || slug);
       const subtitle = safeStr(r?.subtitle || r?.blurb || "");
       const order = safeNum(r?.order || r?.sort || 0);
-      return { season, slug, title, subtitle, order };
+
+      // ✅ bring image fields back (admin saves these on the mode row)
+      const imageKey = safeStr(r?.imageKey || r?.image_key || "");
+      const image_url = safeStr(r?.image_url || r?.imageUrl || r?.image || "");
+
+      return { season, slug, title, subtitle, order, imageKey, image_url };
     })
     .filter((x) => x.slug && x.title);
 
@@ -123,17 +128,37 @@ function useDraftCompareHomeData(seasons, manifestVersion) {
 }
 
 function ModeCard({ season, mode }) {
+  const hasImg = !!safeStr(mode?.image_url).trim();
+
   return (
     <Link
       prefetch={false}
       href={`/draft-compare/mode?mode=${encodeURIComponent(mode.slug)}&year=${encodeURIComponent(String(season))}`}
       className={cls(
-        "group relative overflow-hidden rounded-2xl border border-subtle bg-card-surface p-5 shadow-sm",
+        "group relative overflow-hidden rounded-2xl border border-subtle bg-card-surface shadow-sm",
         "transition hover:-translate-y-[1px] hover:shadow-lg"
       )}
     >
+      {/* subtle glow */}
       <div className="pointer-events-none absolute inset-x-0 -top-24 h-48 bg-white/10 blur-3xl opacity-0 transition group-hover:opacity-100" />
-      <div className="relative">
+
+      {/* ✅ image header */}
+      {hasImg ? (
+        <div className="relative">
+          <div className="h-28 w-full overflow-hidden border-b border-border/40 bg-black/10">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={mode.image_url}
+              alt=""
+              className="h-full w-full object-cover opacity-90 transition duration-300 group-hover:opacity-100 group-hover:scale-[1.02]"
+              loading="lazy"
+            />
+          </div>
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/35 to-transparent" />
+        </div>
+      ) : null}
+
+      <div className="relative p-5">
         <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">{season}</div>
         <div className="mt-1 text-lg font-semibold text-primary">{mode.title}</div>
         {mode.subtitle ? <div className="mt-1 text-sm text-muted">{mode.subtitle}</div> : null}
@@ -227,5 +252,9 @@ function HomeInner({ manifest }) {
 
 export default function DraftCompareHomeClient() {
   // Use global manifest so updates to any season invalidate the home list.
-  return <SectionManifestGate section="draft-compare">{(manifest) => <HomeInner manifest={manifest} />}</SectionManifestGate>;
+  return (
+    <SectionManifestGate section="draft-compare">
+      {(manifest) => <HomeInner manifest={manifest} />}
+    </SectionManifestGate>
+  );
 }

@@ -424,10 +424,6 @@ export default function DraftCompareAdminClient() {
                         min={2000}
                         max={2100}
                       />
-                      <div className="text-[11px] text-muted">
-                        This does <span className="font-semibold text-primary">not</span> control which draft JSON is used.
-                        Season sections on the public home control that.
-                      </div>
                     </div>
 
                     <div className="space-y-2">
