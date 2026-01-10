@@ -23,6 +23,10 @@ function safeNum(v) {
   const x = typeof v === "number" ? v : Number(v);
   return Number.isFinite(x) ? x : 0;
 }
+function numOrNull(v) {
+  const x = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(x) && x > 0 ? x : null;
+}
 function cleanSlug(s) {
   return safeStr(s)
     .trim()
@@ -202,9 +206,9 @@ function ModeInner({ mode, season, version, gateError }) {
     const base = comparing
       ? safeArray(compareRows).map((r) => ({
           key: `${safeStr(r?.name)}|||${safeStr(r?.position)}`,
-          // If a player only appears on one side, use the side that exists
-          // so they land in the correct adjusted slot instead of 1.01.
-          adp: safeNum(r?.sortAdp || r?.adpA || r?.adpB),
+          // If a player exists on only one side, rank by the side they appear on.
+          // Avoid treating missing ADP as 0 (which incorrectly shows up as 1.01).
+          adp: numOrNull(r?.adpA) ?? numOrNull(r?.adpB),
         }))
       : groupPlayersArray(groupA).map((p) => ({
           key: `${safeStr(p?.name)}|||${safeStr(p?.position)}`,
@@ -231,7 +235,7 @@ function ModeInner({ mode, season, version, gateError }) {
   // --- list controls ---
   const [query, setQuery] = useState("");
   const [pos, setPos] = useState("ALL");
-  const [sortKey, setSortKey] = useState("adp"); // adp | rp | name | pos | delta | adj
+  const [sortKey, setSortKey] = useState("adpA"); // adpA | rpA | adpB | rpB | name | pos | delta | adj
   const [sortDir, setSortDir] = useState("asc"); // asc/desc
 
   const positions = useMemo(() => {
@@ -253,48 +257,34 @@ function ModeInner({ mode, season, version, gateError }) {
     const q = query.trim().toLowerCase();
     const pFilter = pos;
 
+    const numForSort = (v) => (v == null ? Number.POSITIVE_INFINITY : safeNum(v));
+
     const base = comparing
-      ? compareRows.map((r) => {
-          const adpA = r.adpA == null ? null : safeNum(r.adpA);
-          const adpB = r.adpB == null ? null : safeNum(r.adpB);
-          // Sorting should never treat "missing" as 0 (which forces 1.01).
-          const adpSortA = adpA && adpA > 0 ? adpA : Number.POSITIVE_INFINITY;
-          return {
-            key: `${safeStr(r.name)}|||${safeStr(r.position)}`,
-            name: r.name,
-            position: r.position,
-            adpA,
-            adpB,
-            adpSortA,
-            delta: r.delta == null ? null : safeNum(r.delta), // B - A
-          };
-        })
+      ? compareRows.map((r) => ({
+          key: `${safeStr(r.name)}|||${safeStr(r.position)}`,
+          name: r.name,
+          position: r.position,
+          adpA: numOrNull(r.adpA),
+          adpB: numOrNull(r.adpB),
+          delta: r.delta == null ? null : safeNum(r.delta), // B - A
+        }))
       : groupPlayersArray(groupA).map((r) => ({
           key: `${safeStr(r.name)}|||${safeStr(r.position)}`,
           name: r.name,
           position: r.position,
-          adp: safeNum(r.avgOverallPick ?? r.adp ?? r.avgPick),
+          adpA: numOrNull(r.avgOverallPick ?? r.adp ?? r.avgPick),
+          adpB: null,
           delta: null,
         }));
 
     const withAdj = base.map((r) => {
       const adj = adjustedRankByKey?.[r.key];
-      if (comparing) {
-        const a = r.adpA;
-        const b = r.adpB;
-        return {
-          ...r,
-          avgPickA: a,
-          avgPickB: b,
-          avgRoundPickA: a && a > 0 ? formatRoundPickFromAvgOverall(a, teams) : "—",
-          avgRoundPickB: b && b > 0 ? formatRoundPickFromAvgOverall(b, teams) : "—",
-          adjustedOverall: adj?.adjustedOverall ?? null,
-          adjustedRoundPick: adj?.adjustedRoundPick ?? "—",
-        };
-      }
       return {
         ...r,
-        avgRoundPick: formatRoundPickFromAvgOverall(safeNum(r.adp), teams),
+        avgPickA: r.adpA,
+        avgPickB: r.adpB,
+        avgRoundPickA: r.adpA == null ? "—" : formatRoundPickFromAvgOverall(r.adpA, teams),
+        avgRoundPickB: r.adpB == null ? "—" : formatRoundPickFromAvgOverall(r.adpB, teams),
         adjustedOverall: adj?.adjustedOverall ?? null,
         adjustedRoundPick: adj?.adjustedRoundPick ?? "—",
       };
@@ -312,14 +302,9 @@ function ModeInner({ mode, season, version, gateError }) {
       if (sortKey === "pos") return dir * safeStr(a.position).localeCompare(safeStr(b.position));
       if (sortKey === "adj") return dir * (safeNum(a.adjustedOverall) - safeNum(b.adjustedOverall));
       if (sortKey === "delta") return dir * (safeNum(a.delta) - safeNum(b.delta));
-      if (comparing) {
-        // When comparing, "Avg Pick" and "Avg R.P." sort by Side A.
-        const ax = Number.isFinite(a.adpSortA) ? a.adpSortA : Number.POSITIVE_INFINITY;
-        const bx = Number.isFinite(b.adpSortA) ? b.adpSortA : Number.POSITIVE_INFINITY;
-        return dir * (ax - bx);
-      }
-      if (sortKey === "rp") return dir * (safeNum(a.adp) - safeNum(b.adp));
-      return dir * (safeNum(a.adp) - safeNum(b.adp));
+      if (sortKey === "rp") return dir * (numForSort(a.avgPickA) - numForSort(b.avgPickA));
+      if (sortKey === "adpB") return dir * (numForSort(a.avgPickB) - numForSort(b.avgPickB));
+      return dir * (numForSort(a.avgPickA) - numForSort(b.avgPickA));
     });
 
     return filtered;
@@ -494,22 +479,31 @@ function ModeInner({ mode, season, version, gateError }) {
                 <table className="w-full border-separate border-spacing-0 text-sm">
                   <thead className="sticky top-0 bg-card-surface/95 backdrop-blur">
                     <tr className="text-left text-xs text-muted">
-                      <Th onClick={() => toggleSort("adp")} active={sortKey === "adp"} dir={sortDir}>
-                        Avg Pick
-                      </Th>
-                      <Th onClick={() => toggleSort("rp")} active={sortKey === "rp"} dir={sortDir}>
-                        Avg R.P.
-                      </Th>
                       {comparing ? (
                         <>
-                          <Th onClick={() => toggleSort("adp")} active={false} dir={sortDir}>
+                          <Th onClick={() => toggleSort("adpA")} active={sortKey === "adpA"} dir={sortDir}>
+                            A Avg Pick
+                          </Th>
+                          <Th onClick={() => toggleSort("rpA")} active={sortKey === "rpA"} dir={sortDir}>
+                            A Avg R.P.
+                          </Th>
+                          <Th onClick={() => toggleSort("adpB")} active={sortKey === "adpB"} dir={sortDir}>
                             B Avg Pick
                           </Th>
-                          <Th onClick={() => toggleSort("adp")} active={false} dir={sortDir}>
+                          <Th onClick={() => toggleSort("rpB")} active={sortKey === "rpB"} dir={sortDir}>
                             B Avg R.P.
                           </Th>
                         </>
-                      ) : null}
+                      ) : (
+                        <>
+                          <Th onClick={() => toggleSort("adpA")} active={sortKey === "adpA"} dir={sortDir}>
+                            Avg Pick
+                          </Th>
+                          <Th onClick={() => toggleSort("rpA")} active={sortKey === "rpA"} dir={sortDir}>
+                            Avg R.P.
+                          </Th>
+                        </>
+                      )}
                       <Th onClick={() => toggleSort("adj")} active={sortKey === "adj"} dir={sortDir}>
                         Adj Pick
                       </Th>
@@ -533,26 +527,25 @@ function ModeInner({ mode, season, version, gateError }) {
                       const deltaBad = delta != null && delta < 0;
                       return (
                         <tr key={r.key} className="border-t border-border/60 hover:bg-background/30">
-                          <td className="px-4 py-3 font-semibold text-primary tabular-nums">
-                            {comparing
-                              ? r.avgPickA && r.avgPickA > 0
-                                ? r.avgPickA.toFixed(3)
-                                : "—"
-                              : safeNum(r.adp)
-                              ? safeNum(r.adp).toFixed(3)
-                              : "—"}
-                          </td>
-                          <td className="px-4 py-3 text-muted tabular-nums">
-                            {comparing ? r.avgRoundPickA : r.avgRoundPick || "—"}
-                          </td>
                           {comparing ? (
                             <>
-                              <td className="px-4 py-3 font-semibold text-accent tabular-nums">
-                                {r.avgPickB && r.avgPickB > 0 ? r.avgPickB.toFixed(3) : "—"}
+                              <td className="px-4 py-3 font-semibold text-primary tabular-nums">
+                                {r.avgPickA == null ? "—" : r.avgPickA.toFixed(3)}
                               </td>
-                              <td className="px-4 py-3 text-muted tabular-nums">{r.avgRoundPickB}</td>
+                              <td className="px-4 py-3 text-muted tabular-nums">{r.roundPickA || "—"}</td>
+                              <td className="px-4 py-3 font-semibold text-primary tabular-nums">
+                                {r.avgPickB == null ? "—" : r.avgPickB.toFixed(3)}
+                              </td>
+                              <td className="px-4 py-3 text-muted tabular-nums">{r.roundPickB || "—"}</td>
                             </>
-                          ) : null}
+                          ) : (
+                            <>
+                              <td className="px-4 py-3 font-semibold text-primary tabular-nums">
+                                {r.avgPickA == null ? "—" : r.avgPickA.toFixed(3)}
+                              </td>
+                              <td className="px-4 py-3 text-muted tabular-nums">{r.roundPickA || "—"}</td>
+                            </>
+                          )}
                           <td className="px-4 py-3 font-semibold text-primary tabular-nums">
                             {r.adjustedRoundPick || "—"}
                             <div className="text-[11px] text-muted">#{r.adjustedOverall || "—"}</div>

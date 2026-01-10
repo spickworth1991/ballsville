@@ -21,6 +21,9 @@ import {
   FiLayers,
 } from "react-icons/fi";
 
+/**
+ * Add `isNew: true` to any item (or child/sub-child) to show a "NEW" pill.
+ */
 const NAV_ITEMS = [
   { id: "home", name: "Home", to: "/", icon: FiHome },
   {
@@ -28,10 +31,11 @@ const NAV_ITEMS = [
     name: "Game Modes",
     icon: FiGrid,
     children: [
-       {
+      {
         id: "leaderboards",
         name: "Leaderboards",
         to: "/leaderboards",
+        // isNew: true,
       },
 
       {
@@ -39,43 +43,37 @@ const NAV_ITEMS = [
         name: "The BIG Game",
         to: "/big-game",
         children: [
-          { name: "Overview", to: "/leaderboards" },
-          { name: "Wagers", to: "/big-game/wagers" },
+          { name: "Wagers", to: "/big-game/wagers",}, 
         ],
       },
-      { 
-        id: "mini-leagues", 
-        name: "Mini-Leagues", 
-        to: "/mini-leagues" ,
-        children: [
-          { name: "Wagers", to: "/mini-leagues/wagers" },
-        ],
+      {
+        id: "mini-leagues",
+        name: "Mini-Leagues",
+        to: "/mini-leagues",
+        children: [{ name: "Wagers", to: "/mini-leagues/wagers" }],
       },
-      { 
-        id: "redraft", 
-        name: "Redraft", 
-        to: "/redraft" },
-      { 
-        id: "dynasty", 
-        name: "Dynasty", 
-        to: "/dynasty" ,
-        children: [
-          { name: "Wagers", to: "/dynasty/wagers" },
-        ],
+      {
+        id: "redraft",
+        name: "Redraft",
+        to: "/redraft",
       },
-      { 
+      {
+        id: "dynasty",
+        name: "Dynasty",
+        to: "/dynasty",
+        children: [{ name: "Wagers", to: "/dynasty/wagers" }],
+      },
+      {
         id: "gauntlet",
-        name: "Gauntlet", 
-        to: "/gauntlet" ,
-         children: [
-          { name: "Gauntlet Bracket", to: "/gauntlet/leaderboard" },
-        ],
-        },
+        name: "Gauntlet",
+        to: "/gauntlet",
+        children: [{ name: "Gauntlet Bracket", to: "/gauntlet/leaderboard" }],
+      },
     ],
   },
 
-  { id: "adp", name: "ADP", to: "/draft-compare", icon: FiLayers },
- 
+  { id: "adp", name: "ADP", to: "/draft-compare", icon: FiLayers, isNew: true },
+
   {
     id: "joe-street-journal",
     name: "Joe Street Journal",
@@ -111,6 +109,17 @@ function isNodeActive(node, pathname) {
   if (hasKids(node)) return node.children.some((c) => isNodeActive(c, pathname));
 
   return false;
+}
+
+function NewPill() {
+  return (
+    <span
+      className="ml-2 inline-flex items-center rounded-full border border-subtle bg-white/5 px-2 py-0.5 text-[10px] font-bold tracking-wide text-accent"
+      aria-label="New"
+    >
+      NEW
+    </span>
+  );
 }
 
 export default function Navbar() {
@@ -369,6 +378,7 @@ export default function Navbar() {
                       <span className="inline-flex items-center space-x-1">
                         {item.icon && <item.icon className="w-5 h-5" />}
                         <span className="whitespace-nowrap">{item.name}</span>
+                        {item?.isNew && <NewPill />}
                         {hasChildren && <FiChevronDown className="w-4 h-4" />}
                       </span>
                     </span>
@@ -386,6 +396,7 @@ export default function Navbar() {
                       >
                         {item.icon && <item.icon className="w-5 h-5" />}
                         <span className="whitespace-nowrap">{item.name}</span>
+                        {item?.isNew && <NewPill />}
                       </Link>
                     )}
 
@@ -403,11 +414,14 @@ export default function Navbar() {
                               ? "text-primary font-semibold"
                               : "text-fg hover:text-accent"
                           }`}
-                          aria-expanded={openDesktopMenuId === item.id ? "true" : "false"}
+                          aria-expanded={
+                            openDesktopMenuId === item.id ? "true" : "false"
+                          }
                           aria-haspopup="menu"
                         >
                           {item.icon && <item.icon className="w-5 h-5" />}
                           <span className="whitespace-nowrap">{item.name}</span>
+                          {item?.isNew && <NewPill />}
                           <FiChevronDown
                             className={`w-4 h-4 transition-transform ${
                               openDesktopMenuId === item.id ? "rotate-180" : ""
@@ -432,7 +446,7 @@ export default function Navbar() {
                                     key={child.to}
                                     prefetch={false}
                                     href={child.to}
-                                    className={`flex items-center px-3 py-2 text-sm rounded-lg transition-colors mx-2 ${
+                                    className={`flex items-center justify-between px-3 py-2 text-sm rounded-lg transition-colors mx-2 ${
                                       pathname === child.to
                                         ? "text-primary font-semibold bg-white/5"
                                         : "text-fg hover:text-accent hover:bg-white/5"
@@ -441,6 +455,7 @@ export default function Navbar() {
                                     role="menuitem"
                                   >
                                     <span>{child.name}</span>
+                                    {child?.isNew && <NewPill />}
                                   </Link>
                                 );
                               }
@@ -456,10 +471,17 @@ export default function Navbar() {
                                         ? "text-primary font-semibold bg-white/5"
                                         : "text-fg hover:text-accent hover:bg-white/5"
                                     }`}
-                                    onClick={child.to ? handleNavClick : (e) => e.preventDefault()}
+                                    onClick={
+                                      child.to
+                                        ? handleNavClick
+                                        : (e) => e.preventDefault()
+                                    }
                                     role="menuitem"
                                   >
-                                    <span>{child.name}</span>
+                                    <span className="inline-flex items-center">
+                                      {child.name}
+                                      {child?.isNew && <NewPill />}
+                                    </span>
                                     <FiChevronDown className="w-4 h-4 opacity-70 -rotate-90" />
                                   </Link>
 
@@ -470,7 +492,7 @@ export default function Navbar() {
                                         key={sub.to}
                                         prefetch={false}
                                         href={sub.to}
-                                        className={`ml-3 flex items-center px-3 py-2 text-sm rounded-lg transition-colors ${
+                                        className={`ml-3 flex items-center justify-between px-3 py-2 text-sm rounded-lg transition-colors ${
                                           pathname === sub.to
                                             ? "text-primary font-semibold bg-white/5"
                                             : "text-fg hover:text-accent hover:bg-white/5"
@@ -478,6 +500,7 @@ export default function Navbar() {
                                         onClick={handleNavClick}
                                       >
                                         <span>{sub.name}</span>
+                                        {sub?.isNew && <NewPill />}
                                       </Link>
                                     ))}
                                   </div>
@@ -565,6 +588,7 @@ export default function Navbar() {
                   >
                     {item.icon && <item.icon className="w-6 h-6" />}
                     <span>{item.name}</span>
+                    {item?.isNew && <NewPill />}
                   </Link>
                 );
               }
@@ -574,7 +598,9 @@ export default function Navbar() {
                   <button
                     type="button"
                     onClick={() =>
-                      setOpenMobileMenuId((prev) => (prev === item.id ? null : item.id))
+                      setOpenMobileMenuId((prev) =>
+                        prev === item.id ? null : item.id
+                      )
                     }
                     className={`flex w-full items-center justify-between text-xl font-medium transition-colors duration-200 ${
                       isActive ? "text-accent" : "text-fg hover:text-primary"
@@ -583,6 +609,7 @@ export default function Navbar() {
                     <span className="inline-flex items-center space-x-2">
                       {item.icon && <item.icon className="w-6 h-6" />}
                       <span>{item.name}</span>
+                      {item?.isNew && <NewPill />}
                     </span>
                     <FiChevronDown
                       className={`w-5 h-5 transition-transform ${
@@ -605,14 +632,15 @@ export default function Navbar() {
                               key={child.to}
                               prefetch={false}
                               href={child.to}
-                              className={`block text-base transition-colors ${
+                              className={`flex items-center justify-between text-base transition-colors ${
                                 pathname === child.to
                                   ? "text-primary font-semibold"
                                   : "text-fg hover:text-accent"
                               }`}
                               onClick={handleNavClick}
                             >
-                              {child.name}
+                              <span>{child.name}</span>
+                              {child?.isNew && <NewPill />}
                             </Link>
                           );
                         }
@@ -632,7 +660,10 @@ export default function Navbar() {
                                   : "text-fg hover:text-accent"
                               }`}
                             >
-                              <span>{child.name}</span>
+                              <span className="inline-flex items-center">
+                                {child.name}
+                                {child?.isNew && <NewPill />}
+                              </span>
                               <FiChevronDown
                                 className={`w-5 h-5 transition-transform ${
                                   childOpen ? "rotate-180" : ""
@@ -647,14 +678,15 @@ export default function Navbar() {
                                     key={sub.to}
                                     prefetch={false}
                                     href={sub.to}
-                                    className={`block text-sm transition-colors ${
+                                    className={`flex items-center justify-between text-sm transition-colors ${
                                       pathname === sub.to
                                         ? "text-primary font-semibold"
                                         : "text-fg hover:text-accent"
                                     }`}
                                     onClick={handleNavClick}
                                   >
-                                    {sub.name}
+                                    <span>{sub.name}</span>
+                                    {sub?.isNew && <NewPill />}
                                   </Link>
                                 ))}
                               </div>

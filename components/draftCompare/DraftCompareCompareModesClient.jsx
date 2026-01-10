@@ -20,6 +20,10 @@ function safeNum(v) {
   const x = typeof v === "number" ? v : Number(v);
   return Number.isFinite(x) ? x : 0;
 }
+function numOrNull(v) {
+  const x = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(x) && x > 0 ? x : null;
+}
 function cleanSlug(s) {
   return safeStr(s)
     .trim()
@@ -193,10 +197,12 @@ export default function DraftCompareCompareModesClient() {
     if (!groupA) return Object.create(null);
     const base = safeArray(compareRows).map((r) => ({
       key: `${safeStr(r?.name)}|||${safeStr(r?.position)}`,
-      adp: safeNum(r?.adpA),
+      // If a player exists on only one side, rank by the side they appear on.
+      // Avoid treating missing ADP as 0 (which would incorrectly place them at 1.01).
+      adp: numOrNull(r?.adpA) ?? numOrNull(r?.adpB) ?? null,
     }));
     const sorted = base
-      .filter((x) => x.key && Number.isFinite(x.adp) && x.adp > 0)
+      .filter((x) => x.key && x.adp != null)
       .slice()
       .sort((a, b) => a.adp - b.adp);
     const out = Object.create(null);
@@ -223,16 +229,21 @@ export default function DraftCompareCompareModesClient() {
   const listRows = useMemo(() => {
     const q = query.trim().toLowerCase();
     const pFilter = pos;
+    const numForSort = (v) => (v == null ? Number.POSITIVE_INFINITY : safeNum(v));
+
     const base = safeArray(compareRows).map((r) => {
       const key = `${safeStr(r.name)}|||${safeStr(r.position)}`;
       const adj = adjustedRankByKey?.[key];
-      const adpA = safeNum(r.adpA);
+      const avgPickA = numOrNull(r.adpA);
+      const avgPickB = numOrNull(r.adpB);
       return {
         key,
         name: r.name,
         position: r.position,
-        adp: adpA,
-        avgRoundPick: formatRoundPickFromAvgOverall(adpA, teams),
+        avgPickA,
+        avgPickB,
+        avgRoundPickA: avgPickA ? formatRoundPickFromAvgOverall(avgPickA, teams) : "—",
+        avgRoundPickB: avgPickB ? formatRoundPickFromAvgOverall(avgPickB, teams) : "—",
         adjustedOverall: adj?.adjustedOverall ?? null,
         adjustedRoundPick: adj?.adjustedRoundPick ?? "—",
         delta: r.delta == null ? null : safeNum(r.delta),
@@ -251,8 +262,11 @@ export default function DraftCompareCompareModesClient() {
       if (sortKey === "pos") return dir * safeStr(a.position).localeCompare(safeStr(b.position));
       if (sortKey === "adj") return dir * (safeNum(a.adjustedOverall) - safeNum(b.adjustedOverall));
       if (sortKey === "delta") return dir * (safeNum(a.delta) - safeNum(b.delta));
-      if (sortKey === "rp") return dir * (safeNum(a.adp) - safeNum(b.adp));
-      return dir * (safeNum(a.adp) - safeNum(b.adp));
+      if (sortKey === "adpB") return dir * (numForSort(a.avgPickB) - numForSort(b.avgPickB));
+      if (sortKey === "rpA") return dir * (numForSort(a.avgPickA) - numForSort(b.avgPickA));
+      if (sortKey === "rpB") return dir * (numForSort(a.avgPickB) - numForSort(b.avgPickB));
+      // default: Side A avg pick
+      return dir * (numForSort(a.avgPickA) - numForSort(b.avgPickA));
     });
     return filtered;
   }, [adjustedRankByKey, compareRows, pos, query, sortDir, sortKey, teams]);
@@ -451,11 +465,17 @@ export default function DraftCompareCompareModesClient() {
                 <table className="w-full border-separate border-spacing-0 text-sm">
                   <thead className="sticky top-0 bg-card-surface/95 backdrop-blur">
                     <tr className="text-left text-xs text-muted">
-                      <Th onClick={() => toggleSort("adp")} active={sortKey === "adp"} dir={sortDir}>
-                        Avg Pick
+                      <Th onClick={() => toggleSort("adpA")} active={sortKey === "adpA"} dir={sortDir}>
+                        A Avg Pick
                       </Th>
-                      <Th onClick={() => toggleSort("rp")} active={sortKey === "rp"} dir={sortDir}>
-                        Avg R.P.
+                      <Th onClick={() => toggleSort("rpA")} active={sortKey === "rpA"} dir={sortDir}>
+                        A Avg R.P.
+                      </Th>
+                      <Th onClick={() => toggleSort("adpB")} active={sortKey === "adpB"} dir={sortDir}>
+                        B Avg Pick
+                      </Th>
+                      <Th onClick={() => toggleSort("rpB")} active={sortKey === "rpB"} dir={sortDir}>
+                        B Avg R.P.
                       </Th>
                       <Th onClick={() => toggleSort("adj")} active={sortKey === "adj"} dir={sortDir}>
                         Adj Pick
@@ -479,9 +499,13 @@ export default function DraftCompareCompareModesClient() {
                       return (
                         <tr key={r.key} className="border-t border-border/60 hover:bg-background/30">
                           <td className="px-4 py-3 font-semibold text-primary tabular-nums">
-                            {safeNum(r.adp) ? safeNum(r.adp).toFixed(3) : "—"}
+                            {r.avgPickA == null ? "—" : safeNum(r.avgPickA).toFixed(3)}
                           </td>
-                          <td className="px-4 py-3 text-muted tabular-nums">{r.avgRoundPick || "—"}</td>
+                          <td className="px-4 py-3 text-muted tabular-nums">{r.avgRoundPickA || "—"}</td>
+                          <td className="px-4 py-3 font-semibold text-primary tabular-nums">
+                            {r.avgPickB == null ? "—" : safeNum(r.avgPickB).toFixed(3)}
+                          </td>
+                          <td className="px-4 py-3 text-muted tabular-nums">{r.avgRoundPickB || "—"}</td>
                           <td className="px-4 py-3 font-semibold text-primary tabular-nums">
                             {r.adjustedRoundPick || "—"}
                             <div className="text-[11px] text-muted">#{r.adjustedOverall || "—"}</div>
@@ -504,7 +528,7 @@ export default function DraftCompareCompareModesClient() {
 
                     {!listRows.length ? (
                       <tr>
-                        <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted">
+                        <td colSpan={8} className="px-4 py-8 text-center text-sm text-muted">
                           No results.
                         </td>
                       </tr>
