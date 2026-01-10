@@ -477,9 +477,6 @@ export default function DraftCompareCompareModesClient() {
                       <Th onClick={() => toggleSort("rpB")} active={sortKey === "rpB"} dir={sortDir}>
                         B Avg R.P.
                       </Th>
-                      <Th onClick={() => toggleSort("adj")} active={sortKey === "adj"} dir={sortDir}>
-                        Adj Pick
-                      </Th>
                       <Th onClick={() => toggleSort("name")} active={sortKey === "name"} dir={sortDir}>
                         Player
                       </Th>
@@ -506,10 +503,6 @@ export default function DraftCompareCompareModesClient() {
                             {r.avgPickB == null ? "—" : safeNum(r.avgPickB).toFixed(3)}
                           </td>
                           <td className="px-4 py-3 text-muted tabular-nums">{r.avgRoundPickB || "—"}</td>
-                          <td className="px-4 py-3 font-semibold text-primary tabular-nums">
-                            {r.adjustedRoundPick || "—"}
-                            <div className="text-[11px] text-muted">#{r.adjustedOverall || "—"}</div>
-                          </td>
                           <td className="px-4 py-3 text-primary">{r.name}</td>
                           <td className="px-4 py-3 text-muted">{r.position}</td>
                           <td
