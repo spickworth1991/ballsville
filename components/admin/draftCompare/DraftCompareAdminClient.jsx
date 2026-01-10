@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CURRENT_SEASON } from "@/lib/season";
+import { getSupabase } from "@/lib/supabaseClient";
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
@@ -43,6 +44,16 @@ async function apiPost(url, body) {
   return data;
 }
 
+async function getAccessToken() {
+  try {
+    const supabase = getSupabase();
+    const { data } = await supabase.auth.getSession();
+    return data?.session?.access_token || "";
+  } catch {
+    return "";
+  }
+}
+
 export default function DraftCompareAdminClient() {
   const [season, setSeason] = useState(CURRENT_SEASON);
   const [rows, setRows] = useState([]);
@@ -50,6 +61,26 @@ export default function DraftCompareAdminClient() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
+
+  // Image selection should preview immediately, but only upload on "Save modes".
+  // Map: modeSlug -> { file: File, previewUrl: string }
+  const [pendingImages, setPendingImages] = useState(() => Object.create(null));
+  const pendingImagesRef = useRef(pendingImages);
+  useEffect(() => {
+    pendingImagesRef.current = pendingImages;
+  }, [pendingImages]);
+
+  // Cleanup object URLs on unmount
+  useEffect(() => {
+    return () => {
+      const current = pendingImagesRef.current || {};
+      for (const k of Object.keys(current)) {
+        try {
+          URL.revokeObjectURL(current[k]?.previewUrl);
+        } catch {}
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -117,12 +148,36 @@ export default function DraftCompareAdminClient() {
     setRows((prev) => safeArray(prev).filter((_, i) => i !== idx));
   };
 
+  function stageModeImage(modeSlug, file) {
+    const slug = cleanSlug(modeSlug);
+    if (!slug) {
+      setErr("Mode slug is required before selecting an image. Add a Title first, then Save modes.");
+      return;
+    }
+    if (!file) return;
+
+    setErr("");
+    setMsg("");
+
+    const previewUrl = URL.createObjectURL(file);
+
+    setPendingImages((prev) => {
+      const next = { ...(prev || {}) };
+      try {
+        if (next[slug]?.previewUrl) URL.revokeObjectURL(next[slug].previewUrl);
+      } catch {}
+      next[slug] = { file, previewUrl };
+      return next;
+    });
+  }
+
   const saveModes = async () => {
     setErr("");
     setMsg("");
     setSaving(true);
     try {
-      const payload = normalized
+      // 1) Build payload from current form state
+      let payload = normalized
         .map((r) => ({
           // IMPORTANT: do not auto-change existing slugs (modeSlug is derived
           // from the stored slug when present; otherwise it is derived from title).
@@ -136,6 +191,70 @@ export default function DraftCompareAdminClient() {
         }))
         .filter((r) => r.modeSlug && r.title);
 
+      // 2) Upload any staged images (auth required), then patch payload + rows.
+      const staged = pendingImagesRef.current || {};
+      const stagedSlugs = Object.keys(staged);
+
+      if (stagedSlugs.length) {
+        const token = await getAccessToken();
+        if (!token) throw new Error("Not authenticated. Please re-login to admin.");
+
+        const uploadedBySlug = Object.create(null);
+
+        for (const slug of stagedSlugs) {
+          const file = staged?.[slug]?.file;
+          if (!file) continue;
+
+          const form = new FormData();
+          form.append("file", file);
+          form.append("section", "draft-compare-mode");
+          form.append("season", String(season));
+          form.append("modeSlug", slug);
+
+          const res = await fetch(`/api/admin/upload`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            body: form,
+          });
+
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data?.ok) throw new Error(data?.error || `Upload failed (${res.status})`);
+
+          uploadedBySlug[slug] = {
+            imageKey: safeStr(data?.key),
+            image_url: safeStr(data?.url),
+          };
+        }
+
+        // patch payload
+        payload = payload.map((r) => {
+          const up = uploadedBySlug[r.modeSlug];
+          return up ? { ...r, ...up } : r;
+        });
+
+        // patch rows so UI reflects newly uploaded key/url
+        setRows((prev) =>
+          safeArray(prev).map((r) => {
+            const slug = cleanSlug(r?.modeSlug || r?.slug || r?.id || r?.name) || deriveSlug(r);
+            const up = uploadedBySlug[slug];
+            return up ? { ...r, imageKey: up.imageKey, image_url: up.image_url } : r;
+          })
+        );
+
+        // clear staged previews + revoke URLs
+        setPendingImages((prev) => {
+          const next = { ...(prev || {}) };
+          for (const slug of Object.keys(uploadedBySlug)) {
+            try {
+              if (next[slug]?.previewUrl) URL.revokeObjectURL(next[slug].previewUrl);
+            } catch {}
+            delete next[slug];
+          }
+          return next;
+        });
+      }
+
+      // 3) Save modes JSON to R2
       await apiPost(`/api/admin/draft-compare`, {
         season,
         type: "modes",
@@ -190,43 +309,6 @@ export default function DraftCompareAdminClient() {
     }
   };
 
-  const uploadModeImage = async (modeSlug, file) => {
-    if (!modeSlug) {
-      setErr("Mode slug is required before uploading an image.");
-      return;
-    }
-    setErr("");
-    setMsg("");
-    setSaving(true);
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("section", "draft-compare-mode");
-      form.append("season", String(season));
-      form.append("modeSlug", modeSlug);
-
-      const res = await fetch(`/api/admin/upload`, { method: "POST", body: form });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.ok) throw new Error(data?.error || `Upload failed (${res.status})`);
-
-      // Persist the returned key/url onto the mode row so Save modes writes it.
-      const imageKey = safeStr(data?.key);
-      const image_url = safeStr(data?.url);
-      setRows((prev) =>
-        safeArray(prev).map((r) => {
-          const slug = cleanSlug(r?.modeSlug || r?.slug || r?.id || r?.name);
-          return slug === modeSlug ? { ...r, imageKey, image_url } : r;
-        })
-      );
-
-      setMsg(`Uploaded image for ${modeSlug}.`);
-    } catch (e) {
-      setErr(e?.message || "Upload failed.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
     <section className="section">
       <div className="container-site space-y-6">
@@ -245,10 +327,7 @@ export default function DraftCompareAdminClient() {
 
         <div className="rounded-2xl border border-subtle bg-card-surface p-4 flex flex-wrap items-center gap-3">
           <label className="text-sm text-muted">Season</label>
-
-          {/* ✅ prevent hydration mismatch from extension-injected attributes */}
           <input
-            suppressHydrationWarning
             className="input"
             value={season}
             onChange={(e) => setSeason(Number(e.target.value) || CURRENT_SEASON)}
@@ -257,14 +336,10 @@ export default function DraftCompareAdminClient() {
             max={2100}
             style={{ width: 120 }}
           />
-
-          {/* ✅ prevent hydration mismatch from extension-injected attributes */}
-          <button suppressHydrationWarning className="btn btn-secondary" onClick={addMode}>
+          <button className="btn btn-secondary" onClick={addMode}>
             Add mode
           </button>
-
-          {/* ✅ prevent hydration mismatch from extension-injected attributes */}
-          <button suppressHydrationWarning className="btn btn-primary" disabled={saving} onClick={saveModes}>
+          <button className="btn btn-primary" disabled={saving} onClick={saveModes}>
             {saving ? "Saving…" : "Save modes"}
           </button>
         </div>
@@ -282,129 +357,141 @@ export default function DraftCompareAdminClient() {
 
         {!loading ? (
           <div className="grid gap-4">
-            {normalized.map((r, idx) => (
-              <div key={`${idx}-${r.modeSlug}`} className="rounded-2xl border border-subtle bg-card-surface p-4">
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-                  {r.hasDraftJson ? (
-                    <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-100">
-                      JSON uploaded
-                    </span>
-                  ) : (
-                    <span className="rounded-full border border-border/60 bg-black/5 px-3 py-1 text-[11px] font-semibold text-muted">
-                      No JSON
-                    </span>
-                  )}
+            {normalized.map((r, idx) => {
+              const slug = cleanSlug(r.modeSlug);
+              const stagedPreview = pendingImages?.[slug]?.previewUrl || "";
+              const previewUrl = stagedPreview || r.image_url || "";
 
-                  {r.image_url ? (
-                    <span className="rounded-full border border-border/60 bg-black/5 px-3 py-1 text-[11px] font-semibold text-muted">
-                      Image set
-                    </span>
-                  ) : null}
+              return (
+                <div key={`${idx}-${r.modeSlug}`} className="rounded-2xl border border-subtle bg-card-surface p-4">
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    {r.hasDraftJson ? (
+                      <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-100">
+                        JSON uploaded
+                      </span>
+                    ) : (
+                      <span className="rounded-full border border-border/60 bg-black/5 px-3 py-1 text-[11px] font-semibold text-muted">
+                        No JSON
+                      </span>
+                    )}
+
+                    {previewUrl ? (
+                      <span className="rounded-full border border-border/60 bg-black/5 px-3 py-1 text-[11px] font-semibold text-muted">
+                        Image set
+                      </span>
+                    ) : null}
+
+                    {stagedPreview ? (
+                      <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold text-amber-100">
+                        Pending save
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <label className="block text-xs text-muted">Mode slug</label>
+                      <input className="input bg-black/5 text-muted" value={safeStr(r.modeSlug)} disabled readOnly />
+                      <div className="text-[11px] text-muted">Auto-filled from Title for new modes.</div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-xs text-muted">Order</label>
+                      <input
+                        className="input"
+                        value={safeStr(r.order)}
+                        onChange={(e) => updateRow(idx, { order: Number(e.target.value) || 0 })}
+                        type="number"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block text-xs text-muted">Year</label>
+                      <input
+                        className="input"
+                        value={safeStr(r.year)}
+                        onChange={(e) => updateRow(idx, { year: Number(e.target.value) || season })}
+                        type="number"
+                        min={2000}
+                        max={2100}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block text-xs text-muted">Title</label>
+                      <input
+                        className="input"
+                        value={safeStr(r.title)}
+                        onChange={(e) => updateRow(idx, { title: e.target.value })}
+                        placeholder="Mode display name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-xs text-muted">Subtitle (optional)</label>
+                      <input
+                        className="input"
+                        value={safeStr(r.subtitle)}
+                        onChange={(e) => updateRow(idx, { subtitle: e.target.value })}
+                        placeholder="Short description"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <label className="btn btn-secondary">
+                      Upload draft JSON
+                      <input
+                        type="file"
+                        accept="application/json,.json"
+                        hidden
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          e.target.value = "";
+                          if (f) uploadDraftJson(cleanSlug(r.modeSlug), f);
+                        }}
+                      />
+                    </label>
+
+                    <label className="btn btn-secondary">
+                      Select mode image
+                      <input
+                        type="file"
+                        accept="image/*"
+                        hidden
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          e.target.value = "";
+                          if (f) stageModeImage(cleanSlug(r.modeSlug), f);
+                        }}
+                      />
+                    </label>
+
+                    {previewUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={previewUrl}
+                        alt=""
+                        className="h-10 w-10 rounded-lg border border-subtle object-cover"
+                        loading="lazy"
+                      />
+                    ) : null}
+
+                    <Link
+                      prefetch={false}
+                      className="btn btn-secondary"
+                      href={`/draft-compare/mode?mode=${encodeURIComponent(cleanSlug(r.modeSlug))}&year=${encodeURIComponent(
+                        String(season)
+                      )}`}
+                    >
+                      View public
+                    </Link>
+
+                    <button className="btn btn-secondary" onClick={() => removeRow(idx)}>
+                      Remove
+                    </button>
+                  </div>
                 </div>
-
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <label className="block text-xs text-muted">Mode slug</label>
-                    <input className="input bg-black/5 text-muted" value={safeStr(r.modeSlug)} disabled readOnly />
-                    <div className="text-[11px] text-muted">Auto-filled from Title for new modes.</div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-xs text-muted">Order</label>
-                    <input
-                      className="input"
-                      value={safeStr(r.order)}
-                      onChange={(e) => updateRow(idx, { order: Number(e.target.value) || 0 })}
-                      type="number"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="block text-xs text-muted">Year</label>
-                    <input
-                      className="input"
-                      value={safeStr(r.year)}
-                      onChange={(e) => updateRow(idx, { year: Number(e.target.value) || season })}
-                      type="number"
-                      min={2000}
-                      max={2100}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="block text-xs text-muted">Title</label>
-                    <input
-                      className="input"
-                      value={safeStr(r.title)}
-                      onChange={(e) => updateRow(idx, { title: e.target.value })}
-                      placeholder="Mode display name"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-xs text-muted">Subtitle (optional)</label>
-                    <input
-                      className="input"
-                      value={safeStr(r.subtitle)}
-                      onChange={(e) => updateRow(idx, { subtitle: e.target.value })}
-                      placeholder="Short description"
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <label className="btn btn-secondary">
-                    Upload draft JSON
-                    <input
-                      type="file"
-                      accept="application/json,.json"
-                      hidden
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        e.target.value = "";
-                        if (f) uploadDraftJson(cleanSlug(r.modeSlug), f);
-                      }}
-                    />
-                  </label>
-
-                  <label className="btn btn-secondary">
-                    Upload mode image
-                    <input
-                      type="file"
-                      accept="image/*"
-                      hidden
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        e.target.value = "";
-                        if (f) uploadModeImage(cleanSlug(r.modeSlug), f);
-                      }}
-                    />
-                  </label>
-
-                  {r.image_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={r.image_url}
-                      alt=""
-                      className="h-10 w-10 rounded-lg border border-subtle object-cover"
-                      loading="lazy"
-                    />
-                  ) : null}
-
-                  <Link
-                    prefetch={false}
-                    className="btn btn-secondary"
-                    href={`/draft-compare/mode?mode=${encodeURIComponent(cleanSlug(r.modeSlug))}&year=${encodeURIComponent(
-                      String(r.year || season)
-                    )}`}
-                  >
-                    View public
-                  </Link>
-
-                  <button className="btn btn-secondary" onClick={() => removeRow(idx)}>
-                    Remove
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : null}
       </div>

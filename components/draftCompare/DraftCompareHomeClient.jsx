@@ -133,11 +133,18 @@ function YearSection({ year }) {
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {rows.map((m) => (
-                <Link
-                  key={m.id}
-                  href={`/draft-compare/mode?mode=${encodeURIComponent(m.slug)}&year=${encodeURIComponent(m.year)}`}
-                  className="group relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-soft transition-shadow hover:shadow-glow"
-                >
+                // inside your map() where you render mode cards/links:
+
+                  <Link
+                    key={m.id}
+                    // IMPORTANT: mode "year" is for display/sorting only.
+                    // Draft JSON is stored under the season bucket (this page's `year`), not mode.year.
+                    href={`/draft-compare/mode?mode=${encodeURIComponent(m.slug)}&year=${encodeURIComponent(String(year))}`}
+                    className={(
+                      "group relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-soft transition-shadow hover:shadow-glow"
+                    )}
+                  >
+
                   <div className="absolute inset-0 opacity-20">
                     {m.image_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
