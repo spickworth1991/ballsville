@@ -202,7 +202,9 @@ function ModeInner({ mode, season, version, gateError }) {
     const base = comparing
       ? safeArray(compareRows).map((r) => ({
           key: `${safeStr(r?.name)}|||${safeStr(r?.position)}`,
-          adp: safeNum(r?.adpA),
+          // If a player only appears on one side, use the side that exists
+          // so they land in the correct adjusted slot instead of 1.01.
+          adp: safeNum(r?.sortAdp || r?.adpA || r?.adpB),
         }))
       : groupPlayersArray(groupA).map((p) => ({
           key: `${safeStr(p?.name)}|||${safeStr(p?.position)}`,
@@ -252,13 +254,21 @@ function ModeInner({ mode, season, version, gateError }) {
     const pFilter = pos;
 
     const base = comparing
-      ? compareRows.map((r) => ({
-          key: `${safeStr(r.name)}|||${safeStr(r.position)}`,
-          name: r.name,
-          position: r.position,
-          adp: safeNum(r.adpA),
-          delta: r.delta == null ? null : safeNum(r.delta), // B - A
-        }))
+      ? compareRows.map((r) => {
+          const adpA = r.adpA == null ? null : safeNum(r.adpA);
+          const adpB = r.adpB == null ? null : safeNum(r.adpB);
+          // Sorting should never treat "missing" as 0 (which forces 1.01).
+          const adpSortA = adpA && adpA > 0 ? adpA : Number.POSITIVE_INFINITY;
+          return {
+            key: `${safeStr(r.name)}|||${safeStr(r.position)}`,
+            name: r.name,
+            position: r.position,
+            adpA,
+            adpB,
+            adpSortA,
+            delta: r.delta == null ? null : safeNum(r.delta), // B - A
+          };
+        })
       : groupPlayersArray(groupA).map((r) => ({
           key: `${safeStr(r.name)}|||${safeStr(r.position)}`,
           name: r.name,
@@ -269,6 +279,19 @@ function ModeInner({ mode, season, version, gateError }) {
 
     const withAdj = base.map((r) => {
       const adj = adjustedRankByKey?.[r.key];
+      if (comparing) {
+        const a = r.adpA;
+        const b = r.adpB;
+        return {
+          ...r,
+          avgPickA: a,
+          avgPickB: b,
+          avgRoundPickA: a && a > 0 ? formatRoundPickFromAvgOverall(a, teams) : "—",
+          avgRoundPickB: b && b > 0 ? formatRoundPickFromAvgOverall(b, teams) : "—",
+          adjustedOverall: adj?.adjustedOverall ?? null,
+          adjustedRoundPick: adj?.adjustedRoundPick ?? "—",
+        };
+      }
       return {
         ...r,
         avgRoundPick: formatRoundPickFromAvgOverall(safeNum(r.adp), teams),
@@ -289,6 +312,12 @@ function ModeInner({ mode, season, version, gateError }) {
       if (sortKey === "pos") return dir * safeStr(a.position).localeCompare(safeStr(b.position));
       if (sortKey === "adj") return dir * (safeNum(a.adjustedOverall) - safeNum(b.adjustedOverall));
       if (sortKey === "delta") return dir * (safeNum(a.delta) - safeNum(b.delta));
+      if (comparing) {
+        // When comparing, "Avg Pick" and "Avg R.P." sort by Side A.
+        const ax = Number.isFinite(a.adpSortA) ? a.adpSortA : Number.POSITIVE_INFINITY;
+        const bx = Number.isFinite(b.adpSortA) ? b.adpSortA : Number.POSITIVE_INFINITY;
+        return dir * (ax - bx);
+      }
       if (sortKey === "rp") return dir * (safeNum(a.adp) - safeNum(b.adp));
       return dir * (safeNum(a.adp) - safeNum(b.adp));
     });
@@ -471,6 +500,16 @@ function ModeInner({ mode, season, version, gateError }) {
                       <Th onClick={() => toggleSort("rp")} active={sortKey === "rp"} dir={sortDir}>
                         Avg R.P.
                       </Th>
+                      {comparing ? (
+                        <>
+                          <Th onClick={() => toggleSort("adp")} active={false} dir={sortDir}>
+                            B Avg Pick
+                          </Th>
+                          <Th onClick={() => toggleSort("adp")} active={false} dir={sortDir}>
+                            B Avg R.P.
+                          </Th>
+                        </>
+                      ) : null}
                       <Th onClick={() => toggleSort("adj")} active={sortKey === "adj"} dir={sortDir}>
                         Adj Pick
                       </Th>
@@ -495,9 +534,25 @@ function ModeInner({ mode, season, version, gateError }) {
                       return (
                         <tr key={r.key} className="border-t border-border/60 hover:bg-background/30">
                           <td className="px-4 py-3 font-semibold text-primary tabular-nums">
-                            {safeNum(r.adp) ? safeNum(r.adp).toFixed(3) : "—"}
+                            {comparing
+                              ? r.avgPickA && r.avgPickA > 0
+                                ? r.avgPickA.toFixed(3)
+                                : "—"
+                              : safeNum(r.adp)
+                              ? safeNum(r.adp).toFixed(3)
+                              : "—"}
                           </td>
-                          <td className="px-4 py-3 text-muted tabular-nums">{r.avgRoundPick || "—"}</td>
+                          <td className="px-4 py-3 text-muted tabular-nums">
+                            {comparing ? r.avgRoundPickA : r.avgRoundPick || "—"}
+                          </td>
+                          {comparing ? (
+                            <>
+                              <td className="px-4 py-3 font-semibold text-accent tabular-nums">
+                                {r.avgPickB && r.avgPickB > 0 ? r.avgPickB.toFixed(3) : "—"}
+                              </td>
+                              <td className="px-4 py-3 text-muted tabular-nums">{r.avgRoundPickB}</td>
+                            </>
+                          ) : null}
                           <td className="px-4 py-3 font-semibold text-primary tabular-nums">
                             {r.adjustedRoundPick || "—"}
                             <div className="text-[11px] text-muted">#{r.adjustedOverall || "—"}</div>
@@ -522,7 +577,7 @@ function ModeInner({ mode, season, version, gateError }) {
 
                     {!listRows.length ? (
                       <tr>
-                        <td colSpan={comparing ? 6 : 5} className="px-4 py-8 text-center text-sm text-muted">
+                        <td colSpan={comparing ? 8 : 5} className="px-4 py-8 text-center text-sm text-muted">
                           No results.
                         </td>
                       </tr>
