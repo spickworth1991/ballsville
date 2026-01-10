@@ -1,3 +1,4 @@
+// Admin client component for Draft Compare.
 "use client";
 
 import Link from "next/link";

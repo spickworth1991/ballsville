@@ -1,3 +1,4 @@
+// Client-side component for Draft Compare mode.
 "use client";
 
 import Link from "next/link";
@@ -5,12 +6,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import { CURRENT_SEASON } from "@/lib/season";
+import { r2Url } from "@/lib/r2Url";
 import {
   buildGroupFromDraftJson,
   buildPlayerResults,
   formatRoundPickFromAvgOverall,
 } from "@/lib/draftCompareUtils";
-import { r2Url } from "@/lib/r2Url";
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
@@ -22,7 +23,6 @@ function safeNum(v) {
   const x = typeof v === "number" ? v : Number(v);
   return Number.isFinite(x) ? x : 0;
 }
-
 function cleanSlug(s) {
   return safeStr(s)
     .trim()
@@ -31,616 +31,900 @@ function cleanSlug(s) {
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
 }
-
-function clsx(...parts) {
-  return parts.filter(Boolean).join(" ");
+function withV(url, v) {
+  if (!v) return url;
+  const hasQ = url.includes("?");
+  return `${url}${hasQ ? "&" : "?"}v=${encodeURIComponent(v)}`;
+}
+function pctFmt(x) {
+  if (!Number.isFinite(x)) return "—";
+  return `${(x * 100).toFixed(0)}%`;
+}
+function cls(...a) {
+  return a.filter(Boolean).join(" ");
 }
 
-function fmtPct(x) {
-  const n = typeof x === "number" ? x : Number(x);
-  if (!Number.isFinite(n)) return "0%";
-  return `${Math.round(n * 100)}%`;
-}
-
-function sortDirToggle(curDir) {
-  return curDir === "asc" ? "desc" : "asc";
+function groupPlayersArray(group) {
+  if (!group) return [];
+  const g = group;
+  if (Array.isArray(g?.players)) return g.players;
+  if (g?.players && typeof g.players === "object") return Object.values(g.players);
+  return safeArray(g?.playersList);
 }
 
 export default function DraftCompareModeClient() {
   const sp = useSearchParams();
-  const season = safeStr(sp.get("year") || CURRENT_SEASON || "2025");
   const mode = cleanSlug(sp.get("mode") || "");
-
-  const [draftJson, setDraftJson] = useState(null);
-  const [err, setErr] = useState("");
-
-  // league selection
-  const [selA, setSelA] = useState(() => new Set());
-  const [selB, setSelB] = useState(() => new Set());
-  const canCompare = selA.size > 0 && selB.size > 0;
-
-  // premium list controls
-  const [q, setQ] = useState("");
-  const [pos, setPos] = useState("ALL");
-  const [sortKey, setSortKey] = useState("adpA");
-  const [sortDir, setSortDir] = useState("asc");
-
-  // draftboard controls
-  const [boardSide, setBoardSide] = useState("A"); // "A" | "B"
-  const [openCell, setOpenCell] = useState(null); // { key, roundPick, overallPick, entries: [] }
+  const season = safeStr(sp.get("year") || CURRENT_SEASON || "2025");
 
   return (
-    <SectionManifestGate
-      manifestKey={`data/manifests/draft-compare_${season}.json`}
-      title="Draft Compare"
-      description="Draft tendencies by mode."
-    >
-      {({ version }) => {
-        const dataKey = `data/draft-compare/drafts_${season}_${mode}.json?v=${encodeURIComponent(
-          version || ""
-        )}`;
-        const fetchUrl = useMemo(() => r2Url(dataKey), [dataKey]);
+    <SectionManifestGate section="draft-compare" season={season}>
+      {({ version, error }) => (
+        <ModeInner mode={mode} season={season} version={version} gateError={error} />
+      )}
+    </SectionManifestGate>
+  );
+}
 
-        useEffect(() => {
-          let alive = true;
-          setErr("");
-          setDraftJson(null);
-          if (!mode) return;
+function ModeInner({ mode, season, version, gateError }) {
+  const [raw, setRaw] = useState(null);
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
 
-          fetch(fetchUrl)
-            .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-            .then((j) => {
-              if (!alive) return;
-              setDraftJson(j);
-            })
-            .catch((e) => {
-              if (!alive) return;
-              setErr(e?.message || "Failed to load draft JSON");
-            });
+  // Prefer the human-friendly title saved in Admin (if present in the JSON)
+  const pageTitle = useMemo(() => {
+    const t =
+      raw?.meta?.title ||
+      raw?.meta?.displayTitle ||
+      raw?.title ||
+      raw?.displayTitle ||
+      raw?.modeTitle ||
+      raw?.name;
+    return safeStr(t).trim() || mode;
+  }, [raw, mode]);
 
-          return () => {
-            alive = false;
-          };
-        }, [fetchUrl, mode]);
+  // league sets
+  const [sideA, setSideA] = useState([]);
+  const [sideB, setSideB] = useState([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
-        // Leagues present in uploaded JSON
-        const allLeagues = useMemo(() => {
-          const per = draftJson?.perLeague || {};
-          const a = safeArray(per?.sideA);
-          const b = safeArray(per?.sideB);
-          const all = [...a, ...b];
-          const m = new Map();
-          for (const lg of all) {
-            const id = safeStr(lg?.leagueId || lg?.id).trim();
-            if (!id) continue;
-            if (!m.has(id))
-              m.set(id, {
-                leagueId: id,
-                name: safeStr(lg?.name || lg?.leagueName || id),
-              });
-          }
-          return Array.from(m.values());
-        }, [draftJson]);
+  // view toggle (board/list) — split removed
+  const [view, setView] = useState("list"); // "board" | "list"
 
-        // Default behavior: if nothing selected on either side, treat ALL as A
-        const effectiveAIds = useMemo(() => {
-          if (selA.size) return Array.from(selA);
-          if (selB.size) return Array.from(selA); // empty A is allowed only if B has something, but we'll still keep A empty
-          return allLeagues.map((l) => l.leagueId);
-        }, [selA, selB, allLeagues]);
+  // which group is shown on the board when comparing
+  const [boardSide, setBoardSide] = useState("A"); // "A" | "B"
 
-        const groupA = useMemo(() => {
-          return buildGroupFromDraftJson(draftJson, effectiveAIds);
-        }, [draftJson, effectiveAIds]);
+  const dataUrl = useMemo(() => {
+    if (!mode) return "";
+    const key = `data/draft-compare/drafts_${season}_${mode}.json`;
+    return withV(r2Url(key), version);
+  }, [mode, season, version]);
 
-        const groupB = useMemo(() => {
-          const ids = Array.from(selB);
-          return ids.length ? buildGroupFromDraftJson(draftJson, ids) : null;
-        }, [draftJson, selB]);
+  useEffect(() => {
+    let cancelled = false;
 
-        // Keep board side sane
-        useEffect(() => {
-          if (!canCompare) setBoardSide("A");
-        }, [canCompare]);
+    async function load() {
+      if (!dataUrl) {
+        setRaw(null);
+        setLoading(false);
+        return;
+      }
+      try {
+        setErr("");
+        setLoading(true);
+        const res = await fetch(dataUrl, { cache: "no-store" });
+        if (!res.ok) throw new Error(`draft json fetch failed (${res.status})`);
+        const j = await res.json();
+        if (!cancelled) setRaw(j);
+      } catch (e) {
+        if (!cancelled) setErr(e?.message || "Failed to load draft JSON");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
 
-        const teams = safeNum(groupA?.meta?.teams) || 12;
-        const rounds = safeNum(groupA?.meta?.rounds) || 18;
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [dataUrl]);
 
-        function toggleLeague(id, side) {
-          const aHas = selA.has(id);
-          const bHas = selB.has(id);
+  // Derive league list from the JSON (supports perLeague.sideA/sideB and direct leagues array)
+  const leagueRows = useMemo(() => {
+    const per = raw?.perLeague;
+    const all = [...safeArray(per?.sideA), ...safeArray(per?.sideB), ...safeArray(raw?.leagues)];
 
-          if (side === "A") {
-            const next = new Set(selA);
-            if (aHas) next.delete(id);
-            else {
-              next.add(id);
-              if (bHas) {
-                const nb = new Set(selB);
-                nb.delete(id);
-                setSelB(nb);
-              }
-            }
-            setSelA(next);
-          } else {
-            const next = new Set(selB);
-            if (bHas) next.delete(id);
-            else {
-              next.add(id);
-              if (aHas) {
-                const na = new Set(selA);
-                na.delete(id);
-                setSelA(na);
-              }
-            }
-            setSelB(next);
-          }
-        }
+    const m = new Map();
+    for (const l of all) {
+      const id = safeStr(l?.leagueId || l?.id).trim();
+      if (!id) continue;
+      if (!m.has(id)) {
+        m.set(id, {
+          leagueId: id,
+          name: safeStr(l?.name || l?.leagueName || id).trim() || id,
+        });
+      }
+    }
+    return Array.from(m.values());
+  }, [raw]);
 
-        const rawRows = useMemo(() => {
-          if (!groupA) return [];
-          return buildPlayerResults(groupA, groupB);
-        }, [groupA, groupB]);
+  // Initialize Side A to "all leagues" once, if user hasn't chosen anything.
+  useEffect(() => {
+    if (!leagueRows.length) return;
+    if (sideA.length || sideB.length) return;
+    setSideA(leagueRows.map((x) => x.leagueId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leagueRows.length]);
 
-        const allPositions = useMemo(() => {
-          const s = new Set();
-          for (const r of rawRows) s.add(safeStr(r?.position).trim() || "UNK");
-          return Array.from(s).sort((a, b) => a.localeCompare(b));
-        }, [rawRows]);
+  // Safety: if Side A is ever emptied, treat it as "all leagues" so list/board always work.
+  const effectiveSideA = useMemo(() => {
+    if (sideA.length) return sideA;
+    return leagueRows.map((x) => x.leagueId);
+  }, [sideA, leagueRows]);
 
-        const filteredRows = useMemo(() => {
-          const needle = safeStr(q).trim().toLowerCase();
-          return rawRows.filter((r) => {
-            if (pos !== "ALL" && safeStr(r?.position).trim() !== pos) return false;
-            if (!needle) return true;
-            return safeStr(r?.name).toLowerCase().includes(needle);
-          });
-        }, [rawRows, q, pos]);
+  const comparing = effectiveSideA.length > 0 && sideB.length > 0;
 
-        const rows = useMemo(() => {
-          const dir = sortDir === "asc" ? 1 : -1;
-          const get = (r) => {
-            switch (sortKey) {
-              case "name":
-                return safeStr(r?.name).toLowerCase();
-              case "position":
-                return safeStr(r?.position).toLowerCase();
-              case "adpA":
-                return r?.adpA == null ? 1e9 : safeNum(r?.adpA);
-              case "adpB":
-                return r?.adpB == null ? 1e9 : safeNum(r?.adpB);
-              case "delta":
-                return r?.delta == null ? 0 : safeNum(r?.delta);
-              default:
-                return 0;
-            }
-          };
+  // keep boardSide sane
+  useEffect(() => {
+    if (!comparing) setBoardSide("A");
+  }, [comparing]);
 
-          const out = [...filteredRows];
-          out.sort((a, b) => {
-            const av = get(a);
-            const bv = get(b);
-            if (typeof av === "string" || typeof bv === "string") {
-              return dir * String(av).localeCompare(String(bv));
-            }
-            return dir * (safeNum(av) - safeNum(bv));
-          });
-          return out;
-        }, [filteredRows, sortKey, sortDir]);
+  const groupA = useMemo(() => {
+    if (!raw) return null;
+    return buildGroupFromDraftJson(raw, effectiveSideA);
+  }, [raw, effectiveSideA]);
 
-        // Draftboard data
-        const boardCells = useMemo(() => {
-          const g = boardSide === "B" ? groupB : groupA;
-          const cells = g?.draftboard?.cells || {};
-          return cells && typeof cells === "object" ? cells : {};
-        }, [groupA, groupB, boardSide]);
+  const groupB = useMemo(() => {
+    if (!raw) return null;
+    if (!sideB.length) return null;
+    return buildGroupFromDraftJson(raw, sideB);
+  }, [raw, sideB]);
 
-        function openCellModal(cellKey) {
-          const entries = safeArray(boardCells?.[cellKey]);
-          const [rStr, pStr] = safeStr(cellKey).split("-");
-          const round = safeNum(rStr);
-          const pickInRound = safeNum(pStr);
-          const overallPick = (round - 1) * teams + pickInRound;
-          const roundPick = formatRoundPickFromAvgOverall(overallPick, teams);
-          setOpenCell({
-            key: cellKey,
-            entries,
-            roundPick,
-            overallPick,
-            round,
-            pickInRound,
-          });
-        }
+  const effectiveGroupForBoard = useMemo(() => {
+    if (!groupA) return null;
+    if (!comparing) return groupA;
+    return boardSide === "B" && groupB ? groupB : groupA;
+  }, [groupA, groupB, comparing, boardSide]);
 
-        function SortTh({ label, k, align = "left" }) {
-          const active = sortKey === k;
-          return (
-            <th className={clsx("py-2", align === "right" ? "text-right" : "text-left")}>
-              <button
-                type="button"
-                onClick={() => {
-                  if (active) setSortDir(sortDirToggle(sortDir));
-                  else {
-                    setSortKey(k);
-                    setSortDir(k === "name" || k === "position" ? "asc" : "asc");
-                  }
-                }}
-                className={clsx(
-                  "inline-flex items-center gap-1 rounded-lg px-2 py-1 transition",
-                  "hover:bg-black/10",
-                  active ? "bg-black/10 text-primary" : "text-muted"
-                )}
-              >
-                <span>{label}</span>
-                {active ? <span className="text-[10px]">{sortDir === "asc" ? "▲" : "▼"}</span> : null}
-              </button>
-            </th>
-          );
-        }
+  const teams = safeNum(groupA?.meta?.teams) || safeNum(groupB?.meta?.teams) || 12;
+  const rounds = safeNum(groupA?.meta?.rounds) || safeNum(groupB?.meta?.rounds) || 18;
 
-        return (
-          <section className="mx-auto max-w-6xl px-4 py-8">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="text-xs text-muted">Draft Compare</div>
-                <h1 className="text-2xl font-bold tracking-tight">{mode || "Mode"}</h1>
-                <div className="mt-1 text-sm text-muted">
-                  {canCompare ? "Comparing Side A vs Side B" : "Viewing aggregated ADP (Side A)"}
-                </div>
-              </div>
+  const compareRows = useMemo(() => {
+    if (!groupA || !groupB) return [];
+    return buildPlayerResults(groupA, groupB);
+  }, [groupA, groupB]);
 
-              <div className="flex items-center gap-2">
-                <Link
-                  href="/draft-compare"
-                  className="rounded-xl border border-subtle bg-black/10 px-4 py-2 text-sm hover:bg-black/15"
-                >
-                  All Modes
-                </Link>
-              </div>
-            </div>
+  // Adjusted order: renumber players strictly by ADP order (1..N), then map to round.pick.
+  // Used for the draftboard and as an extra column in the list.
+  const adjustedRankByKey = useMemo(() => {
+    if (!groupA) return Object.create(null);
 
-            {!mode ? (
-              <div className="mt-6 rounded-2xl border border-subtle bg-black/5 p-6 text-sm text-muted">
-                Missing mode.
-              </div>
-            ) : err ? (
-              <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-                {err}
-              </div>
-            ) : !draftJson ? (
-              <div className="mt-6 rounded-2xl border border-subtle bg-black/5 p-6 text-sm text-muted">
-                Loading…
-              </div>
-            ) : (
-              <>
-                {/* League selector */}
-                <div className="mt-6 rounded-3xl border border-subtle bg-card-surface p-5 shadow-soft">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold">Select leagues</div>
-                      <div className="text-xs text-muted">
-                        Click A or B per league. A league can’t be in both sets.
-                      </div>
-                    </div>
-                    <div className="text-xs text-muted">
-                      Teams: <span className="font-semibold text-primary">{teams}</span> · Rounds:{" "}
-                      <span className="font-semibold text-primary">{rounds}</span>
-                    </div>
-                  </div>
+    const base = comparing
+      ? safeArray(compareRows).map((r) => ({
+          key: `${safeStr(r?.name)}|||${safeStr(r?.position)}`,
+          adp: safeNum(r?.adpA),
+        }))
+      : groupPlayersArray(groupA).map((p) => ({
+          key: `${safeStr(p?.name)}|||${safeStr(p?.position)}`,
+          adp: safeNum(p?.avgOverallPick ?? p?.adp ?? p?.avgPick),
+        }));
 
-                  <div className="mt-4 grid gap-2">
-                    {allLeagues.map((lg) => {
-                      const id = lg.leagueId;
-                      const inA = selA.has(id) || (!selA.size && !selB.size); // default all->A
-                      const inB = selB.has(id);
+    const sorted = base
+      .filter((x) => x.key && Number.isFinite(x.adp) && x.adp > 0)
+      .slice()
+      .sort((a, b) => a.adp - b.adp);
 
-                      return (
-                        <div
-                          key={id}
-                          className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-subtle bg-black/5 px-3 py-2"
-                        >
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-medium">{lg.name}</div>
-                            <div className="truncate text-[11px] text-muted">{id}</div>
-                          </div>
+    const out = Object.create(null);
+    let rank = 0;
+    for (const it of sorted) {
+      rank += 1;
+      out[it.key] = {
+        adjustedOverall: rank,
+        adjustedRoundPick: formatRoundPickFromAvgOverall(rank, teams),
+      };
+    }
+    return out;
+  }, [groupA, compareRows, comparing, teams]);
 
-                          <div className="flex shrink-0 items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => toggleLeague(id, "A")}
-                              className={clsx(
-                                "rounded-xl px-3 py-1.5 text-xs border transition",
-                                inA
-                                  ? "border-accent/40 bg-accent/15 text-accent"
-                                  : "border-subtle bg-black/10 hover:bg-black/15"
-                              )}
-                            >
-                              Side A
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => toggleLeague(id, "B")}
-                              className={clsx(
-                                "rounded-xl px-3 py-1.5 text-xs border transition",
-                                inB
-                                  ? "border-primary/40 bg-primary/15 text-primary"
-                                  : "border-subtle bg-black/10 hover:bg-black/15"
-                              )}
-                            >
-                              Side B
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+  // --- list controls ---
+  const [query, setQuery] = useState("");
+  const [pos, setPos] = useState("ALL");
+  const [sortKey, setSortKey] = useState("adp"); // adp | rp | name | pos | delta | adj
+  const [sortDir, setSortDir] = useState("asc"); // asc/desc
 
-                {/* Draftboard */}
-                <div className="mt-8 rounded-3xl border border-subtle bg-card-surface p-5 shadow-soft">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold">Draftboard</div>
-                      <div className="text-xs text-muted">Click any pick to see all players drafted there.</div>
-                    </div>
-                    {canCompare ? (
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setBoardSide("A")}
-                          className={clsx(
-                            "rounded-xl border px-3 py-1.5 text-xs transition",
-                            boardSide === "A"
-                              ? "border-accent/40 bg-accent/15 text-accent"
-                              : "border-subtle bg-black/10 hover:bg-black/15"
-                          )}
-                        >
-                          Side A
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setBoardSide("B")}
-                          className={clsx(
-                            "rounded-xl border px-3 py-1.5 text-xs transition",
-                            boardSide === "B"
-                              ? "border-primary/40 bg-primary/15 text-primary"
-                              : "border-subtle bg-black/10 hover:bg-black/15"
-                          )}
-                        >
-                          Side B
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="text-xs text-muted">Aggregated (Side A)</div>
-                    )}
-                  </div>
+  const positions = useMemo(() => {
+    const set = new Set();
+    for (const r of groupPlayersArray(groupA)) {
+      const p = safeStr(r?.position).toUpperCase().trim();
+      if (p) set.add(p);
+    }
+    for (const r of safeArray(compareRows)) {
+      const p = safeStr(r?.position).toUpperCase().trim();
+      if (p) set.add(p);
+    }
+    return ["ALL", ...Array.from(set).sort()];
+  }, [groupA, compareRows]);
 
-                  <div className="mt-4 overflow-x-auto">
-                    <div
-                      className="grid gap-2"
-                      style={{ gridTemplateColumns: `repeat(${Math.max(teams, 1)}, minmax(120px, 1fr))` }}
-                    >
-                      {Array.from({ length: Math.max(rounds, 1) }, (_, r0) => {
-                        const round = r0 + 1;
-                        return Array.from({ length: Math.max(teams, 1) }, (_, p0) => {
-                          const pickInRound = p0 + 1;
-                          const cellKey = `${round}-${pickInRound}`;
-                          const entries = safeArray(boardCells?.[cellKey]);
-                          const top = entries[0];
-                          const overallPick = (round - 1) * teams + pickInRound;
-                          const rp = formatRoundPickFromAvgOverall(overallPick, teams);
+  const listRows = useMemo(() => {
+    if (!groupA) return [];
 
-                          return (
-                            <button
-                              key={cellKey}
-                              type="button"
-                              onClick={() => openCellModal(cellKey)}
-                              className={clsx(
-                                "group relative rounded-2xl border p-3 text-left transition",
-                                "border-subtle bg-black/5 hover:bg-black/10"
-                              )}
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="text-[11px] text-muted">
-                                  <span className="font-semibold text-primary">{rp}</span>
-                                  <span className="ml-2">#{overallPick}</span>
-                                </div>
-                                <div className="text-[10px] text-muted">{entries.length ? `${entries.length} opts` : ""}</div>
-                              </div>
+    const q = query.trim().toLowerCase();
+    const pFilter = pos;
 
-                              {top ? (
-                                <>
-                                  <div className="mt-2 line-clamp-2 text-sm font-semibold leading-snug">
-                                    {top.name}
-                                  </div>
-                                  <div className="mt-1 flex items-center justify-between text-[11px]">
-                                    <span className="text-muted">{top.position}</span>
-                                    <span className="tabular-nums text-muted">
-                                      {fmtPct(top.pct)} · {safeNum(top.count)}
-                                    </span>
-                                  </div>
-                                </>
-                              ) : (
-                                <div className="mt-3 text-xs text-muted">No data</div>
-                              )}
+    const base = comparing
+      ? compareRows.map((r) => ({
+          key: `${safeStr(r.name)}|||${safeStr(r.position)}`,
+          name: r.name,
+          position: r.position,
+          adp: safeNum(r.adpA),
+          delta: r.delta == null ? null : safeNum(r.delta), // B - A
+        }))
+      : groupPlayersArray(groupA).map((r) => ({
+          key: `${safeStr(r.name)}|||${safeStr(r.position)}`,
+          name: r.name,
+          position: r.position,
+          adp: safeNum(r.avgOverallPick ?? r.adp ?? r.avgPick),
+          delta: null,
+        }));
 
-                              <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-transparent transition group-hover:ring-primary/15" />
-                            </button>
-                          );
-                        });
-                      }).flat()}
-                    </div>
-                  </div>
+    const withAdj = base.map((r) => {
+      const adj = adjustedRankByKey?.[r.key];
+      return {
+        ...r,
+        avgRoundPick: formatRoundPickFromAvgOverall(safeNum(r.adp), teams),
+        adjustedOverall: adj?.adjustedOverall ?? null,
+        adjustedRoundPick: adj?.adjustedRoundPick ?? "—",
+      };
+    });
+
+    const filtered = withAdj.filter((r) => {
+      if (pFilter !== "ALL" && safeStr(r.position).toUpperCase() !== pFilter) return false;
+      if (q && !safeStr(r.name).toLowerCase().includes(q)) return false;
+      return true;
+    });
+
+    const dir = sortDir === "desc" ? -1 : 1;
+    filtered.sort((a, b) => {
+      if (sortKey === "name") return dir * safeStr(a.name).localeCompare(safeStr(b.name));
+      if (sortKey === "pos") return dir * safeStr(a.position).localeCompare(safeStr(b.position));
+      if (sortKey === "adj") return dir * (safeNum(a.adjustedOverall) - safeNum(b.adjustedOverall));
+      if (sortKey === "delta") return dir * (safeNum(a.delta) - safeNum(b.delta));
+      if (sortKey === "rp") return dir * (safeNum(a.adp) - safeNum(b.adp));
+      return dir * (safeNum(a.adp) - safeNum(b.adp));
+    });
+
+    return filtered;
+  }, [groupA, comparing, compareRows, query, pos, sortKey, sortDir, adjustedRankByKey, teams]);
+
+  function toggleSort(k) {
+    // Click same column to toggle direction; switching columns defaults to ascending.
+    setSortDir((prevDir) => (sortKey === k ? (prevDir === "asc" ? "desc" : "asc") : "asc"));
+    setSortKey(k);
+  }
+
+  if (!mode) {
+    return (
+      <section className="mx-auto max-w-5xl px-4 py-10">
+        <div className="rounded-2xl border border-border bg-card-surface p-6 text-sm text-muted">
+          Missing mode. Go back and select a mode.
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="mx-auto max-w-[1400px] px-4 py-8">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-3">
+            <Link href="/draft-compare" className="text-sm text-accent hover:underline">
+              ← Draft Compare
+            </Link>
+            <span className="text-xs text-muted">/</span>
+            <span className="text-sm text-muted">{season}</span>
+          </div>
+          <h1 className="mt-2 text-2xl font-semibold text-primary">{pageTitle}</h1>
+          <p className="mt-1 text-sm text-muted">
+            {comparing ? "Comparing Side A vs Side B" : "Aggregated view (Side A)"}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex overflow-hidden rounded-xl border border-border bg-background/30">
+            <button
+              type="button"
+              onClick={() => setView("list")}
+              className={cls(
+                "px-3 py-2 text-sm font-semibold transition",
+                view === "list" ? "bg-primary/15 text-primary" : "text-muted hover:bg-background/40"
+              )}
+            >
+              List
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("board")}
+              className={cls(
+                "px-3 py-2 text-sm font-semibold transition",
+                view === "board" ? "bg-primary/15 text-primary" : "text-muted hover:bg-background/40"
+              )}
+            >
+              Board
+            </button>
+          </div>
+
+          <button
+            onClick={() => setPickerOpen(true)}
+            className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-background shadow-sm transition hover:opacity-90"
+          >
+            Select Leagues
+          </button>
+        </div>
+      </div>
+
+      {gateError ? (
+        <div className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+          Manifest error: {String(gateError)}
+        </div>
+      ) : null}
+
+      {err ? (
+        <div className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+          {err}
+        </div>
+      ) : null}
+
+      {loading ? (
+        <div className="mt-6 rounded-2xl border border-border bg-card-surface p-6 text-sm text-muted">
+          Loading…
+        </div>
+      ) : null}
+
+      {!loading && raw && groupA ? (
+        <div className="mt-6">
+          {view === "board" ? (
+            <div className="rounded-2xl border border-border bg-card-surface shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-primary">Draftboard</h2>
+                  <p className="text-xs text-muted">Click a pick square to see all players drafted at that slot.</p>
                 </div>
 
-                {/* Results */}
-                <div className="mt-8 rounded-3xl border border-subtle bg-card-surface p-5 shadow-soft">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold">{canCompare ? "Compare list" : "Player list"}</div>
-                      <div className="mt-1 text-xs text-muted">
-                        Sortable columns · Search · Position filter
-                      </div>
-                    </div>
-                    <div className="text-xs text-muted">{rows.length} players</div>
-                  </div>
+                <div className="flex items-center gap-2 text-xs text-muted">
+                  Teams: <span className="font-semibold text-primary">{teams}</span> · Rounds:{" "}
+                  <span className="font-semibold text-primary">{rounds}</span>
+                  <span className="mx-2 opacity-50">•</span>
+                  Leagues:{" "}
+                  <span className={cls("font-semibold", boardSide === "B" ? "text-accent" : "text-primary")}>
+                    {safeNum((effectiveGroupForBoard || groupA)?.leagueCount)}
+                  </span>
+                </div>
 
-                  <div className="mt-4 flex flex-wrap items-center gap-2">
-                    <div className="flex-1 min-w-[220px]">
-                      <input
-                        value={q}
-                        onChange={(e) => setQ(e.target.value)}
-                        placeholder="Search player…"
-                        className="w-full rounded-2xl border border-subtle bg-black/5 px-3 py-2 text-sm outline-none focus:border-primary/40"
-                      />
-                    </div>
-                    <div className="min-w-[170px]">
-                      <select
-                        value={pos}
-                        onChange={(e) => setPos(e.target.value)}
-                        className="w-full rounded-2xl border border-subtle bg-black/5 px-3 py-2 text-sm outline-none focus:border-primary/40"
-                      >
-                        <option value="ALL">All Positions</option>
-                        {allPositions.map((p) => (
-                          <option key={p} value={p}>
-                            {p}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                {comparing ? (
+                  <div className="ml-auto inline-flex overflow-hidden rounded-xl border border-border bg-background/30">
                     <button
                       type="button"
-                      onClick={() => {
-                        setQ("");
-                        setPos("ALL");
-                        setSortKey("adpA");
-                        setSortDir("asc");
-                      }}
-                      className="rounded-2xl border border-subtle bg-black/10 px-3 py-2 text-sm hover:bg-black/15"
+                      onClick={() => setBoardSide("A")}
+                      className={cls(
+                        "px-3 py-2 text-xs font-semibold transition",
+                        boardSide === "A" ? "bg-primary/15 text-primary" : "text-muted hover:bg-background/40"
+                      )}
                     >
-                      Reset
+                      Side A
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBoardSide("B")}
+                      className={cls(
+                        "px-3 py-2 text-xs font-semibold transition",
+                        boardSide === "B" ? "bg-accent/15 text-accent" : "text-muted hover:bg-background/40"
+                      )}
+                    >
+                      Side B
                     </button>
                   </div>
+                ) : null}
+              </div>
+              <div className="p-5">
+                <DraftBoard group={effectiveGroupForBoard} />
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-border bg-card-surface shadow-sm">
+              <div className="border-b border-border px-5 py-4">
+                <h2 className="text-lg font-semibold text-primary">{comparing ? "Compare List" : "Player List"}</h2>
 
-                  <div className="mt-4 overflow-x-auto">
-                    <div className="max-h-[70vh] overflow-auto rounded-2xl border border-subtle">
-                      <table className="min-w-[860px] w-full text-sm">
-                        <thead className="sticky top-0 bg-card-surface text-xs">
-                          <tr className="border-b border-subtle">
-                            <SortTh label="Player" k="name" align="left" />
-                            <SortTh label="Pos" k="position" align="left" />
-                            <SortTh label="A ADP" k="adpA" align="right" />
-                            <th className="py-2 text-right text-muted">A RP</th>
-                            <SortTh label="B ADP" k="adpB" align="right" />
-                            <th className="py-2 text-right text-muted">B RP</th>
-                            <SortTh label="Δ" k="delta" align="right" />
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {rows.map((r) => {
-                            const delta = r.delta;
-                            return (
-                              <tr key={`${r.name}|||${r.position}`} className="border-b border-subtle/70">
-                                <td className="py-2 px-3 font-medium">{r.name}</td>
-                                <td className="py-2 px-3 text-muted">{r.position}</td>
-                                <td className="py-2 px-3 text-right tabular-nums">{r.adpA ?? "—"}</td>
-                                <td className="py-2 px-3 text-right tabular-nums text-muted">
-                                  {r.roundPickA ?? (r.adpA != null ? formatRoundPickFromAvgOverall(r.adpA, teams) : "—")}
-                                </td>
-                                <td className="py-2 px-3 text-right tabular-nums">{r.adpB ?? "—"}</td>
-                                <td className="py-2 px-3 text-right tabular-nums text-muted">
-                                  {r.roundPickB ?? (r.adpB != null ? formatRoundPickFromAvgOverall(r.adpB, teams) : "—")}
-                                </td>
-                                <td
-                                  className={clsx(
-                                    "py-2 px-3 text-right tabular-nums",
-                                    delta == null
-                                      ? "text-muted"
-                                      : delta > 0
-                                      ? "text-primary"
-                                      : delta < 0
-                                      ? "text-accent"
-                                      : "text-muted"
-                                  )}
-                                >
-                                  {delta == null ? "—" : delta.toFixed(2)}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+                <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-1 items-center gap-2">
+                    <input
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Search player…"
+                      className="w-full rounded-xl border border-border bg-background/60 px-3 py-2 text-sm text-primary placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                    <select
+                      value={pos}
+                      onChange={(e) => setPos(e.target.value)}
+                      className="rounded-xl border border-border bg-background/60 px-3 py-2 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                      {positions.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="text-xs text-muted">
+                    Rows: <span className="font-semibold text-primary">{listRows.length}</span>
                   </div>
                 </div>
+              </div>
 
-                {/* Cell Modal */}
-                {openCell ? (
+              <div className="max-h-[70vh] overflow-auto">
+                <table className="w-full border-separate border-spacing-0 text-sm">
+                  <thead className="sticky top-0 bg-card-surface/95 backdrop-blur">
+                    <tr className="text-left text-xs text-muted">
+                      <Th onClick={() => toggleSort("adp")} active={sortKey === "adp"} dir={sortDir}>
+                        Avg Pick
+                      </Th>
+                      <Th onClick={() => toggleSort("rp")} active={sortKey === "rp"} dir={sortDir}>
+                        Avg R.P.
+                      </Th>
+                      <Th onClick={() => toggleSort("adj")} active={sortKey === "adj"} dir={sortDir}>
+                        Adj Pick
+                      </Th>
+                      <Th onClick={() => toggleSort("name")} active={sortKey === "name"} dir={sortDir}>
+                        Player
+                      </Th>
+                      <Th onClick={() => toggleSort("pos")} active={sortKey === "pos"} dir={sortDir}>
+                        Pos
+                      </Th>
+                      {comparing ? (
+                        <Th onClick={() => toggleSort("delta")} active={sortKey === "delta"} dir={sortDir}>
+                          Δ (B − A)
+                        </Th>
+                      ) : null}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {listRows.map((r) => {
+                      const delta = r.delta;
+                      const deltaGood = delta != null && delta > 0;
+                      const deltaBad = delta != null && delta < 0;
+                      return (
+                        <tr key={r.key} className="border-t border-border/60 hover:bg-background/30">
+                          <td className="px-4 py-3 font-semibold text-primary tabular-nums">
+                            {safeNum(r.adp) ? safeNum(r.adp).toFixed(3) : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-muted tabular-nums">{r.avgRoundPick || "—"}</td>
+                          <td className="px-4 py-3 font-semibold text-primary tabular-nums">
+                            {r.adjustedRoundPick || "—"}
+                            <div className="text-[11px] text-muted">#{r.adjustedOverall || "—"}</div>
+                          </td>
+                          <td className="px-4 py-3 text-primary">{r.name}</td>
+                          <td className="px-4 py-3 text-muted">{r.position}</td>
+                          {comparing ? (
+                            <td
+                              className={cls(
+                                "px-4 py-3 font-semibold tabular-nums",
+                                deltaGood && "text-emerald-300",
+                                deltaBad && "text-rose-300",
+                                delta == null && "text-muted"
+                              )}
+                            >
+                              {delta == null ? "—" : `${delta > 0 ? "+" : ""}${delta.toFixed(1)}`}
+                            </td>
+                          ) : null}
+                        </tr>
+                      );
+                    })}
+
+                    {!listRows.length ? (
+                      <tr>
+                        <td colSpan={comparing ? 6 : 5} className="px-4 py-8 text-center text-sm text-muted">
+                          No results.
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {pickerOpen ? (
+        <LeaguePicker
+          leagues={leagueRows}
+          sideA={effectiveSideA}
+          sideB={sideB}
+          onClose={() => setPickerOpen(false)}
+          onChange={(a, b) => {
+            const nextA = a.length ? a : leagueRows.map((x) => x.leagueId);
+            setSideA(nextA);
+            setSideB(b);
+          }}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function Th({ children, onClick, active, dir }) {
+  return (
+    <th
+      onClick={onClick}
+      className={cls(
+        onClick ? "cursor-pointer" : "cursor-default",
+        "select-none px-4 py-3",
+        active ? "text-primary" : "text-muted",
+        "border-b border-border"
+      )}
+    >
+      <div className="inline-flex items-center gap-2">
+        {children}
+        {active ? <span className="text-[10px] text-muted">{dir === "asc" ? "▲" : "▼"}</span> : null}
+      </div>
+    </th>
+  );
+}
+
+function DraftBoard({ group }) {
+  const g = group;
+  const m = g?.meta;
+  const [openKey, setOpenKey] = useState(null);
+
+  function posTheme(posRaw) {
+    const pos = safeStr(posRaw).toUpperCase().trim();
+    // Sleeper-ish: WR blue, RB mint/green, QB red, TE orange.
+    // Colors should fill the entire pick square (not just badges/pills).
+    if (pos === "WR") {
+      return {
+        // Tailwind only generates certain opacity steps for color/opacity shorthand.
+        // Use standard steps so classes aren't purged/missing (e.g. /20, /25, /30).
+        cell: "bg-sky-400/20 hover:bg-sky-400/30",
+        border: "border-sky-400/25",
+      };
+    }
+    if (pos === "RB") {
+      return {
+        cell: "bg-emerald-400/20 hover:bg-emerald-400/30",
+        border: "border-emerald-400/25",
+      };
+    }
+    if (pos === "QB") {
+      return {
+        cell: "bg-rose-400/20 hover:bg-rose-400/30",
+        border: "border-rose-400/25",
+      };
+    }
+    if (pos === "TE") {
+      return {
+        cell: "bg-amber-300/20 hover:bg-amber-300/30",
+        border: "border-amber-300/25",
+      };
+    }
+    return {
+      cell: "bg-background/12 hover:bg-background/25",
+      border: "border-border/70",
+    };
+  }
+
+  if (!g || !m) return null;
+  const teams = safeNum(m.teams) || 12;
+  const rounds = safeNum(m.rounds) || 18;
+
+  // Original slot distributions (real drafters at each pick position)
+  const cells = g?.draftboard?.cells || {};
+
+  // Build an "adjusted" order: players sorted by avg pick, then renumbered 1..N.
+  // This avoids duplicate round.pick labels on the board while keeping the list's true ADP.
+  const playersArr = Array.isArray(g?.players)
+    ? g.players
+    : g?.players && typeof g.players === "object"
+    ? Object.values(g.players)
+    : safeArray(g?.playersList);
+
+  const ranked = safeArray(playersArr)
+    .map((p) => ({
+      name: safeStr(p?.name).trim(),
+      position: safeStr(p?.position).trim() || "UNK",
+      adp: safeNum(p?.avgOverallPick ?? p?.adp ?? p?.avgPick),
+      count: safeNum(p?.count ?? 0),
+    }))
+    .filter((p) => p.name)
+    .sort((a, b) => safeNum(a.adp) - safeNum(b.adp));
+
+  // grid[r][c] => cell
+  const grid = [];
+  for (let r = 1; r <= rounds; r++) {
+    const row = [];
+    for (let c = 1; c <= teams; c++) row.push(null);
+    grid.push(row);
+  }
+
+  for (let overall = 1; overall <= teams * rounds; overall++) {
+    const idx = overall - 1;
+    const player = ranked[idx] || null;
+    const r = Math.floor((overall - 1) / teams) + 1;
+    const pickInRound = ((overall - 1) % teams) + 1;
+
+    // Snake display: even rounds reverse the column order.
+    const displayCol = r % 2 === 1 ? pickInRound : teams - pickInRound + 1;
+
+    // For the modal, we want the *real* pick-slot distribution for this round/pick.
+    const origKey = `${r}-${pickInRound}`;
+    const dist = safeArray(cells[origKey]);
+    const top = dist[0] || null;
+
+    grid[r - 1][displayCol - 1] = {
+      origKey,
+      r,
+      displayCol,
+      pickInRound,
+      overall,
+      player,
+      dist,
+      top,
+    };
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* No scroll: board fits the container; cells shrink fluidly */}
+      <div className="overflow-hidden rounded-2xl border border-border bg-background/10 shadow-sm">
+        {grid.map((row, i) => (
+          <div key={i} className="grid" style={{ gridTemplateColumns: `repeat(${teams}, minmax(0, 1fr))` }}>
+            {row.map((cell, j) => {
+              if (!cell) {
+                return (
                   <div
-                    className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4"
-                    role="dialog"
-                    aria-modal="true"
-                    onMouseDown={(e) => {
-                      if (e.target === e.currentTarget) setOpenCell(null);
-                    }}
-                  >
-                    <div className="w-full max-w-2xl rounded-3xl border border-subtle bg-card-surface p-5 shadow-soft">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-xs text-muted">Pick</div>
-                          <div className="text-lg font-bold">
-                            {openCell.roundPick} <span className="text-muted">·</span> #{openCell.overallPick}
-                          </div>
-                          <div className="mt-1 text-xs text-muted">
-                            Round {openCell.round} · Pick {String(openCell.pickInRound).padStart(2, "0")} · {boardSide === "B" ? "Side B" : "Side A"}
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setOpenCell(null)}
-                          className="rounded-2xl border border-subtle bg-black/10 px-3 py-2 text-sm hover:bg-black/15"
-                        >
-                          Close
-                        </button>
-                      </div>
+                    key={`blank-${i}-${j}`}
+                    className="h-[74px] border-r border-b border-border/70 bg-background/5"
+                  />
+                );
+              }
+              const rpAdjusted = `${cell.r}.${String(cell.pickInRound).padStart(2, "0")}`;
+              const theme = posTheme(cell.player?.position);
+              return (
+                <button
+                  key={`${cell.r}-${cell.displayCol}`}
+                  onClick={() => setOpenKey(cell.origKey)}
+                  className={cls(
+                    "group relative h-[74px] border-r border-b p-2 text-left transition",
+                    theme.border,
+                    theme.cell,
+                    "hover:shadow-[0_6px_16px_rgba(0,0,0,0.25)] hover:shadow-black/20",
+                    "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  )}
+                  title={cell.player ? `${cell.player.name} (${cell.player.position})` : rpAdjusted}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span
+                      className={cls(
+                        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                        "shadow-[0_2px_10px_rgba(0,0,0,0.16)]",
+                        "backdrop-blur",
+                        "border-border/70 bg-background/35 text-primary"
+                      )}
+                    >
+                      {rpAdjusted}
+                    </span>
+                    <span className="inline-flex items-center rounded-full border border-border/70 bg-background/20 px-2 py-0.5 text-[10px] font-medium text-primary/80 shadow-[0_2px_10px_rgba(0,0,0,0.16)] backdrop-blur">
+                      #{cell.overall}
+                    </span>
+                  </div>
 
-                      <div className="mt-4 max-h-[60vh] overflow-auto rounded-2xl border border-subtle">
-                        {safeArray(openCell.entries).length ? (
-                          <table className="w-full text-sm">
-                            <thead className="sticky top-0 bg-card-surface text-xs text-muted">
-                              <tr className="border-b border-subtle">
-                                <th className="py-2 px-3 text-left">Player</th>
-                                <th className="py-2 px-3 text-left">Pos</th>
-                                <th className="py-2 px-3 text-right">%</th>
-                                <th className="py-2 px-3 text-right">Count</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {safeArray(openCell.entries)
-                                .slice()
-                                .sort((a, b) => (safeNum(b?.pct) - safeNum(a?.pct)) || safeStr(a?.name).localeCompare(safeStr(b?.name)))
-                                .map((e) => (
-                                  <tr key={`${e.name}|||${e.position}`} className="border-b border-subtle/70">
-                                    <td className="py-2 px-3 font-medium">{e.name}</td>
-                                    <td className="py-2 px-3 text-muted">{e.position}</td>
-                                    <td className="py-2 px-3 text-right tabular-nums text-muted">{fmtPct(e.pct)}</td>
-                                    <td className="py-2 px-3 text-right tabular-nums">{safeNum(e.count)}</td>
-                                  </tr>
-                                ))}
-                            </tbody>
-                          </table>
-                        ) : (
-                          <div className="p-4 text-sm text-muted">No players recorded for this slot.</div>
-                        )}
+                  {cell.player ? (
+                    <div className="mt-2">
+                      <div className="truncate text-[12.5px] font-medium leading-4 text-primary">
+                        {cell.player.name}
                       </div>
                     </div>
-                  </div>
-                ) : null}
-              </>
-            )}
-          </section>
-        );
+                  ) : (
+                    <div className="mt-6 text-[11px] text-muted opacity-60">—</div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      {openKey ? (
+        <CellModal cellKey={openKey} teams={teams} list={safeArray(cells[openKey])} onClose={() => setOpenKey(null)} />
+      ) : null}
+    </div>
+  );
+}
+
+function CellModal({ cellKey, teams, list, onClose }) {
+  const [rStr, pStr] = safeStr(cellKey).split("-");
+  const round = safeNum(rStr);
+  const pickInRound = safeNum(pStr);
+  const overall = (round - 1) * (safeNum(teams) || 12) + pickInRound;
+  const rp = `${round}.${String(pickInRound).padStart(2, "0")}`;
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
       }}
-    </SectionManifestGate>
+    >
+      <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card-surface shadow-xl">
+        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+          <div>
+            <div className="text-xs text-muted">Pick</div>
+            <div className="text-lg font-semibold text-primary">
+              {rp} <span className="text-sm text-muted">•</span>{" "}
+              <span className="text-sm text-muted">#{overall}</span>
+            </div>
+            <div className="mt-1 text-xs text-muted">{list.length ? `${list.length} unique players` : "No data"}</div>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-xl border border-border bg-background/40 px-3 py-2 text-sm text-primary hover:bg-background/60"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="max-h-[60vh] overflow-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-card-surface/95 backdrop-blur">
+              <tr className="text-left text-xs text-muted">
+                <th className="px-5 py-3">Player</th>
+                <th className="px-5 py-3">Pos</th>
+                <th className="px-5 py-3">%</th>
+                <th className="px-5 py-3">Count</th>
+              </tr>
+            </thead>
+            <tbody>
+              {safeArray(list)
+                .slice()
+                .sort((a, b) => safeNum(b?.pct) - safeNum(a?.pct) || safeStr(a?.name).localeCompare(safeStr(b?.name)))
+                .map((p) => (
+                  <tr key={`${p.name}|||${p.position}`} className="border-t border-border/60">
+                    <td className="px-5 py-3 text-primary">{p.name}</td>
+                    <td className="px-5 py-3 text-muted">{p.position}</td>
+                    <td className="px-5 py-3 text-muted">{pctFmt(safeNum(p.pct))}</td>
+                    <td className="px-5 py-3 text-muted">{safeNum(p.count)}</td>
+                  </tr>
+                ))}
+              {!list.length ? (
+                <tr>
+                  <td colSpan={4} className="px-5 py-8 text-center text-sm text-muted">
+                    Nothing recorded at this slot.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LeaguePicker({ leagues, sideA, sideB, onClose, onChange }) {
+  const [a, setA] = useState(sideA);
+  const [b, setB] = useState(sideB);
+
+  const setASet = useMemo(() => new Set(a), [a]);
+  const setBSet = useMemo(() => new Set(b), [b]);
+
+  function toggle(id, side) {
+    const inA = setASet.has(id);
+    const inB = setBSet.has(id);
+
+    if (side === "A") {
+      const nextA = inA ? a.filter((x) => x !== id) : [...a, id];
+      const nextB = inB ? b.filter((x) => x !== id) : b;
+      setA(nextA);
+      setB(nextB);
+      return;
+    }
+    const nextB = inB ? b.filter((x) => x !== id) : [...b, id];
+    const nextA = inA ? a.filter((x) => x !== id) : a;
+    setA(nextA);
+    setB(nextB);
+  }
+
+  function apply() {
+    onChange(a, b);
+    onClose();
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-3xl overflow-hidden rounded-2xl border border-border bg-card-surface shadow-xl">
+        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+          <div>
+            <div className="text-lg font-semibold text-primary">Select leagues</div>
+            <div className="mt-1 text-xs text-muted">Click A or B per league. A league cannot be in both sides.</div>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-xl border border-border bg-background/40 px-3 py-2 text-sm text-primary hover:bg-background/60"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="max-h-[65vh] overflow-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-card-surface/95 backdrop-blur">
+              <tr className="text-left text-xs text-muted">
+                <th className="px-5 py-3">League</th>
+                <th className="px-5 py-3">Side A</th>
+                <th className="px-5 py-3">Side B</th>
+              </tr>
+            </thead>
+            <tbody>
+              {safeArray(leagues).map((l) => {
+                const id = l.leagueId;
+                const inA = setASet.has(id);
+                const inB = setBSet.has(id);
+                return (
+                  <tr key={id} className="border-t border-border/60">
+                    <td className="px-5 py-3 text-primary">{l.name || id}</td>
+                    <td className="px-5 py-3">
+                      <button
+                        onClick={() => toggle(id, "A")}
+                        className={cls(
+                          "rounded-lg border px-3 py-1 text-xs font-semibold",
+                          inA ? "border-primary bg-primary/15 text-primary" : "border-border bg-background/30 text-muted"
+                        )}
+                      >
+                        A
+                      </button>
+                    </td>
+                    <td className="px-5 py-3">
+                      <button
+                        onClick={() => toggle(id, "B")}
+                        className={cls(
+                          "rounded-lg border px-3 py-1 text-xs font-semibold",
+                          inB ? "border-accent bg-accent/15 text-accent" : "border-border bg-background/30 text-muted"
+                        )}
+                      >
+                        B
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {!safeArray(leagues).length ? (
+                <tr>
+                  <td colSpan={3} className="px-5 py-8 text-center text-sm text-muted">
+                    No leagues found in this draft JSON.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-4">
+          <div className="text-xs text-muted">
+            Side A: <span className="font-semibold text-primary">{a.length}</span> • Side B:{" "}
+            <span className="font-semibold text-accent">{b.length}</span>
+          </div>
+          <button
+            onClick={apply}
+            className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-background shadow-sm transition hover:opacity-90"
+          >
+            Apply
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

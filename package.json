@@ -10,7 +10,7 @@
     "start": "next start",
     "lint": "next lint",
     "icons": "node scripts/make-icons.mjs public/logo-source.webp",
-    "git": "git add . && git commit -m \"adpAttempt\" && git push origin preview",
+    "git": "git add . && git commit -m \"adpworking\" && git push origin preview",
     "leg3": "node script/buildgauntlet.mjs",
     "leaderboards": "node script/leaderboards/auto-gen.js"
   },

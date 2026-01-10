@@ -1,3 +1,4 @@
+// Client-side component for Draft Compare home page.
 "use client";
 
 import Link from "next/link";
