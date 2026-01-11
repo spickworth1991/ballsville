@@ -26,6 +26,26 @@ function numOrNull(v) {
   const x = typeof v === "number" ? v : Number(v);
   return Number.isFinite(x) && x > 0 ? x : null;
 }
+
+function ListScroller({ children }) {
+  const { isPhoneLike, isPortrait } = useDraftboardLandscapeTip();
+  const isPhoneLandscape = isPhoneLike && !isPortrait;
+
+  return (
+    <div
+      className="overflow-auto"
+      style={{
+        // let the list breathe more on landscape phones
+        maxHeight: isPhoneLandscape
+          ? "calc(100dvh - 160px)" // header + controls + some spacing
+          : "calc(100dvh - 320px)", // desktop/tablet: keep reasonable
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 function cleanSlug(s) {
   return safeStr(s)
     .trim()
@@ -510,8 +530,11 @@ export default function DraftCompareCompareModesClient() {
                 </div>
               </div>
 
-              <div className="max-h-[70vh] overflow-auto">
-                <table className="w-full border-separate border-spacing-0 text-base sm:text-sm ">
+              <ListScroller>
+  <table className="w-full border-separate border-spacing-0 text-base sm:text-sm ">
+  
+
+                
                   <thead className="sticky top-0 bg-card-surface/95 backdrop-blur">
                     <tr className="text-left text-xs text-muted">
                       <Th onClick={() => toggleSort("adpA")} active={sortKey === "adpA"} dir={sortDir}>
@@ -576,9 +599,10 @@ export default function DraftCompareCompareModesClient() {
                       </tr>
                     ) : null}
                   </tbody>
+
                 </table>
+              </ListScroller>
               </div>
-            </div>
           )}
         </div>
       ) : null}
@@ -835,33 +859,58 @@ function CellModal({ cellKey, teams, list, onClose }) {
   const overall = (round - 1) * (safeNum(teams) || 12) + pickInRound;
   const rp = `${round}.${String(pickInRound).padStart(2, "0")}`;
 
+  // NEW: reuse the same phone/orientation logic
+  const { isPhoneLike, isPortrait } = useDraftboardLandscapeTip();
+  const isPhoneLandscape = isPhoneLike && !isPortrait;
+
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      className={cls(
+        "fixed inset-0 z-[60] flex bg-black/50",
+        isPhoneLandscape ? "items-start justify-center" : "items-center justify-center",
+        "p-4"
+      )}
+      style={
+        isPhoneLandscape
+          ? {
+              // push modal down a bit in landscape & respect notch / safe area
+              paddingTop: "calc(env(safe-area-inset-top, 0px) + 60px)",
+              paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
+            }
+          : undefined
+      }
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-white/15 bg-card-surface shadow-xl">
-        <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-4">
-          <div>
-            <div className="text-xs text-white/70">Pick</div>
-            <div className="text-lg font-semibold text-white">
-              {rp} <span className="text-base sm:text-sm  text-white/60">•</span>{" "}
-              <span className="text-base sm:text-sm  text-white/60">#{overall}</span>
-            </div>
-            <div className="mt-1 text-xs text-white/60">{list.length ? `${list.length} unique players` : "No data"}</div>
-          </div>
+      <div
+        className="w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card-surface shadow-xl flex flex-col"
+        style={{
+          // hard cap to viewport (dynamic viewport units help on mobile browsers)
+          maxHeight: isPhoneLandscape
+            ? "calc(100dvh - 80px)" // accounts for your extra top padding + some breathing room
+            : "calc(100dvh - 32px)",
+        }}
+      >
 
+        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+          <div>
+            <div className="text-xs text-muted">Pick</div>
+            <div className="text-lg font-semibold text-primary">
+              {rp} <span className="text-sm text-muted">•</span>{" "}
+              <span className="text-sm text-muted">#{overall}</span>
+            </div>
+            <div className="mt-1 text-xs text-muted">{list.length ? `${list.length} unique players` : "No data"}</div>
+          </div>
           <button
             onClick={onClose}
-            className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-base sm:text-sm  text-white hover:bg-white/15"
+            className="rounded-xl border border-border bg-background/40 px-3 py-2 text-sm text-primary hover:bg-background/60"
           >
             Close
           </button>
         </div>
 
-        <div className="max-h-[60vh] overflow-auto">
+        <div className="flex-1 overflow-auto">
           <table className="w-full text-base sm:text-sm ">
             <thead className="sticky top-0 bg-card-surface/95 backdrop-blur">
               <tr className="text-left text-xs text-white/70">
