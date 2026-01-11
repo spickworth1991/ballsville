@@ -7,6 +7,8 @@ import { useSearchParams } from "next/navigation";
 import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import { CURRENT_SEASON } from "@/lib/season";
 import { r2Url } from "@/lib/r2Url";
+import DraftboardLandscapeTipOverlay from "@/components/draftCompare/DraftboardLandscapeTipOverlay";
+import { useDraftboardLandscapeTip } from "@/components/draftCompare/useDraftboardLandscapeTip";
 import {
   buildGroupFromDraftJson,
   buildPlayerResults,
@@ -645,92 +647,8 @@ function DraftBoard({ group }) {
   const m = g?.meta;
   const [openKey, setOpenKey] = useState(null);
 
-  // --- premium "landscape recommended" overlay (phone only, draftboard only) ---
-  const [showLandscapeTip, setShowLandscapeTip] = useState(false);
-  const [isPortrait, setIsPortrait] = useState(true);
-  const [isPhoneLike, setIsPhoneLike] = useState(false);
+  const { isPhoneLike, isPortrait, showTip, acknowledge } = useDraftboardLandscapeTip();
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    let mounted = true;
-
-    // phone-like = touch device with no hover; avoid large tablets/trackpads
-    const mqPhone = window.matchMedia("(hover: none) and (pointer: coarse) and (max-width: 1024px)");
-    const mqPortrait = window.matchMedia("(orientation: portrait)");
-
-    function safeSetSeen() {
-      try {
-        sessionStorage.setItem("draftboard_landscape_tip_seen", "1");
-      } catch {
-        // ignore
-      }
-    }
-
-    function compute() {
-      if (!mounted) return;
-
-      const phone = !!mqPhone.matches;
-      const portrait = !!mqPortrait.matches;
-
-      setIsPhoneLike(phone);
-      setIsPortrait(portrait);
-
-      // Tip only for phone-like + portrait
-      if (!phone) {
-        setShowLandscapeTip(false);
-        return;
-      }
-
-      // Auto-close when rotated to landscape
-      if (!portrait) {
-        setShowLandscapeTip(false);
-        safeSetSeen();
-        return;
-      }
-
-      // On EVERY page visit: show if phone-like + portrait
-      setShowLandscapeTip(true);
-    }
-
-    compute();
-
-    const onChange = () => compute();
-
-    try {
-      mqPhone.addEventListener?.("change", onChange);
-      mqPortrait.addEventListener?.("change", onChange);
-    } catch {
-      mqPhone.addListener?.(onChange);
-      mqPortrait.addListener?.(onChange);
-    }
-
-    window.addEventListener("resize", onChange);
-    window.addEventListener("orientationchange", onChange);
-
-    return () => {
-      mounted = false;
-      try {
-        mqPhone.removeEventListener?.("change", onChange);
-        mqPortrait.removeEventListener?.("change", onChange);
-      } catch {
-        mqPhone.removeListener?.(onChange);
-        mqPortrait.removeListener?.(onChange);
-      }
-      window.removeEventListener("resize", onChange);
-      window.removeEventListener("orientationchange", onChange);
-    };
-  }, []);
-
-  function acknowledgeLandscapeTip() {
-    try {
-      sessionStorage.setItem("draftboard_landscape_tip_seen", "1");
-    } catch {
-      // ignore
-    }
-    setShowLandscapeTip(false);
-  }
-  // --- end overlay ---
 
   function posTheme(posRaw) {
     const pos = safeStr(posRaw).toUpperCase().trim();
@@ -877,95 +795,8 @@ function DraftBoard({ group }) {
         </div>
       </div>
 
-      {/* Premium overlay: phone-like + portrait only */}
-      {showLandscapeTip ? (
-        <div
-          className="fixed inset-0 z-[75] flex items-center justify-center bg-black/60 p-4"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) acknowledgeLandscapeTip();
-          }}
-        >
-          <div
-            className={cls(
-              "w-full max-w-md overflow-hidden rounded-2xl border border-border bg-card-surface shadow-2xl",
-              isPortrait ? "opacity-100 scale-100" : "opacity-0 scale-[0.98]",
-              "transition-all duration-300"
-            )}
-          >
-            <div className="relative p-6">
-              <div className="pointer-events-none absolute inset-x-0 -top-24 h-48 bg-primary/15 blur-3xl" />
+      <DraftboardLandscapeTipOverlay open={showTip} isPortrait={isPortrait} onClose={acknowledge} />
 
-              <div className="relative">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-xs text-white/70">Draftboard</div>
-                    <div className="mt-1 text-lg font-semibold text-white">Landscape recommended</div>
-                    <div className="mt-2 text-sm text-white/80">
-                      For the clearest view, rotate your phone sideways. (This closes automatically when you do.)
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={acknowledgeLandscapeTip}
-                    className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/15"
-                  >
-                    Got it
-                  </button>
-                </div>
-
-                <div className="mt-6 flex items-center justify-center">
-                  <div className="relative">
-                    <div className="pointer-events-none absolute inset-0 rounded-[36px] bg-accent/10 blur-2xl" />
-
-                    <div className="relative h-[132px] w-[78px] rounded-[22px] border border-white/15 bg-white/10 shadow-xl backdrop-blur">
-                      <div className="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-white/30" />
-                      <div className="absolute inset-2 rounded-[16px] border border-white/15 bg-black/10" />
-                    </div>
-
-                    <div
-                      className={cls(
-                        "pointer-events-none absolute inset-0 flex items-center justify-center",
-                        isPortrait ? "opacity-100" : "opacity-0",
-                        "transition-opacity duration-150",
-                        "animate-[draftPhoneFlip_1.6s_ease-in-out_infinite]"
-                      )}
-                    >
-                      <div className="h-[132px] w-[78px] rounded-[22px] border border-white/10 bg-white/5 shadow-lg backdrop-blur">
-                        <div className="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-white/25" />
-                        <div className="absolute inset-2 rounded-[16px] border border-white/10 bg-black/5" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 text-center text-[11px] text-white/70">Tip: landscape + swipe = fastest scanning.</div>
-              </div>
-            </div>
-
-            <style jsx>{`
-              @keyframes draftPhoneFlip {
-                0% {
-                  transform: rotate(0deg) scale(1);
-                  opacity: 0.35;
-                }
-                35% {
-                  transform: rotate(0deg) scale(1);
-                  opacity: 0.35;
-                }
-                70% {
-                  transform: rotate(90deg) scale(1.02);
-                  opacity: 0.9;
-                }
-                100% {
-                  transform: rotate(90deg) scale(1.02);
-                  opacity: 0.9;
-                }
-              }
-            `}</style>
-          </div>
-        </div>
-      ) : null}
 
       {openKey ? (
         <CellModal cellKey={openKey} teams={teams} list={safeArray(cells[openKey])} onClose={() => setOpenKey(null)} />
