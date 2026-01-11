@@ -46,6 +46,25 @@ function cls(...a) {
   return a.filter(Boolean).join(" ");
 }
 
+function ListScroller({ children }) {
+  const { isPhoneLike, isPortrait } = useDraftboardLandscapeTip();
+  const isPhoneLandscape = isPhoneLike && !isPortrait;
+
+  return (
+    <div
+      className="overflow-auto"
+      style={{
+        maxHeight: isPhoneLandscape
+          ? "calc(100dvh - 180px)" // taller list in phone landscape
+          : "calc(100dvh - 320px)", // normal cap elsewhere
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+
 function groupPlayersArray(group) {
   if (!group) return [];
   const g = group;
@@ -501,7 +520,7 @@ function ModeInner({ mode, season, version, gateError }) {
                 </div>
               </div>
 
-              <div className="max-h-[70vh] overflow-auto">
+              <ListScroller>
                 <table className="w-full border-separate border-spacing-0 text-sm">
                   <thead className="sticky top-0 bg-card-surface/95 backdrop-blur">
                     <tr className="text-left text-xs text-muted">
@@ -546,7 +565,7 @@ function ModeInner({ mode, season, version, gateError }) {
                       const deltaBad = delta != null && delta < 0;
                       return (
                         <tr key={r.key} className="border-t border-border/60 hover:bg-background/30">
-                          <td className="px-4 py-3 font-semibold text-primary tabular-nums">
+                          <td className="px-4 py-3 font-semibold text-muted tabular-nums">
                             {comparing
                               ? r.avgPickA && r.avgPickA > 0
                                 ? r.avgPickA.toFixed(3)
@@ -558,7 +577,7 @@ function ModeInner({ mode, season, version, gateError }) {
                           {!comparing ? (
                               <td className="px-4 py-3 font-semibold text-primary tabular-nums">
                                 {r.adjustedRoundPick || "—"}
-                                <div className="text-[11px] text-muted">#{r.adjustedOverall || "—"}</div>
+                                
                               </td>
                             ) : null}
                           <td className="px-4 py-3 text-muted tabular-nums">
@@ -599,8 +618,8 @@ function ModeInner({ mode, season, version, gateError }) {
                       </tr>
                     ) : null}
                   </tbody>
-                </table>
-              </div>
+              </table>
+            </ListScroller>
             </div>
           )}
         </div>
@@ -649,8 +668,6 @@ function DraftBoard({ group }) {
 
   const { isPhoneLike, isPortrait, showTip, acknowledge } = useDraftboardLandscapeTip();
 
-  // NEW: auto-scale for phone landscape so it "zooms out" to fit screen
-  const [fitScale, setFitScale] = useState(1);
 
   function posTheme(posRaw) {
     const pos = safeStr(posRaw).toUpperCase().trim();
@@ -723,47 +740,6 @@ function DraftBoard({ group }) {
     };
   }
 
-  // NEW: compute "fit to screen" scale in phone landscape
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    function computeScale() {
-      // Only auto-fit when phone-like AND landscape
-      if (!isPhoneLike || isPortrait) {
-        setFitScale(1);
-        return;
-      }
-
-      const vv = window.visualViewport;
-      const vw = vv?.width || window.innerWidth;
-
-      // Give yourself a tiny padding so it doesn't kiss the edges
-      const pad = 16;
-      const available = Math.max(320, vw - pad);
-
-      const s = available / boardMinWidthPx;
-
-      // Cap so we never "zoom in" past 1 and never get insanely tiny
-      const clamped = Math.max(0.5, Math.min(1, s));
-      setFitScale(clamped);
-    }
-
-    computeScale();
-
-    const vv = window.visualViewport;
-    vv?.addEventListener?.("resize", computeScale);
-    vv?.addEventListener?.("scroll", computeScale); // iOS can change viewport on UI show/hide
-    window.addEventListener("resize", computeScale);
-    window.addEventListener("orientationchange", computeScale);
-
-    return () => {
-      vv?.removeEventListener?.("resize", computeScale);
-      vv?.removeEventListener?.("scroll", computeScale);
-      window.removeEventListener("resize", computeScale);
-      window.removeEventListener("orientationchange", computeScale);
-    };
-  }, [isPhoneLike, isPortrait, boardMinWidthPx]);
-
   return (
     <div className="space-y-3">
       <div className="overflow-hidden rounded-2xl border border-border bg-background/10 shadow-sm">
@@ -777,17 +753,7 @@ function DraftBoard({ group }) {
 
         {/* Phones: horizontal swipe; non-phones: locked */}
         <div className={cls(isPhoneLike ? "overflow-x-auto overflow-y-hidden" : "overflow-hidden")}>
-          {/* NEW: scale wrapper */}
-          <div
-            className="relative"
-            style={{
-              minWidth: isPhoneLike ? `max(100%, ${boardMinWidthPx}px)` : "100%",
-              transform: `scale(${fitScale})`,
-              transformOrigin: "left top",
-              // helps avoid blurry text on iOS at non-1 scales
-              willChange: fitScale !== 1 ? "transform" : undefined,
-            }}
-          >
+          <div className="relative" style={{ minWidth: isPhoneLike ? `max(100%, ${boardMinWidthPx}px)` : "100%" }}>
             {grid.map((row, i) => (
               <div key={i} className="grid" style={{ gridTemplateColumns: `repeat(${teams}, minmax(0, 1fr))` }}>
                 {row.map((cell, j) => {
@@ -817,6 +783,7 @@ function DraftBoard({ group }) {
                       )}
                       title={cell.player ? `${cell.player.name} (${cell.player.position})` : rpAdjusted}
                     >
+                      {/* Always show ONLY round.pick pill (white text) */}
                       <div className="flex items-center justify-between gap-2">
                         <span
                           className={cls(
@@ -831,6 +798,7 @@ function DraftBoard({ group }) {
 
                       {cell.player ? (
                         <div className="mt-2">
+                          {/* Always two-line split name */}
                           <div className="truncate text-[13px] font-semibold leading-4 text-white">{nm.first}</div>
                           <div className="truncate text-[12px] leading-4 text-white/90">{nm.last || " "}</div>
                         </div>
@@ -848,13 +816,13 @@ function DraftBoard({ group }) {
 
       <DraftboardLandscapeTipOverlay open={showTip} isPortrait={isPortrait} onClose={acknowledge} />
 
+
       {openKey ? (
         <CellModal cellKey={openKey} teams={teams} list={safeArray(cells[openKey])} onClose={() => setOpenKey(null)} />
       ) : null}
     </div>
   );
 }
-
 
 function CellModal({ cellKey, teams, list, onClose }) {
   const [rStr, pStr] = safeStr(cellKey).split("-");
@@ -863,14 +831,40 @@ function CellModal({ cellKey, teams, list, onClose }) {
   const overall = (round - 1) * (safeNum(teams) || 12) + pickInRound;
   const rp = `${round}.${String(pickInRound).padStart(2, "0")}`;
 
+  // NEW: reuse the same phone/orientation logic
+  const { isPhoneLike, isPortrait } = useDraftboardLandscapeTip();
+  const isPhoneLandscape = isPhoneLike && !isPortrait;
+
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      className={cls(
+        "fixed inset-0 z-[60] flex bg-black/50",
+        isPhoneLandscape ? "items-start justify-center" : "items-center justify-center",
+        "p-4"
+      )}
+      style={
+        isPhoneLandscape
+          ? {
+              // push modal down a bit in landscape & respect notch / safe area
+              paddingTop: "calc(env(safe-area-inset-top, 0px) + 60px)",
+              paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
+            }
+          : undefined
+      }
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card-surface shadow-xl">
+      <div
+        className="w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card-surface shadow-xl flex flex-col"
+        style={{
+          // hard cap to viewport (dynamic viewport units help on mobile browsers)
+          maxHeight: isPhoneLandscape
+            ? "calc(100dvh - 80px)" // accounts for your extra top padding + some breathing room
+            : "calc(100dvh - 32px)",
+        }}
+      >
+
         <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
           <div>
             <div className="text-xs text-muted">Pick</div>
@@ -888,7 +882,7 @@ function CellModal({ cellKey, teams, list, onClose }) {
           </button>
         </div>
 
-        <div className="max-h-[60vh] overflow-auto">
+        <div className="flex-1 overflow-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-card-surface/95 backdrop-blur">
               <tr className="text-left text-xs text-muted">
@@ -954,14 +948,39 @@ function LeaguePicker({ leagues, sideA, sideB, onClose, onChange }) {
     onClose();
   }
 
+    // NEW: detect phone landscape
+  const { isPhoneLike, isPortrait } = useDraftboardLandscapeTip();
+  const isPhoneLandscape = isPhoneLike && !isPortrait;
+
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4"
+      className={cls(
+        "fixed inset-0 z-[70] flex bg-black/50",
+        isPhoneLandscape ? "items-start justify-center" : "items-center justify-center",
+        "p-4"
+      )}
+      style={
+        isPhoneLandscape
+          ? {
+              paddingTop: "calc(env(safe-area-inset-top, 0px) + 72px)",
+              paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
+            }
+          : undefined
+      }
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-3xl overflow-hidden rounded-2xl border border-border bg-card-surface shadow-xl">
+      <div
+          className="w-full max-w-3xl overflow-hidden rounded-2xl border border-border bg-card-surface shadow-xl flex flex-col"
+          style={{
+            maxHeight: isPhoneLandscape
+              ? "calc(100dvh - 85px)" // accounts for your larger 72px top padding
+              : "calc(100dvh - 32px)",
+          }}
+        >
+
+       
         <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
           <div>
             <div className="text-lg font-semibold text-primary">Select leagues</div>
@@ -975,7 +994,7 @@ function LeaguePicker({ leagues, sideA, sideB, onClose, onChange }) {
           </button>
         </div>
 
-        <div className="max-h-[65vh] overflow-auto">
+        <div className="flex-1 overflow-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-card-surface/95 backdrop-blur">
               <tr className="text-left text-xs text-muted">
