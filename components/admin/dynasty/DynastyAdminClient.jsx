@@ -39,6 +39,17 @@ function safeNum(v, fallback = null) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function safePosInt(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "";
+  const i = Math.trunc(n);
+  return i > 0 ? i : "";
+}
+
+function isOrphanStatus(status) {
+  return String(status || "").toUpperCase().includes("ORPHAN");
+}
+
 function setRow(rows, idx, patch) {
   const next = [...rows];
   next[idx] = { ...next[idx], ...patch };
@@ -73,7 +84,7 @@ function normalizeRow(r, idx = 0) {
   const display_order = safeNum(r?.display_order, idx + 1);
   const status = STATUS_OPTIONS.includes(safeStr(r?.status)) ? safeStr(r?.status) : "FULL & ACTIVE";
 
-  const isOrphanByStatus = status.toUpperCase().includes("ORPHAN");
+  const isOrphanByStatus = isOrphanStatus(status);
 
   return {
     id,
@@ -94,7 +105,8 @@ function normalizeRow(r, idx = 0) {
 
     pendingImageFile: null,
     pendingImagePreviewUrl: "",
-    fill_note: safeStr(r?.fill_note).trim(),
+    // Fill note is ONLY used for orphan openings: integer count of open spots.
+    fill_note: isOrphanByStatus ? safePosInt(r?.fill_note) : "",
     display_order,
     is_active: r?.is_active !== false,
     // Orphan is controlled by Status (single source of truth).
@@ -571,7 +583,7 @@ export default function DynastyAdminClient() {
     const theme_name = quick.theme_name.trim();
     const theme_blurb = quick.theme_blurb.trim();
     const base_status = quick.base_status || "CURRENTLY FILLING";
-    const base_fill_note = quick.base_fill_note.trim();
+    const base_fill_note = isOrphanStatus(base_status) ? safePosInt(quick.base_fill_note) : "";
 
     const names = quick.division_names
       .split("\n")
@@ -766,8 +778,24 @@ export default function DynastyAdminClient() {
                 </select>
               </label>
               <label className="space-y-1">
-                <span className="text-xs text-muted">Default fill note (optional)</span>
-                <input className="input" value={quick.base_fill_note} onChange={(e) => setQuick((q) => ({ ...q, base_fill_note: e.target.value }))} />
+                <span className="text-xs text-muted">Default orphan spots open (optional)</span>
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  step={1}
+                  disabled={!isOrphanStatus(quick.base_status)}
+                  value={quick.base_fill_note}
+                  onChange={(e) =>
+                    setQuick((q) => ({
+                      ...q,
+                      base_fill_note: e.target.value,
+                    }))
+                  }
+                />
+                {!isOrphanStatus(quick.base_status) ? (
+                  <div className="text-[11px] text-muted">Only available when status is an Orphan status.</div>
+                ) : null}
               </label>
             </div>
 
@@ -933,7 +961,20 @@ export default function DynastyAdminClient() {
                                   <input className="input w-[180px] max-w-[180px]" value={lg.name} onChange={(e) => updateLeague(lg.id, { name: e.target.value })} />
                                 </td>
                                 <td className="px-3 py-2">
-                                  <select className="input" value={lg.status} onChange={(e) => updateLeague(lg.id, { status: e.target.value })}>
+                                  <select
+                                    className="input"
+                                    value={lg.status}
+                                    onChange={(e) => {
+                                      const nextStatus = e.target.value;
+                                      const is_orphan = isOrphanStatus(nextStatus);
+                                      updateLeague(lg.id, {
+                                        status: nextStatus,
+                                        is_orphan,
+                                        // Only keep fill_note when orphan.
+                                        fill_note: is_orphan ? lg.fill_note : "",
+                                      });
+                                    }}
+                                  >
                                     {STATUS_OPTIONS.map((s) => (
                                       <option key={s} value={s}>
                                         {s}
@@ -1010,9 +1051,17 @@ export default function DynastyAdminClient() {
                                 </div>
                               </td>
 
-                                <td className="px-3 py-2">
-                                  <input className="input w-[260px] max-w-[260px]" value={lg.fill_note} onChange={(e) => updateLeague(lg.id, { fill_note: e.target.value })} />
-                                </td>
+                              <td className="px-3 py-2">
+                                <input
+                                  className="input w-[140px]"
+                                  type="number"
+                                  min={1}
+                                  step={1}
+                                  value={lg.is_orphan ? lg.fill_note || "" : ""}
+                                  disabled={!lg.is_orphan}
+                                  onChange={(e) => updateLeague(lg.id, { fill_note: safePosInt(e.target.value) })}
+                                />
+                              </td>
                                 <td className="px-3 py-2">
                                   <input type="checkbox" checked={lg.is_active !== false} onChange={(e) => updateLeague(lg.id, { is_active: e.target.checked })} />
                                 </td>
