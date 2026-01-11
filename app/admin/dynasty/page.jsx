@@ -9,7 +9,7 @@ export default function AdminDynastyPage() {
   return (
     <AdminGuard>
       <section className="section">
-        <div className="container-site max-w-6xl px-4 sm:px-6 lg:px-8 space-y-8">
+        <div className="container-site w-full max-w-none px-3 sm:px-6 lg:px-10 space-y-5 sm:space-y-8">
           <AdminNav
             eyebrow="Admin · Dynasty"
             title="Dynasty Themes & Leagues"

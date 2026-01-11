@@ -145,7 +145,7 @@ export default function DynastyAdminClient() {
   const [errorMsg, setErrorMsg] = useState("");
   const [infoMsg, setInfoMsg] = useState("");
 
-  const [pageSeason, setPageSeason] = useState(DEFAULT_PAGE_SEASON);
+  const pageSeason = DEFAULT_PAGE_SEASON;
   const [pageCfg, setPageCfg] = useState(DEFAULT_PAGE_EDITABLE);
   const [pageSaving, setPageSaving] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
@@ -661,15 +661,7 @@ export default function DynastyAdminClient() {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            <label className="text-xs text-muted flex items-center gap-2">
-              Season
-              <input
-                className="input w-24"
-                value={pageSeason}
-                onChange={(e) => setPageSeason(safeNum(e.target.value, pageSeason) || pageSeason)}
-              />
-            </label>
-            <button
+<button
               className="btn btn-primary"
               type="button"
               onClick={() => savePageConfig(pageSeason)}

@@ -29,12 +29,35 @@ function ensureR2(env) {
   return b;
 }
 
-async function touchManifest(env, season) {
-  const b = ensureR2(env);
-  const key = season ? `data/manifests/gauntlet_${season}.json` : `data/manifests/gauntlet.json`;
-  const body = JSON.stringify({ section: "gauntlet", season: season || null, updatedAt: Date.now() }, null, 2);
-  await b.put(key, body, { httpMetadata: { contentType: "application/json; charset=utf-8" } });
-    await touchManifest(env, season);
+async function touchManifest(env, section, season) {
+  // Non-fatal: manifest touch should never break admin writes.
+  try {
+    const r2 = ensureR2(env);
+    const key = season ? `data/manifests/${section}_${season}.json` : `data/manifests/${section}.json`;
+    const body = JSON.stringify(
+      {
+        section,
+        season: season || null,
+        updatedAt: new Date().toISOString(),
+        nonce: crypto.randomUUID(),
+      },
+      null,
+      2
+    );
+    await r2.put(key, body, { httpMetadata: { contentType: "application/json; charset=utf-8" } });
+  } catch {
+    // ignore
+  }
+}
+
+function safeStr(v) {
+  return typeof v === "string" ? v : v == null ? "" : String(v);
+}
+
+function seasonOrDefault(season) {
+  const s = safeStr(season).trim();
+  const n = Number(s || CURRENT_SEASON);
+  return Number.isFinite(n) ? n : Number(CURRENT_SEASON);
 }
 
 
@@ -82,7 +105,9 @@ async function writeJSON(env, key, payload) {
 
 export async function onRequest(context) {
   const { request, env } = context;
-  const type = (url.searchParams.get("type") || "leagues").toLowerCase();
+  const url = new URL(request.url);
+  const season = seasonOrDefault(url.searchParams.get("season"));
+  const type = safeStr(url.searchParams.get("type") || "leagues").toLowerCase();
 
   const key = type === "page" ? pageKeyForSeason(season) : leaguesKeyForSeason(season);
 

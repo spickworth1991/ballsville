@@ -373,7 +373,7 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
     <main className="section">
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onPickFile} />
 
-      <div className="container-site">
+      <div className="container-site w-full max-w-none px-3 sm:px-6 lg:px-10 space-y-5 sm:space-y-6">
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
           <div>
             <h1 className="h1">Gauntlet Admin</h1>

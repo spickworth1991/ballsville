@@ -21,6 +21,9 @@ import {
   FiLayers,
 } from "react-icons/fi";
 
+/**
+ * Add `isNew: true` to any item (or child/sub-child) to show a "NEW" pill.
+ */
 const NAV_ITEMS = [
   { id: "home", name: "Home", to: "/", icon: FiHome },
   {
@@ -28,25 +31,49 @@ const NAV_ITEMS = [
     name: "Game Modes",
     icon: FiGrid,
     children: [
-      { name: "The BIG Game", to: "/big-game" },
-      { name: "Mini-Leagues", to: "/mini-leagues"},
-      { name: "Redraft", to: "/redraft" },
-      { name: "Dynasty", to: "/dynasty" },
-      { name: "Gauntlet", to: "/gauntlet" }
+      {
+        id: "leaderboards",
+        name: "Leaderboards",
+        to: "/leaderboards",
+        // isNew: true,
+      },
+
+      {
+        id: "big-game",
+        name: "The BIG Game",
+        to: "/big-game",
+        children: [
+          { name: "Wagers", to: "/big-game/wagers",}, 
+        ],
+      },
+      {
+        id: "mini-leagues",
+        name: "Mini-Leagues",
+        to: "/mini-leagues",
+        children: [{ name: "Wagers", to: "/mini-leagues/wagers" }],
+      },
+      {
+        id: "redraft",
+        name: "Redraft",
+        to: "/redraft",
+      },
+      {
+        id: "dynasty",
+        name: "Dynasty",
+        to: "/dynasty",
+        children: [{ name: "Wagers", to: "/dynasty/wagers" }],
+      },
+      {
+        id: "gauntlet",
+        name: "Gauntlet",
+        to: "/gauntlet",
+        children: [{ name: "Gauntlet Bracket", to: "/gauntlet/leaderboard" }],
+      },
     ],
   },
-  {
-    id: "leaderboards",
-    name: "Leaderboards",
-    icon: FiBarChart2,
-    children: [
-      { name: "Leaderboards", to: "/leaderboards" },
-      { name: "Gauntlet Bracket", to: "/gauntlet/leaderboard" },
-      { name: "Big Game Wagers", to: "/big-game/wagers" },
-      { name: "Dynasty Wagers", to: "/dynasty/wagers" },
-      { name: "Mini-League Wagers", to: "/mini-leagues/wagers" },
-    ],
-  },
+
+  { id: "adp", name: "ADP", to: "/draft-compare", icon: FiLayers, isNew: true },
+
   {
     id: "joe-street-journal",
     name: "Joe Street Journal",
@@ -54,11 +81,46 @@ const NAV_ITEMS = [
     icon: FiFileText,
   },
   { id: "about", name: "About", to: "/about", icon: FiUsers },
-  { id: "constitution", name: "Constitution", to: "/constitution", icon: FiBriefcase },
+  {
+    id: "constitution",
+    name: "Constitution",
+    to: "/constitution",
+    icon: FiBriefcase,
+  },
   { id: "news", name: "News", to: "/news", icon: FiTrendingUp },
   { id: "faqs", name: "Faqs", to: "/faq", icon: FiHelpCircle },
   { id: "hall-of-fame", name: "Hall of Fame", to: "/hall-of-fame", icon: FiAward },
 ];
+
+function hasKids(node) {
+  return Array.isArray(node?.children) && node.children.length > 0;
+}
+
+function isNodeActive(node, pathname) {
+  if (!node) return false;
+
+  // exact match
+  if (node.to && pathname === node.to) return true;
+
+  // section match
+  if (node.to && pathname.startsWith(node.to + "/")) return true;
+
+  // recursive match
+  if (hasKids(node)) return node.children.some((c) => isNodeActive(c, pathname));
+
+  return false;
+}
+
+function NewPill() {
+  return (
+    <span
+      className="ml-2 inline-flex items-center rounded-full border border-subtle bg-white/5 px-2 py-0.5 text-[10px] font-bold tracking-wide text-accent"
+      aria-label="New"
+    >
+      NEW
+    </span>
+  );
+}
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -72,6 +134,7 @@ export default function Navbar() {
 
   const [openDesktopMenuId, setOpenDesktopMenuId] = useState(null);
   const [openMobileMenuId, setOpenMobileMenuId] = useState(null);
+  const [openMobileSubMenuId, setOpenMobileSubMenuId] = useState(null);
 
   const containerRef = useRef(null);
   const linksRef = useRef([]);
@@ -80,8 +143,6 @@ export default function Navbar() {
   const innerRef = useRef(null);
 
   const overflow = NAV_ITEMS.slice(visibleLinks);
-
- 
 
   // Mobile rotation can report stale widths briefly. Schedule (and de-dupe)
   // re-measurements with a double rAF so layout/styles settle before we decide
@@ -101,25 +162,6 @@ export default function Navbar() {
       });
     });
   };
-
-  // ---------------- THEME ----------------
-  // useEffect(() => {
-  //   const saved =
-  //     typeof window !== "undefined" ? localStorage.getItem("theme") : null;
-  //   const prefersDark =
-  //     typeof window !== "undefined" &&
-  //     window.matchMedia &&
-  //     window.matchMedia("(prefers-color-scheme: dark)").matches;
-
-  //   setDark(saved ? saved === "dark" : !!prefersDark);
-  // }, []);
-
-  // useEffect(() => {
-  //   document.documentElement.classList.toggle("dark", dark);
-  //   try {
-  //     localStorage.setItem("theme", dark ? "dark" : "light");
-  //   } catch {}
-  // }, [dark]);
 
   // ---------------- SCROLL SHRINK ----------------
   useLayoutEffect(() => {
@@ -189,8 +231,6 @@ export default function Navbar() {
   };
 
   // ✅ Measure immediately (layout) + re-measure on rotation/resizes.
-  // iOS/Android can briefly report stale widths during orientation changes,
-  // so we use scheduleMeasure (double rAF) and listen to visualViewport too.
   useLayoutEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -228,12 +268,6 @@ export default function Navbar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Re-measure on theme toggle (icon widths can shift a hair)
-  // useEffect(() => {
-  //   updateVisibleLinks();
-  //   // eslint-disable-next-line react-hooks/exhaustive-deps
-  // }, [dark]);
-
   // lock body scroll when sidebar open
   useEffect(() => {
     document.body.classList.toggle("overflow-hidden", open);
@@ -245,17 +279,50 @@ export default function Navbar() {
     setOpen(false);
     setOpenDesktopMenuId(null);
     setOpenMobileMenuId(null);
+    setOpenMobileSubMenuId(null);
   }, [pathname]);
 
   // Also collapse mobile submenus when sidebar closes
   useEffect(() => {
-    if (!open) setOpenMobileMenuId(null);
+    if (!open) {
+      setOpenMobileMenuId(null);
+      setOpenMobileSubMenuId(null);
+    }
   }, [open]);
+
+  // Close desktop dropdown when clicking outside
+  useEffect(() => {
+    if (!openDesktopMenuId) return;
+
+    const onDown = (e) => {
+      const root = containerRef.current;
+      if (!root) return;
+      if (!root.contains(e.target)) setOpenDesktopMenuId(null);
+    };
+
+    window.addEventListener("pointerdown", onDown);
+    return () => window.removeEventListener("pointerdown", onDown);
+  }, [openDesktopMenuId]);
+
+  // Escape closes everything
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        setOpenDesktopMenuId(null);
+        setOpen(false);
+        setOpenMobileMenuId(null);
+        setOpenMobileSubMenuId(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const handleNavClick = () => {
     setOpen(false);
     setOpenDesktopMenuId(null);
     setOpenMobileMenuId(null);
+    setOpenMobileSubMenuId(null);
   };
 
   return (
@@ -290,12 +357,8 @@ export default function Navbar() {
 
             <ul className="flex flex-1 min-w-0 items-center space-x-4 ml-6 flex-nowrap overflow-visible">
               {NAV_ITEMS.map((item, i) => {
-                const hasChildren =
-                  Array.isArray(item.children) && item.children.length > 0;
-
-                const isActive = hasChildren
-                  ? item.children.some((child) => pathname.startsWith(child.to))
-                  : pathname === item.to;
+                const hasChildren = hasKids(item);
+                const isActive = isNodeActive(item, pathname);
 
                 return (
                   <li
@@ -315,6 +378,7 @@ export default function Navbar() {
                       <span className="inline-flex items-center space-x-1">
                         {item.icon && <item.icon className="w-5 h-5" />}
                         <span className="whitespace-nowrap">{item.name}</span>
+                        {item?.isNew && <NewPill />}
                         {hasChildren && <FiChevronDown className="w-4 h-4" />}
                       </span>
                     </span>
@@ -327,12 +391,12 @@ export default function Navbar() {
                           isActive
                             ? "text-primary font-semibold"
                             : "text-fg hover:text-accent"
-                            
                         }`}
                         onClick={handleNavClick}
                       >
                         {item.icon && <item.icon className="w-5 h-5" />}
                         <span className="whitespace-nowrap">{item.name}</span>
+                        {item?.isNew && <NewPill />}
                       </Link>
                     )}
 
@@ -350,9 +414,14 @@ export default function Navbar() {
                               ? "text-primary font-semibold"
                               : "text-fg hover:text-accent"
                           }`}
+                          aria-expanded={
+                            openDesktopMenuId === item.id ? "true" : "false"
+                          }
+                          aria-haspopup="menu"
                         >
                           {item.icon && <item.icon className="w-5 h-5" />}
                           <span className="whitespace-nowrap">{item.name}</span>
+                          {item?.isNew && <NewPill />}
                           <FiChevronDown
                             className={`w-4 h-4 transition-transform ${
                               openDesktopMenuId === item.id ? "rotate-180" : ""
@@ -361,22 +430,85 @@ export default function Navbar() {
                         </button>
 
                         {openDesktopMenuId === item.id && (
-                          <div className="absolute left-0 mt-2 w-56 rounded-xl border border-subtle bg-card-surface shadow-lg z-50 py-2">
-                            {item.children.map((child) => (
-                              <Link
-                                key={child.to}
-                                prefetch={false}
-                                href={child.to}
-                                className={`flex items-center px-4 py-2 text-sm transition-colors ${
-                                  pathname === child.to
-                                    ? "text-primary font-semibold"
-                                    : "text-fg hover:text-accent"
-                                }`}
-                                onClick={handleNavClick}
-                              >
-                                <span>{child.name}</span>
-                              </Link>
-                            ))}
+                          <div
+                            className="absolute left-0 mt-2 w-72 rounded-xl border border-subtle bg-card-surface z-50 py-2
+                                       shadow-[0_12px_40px_rgba(0,0,0,0.35)] ring-1 ring-white/5
+                                       origin-top-left transition duration-150 ease-out"
+                            role="menu"
+                          >
+                            {item.children.map((child) => {
+                              const childHasKids = hasKids(child);
+                              const childActive = isNodeActive(child, pathname);
+
+                              if (!childHasKids) {
+                                return (
+                                  <Link
+                                    key={child.to}
+                                    prefetch={false}
+                                    href={child.to}
+                                    className={`flex items-center justify-between px-3 py-2 text-sm rounded-lg transition-colors mx-2 ${
+                                      pathname === child.to
+                                        ? "text-primary font-semibold bg-white/5"
+                                        : "text-fg hover:text-accent hover:bg-white/5"
+                                    }`}
+                                    onClick={handleNavClick}
+                                    role="menuitem"
+                                  >
+                                    <span>{child.name}</span>
+                                    {child?.isNew && <NewPill />}
+                                  </Link>
+                                );
+                              }
+
+                              return (
+                                <div key={child.id || child.name} className="px-2">
+                                  {/* parent row */}
+                                  <Link
+                                    prefetch={false}
+                                    href={child.to || "#"}
+                                    className={`flex items-center justify-between px-2 py-2 text-sm rounded-lg transition-colors ${
+                                      childActive
+                                        ? "text-primary font-semibold bg-white/5"
+                                        : "text-fg hover:text-accent hover:bg-white/5"
+                                    }`}
+                                    onClick={
+                                      child.to
+                                        ? handleNavClick
+                                        : (e) => e.preventDefault()
+                                    }
+                                    role="menuitem"
+                                  >
+                                    <span className="inline-flex items-center">
+                                      {child.name}
+                                      {child?.isNew && <NewPill />}
+                                    </span>
+                                    <FiChevronDown className="w-4 h-4 opacity-70 -rotate-90" />
+                                  </Link>
+
+                                  {/* sub rows */}
+                                  <div className="pb-2">
+                                    {child.children.map((sub) => (
+                                      <Link
+                                        key={sub.to}
+                                        prefetch={false}
+                                        href={sub.to}
+                                        className={`ml-3 flex items-center justify-between px-3 py-2 text-sm rounded-lg transition-colors ${
+                                          pathname === sub.to
+                                            ? "text-primary font-semibold bg-white/5"
+                                            : "text-fg hover:text-accent hover:bg-white/5"
+                                        }`}
+                                        onClick={handleNavClick}
+                                      >
+                                        <span>{sub.name}</span>
+                                        {sub?.isNew && <NewPill />}
+                                      </Link>
+                                    ))}
+                                  </div>
+
+                                  <div className="my-1 h-px bg-subtle/60" />
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
@@ -392,19 +524,6 @@ export default function Navbar() {
             className="relative z-20 flex items-center flex-shrink-0 space-x-2 pl-4"
             ref={rightRef}
           >
-            {/* <button
-              onClick={() => setDark((prev) => !prev)}
-              className="w-10 h-10 grid place-items-center rounded-lg hover:opacity-90 transition"
-              aria-label="Toggle dark mode"
-              type="button"
-            >
-              {dark ? (
-                <FiSun className="w-6 h-6 text-fg" />
-              ) : (
-                <FiMoon className="w-6 h-6 text-fg" />
-              )}
-            </button> */}
-
             {overflow.length > 0 && (
               <button
                 className="w-10 h-10 grid place-items-center rounded-lg hover:opacity-90 transition"
@@ -452,12 +571,9 @@ export default function Navbar() {
 
           <nav className="px-6 pb-8 space-y-6">
             {overflow.map((item) => {
-              const hasChildren =
-                Array.isArray(item.children) && item.children.length > 0;
+              const hasChildren = hasKids(item);
               const isMenuOpen = openMobileMenuId === item.id;
-              const isActive = hasChildren
-                ? item.children.some((child) => pathname.startsWith(child.to))
-                : pathname === item.to;
+              const isActive = isNodeActive(item, pathname);
 
               if (!hasChildren) {
                 return (
@@ -472,6 +588,7 @@ export default function Navbar() {
                   >
                     {item.icon && <item.icon className="w-6 h-6" />}
                     <span>{item.name}</span>
+                    {item?.isNew && <NewPill />}
                   </Link>
                 );
               }
@@ -492,6 +609,7 @@ export default function Navbar() {
                     <span className="inline-flex items-center space-x-2">
                       {item.icon && <item.icon className="w-6 h-6" />}
                       <span>{item.name}</span>
+                      {item?.isNew && <NewPill />}
                     </span>
                     <FiChevronDown
                       className={`w-5 h-5 transition-transform ${
@@ -502,35 +620,85 @@ export default function Navbar() {
 
                   {isMenuOpen && (
                     <div className="mt-1 pl-8 space-y-3">
-                      {item.children.map((child) => (
-                        <Link
-                          key={child.to}
-                          prefetch={false}
-                          href={child.to}
-                          className={`block text-base transition-colors ${
-                            pathname === child.to
-                              ? "text-primary font-semibold"
-                              : "text-fg hover:text-accent"
-                          }`}
-                          onClick={handleNavClick}
-                        >
-                          {child.name}
-                        </Link>
-                      ))}
+                      {item.children.map((child) => {
+                        const childHasKids = hasKids(child);
+                        const childKey = child.id || child.name;
+                        const childOpen = openMobileSubMenuId === childKey;
+                        const childActive = isNodeActive(child, pathname);
+
+                        if (!childHasKids) {
+                          return (
+                            <Link
+                              key={child.to}
+                              prefetch={false}
+                              href={child.to}
+                              className={`flex items-center justify-between text-base transition-colors ${
+                                pathname === child.to
+                                  ? "text-primary font-semibold"
+                                  : "text-fg hover:text-accent"
+                              }`}
+                              onClick={handleNavClick}
+                            >
+                              <span>{child.name}</span>
+                              {child?.isNew && <NewPill />}
+                            </Link>
+                          );
+                        }
+
+                        return (
+                          <div key={childKey} className="space-y-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setOpenMobileSubMenuId((prev) =>
+                                  prev === childKey ? null : childKey
+                                )
+                              }
+                              className={`flex w-full items-center justify-between text-base transition-colors ${
+                                childActive
+                                  ? "text-primary font-semibold"
+                                  : "text-fg hover:text-accent"
+                              }`}
+                            >
+                              <span className="inline-flex items-center">
+                                {child.name}
+                                {child?.isNew && <NewPill />}
+                              </span>
+                              <FiChevronDown
+                                className={`w-5 h-5 transition-transform ${
+                                  childOpen ? "rotate-180" : ""
+                                }`}
+                              />
+                            </button>
+
+                            {childOpen && (
+                              <div className="pl-4 space-y-2">
+                                {child.children.map((sub) => (
+                                  <Link
+                                    key={sub.to}
+                                    prefetch={false}
+                                    href={sub.to}
+                                    className={`flex items-center justify-between text-sm transition-colors ${
+                                      pathname === sub.to
+                                        ? "text-primary font-semibold"
+                                        : "text-fg hover:text-accent"
+                                    }`}
+                                    onClick={handleNavClick}
+                                  >
+                                    <span>{sub.name}</span>
+                                    {sub?.isNew && <NewPill />}
+                                  </Link>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
               );
             })}
-
-            {/* <button
-              onClick={() => setDark((prev) => !prev)}
-              className="inline-flex items-center justify-center p-2 text-xl leading-none text-fg hover:text-accent transition"
-              aria-label="Toggle dark mode"
-              type="button"
-            >
-              {dark ? <FiSun className="block" /> : <FiMoon className="block" />}
-            </button> */}
           </nav>
         </div>
       </aside>

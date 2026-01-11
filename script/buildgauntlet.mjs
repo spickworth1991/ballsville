@@ -197,11 +197,11 @@ const supabase = createClient(NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KE
 // You already use these in other workflows; re-use the same names if you want:
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID;
 const R2_BUCKET_GAUNTLET =
-  process.env.R2_BUCKET_GAUNTLET || process.env.R2_BUCKET_LEADERBOARDS; // fallback
+  process.env.R2_BUCKET_GAUNTLET || process.env.ADMIN_BUCKET; // fallback
 
 if (!R2_ACCOUNT_ID || !R2_BUCKET_GAUNTLET) {
   console.error(
-    "❌ R2_ACCOUNT_ID or R2_BUCKET_GAUNTLET / R2_BUCKET_LEADERBOARDS is not set in env."
+    "❌ R2_ACCOUNT_ID or R2_BUCKET_GAUNTLET / ADMIN_BUCKET is not set in env."
   );
   process.exit(1);
 }

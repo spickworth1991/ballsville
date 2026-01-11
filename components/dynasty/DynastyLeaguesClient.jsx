@@ -348,11 +348,16 @@ const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows])
                   </div>
 
                   <span className="shrink-0 rounded-full border border-accent bg-panel px-2 py-1 text-[11px] tracking-wide uppercase text-accent">
-                    Orphan Open
+                    {Number.isFinite(Number(o?.fill_note)) && Number(o?.fill_note) > 0
+                      ? `${Math.trunc(Number(o.fill_note))} Spots`
+                      : "Orphan Open"}
                   </span>
                 </div>
 
                 <p className="mt-2 text-[11px] text-muted">
+                  {Number.isFinite(Number(o?.fill_note)) && Number(o?.fill_note) > 0
+                    ? `Spots available: ${Math.trunc(Number(o.fill_note))}. `
+                    : ""}
                   Click for Sleeper league details and to request the team.
                 </p>
               </Link>
@@ -409,7 +414,7 @@ const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows])
                         metaRight={lg?.status || "FULL & ACTIVE"}
                         imageSrc={img}
                         imageAlt={lg?.name || "League"}
-                        footerText={isFilling ? lg?.fill_note || lg?.note || "" : lg?.note || ""}
+                      footerText={lg?.note || ""}
                         className="h-full"
                       />
                     );
