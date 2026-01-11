@@ -207,13 +207,31 @@ function HomeInner({ manifest }) {
             <h1 className="mt-1 text-3xl font-semibold text-primary">{heroTitle}</h1>
             <p className="mt-2 max-w-3xl text-sm text-muted">{heroSubtitle}</p>
           </div>
+        </div>
+        {/* Featured CTA */}
+        <div className="rounded-2xl border border-subtle bg-card-surface p-5 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="mt-1 text-lg font-semibold text-primary">Compare gamemodes</div>
+              <div className="mt-1 text-sm text-muted">
+                See how draft tendencies differ across modes with a sortable list + draftboard.
+              </div>
+            </div>
 
-          <div className="flex flex-wrap rounded-2xl border border-subtle bg-card-surface items-center gap-2">
-            <Link href="/draft-compare/compare-modes" className="btn btn-secondary">
-              Compare gamemodes
+            <Link
+              href="/draft-compare/compare-modes"
+              className={cls(
+                "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold",
+                "border border-primary/30 bg-primary/15 text-primary",
+                "hover:bg-primary/20 hover:border-primary/40 transition",
+                "shadow-[0_10px_25px_rgba(0,0,0,0.25)]"
+              )}
+            >
+              Compare gamemodes <span className="transition group-hover:translate-x-0.5">→</span>
             </Link>
           </div>
         </div>
+
 
         {err ? (
           <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 p-4 text-sm text-rose-100">{err}</div>
