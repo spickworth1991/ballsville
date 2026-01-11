@@ -834,36 +834,31 @@ function CellModal({ cellKey, teams, list, onClose }) {
   // NEW: reuse the same phone/orientation logic
   const { isPhoneLike, isPortrait } = useDraftboardLandscapeTip();
   const isPhoneLandscape = isPhoneLike && !isPortrait;
+  const NAV_OFFSET_PX = 72; // adjust if your navbar is taller
 
   return (
     <div
-      className={cls(
-        "fixed inset-0 z-[60] flex bg-black/50",
-        isPhoneLandscape ? "items-start justify-center" : "items-center justify-center",
-        "p-4"
-      )}
-      style={
-        isPhoneLandscape
-          ? {
-              // push modal down a bit in landscape & respect notch / safe area
-              paddingTop: "calc(env(safe-area-inset-top, 0px) + 60px)",
-              paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
-            }
-          : undefined
-      }
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        className="w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card-surface shadow-xl flex flex-col"
+        className={cls(
+          "fixed inset-0 z-[60] flex bg-black/50",
+          isPhoneLandscape ? "items-start justify-center" : "items-center justify-center",
+          "p-4"
+        )}
         style={{
-          // hard cap to viewport (dynamic viewport units help on mobile browsers)
-          maxHeight: isPhoneLandscape
-            ? "calc(100dvh - 80px)" // accounts for your extra top padding + some breathing room
-            : "calc(100dvh - 32px)",
+          // Always reserve space for the navbar (desktop included).
+          paddingTop: `calc(env(safe-area-inset-top, 0px) + ${NAV_OFFSET_PX}px)`,
+          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
+        }}
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) onClose();
         }}
       >
+        <div
+          className="w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card-surface shadow-xl flex flex-col"
+          style={{
+            // Match the reserved padding so the modal never hides under the nav or bottom.
+            maxHeight: `calc(100dvh - ${NAV_OFFSET_PX}px - 32px)`,
+          }}
+        >
 
         <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
           <div>
@@ -951,32 +946,27 @@ function LeaguePicker({ leagues, sideA, sideB, onClose, onChange }) {
     // NEW: detect phone landscape
   const { isPhoneLike, isPortrait } = useDraftboardLandscapeTip();
   const isPhoneLandscape = isPhoneLike && !isPortrait;
+  const NAV_OFFSET_PX = 72; // adjust if your navbar is taller
 
   return (
     <div
-      className={cls(
-        "fixed inset-0 z-[70] flex bg-black/50",
-        isPhoneLandscape ? "items-start justify-center" : "items-center justify-center",
-        "p-4"
-      )}
-      style={
-        isPhoneLandscape
-          ? {
-              paddingTop: "calc(env(safe-area-inset-top, 0px) + 72px)",
-              paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
-            }
-          : undefined
-      }
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
+        className={cls(
+          "fixed inset-0 z-[70] flex bg-black/50",
+          isPhoneLandscape ? "items-start justify-center" : "items-center justify-center",
+          "p-4"
+        )}
+        style={{
+          paddingTop: `calc(env(safe-area-inset-top, 0px) + ${NAV_OFFSET_PX}px)`,
+          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
+        }}
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
+        <div
           className="w-full max-w-3xl overflow-hidden rounded-2xl border border-border bg-card-surface shadow-xl flex flex-col"
           style={{
-            maxHeight: isPhoneLandscape
-              ? "calc(100dvh - 85px)" // accounts for your larger 72px top padding
-              : "calc(100dvh - 32px)",
+            maxHeight: `calc(100dvh - ${NAV_OFFSET_PX}px - 32px)`,
           }}
         >
 
