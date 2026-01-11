@@ -9,7 +9,7 @@ export default function GauntletAdminPage() {
   return (
     <AdminGuard>
       <section className="section">
-        <div className="container-site max-w-5xl px-4 sm:px-6 lg:px-8 space-y-6">
+        <div className="container-site w-full max-w-none px-3 sm:px-6 lg:px-10 space-y-5 sm:space-y-6">
           <AdminNav
             eyebrow="Admin · Gauntlet"
             title="Gauntlet Legions"

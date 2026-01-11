@@ -10,7 +10,7 @@ export default function BigGameAdminPage() {
   return (
     <AdminGuard>
       <section className="section">
-        <div className="container-site max-w-6xl px-4 sm:px-6 lg:px-8 space-y-8">
+        <div className="container-site w-full max-w-none px-3 sm:px-6 lg:px-10 space-y-5 sm:space-y-8">
           <AdminNav
             eyebrow="Admin · Big Game"
             title="Big Game Divisions & Leagues"
@@ -19,11 +19,10 @@ export default function BigGameAdminPage() {
             publicLabel="← View Public Big Game Page"
           />
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
             <Link
               href="/admin/big-game/wagers"
-              className="btn btn-primary"
-            >
+              className="btn btn-primary w-full justify-center sm:w-auto">
               💰 Big Game Wager Tracker
             </Link>
           </div>
