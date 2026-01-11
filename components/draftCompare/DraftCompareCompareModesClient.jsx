@@ -428,7 +428,7 @@ export default function DraftCompareCompareModesClient() {
                   </p>
                   {showReliabilityNote ? (
                     <p className="mt-1 text-xs text-white/60">
-                      Note: late-round slots can be less reliable because this compares drafts from different league sizes and round counts.
+                      Note: Due to this comparing drafts from different league sizes and round counts, there could be some variance in the rankings.
                     </p>
                   ) : null}
 
@@ -475,7 +475,7 @@ export default function DraftCompareCompareModesClient() {
                 <h2 className="text-lg font-semibold text-primary">Compare List</h2>
                   {showReliabilityNote ? (
                     <p className="mt-1 text-xs text-white/60">
-                      Note: late-round ranks can be less reliable because this compares drafts from different league sizes and round counts.
+                      Note: Due to this comparing drafts from different league sizes and round counts, there could be some variance in the rankings.
                     </p>
                   ) : null}
 
