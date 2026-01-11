@@ -328,14 +328,14 @@ export default function DraftCompareCompareModesClient() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-3">
-            <Link href="/draft-compare" className="text-sm text-accent hover:underline">
+            <Link href="/draft-compare" className="text-base sm:text-sm  text-accent hover:underline">
               ← Draft Compare
             </Link>
             <span className="text-xs text-muted">/</span>
-            <span className="text-sm text-muted">Compare gamemodes</span>
+            <span className="text-base sm:text-sm  text-muted">Compare gamemodes</span>
           </div>
           <h1 className="mt-2 text-2xl font-semibold text-primary">Compare gamemodes</h1>
-          <p className="mt-1 text-sm text-muted">Compare full mode drafts (no league selection).</p>
+          <p className="mt-1 text-base sm:text-sm  text-muted">Compare full mode drafts (no league selection).</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -344,7 +344,7 @@ export default function DraftCompareCompareModesClient() {
               type="button"
               onClick={() => setView("list")}
               className={cls(
-                "px-3 py-2 text-sm font-semibold transition",
+                "px-3 py-2 text-base sm:text-sm  font-semibold transition",
                 view === "list" ? "bg-primary/15 text-primary" : "text-muted hover:bg-background/40"
               )}
             >
@@ -354,7 +354,7 @@ export default function DraftCompareCompareModesClient() {
               type="button"
               onClick={() => setView("board")}
               className={cls(
-                "px-3 py-2 text-sm font-semibold transition",
+                "px-3 py-2 text-base sm:text-sm  font-semibold transition",
                 view === "board" ? "bg-primary/15 text-primary" : "text-muted hover:bg-background/40"
               )}
             >
@@ -365,7 +365,7 @@ export default function DraftCompareCompareModesClient() {
       </div>
 
       {loadErr ? (
-        <div className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+        <div className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-base sm:text-sm  text-red-200">
           {loadErr}
         </div>
       ) : null}
@@ -377,7 +377,7 @@ export default function DraftCompareCompareModesClient() {
             <select
               value={selA}
               onChange={(e) => setSelA(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-border bg-background/60 px-3 py-2 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+              className="mt-1 w-full rounded-xl border border-border bg-background/60 px-3 py-2 text-base sm:text-sm  text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
             >
               {modes.map((m) => (
                 <option key={`A-${m.year}-${m.slug}`} value={`${m.year}|||${m.slug}`}>
@@ -391,7 +391,7 @@ export default function DraftCompareCompareModesClient() {
             <select
               value={selB}
               onChange={(e) => setSelB(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-border bg-background/60 px-3 py-2 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+              className="mt-1 w-full rounded-xl border border-border bg-background/60 px-3 py-2 text-base sm:text-sm  text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
             >
               {modes.map((m) => (
                 <option key={`B-${m.year}-${m.slug}`} value={`${m.year}|||${m.slug}`}>
@@ -409,13 +409,13 @@ export default function DraftCompareCompareModesClient() {
       </div>
 
       {err ? (
-        <div className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+        <div className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-base sm:text-sm  text-red-200">
           {err}
         </div>
       ) : null}
 
       {loading ? (
-        <div className="mt-6 rounded-2xl border border-border bg-card-surface p-6 text-sm text-muted">Loading…</div>
+        <div className="mt-6 rounded-2xl border border-border bg-card-surface p-6 text-base sm:text-sm  text-muted">Loading…</div>
       ) : null}
 
       {!loading && comparing ? (
@@ -489,12 +489,12 @@ export default function DraftCompareCompareModesClient() {
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
                       placeholder="Search player…"
-                      className="w-full rounded-xl border border-border bg-background/60 px-3 py-2 text-sm text-primary placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      className="w-full rounded-xl border border-border bg-background/60 px-3 py-2 text-base sm:text-sm  text-primary placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/30"
                     />
                     <select
                       value={pos}
                       onChange={(e) => setPos(e.target.value)}
-                      className="rounded-xl border border-border bg-background/60 px-3 py-2 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      className="rounded-xl border border-border bg-background/60 px-3 py-2 text-base sm:text-sm  text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                     >
                       {positions.map((p) => (
                         <option key={p} value={p}>
@@ -511,7 +511,7 @@ export default function DraftCompareCompareModesClient() {
               </div>
 
               <div className="max-h-[70vh] overflow-auto">
-                <table className="w-full border-separate border-spacing-0 text-sm">
+                <table className="w-full border-separate border-spacing-0 text-base sm:text-sm ">
                   <thead className="sticky top-0 bg-card-surface/95 backdrop-blur">
                     <tr className="text-left text-xs text-muted">
                       <Th onClick={() => toggleSort("adpA")} active={sortKey === "adpA"} dir={sortDir}>
@@ -570,7 +570,7 @@ export default function DraftCompareCompareModesClient() {
 
                     {!listRows.length ? (
                       <tr>
-                        <td colSpan={8} className="px-4 py-8 text-center text-sm text-muted">
+                        <td colSpan={8} className="px-4 py-8 text-center text-base sm:text-sm  text-muted">
                           No results.
                         </td>
                       </tr>
@@ -612,6 +612,8 @@ function DraftBoard({ group }) {
 
   const { isPhoneLike, isPortrait, showTip, acknowledge } = useDraftboardLandscapeTip();
 
+  // NEW: auto-scale for phone landscape so it "zooms out" to fit screen
+  const [fitScale, setFitScale] = useState(1);
 
   function posTheme(posRaw) {
     const pos = safeStr(posRaw).toUpperCase().trim();
@@ -633,13 +635,8 @@ function DraftBoard({ group }) {
   if (!g || !m) return null;
   const teams = safeNum(m.teams) || 12;
   const rounds = safeNum(m.rounds) || 18;
-  
 
-
-  // If it doesn't fit, phones can scroll horizontally (portrait + landscape).
-  // Non-phones remain locked.
   const boardMinWidthPx = teams * 86;
-
   const cells = g?.draftboard?.cells || {};
 
   const playersArr = Array.isArray(g?.players)
@@ -653,11 +650,11 @@ function DraftBoard({ group }) {
       name: safeStr(p?.name).trim(),
       position: safeStr(p?.position).trim() || "UNK",
       adp: safeNum(p?.avgOverallPick ?? p?.adp ?? p?.avgPick),
+      count: safeNum(p?.count ?? 0),
     }))
     .filter((p) => p.name)
     .sort((a, b) => safeNum(a.adp) - safeNum(b.adp));
 
-  // grid[r][c] => cell
   const grid = [];
   for (let r = 1; r <= rounds; r++) {
     const row = [];
@@ -671,10 +668,8 @@ function DraftBoard({ group }) {
     const r = Math.floor((overall - 1) / teams) + 1;
     const pickInRound = ((overall - 1) % teams) + 1;
 
-    // Snake display: even rounds reverse the column order.
     const displayCol = r % 2 === 1 ? pickInRound : teams - pickInRound + 1;
 
-    // For the modal, keep real slot distributions.
     const origKey = `${r}-${pickInRound}`;
     const dist = safeArray(cells[origKey]);
     const top = dist[0] || null;
@@ -691,20 +686,71 @@ function DraftBoard({ group }) {
     };
   }
 
+  // NEW: compute "fit to screen" scale in phone landscape
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    function computeScale() {
+      // Only auto-fit when phone-like AND landscape
+      if (!isPhoneLike || isPortrait) {
+        setFitScale(1);
+        return;
+      }
+
+      const vv = window.visualViewport;
+      const vw = vv?.width || window.innerWidth;
+
+      // Give yourself a tiny padding so it doesn't kiss the edges
+      const pad = 16;
+      const available = Math.max(320, vw - pad);
+
+      const s = available / boardMinWidthPx;
+
+      // Cap so we never "zoom in" past 1 and never get insanely tiny
+      const clamped = Math.max(0.5, Math.min(1, s));
+      setFitScale(clamped);
+    }
+
+    computeScale();
+
+    const vv = window.visualViewport;
+    vv?.addEventListener?.("resize", computeScale);
+    vv?.addEventListener?.("scroll", computeScale); // iOS can change viewport on UI show/hide
+    window.addEventListener("resize", computeScale);
+    window.addEventListener("orientationchange", computeScale);
+
+    return () => {
+      vv?.removeEventListener?.("resize", computeScale);
+      vv?.removeEventListener?.("scroll", computeScale);
+      window.removeEventListener("resize", computeScale);
+      window.removeEventListener("orientationchange", computeScale);
+    };
+  }, [isPhoneLike, isPortrait, boardMinWidthPx]);
+
   return (
     <div className="space-y-3">
       <div className="overflow-hidden rounded-2xl border border-border bg-background/10 shadow-sm">
-        {/* phone swipe hint */}
+        {/* swipe hint only on phone */}
         {isPhoneLike ? (
-          <div className="flex items-center justify-between px-3 py-2 text-[11px] text-white/70">
+          <div className="flex items-center justify-between px-3 py-2 text-[11px] text-muted">
             <span>Swipe to view all picks</span>
-            <span className="font-semibold text-white">→</span>
+            <span className="font-semibold text-white/90">→</span>
           </div>
         ) : null}
 
         {/* Phones: horizontal swipe; non-phones: locked */}
         <div className={cls(isPhoneLike ? "overflow-x-auto overflow-y-hidden" : "overflow-hidden")}>
-          <div className="relative" style={{ minWidth: isPhoneLike ? `max(100%, ${boardMinWidthPx}px)` : "100%" }}>
+          {/* NEW: scale wrapper */}
+          <div
+            className="relative"
+            style={{
+              minWidth: isPhoneLike ? `max(100%, ${boardMinWidthPx}px)` : "100%",
+              transform: `scale(${fitScale})`,
+              transformOrigin: "left top",
+              // helps avoid blurry text on iOS at non-1 scales
+              willChange: fitScale !== 1 ? "transform" : undefined,
+            }}
+          >
             {grid.map((row, i) => (
               <div key={i} className="grid" style={{ gridTemplateColumns: `repeat(${teams}, minmax(0, 1fr))` }}>
                 {row.map((cell, j) => {
@@ -712,10 +758,7 @@ function DraftBoard({ group }) {
                     return (
                       <div
                         key={`blank-${i}-${j}`}
-                        className={cls(
-                          isPhoneLike ? "h-[88px]" : "h-[74px]",
-                          "border-r border-b border-border/70 bg-background/5"
-                        )}
+                        className="h-[88px] border-r border-b border-border/70 bg-background/5"
                       />
                     );
                   }
@@ -729,8 +772,7 @@ function DraftBoard({ group }) {
                       key={`${cell.r}-${cell.displayCol}`}
                       onClick={() => setOpenKey(cell.origKey)}
                       className={cls(
-                        "group relative border-r border-b text-left transition",
-                        isPhoneLike ? "h-[88px] p-2.5" : "h-[74px] p-2",
+                        "group relative h-[88px] border-r border-b p-2.5 text-left transition",
                         theme.border,
                         theme.cell,
                         "hover:shadow-[0_6px_16px_rgba(0,0,0,0.25)] hover:shadow-black/20",
@@ -738,14 +780,12 @@ function DraftBoard({ group }) {
                       )}
                       title={cell.player ? `${cell.player.name} (${cell.player.position})` : rpAdjusted}
                     >
-                      {/* ONLY round.pick badge (no overall pick badge anywhere) */}
                       <div className="flex items-center justify-between gap-2">
                         <span
                           className={cls(
-                            "inline-flex items-center rounded-full border px-2 py-0.5 font-medium",
-                            isPhoneLike ? "text-[11px]" : "text-[10px]",
+                            "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium",
                             "shadow-[0_2px_10px_rgba(0,0,0,0.16)] backdrop-blur",
-                            "border-white/15 bg-black/25 text-white"
+                            "border-white/20 bg-black/25 text-white"
                           )}
                         >
                           {rpAdjusted}
@@ -754,25 +794,11 @@ function DraftBoard({ group }) {
 
                       {cell.player ? (
                         <div className="mt-2">
-                          <div
-                            className={cls(
-                              "truncate font-semibold leading-4 text-white",
-                              isPhoneLike ? "text-[13px]" : "text-[12.5px]"
-                            )}
-                          >
-                            {nm.first}
-                          </div>
-                          <div
-                            className={cls(
-                              "truncate leading-4 text-white/80",
-                              isPhoneLike ? "text-[12px]" : "text-[12px]"
-                            )}
-                          >
-                            {nm.last || " "}
-                          </div>
+                          <div className="truncate text-[13px] font-semibold leading-4 text-white">{nm.first}</div>
+                          <div className="truncate text-[12px] leading-4 text-white/90">{nm.last || " "}</div>
                         </div>
                       ) : (
-                        <div className="mt-6 text-[11px] text-white/50">—</div>
+                        <div className="mt-6 text-[11px] text-white/60">—</div>
                       )}
                     </button>
                   );
@@ -785,18 +811,13 @@ function DraftBoard({ group }) {
 
       <DraftboardLandscapeTipOverlay open={showTip} isPortrait={isPortrait} onClose={acknowledge} />
 
-
       {openKey ? (
-        <CellModal
-          cellKey={openKey}
-          teams={teams}
-          list={safeArray(cells[openKey])}
-          onClose={() => setOpenKey(null)}
-        />
+        <CellModal cellKey={openKey} teams={teams} list={safeArray(cells[openKey])} onClose={() => setOpenKey(null)} />
       ) : null}
     </div>
   );
 }
+
 
 function nameTwoLines(fullName) {
   const s = safeStr(fullName).trim();
@@ -826,22 +847,22 @@ function CellModal({ cellKey, teams, list, onClose }) {
           <div>
             <div className="text-xs text-white/70">Pick</div>
             <div className="text-lg font-semibold text-white">
-              {rp} <span className="text-sm text-white/60">•</span>{" "}
-              <span className="text-sm text-white/60">#{overall}</span>
+              {rp} <span className="text-base sm:text-sm  text-white/60">•</span>{" "}
+              <span className="text-base sm:text-sm  text-white/60">#{overall}</span>
             </div>
             <div className="mt-1 text-xs text-white/60">{list.length ? `${list.length} unique players` : "No data"}</div>
           </div>
 
           <button
             onClick={onClose}
-            className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/15"
+            className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-base sm:text-sm  text-white hover:bg-white/15"
           >
             Close
           </button>
         </div>
 
         <div className="max-h-[60vh] overflow-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-base sm:text-sm ">
             <thead className="sticky top-0 bg-card-surface/95 backdrop-blur">
               <tr className="text-left text-xs text-white/70">
                 <th className="px-5 py-3">Player</th>
@@ -875,7 +896,7 @@ function CellModal({ cellKey, teams, list, onClose }) {
 
               {!list.length ? (
                 <tr>
-                  <td colSpan={4} className="px-5 py-8 text-center text-sm text-white/60">
+                  <td colSpan={4} className="px-5 py-8 text-center text-base sm:text-sm  text-white/60">
                     Nothing recorded at this slot.
                   </td>
                 </tr>

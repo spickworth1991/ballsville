@@ -649,6 +649,8 @@ function DraftBoard({ group }) {
 
   const { isPhoneLike, isPortrait, showTip, acknowledge } = useDraftboardLandscapeTip();
 
+  // NEW: auto-scale for phone landscape so it "zooms out" to fit screen
+  const [fitScale, setFitScale] = useState(1);
 
   function posTheme(posRaw) {
     const pos = safeStr(posRaw).toUpperCase().trim();
@@ -721,6 +723,47 @@ function DraftBoard({ group }) {
     };
   }
 
+  // NEW: compute "fit to screen" scale in phone landscape
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    function computeScale() {
+      // Only auto-fit when phone-like AND landscape
+      if (!isPhoneLike || isPortrait) {
+        setFitScale(1);
+        return;
+      }
+
+      const vv = window.visualViewport;
+      const vw = vv?.width || window.innerWidth;
+
+      // Give yourself a tiny padding so it doesn't kiss the edges
+      const pad = 16;
+      const available = Math.max(320, vw - pad);
+
+      const s = available / boardMinWidthPx;
+
+      // Cap so we never "zoom in" past 1 and never get insanely tiny
+      const clamped = Math.max(0.5, Math.min(1, s));
+      setFitScale(clamped);
+    }
+
+    computeScale();
+
+    const vv = window.visualViewport;
+    vv?.addEventListener?.("resize", computeScale);
+    vv?.addEventListener?.("scroll", computeScale); // iOS can change viewport on UI show/hide
+    window.addEventListener("resize", computeScale);
+    window.addEventListener("orientationchange", computeScale);
+
+    return () => {
+      vv?.removeEventListener?.("resize", computeScale);
+      vv?.removeEventListener?.("scroll", computeScale);
+      window.removeEventListener("resize", computeScale);
+      window.removeEventListener("orientationchange", computeScale);
+    };
+  }, [isPhoneLike, isPortrait, boardMinWidthPx]);
+
   return (
     <div className="space-y-3">
       <div className="overflow-hidden rounded-2xl border border-border bg-background/10 shadow-sm">
@@ -734,7 +777,17 @@ function DraftBoard({ group }) {
 
         {/* Phones: horizontal swipe; non-phones: locked */}
         <div className={cls(isPhoneLike ? "overflow-x-auto overflow-y-hidden" : "overflow-hidden")}>
-          <div className="relative" style={{ minWidth: isPhoneLike ? `max(100%, ${boardMinWidthPx}px)` : "100%" }}>
+          {/* NEW: scale wrapper */}
+          <div
+            className="relative"
+            style={{
+              minWidth: isPhoneLike ? `max(100%, ${boardMinWidthPx}px)` : "100%",
+              transform: `scale(${fitScale})`,
+              transformOrigin: "left top",
+              // helps avoid blurry text on iOS at non-1 scales
+              willChange: fitScale !== 1 ? "transform" : undefined,
+            }}
+          >
             {grid.map((row, i) => (
               <div key={i} className="grid" style={{ gridTemplateColumns: `repeat(${teams}, minmax(0, 1fr))` }}>
                 {row.map((cell, j) => {
@@ -764,7 +817,6 @@ function DraftBoard({ group }) {
                       )}
                       title={cell.player ? `${cell.player.name} (${cell.player.position})` : rpAdjusted}
                     >
-                      {/* Always show ONLY round.pick pill (white text) */}
                       <div className="flex items-center justify-between gap-2">
                         <span
                           className={cls(
@@ -779,7 +831,6 @@ function DraftBoard({ group }) {
 
                       {cell.player ? (
                         <div className="mt-2">
-                          {/* Always two-line split name */}
                           <div className="truncate text-[13px] font-semibold leading-4 text-white">{nm.first}</div>
                           <div className="truncate text-[12px] leading-4 text-white/90">{nm.last || " "}</div>
                         </div>
@@ -797,13 +848,13 @@ function DraftBoard({ group }) {
 
       <DraftboardLandscapeTipOverlay open={showTip} isPortrait={isPortrait} onClose={acknowledge} />
 
-
       {openKey ? (
         <CellModal cellKey={openKey} teams={teams} list={safeArray(cells[openKey])} onClose={() => setOpenKey(null)} />
       ) : null}
     </div>
   );
 }
+
 
 function CellModal({ cellKey, teams, list, onClose }) {
   const [rStr, pStr] = safeStr(cellKey).split("-");
