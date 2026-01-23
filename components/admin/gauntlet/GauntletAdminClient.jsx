@@ -19,7 +19,6 @@ const DEFAULT_PAGE_EDITABLE = {
   },
 };
 
-
 function slugify(s) {
   return String(s || "")
     .trim()
@@ -39,7 +38,6 @@ async function getAccessToken() {
   const { data } = await supabase.auth.getSession();
   return data?.session?.access_token || "";
 }
-
 
 function statusBadge(status) {
   const s = (status || "TBD").toUpperCase();
@@ -61,6 +59,7 @@ async function safeJson(res) {
 
 export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) {
   const [season, setSeason] = useState(defaultSeason);
+  const skipReloadRef = useRef(false); // used for local rollover without reloading from server
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -72,6 +71,9 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
   const [pageSaving, setPageSaving] = useState(false);
   const fileInputRef = useRef(null);
   const [uploadCtx, setUploadCtx] = useState(null); // { type: 'legion'|'league', legionSlug, leagueOrder }
+
+  // ✅ Per-legion rollover target year drafts (Big Game style)
+  const [rollYearByLegion, setRollYearByLegion] = useState({});
 
   async function load() {
     setError("");
@@ -86,12 +88,23 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
       // IMPORTANT: assign a stable per-row key ONCE so editing doesn't remount inputs
       // (never key by legion_slug / league_order, because those can change while typing).
       const list = Array.isArray(data.rows) ? data.rows : [];
-      setRows(
-        list.map((r) => ({
-          ...r,
-          __key: r?.__key || uid(),
-        }))
-      );
+      const withKeys = list.map((r) => ({
+        ...r,
+        __key: r?.__key || uid(),
+      }));
+      setRows(withKeys);
+
+      // ✅ seed rollover targets (default = next season) for any legions present
+      const legionSlugs = withKeys
+        .filter((r) => r?.is_legion_header && r?.legion_slug)
+        .map((r) => String(r.legion_slug));
+      setRollYearByLegion((prev) => {
+        const next = { ...prev };
+        for (const slug of legionSlugs) {
+          if (next[slug] == null) next[slug] = String(Number(season) + 1);
+        }
+        return next;
+      });
     } catch (e) {
       setError(e?.message || String(e));
       setRows([]);
@@ -169,6 +182,11 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
   }
 
   useEffect(() => {
+    if (skipReloadRef.current) {
+      // rollover changed season locally; keep current in-memory data so user can publish into the new season
+      skipReloadRef.current = false;
+      return;
+    }
     load();
     loadPageConfig(season);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -181,7 +199,11 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
         ...r,
         __key: r.__key,
       }))
-      .sort((a, b) => (Number(a.legion_order || 0) - Number(b.legion_order || 0)) || String(a.legion_name || "").localeCompare(String(b.legion_name || "")));
+      .sort(
+        (a, b) =>
+          Number(a.legion_order || 0) - Number(b.legion_order || 0) ||
+          String(a.legion_name || "").localeCompare(String(b.legion_name || ""))
+      );
 
     const bySlug = new Map();
     for (const r of rows) {
@@ -243,11 +265,17 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
         is_active: true,
       },
     ]);
+    setRollYearByLegion((prev) => ({ ...prev, [slug]: String(Number(season) + 1) }));
   }
 
   function deleteLegion(legionSlug) {
     if (!confirm("Delete this legion AND all of its leagues?")) return;
     setRows((prev) => prev.filter((r) => r.legion_slug !== legionSlug));
+    setRollYearByLegion((prev) => {
+      const next = { ...prev };
+      delete next[String(legionSlug)];
+      return next;
+    });
   }
 
   function addLeague(legionSlug) {
@@ -279,6 +307,102 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
         return Number(r.league_order || 0) !== Number(leagueOrder || 0);
       })
     );
+  }
+
+  // ✅ Per-legion rollover (Big Game style)
+  async function rolloverLegionToYear(legionSlug, targetYearRaw) {
+    const y = Number(String(targetYearRaw || "").trim());
+    if (!Number.isFinite(y)) return;
+    if (Number(y) === Number(season)) return;
+
+    const header = legions.headers.find((h) => String(h.legion_slug) === String(legionSlug));
+    const legionName = header?.legion_name || legionSlug;
+
+    const ok = window.confirm(
+      `Rollover legion "${legionName}" from ${season} → ${y}?\n\nThis will move ONLY this legion (header + leagues) into season ${y} and clear its Sleeper URLs.\n\nThen click “Publish” to write /data/gauntlet/leagues_${y}.json`
+    );
+    if (!ok) return;
+
+    setError("");
+    setNotice("");
+    setSaving(true);
+
+    try {
+      // 1) Load target season rows (if missing, we treat as empty and you publish new)
+      let targetRows = [];
+      try {
+        const res = await fetch(`/api/admin/gauntlet?season=${encodeURIComponent(String(y))}`, { cache: "no-store" });
+        const data = await safeJson(res);
+        if (res.ok && data?.ok !== false) {
+          const list = Array.isArray(data.rows) ? data.rows : [];
+          targetRows = list.map((r) => ({ ...r, __key: r?.__key || uid() }));
+        }
+      } catch {
+        targetRows = [];
+      }
+
+      // 2) Build the moved rows from CURRENT in-memory rows
+      const moved = (Array.isArray(rows) ? rows : [])
+        .filter((r) => String(r?.legion_slug || "") === String(legionSlug))
+        .map((r) => {
+          const isHeader = !!r?.is_legion_header;
+          if (!isHeader) {
+            // clear only this legion’s URLs
+            return { ...r, season: y, league_url: "" };
+          }
+          return { ...r, season: y };
+        });
+
+      // 3) Remove any existing legion in target (same slug), then append moved
+      const cleanedTarget = targetRows.filter((r) => String(r?.legion_slug || "") !== String(legionSlug));
+      const nextTarget = [...cleanedTarget, ...moved].map((r) => ({
+        ...r,
+        __key: r?.__key || uid(),
+      }));
+
+      // 4) Switch editor to target season WITHOUT reload, keep pageCfg in memory
+      skipReloadRef.current = true;
+      setSeason(y);
+      setRows(nextTarget);
+
+      // 5) seed rollover input for this legion in the new season view
+      setRollYearByLegion((prev) => ({ ...prev, [String(legionSlug)]: String(y + 1) }));
+
+      setNotice(`Rolled "${legionName}" to season ${y} locally (URLs cleared). Click “Publish” to write leagues_${y}.json`);
+    } catch (e) {
+      setError(e?.message || String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // (You still have your season-wide function — leaving it untouched)
+  function rolloverSeasonToYear(targetYearRaw) {
+    const y = Number(String(targetYearRaw || "").trim());
+    if (!Number.isFinite(y)) return;
+    if (Number(y) === Number(season)) return;
+
+    const ok = window.confirm(
+      `Rollover Gauntlet season from ${season} to ${y}?\n\nThis will copy the current season's legions/leagues into ${y} and clear ALL league URLs.\n\nReview, then click “Publish” to write the new season JSON.`
+    );
+    if (!ok) return;
+
+    // Update the in-memory rows for the new season.
+    setRows((prev) =>
+      (Array.isArray(prev) ? prev : []).map((r) => {
+        const isHeader = !!r?.is_legion_header;
+        if (!isHeader) {
+          return { ...r, season: y, league_url: "" };
+        }
+        return { ...r, season: y };
+      })
+    );
+
+    setNotice(`Rolled Gauntlet season to ${y} locally (league URLs cleared). Click “Publish” to write /data/gauntlet/leagues_${y}.json`);
+
+    // Switch the season input WITHOUT reloading from server.
+    skipReloadRef.current = true;
+    setSeason(y);
   }
 
   async function save() {
@@ -476,6 +600,9 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
         <div className="mt-4 grid grid-cols-1 gap-4">
           {legions.headers.map((h) => {
             const list = legions.bySlug.get(h.legion_slug) || [];
+            const slug = String(h.legion_slug || "");
+            const rollVal = rollYearByLegion[slug] ?? String(Number(season) + 1);
+
             return (
               <section key={h.__key} className="card bg-card-surface border border-subtle p-5 md:p-6">
                 <div className="flex flex-col lg:flex-row gap-4 lg:items-start lg:justify-between">
@@ -506,6 +633,13 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
                                   return { ...r, legion_slug: nextSlug };
                                 })
                               );
+                              // keep rollover input mapping in sync
+                              setRollYearByLegion((prev) => {
+                                const next = { ...prev };
+                                if (next[h.legion_slug] != null && next[nextSlug] == null) next[nextSlug] = next[h.legion_slug];
+                                delete next[h.legion_slug];
+                                return next;
+                              });
                             }
                           }}
                         />
@@ -547,6 +681,26 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
                           />
                           Active
                         </label>
+                      </div>
+
+                      {/* ✅ Per-legion rollover control */}
+                      <div className="mt-3 flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-muted">Rollover this legion to</span>
+                        <input
+                          className="input w-28"
+                          value={rollVal}
+                          onChange={(e) => setRollYearByLegion((prev) => ({ ...prev, [String(h.legion_slug)]: e.target.value }))}
+                          inputMode="numeric"
+                        />
+                        <button
+                          className="btn btn-primary"
+                          type="button"
+                          onClick={() => rolloverLegionToYear(h.legion_slug, rollVal)}
+                          disabled={loading || saving}
+                        >
+                          Rollover
+                        </button>
+                        <span className="text-xs text-muted">clears Sleeper URLs for this legion only</span>
                       </div>
                     </div>
                   </div>
