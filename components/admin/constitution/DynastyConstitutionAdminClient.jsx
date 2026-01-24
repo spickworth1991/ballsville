@@ -37,24 +37,44 @@ async function getAuthToken() {
 
 function normalizeClientSections(raw) {
   const arr = Array.isArray(raw) ? raw : [];
+
   const cleaned = arr
     .map((s, idx) => {
       const title = safeStr(s?.title).trim();
-      const id = slugify(s?.id || s?.anchor || title || `section-${idx + 1}`);
+      const incomingIdRaw = safeStr(s?.id || s?.anchor || "").trim();
+      const derived = slugify(title || `section-${idx + 1}`);
+
+      // If no id provided, generate from title.
+      const id = incomingIdRaw || derived;
+
+      // If id equals derived slug(title), treat as auto (keep syncing on edits).
+      // Otherwise treat as manual (do not overwrite on title edits).
+      const idMode = id === derived ? "auto" : "manual";
+
       const order = toInt(s?.order, idx + 1);
       const bodyHtml = safeStr(s?.bodyHtml || s?.html || "");
-      return { id, title, order, bodyHtml };
+
+      return { id, title, order, bodyHtml, _idMode: idMode };
     })
     .filter((s) => s.title);
 
   cleaned.sort((a, b) => a.order - b.order);
   cleaned.forEach((s, i) => {
     s.order = i + 1;
-    // keep id stable if already set; otherwise derive from title
-    if (!s.id) s.id = slugify(s.title || `section-${i + 1}`);
+
+    // Keep `_idMode` accurate after renumbering (in case title was blank before).
+    const derived = slugify(s.title || `section-${i + 1}`);
+    if (!s.id) {
+      s.id = derived;
+      s._idMode = "auto";
+    } else if (s.id === derived) {
+      s._idMode = "auto";
+    }
   });
+
   return cleaned;
 }
+
 
 export default function DynastyConstitutionAdminClient() {
   const [loading, setLoading] = useState(true);
@@ -161,15 +181,33 @@ export default function DynastyConstitutionAdminClient() {
     setSections((prev) =>
       (prev || []).map((s) => {
         if (s.id !== id) return s;
+
         const next = { ...s, ...patch };
-        // If title changes and id looks auto-generated, keep id in sync.
-        if (patch?.title != null && (!s.id || String(s.id).startsWith("section-"))) {
-          next.id = slugify(patch.title) || s.id;
+
+        // Auto-sync anchor with title if:
+        // - title changed AND
+        // - this section's id is currently auto-managed
+        //   (either explicitly marked auto, OR it equals slug(oldTitle))
+        if (patch?.title != null) {
+          const oldDerived = slugify(s.title || "");
+          const isAuto =
+            s._idMode === "auto" ||
+            !s.id ||
+            s.id === oldDerived ||
+            String(s.id).startsWith("section-");
+
+          if (isAuto) {
+            const newDerived = slugify(patch.title || "");
+            next.id = newDerived || s.id;
+            next._idMode = "auto";
+          }
         }
+
         return next;
       })
     );
   }
+
 
   useEffect(() => {
     load();
@@ -261,7 +299,7 @@ export default function DynastyConstitutionAdminClient() {
                           {toInt(s.order, 1)}
                         </span>
                         <div className="text-sm text-muted">
-                          Anchor: <span className="text-fg">#{slugify(s.id || s.title)}</span>
+                          Anchor: <span className="text-fg">#{safeStr(s.id)}</span>
                         </div>
                       </div>
                     </div>
