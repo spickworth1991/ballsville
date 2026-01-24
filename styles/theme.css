@@ -17,7 +17,7 @@
 html,
 body {
   max-width: 100%;
-  overflow-x: clip;
+  overflow-x: visible;
 }
 
 :root {
@@ -506,8 +506,11 @@ body {
   z-index: 0;
 
   width: 100%;
-  overflow-x: clip;
+
+  /* ✅ leave x-clipping to html/body instead (you already do that) */
+  overflow-x: visible;
 }
+
 
 
 /* Sitewide background video */

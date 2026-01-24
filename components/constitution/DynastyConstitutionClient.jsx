@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { adminR2Url } from "@/lib/r2Client";
+import { CURRENT_SEASON } from "@/lib/season";
 
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
@@ -40,50 +41,161 @@ function normalizeRemoteSections(raw) {
     .filter((s) => s.id && s.title);
 
   cleaned.sort((a, b) => a.order - b.order);
-  return cleaned.map((s, idx) => ({ ...s, order: idx + 1 }));
+  cleaned.forEach((s, i) => (s.order = i + 1));
+  return cleaned;
 }
 
-function RemoteSectionCard({ id, title, bodyHtml }) {
+function SectionCard({ id, order, title, bodyHtml }) {
   return (
     <section id={id} className="scroll-mt-28 rounded-2xl border border-subtle bg-card-surface p-6 shadow-sm">
-      <h2 className="text-xl md:text-2xl font-semibold text-primary">{title}</h2>
+      <div className="flex items-center gap-3">
+        <span className="inline-flex h-7 min-w-[2rem] items-center justify-center rounded-full border border-subtle bg-card-trans px-2 text-xs font-semibold text-muted">
+          {order}
+        </span>
+        <h2 className="text-xl md:text-2xl font-semibold text-primary">{title}</h2>
+      </div>
       <div
-        className="mt-3 prose prose-invert max-w-none prose-p:my-2 prose-li:my-1 text-sm md:text-base"
+        className="prose prose-invert mt-4 max-w-none text-sm md:text-base"
         dangerouslySetInnerHTML={{ __html: bodyHtml || "" }}
       />
     </section>
   );
 }
 
-function getScrollOffsetPx() {
+function InlineNotice({ children }) {
+  return (
+    <div className="rounded-2xl border border-subtle bg-subtle-surface p-4 text-sm text-muted text-center">
+      <div className="mx-auto max-w-3xl">{children}</div>
+    </div>
+  );
+}
+
+function getNavHeightPx() {
   try {
     const raw = getComputedStyle(document.documentElement).getPropertyValue("--nav-height").trim();
-    const nav = parseInt(raw || "0", 10);
-    if (Number.isFinite(nav) && nav > 0) return nav + 20;
+    const n = parseInt(raw || "0", 10);
+    if (Number.isFinite(n) && n > 0) return n;
   } catch {}
-  return 120;
+  return 100;
 }
 
 function scrollToIdWithOffset(id) {
   const el = document.getElementById(id);
   if (!el) return false;
 
-  const offset = getScrollOffsetPx();
-  const top = Math.max(0, window.scrollY + el.getBoundingClientRect().top - offset);
+  const nav = getNavHeightPx();
+  const offset = nav + 20;
 
+  const top = Math.max(0, window.scrollY + el.getBoundingClientRect().top - offset);
   window.scrollTo({ top, behavior: "smooth" });
   return true;
 }
 
-export default function DynastyConstitutionClient({ version = "0", manifest = null }) {
-  const [sections, setSections] = useState([]);
+export default function DynastyConstitutionClient({ season = CURRENT_SEASON, version = "0", manifest = null }) {
+  const [remote, setRemote] = useState(null);
   const [updatedAt, setUpdatedAt] = useState("");
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+
   const [activeId, setActiveId] = useState("");
 
-  // Prevent IntersectionObserver from fighting during click-jumps
+  // We simulate a "sticky within the content range" TOC using fixed positioning
+  // (CSS sticky can be broken by global overflow styles in Chromium).
+  const containerRef = useRef(null);
+  const tocColRef = useRef(null);
+  const tocBoxRef = useRef(null);
+  const contentStartRef = useRef(null);
+  const contentEndRef = useRef(null);
+
+  const [dockStyle, setDockStyle] = useState(null);
+
+  // Prevent observer from fighting click jumps
   const scrollLockRef = useRef({ id: "", until: 0 });
+
+  // Keep a stable measurement loop (scroll + resize)
+  const rafRef = useRef(0);
+
+  useLayoutEffect(() => {
+    function measureAndDock() {
+      if (typeof window === "undefined") return;
+
+      const isLg = window.matchMedia("(min-width: 1024px)").matches;
+      if (!isLg) {
+        setDockStyle(null);
+        return;
+      }
+
+      const col = tocColRef.current;
+      const box = tocBoxRef.current;
+      const startEl = contentStartRef.current;
+      const endEl = contentEndRef.current;
+
+      if (!col || !box || !startEl || !endEl) {
+        setDockStyle(null);
+        return;
+      }
+
+      const nav = getNavHeightPx();
+      const padTop = 16;
+
+      // Column geometry (so fixed TOC matches the grid column)
+      const colRect = col.getBoundingClientRect();
+
+      // Content bounds in document space
+      const startAbsY = window.scrollY + startEl.getBoundingClientRect().top;
+      const endAbsY = window.scrollY + endEl.getBoundingClientRect().top;
+
+      const boxH = box.offsetHeight || 0;
+
+      // Desired top (document space) = keep below navbar
+      const desiredAbsY = window.scrollY + nav + padTop;
+
+      // Clamp so TOC never rises above the first section (hero stays above),
+      // and never goes past the last section (stops at the bottom of content).
+      let clampedAbsY = desiredAbsY;
+      if (Number.isFinite(startAbsY)) clampedAbsY = Math.max(clampedAbsY, startAbsY);
+      if (Number.isFinite(endAbsY) && boxH > 0) clampedAbsY = Math.min(clampedAbsY, endAbsY - boxH);
+
+      // If content is shorter than the TOC itself, just pin to start.
+      if (Number.isFinite(startAbsY) && Number.isFinite(endAbsY) && endAbsY - boxH < startAbsY) {
+        clampedAbsY = startAbsY;
+      }
+
+      const topPx = Math.round(clampedAbsY - window.scrollY);
+
+      setDockStyle({
+        position: "fixed",
+        left: `${Math.round(colRect.left)}px`,
+        top: `${topPx}px`,
+        width: `${Math.round(colRect.width)}px`,
+        maxHeight: `calc(100vh - ${nav + padTop + 16}px)`,
+        overflowY: "auto",
+      });
+    }
+
+    function schedule() {
+      if (rafRef.current) return;
+      rafRef.current = window.requestAnimationFrame(() => {
+        rafRef.current = 0;
+        measureAndDock();
+      });
+    }
+
+    // Initial pass after layout
+    schedule();
+
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+
+    return () => {
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      if (rafRef.current) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = 0;
+      }
+    };
+  }, [remote?.sections?.length]);
 
   // Data load
   useEffect(() => {
@@ -105,9 +217,10 @@ export default function DynastyConstitutionClient({ version = "0", manifest = nu
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => {
         if (cancelled) return;
-        const normalized = normalizeRemoteSections(json?.sections || json?.items || []);
-        setSections(normalized);
+        const sections = normalizeRemoteSections(json?.sections || json?.items || []);
+        setRemote({ sections });
         setUpdatedAt(safeStr(json?.updatedAt || ""));
+        setActiveId(sections?.[0]?.id || "");
       })
       .catch((e) => {
         if (!cancelled) setError(e?.message || "Failed to load constitution.");
@@ -121,9 +234,15 @@ export default function DynastyConstitutionClient({ version = "0", manifest = nu
     };
   }, [version, manifest]);
 
-  // IntersectionObserver: update active section while scrolling (unless locked)
+  const toc = useMemo(() => {
+    const sections = Array.isArray(remote?.sections) ? remote.sections : [];
+    return sections.map((s) => ({ id: s.id, label: `${s.order}. ${s.title}` }));
+  }, [remote]);
+
+  // Active section highlighting
   useEffect(() => {
-    if (!sections?.length) return;
+    const sections = Array.isArray(remote?.sections) ? remote.sections : [];
+    if (!sections.length) return;
 
     const ids = sections.map((s) => s.id).filter(Boolean);
 
@@ -158,36 +277,29 @@ export default function DynastyConstitutionClient({ version = "0", manifest = nu
     });
 
     return () => obs.disconnect();
-  }, [sections]);
+  }, [remote?.sections]);
 
-  // Initial hash handling (jump once, correctly, with offset)
+  // Initial hash handling
   useEffect(() => {
-    if (!sections?.length) return;
+    const sections = Array.isArray(remote?.sections) ? remote.sections : [];
+    if (!sections.length) return;
 
     let hash = "";
     try {
       hash = (window.location.hash || "").replace(/^#/, "");
     } catch {}
 
-    if (!hash) {
-      setActiveId(sections[0]?.id || "");
-      return;
-    }
+    if (!hash) return;
 
     scrollLockRef.current = { id: hash, until: Date.now() + 900 };
     setActiveId(hash);
 
-    const t = setTimeout(() => {
+    const t = window.setTimeout(() => {
       scrollToIdWithOffset(hash);
     }, 50);
 
-    return () => clearTimeout(t);
-  }, [sections]);
-
-  const toc = useMemo(
-    () => sections.map((s) => ({ id: s.id, label: `${s.order}. ${s.title}` })),
-    [sections]
-  );
+    return () => window.clearTimeout(t);
+  }, [remote?.sections]);
 
   const updatedLabel = formatUpdatedAt(updatedAt);
 
@@ -198,7 +310,7 @@ export default function DynastyConstitutionClient({ version = "0", manifest = nu
       </div>
 
       <section className="section">
-        <div className="container-site space-y-8">
+        <div ref={containerRef} className="container-site space-y-8">
           {/* HERO */}
           <header className="relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-10">
             <div className="pointer-events-none absolute inset-0 opacity-55 mix-blend-screen">
@@ -270,22 +382,23 @@ export default function DynastyConstitutionClient({ version = "0", manifest = nu
           </header>
 
           {/* TOC + CONTENT */}
-          <section className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)] items-start">
-            {/* ✅ Sticky TOC stays on screen */}
-            <aside className="space-y-4 self-start lg:sticky lg:top-4">
-              <div className="bg-card-surface border border-subtle rounded-2xl p-5 shadow-sm">
+          <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-start">
+            {/* TOC */}
+            <aside ref={tocColRef} className="space-y-4">
+              <div
+                ref={tocBoxRef}
+                className="bg-card-surface border border-subtle rounded-2xl p-5 shadow-sm"
+                style={dockStyle || undefined}
+              >
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <h2 className="text-sm font-semibold text-primary uppercase tracking-wide m-0">
                     Table of Contents
                   </h2>
-                  {activeId ? (
-                    <span className="rounded-full border border-subtle bg-card-trans px-2 py-1 text-[11px] font-semibold text-muted">
-                      Reading
-                    </span>
-                  ) : null}
+                  <span className="rounded-full border border-subtle bg-card-trans px-2 py-1 text-[11px] font-semibold text-muted">
+                    LIVE
+                  </span>
                 </div>
 
-                {/* ✅ No inner scroller — TOC naturally grows */}
                 {loading ? (
                   <div className="text-sm text-muted">Loading…</div>
                 ) : error ? (
@@ -310,6 +423,7 @@ export default function DynastyConstitutionClient({ version = "0", manifest = nu
 
                           scrollLockRef.current = { id, until: Date.now() + 900 };
                           setActiveId(id);
+
                           scrollToIdWithOffset(id);
 
                           try {
@@ -325,24 +439,27 @@ export default function DynastyConstitutionClient({ version = "0", manifest = nu
               </div>
             </aside>
 
+            {/* CONTENT */}
             <div className="space-y-6">
+              {/* Start clamp boundary: first section begins here */}
+              <div ref={contentStartRef} />
+
               {loading ? (
-                <div className="rounded-2xl border border-subtle bg-subtle-surface p-4 text-sm text-muted text-center">
-                  Loading…
-                </div>
+                <InlineNotice>Loading…</InlineNotice>
               ) : error ? (
                 <div className="rounded-2xl border border-red-500/25 bg-red-950/30 p-4 text-sm text-red-200">
                   {error}
                 </div>
-              ) : sections.length === 0 ? (
-                <div className="rounded-2xl border border-subtle bg-subtle-surface p-6 text-sm text-muted">
-                  No Dynasty Constitution content has been published yet.
-                </div>
+              ) : !remote?.sections?.length ? (
+                <InlineNotice>No Dynasty Constitution content has been published yet.</InlineNotice>
               ) : (
-                sections.map((s) => (
-                  <RemoteSectionCard key={s.id} id={s.id} title={`${s.order}. ${s.title}`} bodyHtml={s.bodyHtml} />
+                remote.sections.map((s) => (
+                  <SectionCard key={s.id} id={s.id} order={s.order} title={s.title} bodyHtml={s.bodyHtml} />
                 ))
               )}
+
+              {/* End clamp boundary: TOC stops at the last section */}
+              <div ref={contentEndRef} className="h-0" />
             </div>
           </section>
         </div>
