@@ -22,8 +22,9 @@ const STATUS_OPTIONS = [
   "CURRENTLY FILLING",
   "DRAFTING",
   "ORPHAN OPEN",
-  "INACTIVE",
+  "TBD",
 ];
+
 
 function nowIso() {
   try {
@@ -71,9 +72,12 @@ function normalizeRow(r, idx = 0) {
   const year = safeNum(r?.year, new Date().getFullYear());
   const theme_name = safeStr(r?.theme_name || r?.kind || "Untitled Theme").trim();
   const display_order = safeNum(r?.display_order, idx + 1);
-  const status = STATUS_OPTIONS.includes(safeStr(r?.status)) ? safeStr(r?.status) : "FULL & ACTIVE";
+    const rawStatus = safeStr(r?.status);
+  const mappedStatus = rawStatus === "INACTIVE" ? "TBD" : rawStatus; // backward compat
+  const status = STATUS_OPTIONS.includes(mappedStatus) ? mappedStatus : "FULL & ACTIVE";
 
   const isOrphanByStatus = status.toUpperCase().includes("ORPHAN");
+
 
   return {
     id,

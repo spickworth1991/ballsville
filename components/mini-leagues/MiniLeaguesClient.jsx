@@ -401,14 +401,24 @@ export default function MiniLeaguesClient({ season = CURRENT_SEASON, version = "
                           const badge = STATUS_BADGE[l.status] || STATUS_BADGE.tbd;
                           const label = STATUS_LABEL[l.status] || "TBD";
                           const img = l.imageKey ? adminR2Url(l.imageKey) : l.imageUrl || "";
+                          const isFilling = String(l?.status || "").toLowerCase() === "filling";
+                          const isClickable = isFilling && Boolean(l?.url);
+
                           return (
                             <a
                               key={`${d.divisionCode}-${idx}-${l.name}`}
-                              href={l.url || "#"}
-                              target={l.url ? "_blank" : undefined}
-                              rel={l.url ? "noreferrer" : undefined}
-                              className="rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm p-4 hover:bg-subtle-surface/30 transition"
+                              href={isClickable ? l.url : undefined}
+                              target={isClickable ? "_blank" : undefined}
+                              rel={isClickable ? "noreferrer" : undefined}
+                              className={[
+                                "rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm p-4 transition",
+                                isClickable ? "hover:bg-subtle-surface/30" : "cursor-not-allowed opacity-70",
+                              ].join(" ")}
+                              onClick={(e) => {
+                                if (!isClickable) e.preventDefault();
+                              }}
                             >
+
                               <div className="flex items-start justify-between gap-3">
                                 <div className="space-y-1 min-w-0">
                                   <div className="font-semibold text-fg truncate">{l.name}</div>

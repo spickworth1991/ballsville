@@ -401,23 +401,28 @@ const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows])
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {divisionThemeLeagues.map((lg, idx) => {
                     const img = imageSrcForRow(lg, updatedAt);
-                    const isFilling = lg?.status === "CURRENTLY FILLING" || lg?.status === "DRAFTING";
+                    const st = String(lg?.status || "").trim().toUpperCase();
+                    const isOrphan = st.includes("ORPHAN");
+                    const isFilling = st === "CURRENTLY FILLING";
+                    const isClickable = (isFilling || isOrphan) && Boolean(lg?.sleeper_url);
 
                     return (
                       <MediaTabCard
                         key={lg?.id || `${yearNum}-${divisionThemeName}-${lg?.name}-${idx}`}
-                        href={lg?.sleeper_url || undefined}
-                        external={Boolean(lg?.sleeper_url)}
+                        href={isClickable ? lg?.sleeper_url : undefined}
+                        external={isClickable}
                         prefetch={false}
                         title={lg?.name || "League"}
                         subtitle={`12-team SF · Division ${lg?.display_order ?? "–"}`}
                         metaRight={lg?.status || "FULL & ACTIVE"}
                         imageSrc={img}
                         imageAlt={lg?.name || "League"}
-                      footerText={lg?.note || ""}
-                        className="h-full"
+                        footerText={lg?.note || ""}
+                        className={["h-full", !isClickable ? "cursor-not-allowed" : ""].join(" ")}
                       />
                     );
+
+
                   })}
                 </div>
               </>
