@@ -20,18 +20,12 @@ function slugify(s) {
 }
 
 function fmtDate(iso) {
-  const d = iso ? new Date(iso) : null;
-  if (!d || Number.isNaN(d.getTime())) return "";
   try {
-    return d.toLocaleString(undefined, {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) return "";
+    return d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
   } catch {
-    return iso;
+    return "";
   }
 }
 
@@ -62,8 +56,7 @@ function normalizeClientSections(raw) {
   return cleaned;
 }
 
-export default function DynastyConstitutionAdminClient({ initialSeason }) {
-  const [season, setSeason] = useState(toInt(initialSeason, new Date().getFullYear()));
+export default function DynastyConstitutionAdminClient() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -72,10 +65,7 @@ export default function DynastyConstitutionAdminClient({ initialSeason }) {
   const [updatedAt, setUpdatedAt] = useState("");
   const [sections, setSections] = useState([]);
 
-  const apiUrl = useMemo(
-    () => `/api/admin/dynasty-constitution?season=${encodeURIComponent(String(season))}`,
-    [season]
-  );
+  const apiUrl = "/api/admin/dynasty-constitution";
 
   async function load() {
     setLoading(true);
@@ -217,16 +207,6 @@ export default function DynastyConstitutionAdminClient({ initialSeason }) {
             </div>
 
             <div className="mt-6 flex flex-wrap items-end gap-3">
-              <label className="text-sm text-muted">
-                Season
-                <input
-                  value={season}
-                  onChange={(e) => setSeason(toInt(e.target.value, season))}
-                  className="mt-1 block w-28 rounded-xl border border-subtle bg-card-trans px-3 py-2 text-fg"
-                  inputMode="numeric"
-                />
-              </label>
-
               <div className="flex-1" />
 
               <button

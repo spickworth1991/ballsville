@@ -110,11 +110,10 @@ async function putJsonToR2(bucket, key, data) {
   });
 }
 
-async function touchManifest(bucket, season, version) {
-  const key = `data/manifests/${SECTION}_${season}.json`;
+async function touchManifest(bucket, version) {
+  const key = `data/manifests/${SECTION}.json`;
   await putJsonToR2(bucket, key, {
     section: SECTION,
-    season: Number(season),
     version: String(version),
     updatedAt: new Date().toISOString(),
   });
@@ -128,15 +127,12 @@ export async function onRequestGet(ctx) {
   if (!r2.ok) return jsonResponse({ ok: false, error: r2.error }, { status: r2.status });
   const bucket = r2.bucket;
 
-  const url = new URL(ctx.request.url);
-  const season = toInt(url.searchParams.get("season"), new Date().getFullYear());
-  const key = `content/constitution/dynasty_${season}.json`;
+  const key = `content/constitution/dynasty.json`;
 
   const data = await readJsonFromR2(bucket, key);
   return jsonResponse(
     {
       ok: true,
-      season,
       key,
       data: data || {
         updatedAt: "",
@@ -155,9 +151,7 @@ export async function onRequestPut(ctx) {
   if (!r2.ok) return jsonResponse({ ok: false, error: r2.error }, { status: r2.status });
   const bucket = r2.bucket;
 
-  const url = new URL(ctx.request.url);
-  const season = toInt(url.searchParams.get("season"), new Date().getFullYear());
-  const key = `content/constitution/dynasty_${season}.json`;
+  const key = `content/constitution/dynasty.json`;
 
   let payload;
   try {
@@ -172,10 +166,10 @@ export async function onRequestPut(ctx) {
 
   const out = { updatedAt, sections };
   await putJsonToR2(bucket, key, out);
-  await touchManifest(bucket, season, version);
+  await touchManifest(bucket, version);
 
   return jsonResponse(
-    { ok: true, season, key, version, updatedAt, count: sections.length },
+    { ok: true, key, version, updatedAt, count: sections.length },
     { status: 200 }
   );
 }

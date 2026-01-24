@@ -1,6 +1,5 @@
 import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import DynastyConstitutionClient from "@/components/constitution/DynastyConstitutionClient";
-import { CURRENT_SEASON } from "@/lib/season";
 
 export const metadata = {
   title: "Dynasty Constitution | BALLSVILLE",
@@ -9,11 +8,9 @@ export const metadata = {
 };
 
 export default function DynastyConstitutionPage() {
-  const season = CURRENT_SEASON;
-
   return (
-    <SectionManifestGate section="dynasty-constitution" season={season}>
-      <DynastyConstitutionClient season={season} />
+    <SectionManifestGate section="dynasty-constitution">
+      <DynastyConstitutionClient />
     </SectionManifestGate>
   );
 }

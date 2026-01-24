@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CURRENT_SEASON } from "@/lib/season";
 import { adminR2Url } from "@/lib/r2Client";
 
 function safeStr(v) {
@@ -18,51 +17,39 @@ function slugify(s) {
     .replace(/-+/g, "-");
 }
 
-function toInt(v, fallback) {
-  const n = Number(v);
-  return Number.isFinite(n) ? Math.trunc(n) : fallback;
-}
-
 function formatUpdatedAt(iso) {
-  const s = safeStr(iso).trim();
-  if (!s) return "";
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return "";
+  const d = new Date(String(iso || ""));
+  if (!Number.isFinite(d.getTime())) return "";
   try {
-    return d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+    return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   } catch {
-    return d.toDateString();
+    return d.toISOString().slice(0, 10);
   }
 }
 
-function normalizeRemoteSections(input) {
-  const raw = Array.isArray(input) ? input : [];
-
-  const cleaned = raw
-    .map((s, idx) => {
-      const title = safeStr(s?.title).trim();
-      const id = slugify(s?.id || s?.anchor || title || `section-${idx + 1}`);
-      const order = toInt(s?.order, idx + 1);
+function normalizeRemoteSections(raw) {
+  const rows = Array.isArray(raw) ? raw : [];
+  const cleaned = rows
+    .map((s, i) => {
+      const title = safeStr(s?.title || "").trim();
+      const id = slugify(s?.id || s?.anchor || title || `section-${i + 1}`);
+      const order = Number.isFinite(Number(s?.order)) ? Number(s.order) : i + 1;
       const bodyHtml = safeStr(s?.bodyHtml || s?.html || "").trim();
       return { id, title, order, bodyHtml };
     })
-    .filter((s) => s.title && s.id);
+    .filter((s) => s.id && s.title);
 
+  // Sort by order, then renumber sequentially so TOC numbers == section order.
   cleaned.sort((a, b) => a.order - b.order);
-  // Keep TOC numbers in sync with the order numbers (1..N).
-  cleaned.forEach((s, i) => {
-    s.order = i + 1;
-  });
-  return cleaned;
+  return cleaned.map((s, idx) => ({ ...s, order: idx + 1 }));
 }
 
 function TocLink({ href, children }) {
   return (
     <a
       href={href}
-      className="block px-3 py-2 rounded-lg text-muted hover:text-primary hover:bg-subtle-surface transition"
+      className="block rounded-lg px-3 py-2 text-sm text-muted hover:text-primary hover:bg-subtle-surface transition"
       onClick={(e) => {
-        // Smooth-scroll if possible.
         try {
           const id = String(href || "").replace(/^#/, "");
           const el = document.getElementById(id);
@@ -71,7 +58,7 @@ function TocLink({ href, children }) {
             el.scrollIntoView({ behavior: "smooth", block: "start" });
           }
         } catch {
-          // fall back to default
+          // fall back
         }
       }}
     >
@@ -80,63 +67,45 @@ function TocLink({ href, children }) {
   );
 }
 
-function InlineNotice({ children }) {
-  return (
-    <div className="rounded-2xl border border-subtle bg-subtle-surface p-4 text-sm text-muted text-center">
-      <div className="mx-auto max-w-3xl">{children}</div>
-    </div>
-  );
-}
-
-function SectionCard({ id, order, title, bodyHtml }) {
+function RemoteSectionCard({ id, title, bodyHtml }) {
   return (
     <section id={id} className="scroll-mt-28 rounded-2xl border border-subtle bg-card-surface p-6 shadow-sm">
-      <div className="flex items-center gap-3">
-        <span className="inline-flex h-7 min-w-[2rem] items-center justify-center rounded-full border border-subtle bg-card-trans px-2 text-xs font-semibold text-muted">
-          {order}
-        </span>
-        <h2 className="text-xl md:text-2xl font-semibold text-primary">{title}</h2>
-      </div>
+      <h2 className="text-xl md:text-2xl font-semibold text-primary">{title}</h2>
       <div
-        className="prose prose-invert mt-4 max-w-none text-sm md:text-base"
-        // Admin controls the HTML; this is intentional.
+        className="mt-3 prose prose-invert max-w-none prose-p:my-2 prose-li:my-1 text-sm md:text-base"
         dangerouslySetInnerHTML={{ __html: bodyHtml || "" }}
       />
     </section>
   );
 }
 
-export default function DynastyConstitutionClient({
-  season = CURRENT_SEASON,
-  version = "0",
-  manifest = null,
-}) {
-  const [remote, setRemote] = useState(null);
+export default function DynastyConstitutionClient({ version = "0", manifest = null }) {
+  const [sections, setSections] = useState([]);
   const [updatedAt, setUpdatedAt] = useState("");
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
 
     // Manifest-first: avoid an initial v=0 fetch before SectionManifestGate loads.
-    if (!manifest && String(version || "0") === "0") return;
+    if (!manifest && String(version || "0") === "0") return () => {
+      cancelled = true;
+    };
 
     const bust = `v=${encodeURIComponent(String(version || "0"))}`;
-    const url = adminR2Url(`content/constitution/dynasty_${season}.json?${bust}`);
+    const url = adminR2Url(`content/constitution/dynasty.json?${bust}`);
 
     setError("");
     setLoading(true);
-    setRemote(null);
-    setUpdatedAt("");
 
     fetch(url)
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => {
         if (cancelled) return;
-        const sections = normalizeRemoteSections(json?.sections || json?.items || []);
-        setRemote({ sections });
-        setUpdatedAt(safeStr(json?.updatedAt || json?.updated_at || ""));
+        const normalized = normalizeRemoteSections(json?.sections || json?.items || []);
+        setSections(normalized);
+        setUpdatedAt(safeStr(json?.updatedAt || ""));
       })
       .catch((e) => {
         if (!cancelled) setError(e?.message || "Failed to load constitution.");
@@ -148,15 +117,10 @@ export default function DynastyConstitutionClient({
     return () => {
       cancelled = true;
     };
-  }, [season, version, manifest]);
+  }, [version, manifest]);
 
-  const sections = useMemo(() => remote?.sections || [], [remote]);
   const toc = useMemo(
-    () =>
-      sections.map((s) => ({
-        id: s.id,
-        label: `${s.order}. ${s.title}`,
-      })),
+    () => sections.map((s) => ({ id: s.id, label: `${s.order}. ${s.title}` })),
     [sections]
   );
 
@@ -175,6 +139,7 @@ export default function DynastyConstitutionClient({
             <div className="pointer-events-none absolute inset-0 opacity-55 mix-blend-screen">
               <div className="absolute -top-24 -left-16 h-64 w-64 rounded-full bg-[color:var(--color-accent)]/18 blur-3xl" />
               <div className="absolute -bottom-24 -right-16 h-64 w-64 rounded-full bg-[color:var(--color-primary)]/14 blur-3xl" />
+              <div className="absolute top-10 right-16 h-44 w-44 rounded-full bg-purple-500/10 blur-3xl" />
             </div>
 
             <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,.9fr)] lg:items-start">
@@ -186,94 +151,89 @@ export default function DynastyConstitutionClient({
                 </h1>
 
                 <p className="text-sm sm:text-base text-muted max-w-prose">
-                  Official rules and expectations for BALLSVILLE dynasty leagues.
+                  Official rules and expectations for all BALLSVILLE dynasty leagues.
                 </p>
 
                 <div className="mt-4 inline-flex flex-wrap gap-2 text-xs sm:text-sm">
                   <span className="rounded-full border border-subtle bg-card-trans px-3 py-1 backdrop-blur-sm">
-                    Live
-                    {updatedLabel ? ` • Last updated ${updatedLabel}` : ""}
+                    LIVE{updatedLabel ? ` · Last updated ${updatedLabel}` : ""}
+                  </span>
+                  <span className="rounded-full border border-subtle bg-card-trans px-3 py-1 backdrop-blur-sm">
+                    Use TOC for quick jumps
                   </span>
                 </div>
 
                 <div className="flex flex-wrap gap-3 pt-2">
-                  {toc?.[0]?.id ? (
+                  {toc.length ? (
                     <a href={`#${toc[0].id}`} className="btn btn-primary">
                       Start Reading →
                     </a>
-                  ) : (
-                    <a href="#toc" className="btn btn-primary">
-                      Table of Contents →
-                    </a>
-                  )}
+                  ) : null}
                   <Link prefetch={false} href="/constitution" className="btn btn-outline">
-                    Constitution Home
+                    League Constitution
                   </Link>
-                  <Link prefetch={false} href="/dynasty" className="btn btn-outline">
-                    Dynasty
+                  <Link prefetch={false} href="/leaderboards" className="btn btn-outline">
+                    Leaderboards
                   </Link>
                 </div>
               </div>
 
-              <aside className="w-full">
-                <div className="rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm overflow-hidden shadow-lg">
-                  <div className="px-4 py-3 border-b border-subtle flex items-center justify-between">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Status</span>
-                    <span className="text-[11px] text-muted">{season}</span>
-                  </div>
-                  <div className="p-4 space-y-2 text-sm text-muted">
-                    <p>
-                      This page is editable by admins. The table of contents numbers match each section’s order.
-                    </p>
-                    <p>Use the TOC to jump quickly between sections.</p>
-                  </div>
+              <div className="rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm overflow-hidden shadow-lg">
+                <div className="px-4 py-3 border-b border-subtle">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">NOTES</p>
                 </div>
-              </aside>
+                <div className="p-4 space-y-2 text-sm text-muted">
+                  <p>This page is fully editable by admins.</p>
+                  <p>Order numbers are the Table of Contents numbers.</p>
+                </div>
+              </div>
             </div>
           </header>
 
-          {error ? (
-            <div className="rounded-2xl border border-red-500/25 bg-red-950/30 p-4 text-sm text-red-200">
-              {error}
-            </div>
-          ) : null}
+          {/* TOC + CONTENT */}
+          <section className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)] items-start">
+            <aside className="space-y-4">
+              <div className="bg-card-surface border border-subtle rounded-2xl p-5 shadow-sm sticky top-4">
+                <h2 className="text-sm font-semibold text-primary uppercase tracking-wide mb-3">Table of Contents</h2>
 
-          {loading ? (
-            <InlineNotice>Loading…</InlineNotice>
-          ) : sections.length === 0 ? (
-            <InlineNotice>
-              No dynasty constitution sections have been published for {season} yet.
-            </InlineNotice>
-          ) : (
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-start">
-              {/* TOC */}
-              <aside className="space-y-4">
-                <div id="toc" className="bg-card-surface border border-subtle rounded-2xl p-5 shadow-sm sticky top-4">
-                  <h2 className="text-sm font-semibold text-primary uppercase tracking-wide mb-3">Table of Contents</h2>
-                  <nav className="text-sm space-y-1">
+                {loading ? (
+                  <div className="text-sm text-muted">Loading…</div>
+                ) : error ? (
+                  <div className="text-sm text-red-200">{error}</div>
+                ) : toc.length === 0 ? (
+                  <div className="text-sm text-muted">No sections yet.</div>
+                ) : (
+                  <nav className="space-y-1">
                     {toc.map((s) => (
                       <TocLink key={s.id} href={`#${s.id}`}>
                         {s.label}
                       </TocLink>
                     ))}
                   </nav>
-                </div>
-              </aside>
-
-              {/* Content */}
-              <div className="space-y-6">
-                {sections.map((s) => (
-                  <SectionCard
-                    key={s.id}
-                    id={s.id}
-                    order={s.order}
-                    title={s.title}
-                    bodyHtml={s.bodyHtml}
-                  />
-                ))}
+                )}
               </div>
+            </aside>
+
+            <div className="space-y-6">
+              {loading ? (
+                <div className="rounded-2xl border border-subtle bg-subtle-surface p-4 text-sm text-muted text-center">
+                  Loading…
+                </div>
+              ) : error ? (
+                <div className="rounded-2xl border border-red-500/25 bg-red-950/30 p-4 text-sm text-red-200">
+                  {error}
+                </div>
+              ) : sections.length === 0 ? (
+                <div className="rounded-2xl border border-subtle bg-subtle-surface p-6 text-sm text-muted">
+                  No Dynasty Constitution content has been published yet.
+                </div>
+              ) : (
+                sections.map((s) => (
+                  <RemoteSectionCard key={s.id} id={s.id} title={`${s.order}. ${s.title}`} bodyHtml={s.bodyHtml} />
+                ))
+              )}
             </div>
-          )}
+          </section>
         </div>
       </section>
     </main>
