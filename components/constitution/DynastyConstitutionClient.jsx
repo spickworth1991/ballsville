@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { adminR2Url } from "@/lib/r2Client";
 
@@ -39,32 +39,8 @@ function normalizeRemoteSections(raw) {
     })
     .filter((s) => s.id && s.title);
 
-  // Sort by order, then renumber sequentially so TOC numbers == section order.
   cleaned.sort((a, b) => a.order - b.order);
   return cleaned.map((s, idx) => ({ ...s, order: idx + 1 }));
-}
-
-function TocLink({ href, children }) {
-  return (
-    <a
-      href={href}
-      className="block rounded-lg px-3 py-2 text-sm text-muted hover:text-primary hover:bg-subtle-surface transition"
-      onClick={(e) => {
-        try {
-          const id = String(href || "").replace(/^#/, "");
-          const el = document.getElementById(id);
-          if (el) {
-            e.preventDefault();
-            el.scrollIntoView({ behavior: "smooth", block: "start" });
-          }
-        } catch {
-          // fall back
-        }
-      }}
-    >
-      {children}
-    </a>
-  );
 }
 
 function RemoteSectionCard({ id, title, bodyHtml }) {
@@ -79,19 +55,45 @@ function RemoteSectionCard({ id, title, bodyHtml }) {
   );
 }
 
+function getScrollOffsetPx() {
+  try {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue("--nav-height").trim();
+    const nav = parseInt(raw || "0", 10);
+    if (Number.isFinite(nav) && nav > 0) return nav + 20;
+  } catch {}
+  return 120;
+}
+
+function scrollToIdWithOffset(id) {
+  const el = document.getElementById(id);
+  if (!el) return false;
+
+  const offset = getScrollOffsetPx();
+  const top = Math.max(0, window.scrollY + el.getBoundingClientRect().top - offset);
+
+  window.scrollTo({ top, behavior: "smooth" });
+  return true;
+}
+
 export default function DynastyConstitutionClient({ version = "0", manifest = null }) {
   const [sections, setSections] = useState([]);
   const [updatedAt, setUpdatedAt] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [activeId, setActiveId] = useState("");
 
+  // Prevent IntersectionObserver from fighting during click-jumps
+  const scrollLockRef = useRef({ id: "", until: 0 });
+
+  // Data load
   useEffect(() => {
     let cancelled = false;
 
-    // Manifest-first: avoid an initial v=0 fetch before SectionManifestGate loads.
-    if (!manifest && String(version || "0") === "0") return () => {
-      cancelled = true;
-    };
+    if (!manifest && String(version || "0") === "0") {
+      return () => {
+        cancelled = true;
+      };
+    }
 
     const bust = `v=${encodeURIComponent(String(version || "0"))}`;
     const url = adminR2Url(`content/constitution/dynasty.json?${bust}`);
@@ -118,6 +120,69 @@ export default function DynastyConstitutionClient({ version = "0", manifest = nu
       cancelled = true;
     };
   }, [version, manifest]);
+
+  // IntersectionObserver: update active section while scrolling (unless locked)
+  useEffect(() => {
+    if (!sections?.length) return;
+
+    const ids = sections.map((s) => s.id).filter(Boolean);
+
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const now = Date.now();
+        if (now < (scrollLockRef.current?.until || 0)) return;
+
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => (b.intersectionRatio || 0) - (a.intersectionRatio || 0))[0];
+
+        if (!visible?.target?.id) return;
+
+        const id = visible.target.id;
+        setActiveId((prev) => (prev === id ? prev : id));
+
+        try {
+          window.history.replaceState(null, "", `#${id}`);
+        } catch {}
+      },
+      {
+        root: null,
+        threshold: [0.15, 0.25, 0.35, 0.5],
+        rootMargin: "-20% 0px -70% 0px",
+      }
+    );
+
+    ids.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) obs.observe(el);
+    });
+
+    return () => obs.disconnect();
+  }, [sections]);
+
+  // Initial hash handling (jump once, correctly, with offset)
+  useEffect(() => {
+    if (!sections?.length) return;
+
+    let hash = "";
+    try {
+      hash = (window.location.hash || "").replace(/^#/, "");
+    } catch {}
+
+    if (!hash) {
+      setActiveId(sections[0]?.id || "");
+      return;
+    }
+
+    scrollLockRef.current = { id: hash, until: Date.now() + 900 };
+    setActiveId(hash);
+
+    const t = setTimeout(() => {
+      scrollToIdWithOffset(hash);
+    }, 50);
+
+    return () => clearTimeout(t);
+  }, [sections]);
 
   const toc = useMemo(
     () => sections.map((s) => ({ id: s.id, label: `${s.order}. ${s.title}` })),
@@ -165,10 +230,24 @@ export default function DynastyConstitutionClient({ version = "0", manifest = nu
 
                 <div className="flex flex-wrap gap-3 pt-2">
                   {toc.length ? (
-                    <a href={`#${toc[0].id}`} className="btn btn-primary">
+                    <a
+                      href={`#${toc[0].id}`}
+                      className="btn btn-primary"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        const id = toc[0].id;
+                        scrollLockRef.current = { id, until: Date.now() + 900 };
+                        setActiveId(id);
+                        scrollToIdWithOffset(id);
+                        try {
+                          window.history.replaceState(null, "", `#${id}`);
+                        } catch {}
+                      }}
+                    >
                       Start Reading →
                     </a>
                   ) : null}
+
                   <Link prefetch={false} href="/constitution" className="btn btn-outline">
                     League Constitution
                   </Link>
@@ -192,10 +271,21 @@ export default function DynastyConstitutionClient({ version = "0", manifest = nu
 
           {/* TOC + CONTENT */}
           <section className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)] items-start">
-            <aside className="space-y-4">
-              <div className="bg-card-surface border border-subtle rounded-2xl p-5 shadow-sm sticky top-4">
-                <h2 className="text-sm font-semibold text-primary uppercase tracking-wide mb-3">Table of Contents</h2>
+            {/* ✅ Sticky TOC stays on screen */}
+            <aside className="space-y-4 self-start lg:sticky lg:top-4">
+              <div className="bg-card-surface border border-subtle rounded-2xl p-5 shadow-sm">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <h2 className="text-sm font-semibold text-primary uppercase tracking-wide m-0">
+                    Table of Contents
+                  </h2>
+                  {activeId ? (
+                    <span className="rounded-full border border-subtle bg-card-trans px-2 py-1 text-[11px] font-semibold text-muted">
+                      Reading
+                    </span>
+                  ) : null}
+                </div>
 
+                {/* ✅ No inner scroller — TOC naturally grows */}
                 {loading ? (
                   <div className="text-sm text-muted">Loading…</div>
                 ) : error ? (
@@ -205,9 +295,30 @@ export default function DynastyConstitutionClient({ version = "0", manifest = nu
                 ) : (
                   <nav className="space-y-1">
                     {toc.map((s) => (
-                      <TocLink key={s.id} href={`#${s.id}`}>
+                      <a
+                        key={s.id}
+                        href={`#${s.id}`}
+                        className={[
+                          "block rounded-lg px-3 py-2 text-sm transition",
+                          activeId === s.id
+                            ? "text-primary bg-subtle-surface border border-subtle"
+                            : "text-muted hover:text-primary hover:bg-subtle-surface",
+                        ].join(" ")}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          const id = s.id;
+
+                          scrollLockRef.current = { id, until: Date.now() + 900 };
+                          setActiveId(id);
+                          scrollToIdWithOffset(id);
+
+                          try {
+                            window.history.replaceState(null, "", `#${id}`);
+                          } catch {}
+                        }}
+                      >
                         {s.label}
-                      </TocLink>
+                      </a>
                     ))}
                   </nav>
                 )}
