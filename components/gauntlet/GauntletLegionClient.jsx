@@ -200,21 +200,32 @@ export default function GauntletLegionClient({
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {leagues.map((l) => (
-          <MediaTabCard
-            key={`${header.legion_slug}_${l.league_order}_${l.league_name}`}
-            title={l.league_name || "League"}
-            subtitle={l.league_status || ""}
-            imageSrc={resolveImageSrc({
-              imagePath: l.league_image_path,
-              imageKey: l.league_image_key,
-              updatedAt,
-              version,
-            })}
-            href={l.league_url || "#"}
-            external={Boolean(l.league_url)}
-          />
-        ))}
+        {leagues.map((l) => {
+          const st = safeStr(l?.league_status || "").trim().toUpperCase();
+          const isFilling = st === "FILLING";
+          const isClickable = isFilling && Boolean(safeStr(l?.league_url || "").trim());
+
+          return (
+            <MediaTabCard
+              key={`${header.legion_slug}_${l.league_order}_${l.league_name}`}
+              title={l.league_name || "League"}
+              subtitle={l.league_status || ""}
+              imageSrc={resolveImageSrc({
+                imagePath: l.league_image_path,
+                imageKey: l.league_image_key,
+                updatedAt,
+                version,
+              })}
+              href={isClickable ? l.league_url : undefined}
+              external={isClickable}
+              className={!isClickable ? "cursor-not-allowed opacity-70" : ""}
+              onClick={(e) => {
+                if (!isClickable) e.preventDefault();
+              }}
+            />
+          );
+        })}
+
       </div>
     </div>
   );

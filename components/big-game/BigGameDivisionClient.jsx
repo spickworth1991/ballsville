@@ -190,19 +190,30 @@ export default function BigGameDivisionClient({year = DEFAULT_SEASON,
           const leagueNum = lg.league_order || idx + 1;
           const img = withBust(lg.league_image, bust);
 
+          const st = String(lg?.league_status || "").trim().toUpperCase();
+          const isFilling = st === "FILLING";
+          const isClickable = isFilling && Boolean(lg?.league_url);
+
           return (
             <MediaTabCard
               key={`${leagueNum}-${idx}`}
-              href={lg.league_url || "#"}
-              external={Boolean(lg.league_url)}
+              href={isClickable ? lg.league_url : undefined}
+              external={isClickable}
               title={lg.league_name || `League ${leagueNum}`}
               subtitle="Big Game Bestball"
+              metaLeft={
+                <span className="inline-flex items-center rounded-full border border-subtle bg-panel px-2 py-1 text-[10px] font-semibold tracking-wide">
+                  {lg?.league_status || "TBD"}
+                </span>
+              }
               metaRight={<span className="text-[11px] font-mono text-accent">#{leagueNum}</span>}
               imageSrc={img}
               imageAlt={lg.league_name || `League ${leagueNum}`}
-              footerLabel={lg.league_url ? "Open League" : "Link not set"}
+              footerLabel={isClickable ? "Open League" : "Not filling"}
+              className={["h-full", !isClickable ? "cursor-not-allowed" : ""].join(" ")}
             />
           );
+
         })}
       </div>
     </div>
