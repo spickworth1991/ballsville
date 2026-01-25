@@ -27,7 +27,7 @@ export default function AdminConstitutionsHubPage() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Link
                 prefetch={false}
-                href="/admin/constitutions"
+                href="/admin/constitution"
                 className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
               >
                 <h2 className="text-lg font-semibold text-primary">Main Constitution</h2>
