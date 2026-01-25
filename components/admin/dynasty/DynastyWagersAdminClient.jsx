@@ -39,7 +39,8 @@ function nowIso() {
 }
 
 const LEADERBOARD_URL_BY_SEASON = (season) =>
-  `https://www.theballsvillegame.com/r2/data/leaderboards/leaderboards_${encodeURIComponent(season)}.json`;
+  `/r2/data/leaderboards/leaderboards_${encodeURIComponent(season)}.json`;
+
 
 function fmtMoney(n) {
   const x = typeof n === "number" ? n : parseFloat(n);
