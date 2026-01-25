@@ -11,14 +11,15 @@ function jsonResponse(obj, init = {}) {
 }
 
 function ensureR2(env) {
-  const b = env.admin_bucket || env.ADMIN_BUCKET;
-  if (!b) return { ok: false, status: 500, error: "Missing R2 binding: admin_bucket" };
+  // Prefer the binding name used by /functions/r2/[[path]].js
+  const b = env.ADMIN_BUCKET || env.admin_bucket || env.ADMIN || env.admin;
+  if (!b) return { ok: false, status: 500, error: "Missing R2 binding: ADMIN_BUCKET" };
   if (typeof b.get !== "function" || typeof b.put !== "function") {
     return {
       ok: false,
       status: 500,
       error:
-        "admin_bucket binding is not an R2 bucket object (check Pages > Settings > Bindings: admin_bucket).",
+        "ADMIN_BUCKET binding is not an R2 bucket object (check Pages > Settings > Bindings: ADMIN_BUCKET).",
     };
   }
   return { ok: true, bucket: b };
@@ -88,6 +89,7 @@ function normalizeSections(input) {
     })
     .filter((s) => s.title && s.id);
 
+  // Sort by order, then renumber sequentially so TOC numbers == order.
   cleaned.sort((a, b) => a.order - b.order);
   cleaned.forEach((s, i) => {
     s.order = i + 1;
@@ -164,5 +166,15 @@ export async function onRequestPut(ctx) {
   await putJsonToR2(r2.bucket, CONTENT_KEY, out);
   await touchManifest(r2.bucket, version);
 
-  return jsonResponse({ ok: true, key: CONTENT_KEY, version, updatedAt, count: sections.length }, { status: 200 });
+  return jsonResponse(
+    { ok: true, key: CONTENT_KEY, version, updatedAt, count: sections.length },
+    { status: 200 }
+  );
+}
+
+export async function onRequest(ctx) {
+  const m = ctx.request.method.toUpperCase();
+  if (m === "GET") return onRequestGet(ctx);
+  if (m === "PUT") return onRequestPut(ctx);
+  return jsonResponse({ ok: false, error: "Method Not Allowed" }, { status: 405 });
 }

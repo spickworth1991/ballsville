@@ -79,12 +79,31 @@ function getNavHeightPx() {
   return 100;
 }
 
+function getScrollOffsetPx() {
+  const nav = getNavHeightPx();
+  return nav + 20;
+}
+
+function onTocClick(e, id) {
+  e.preventDefault();
+
+  scrollLockRef.current = { id, until: Date.now() + 900 };
+  setActiveId(id);
+
+  try {
+    history.replaceState(null, "", `#${id}`);
+  } catch {}
+
+  scrollToIdWithOffset(id);
+}
+
+
+
 function scrollToIdWithOffset(id) {
   const el = document.getElementById(id);
   if (!el) return false;
 
-  const nav = getNavHeightPx();
-  const offset = nav + 20;
+  const offset = getScrollOffsetPx();
 
   const top = Math.max(0, window.scrollY + el.getBoundingClientRect().top - offset);
   window.scrollTo({ top, behavior: "smooth" });
@@ -99,103 +118,101 @@ export default function DynastyConstitutionClient({ season = CURRENT_SEASON, ver
 
   const [activeId, setActiveId] = useState("");
 
-  // We simulate a "sticky within the content range" TOC using fixed positioning
-  // (CSS sticky can be broken by global overflow styles in Chromium).
-  const containerRef = useRef(null);
+  const boundsRef = useRef(null);
   const tocColRef = useRef(null);
   const tocBoxRef = useRef(null);
-  const contentStartRef = useRef(null);
-  const contentEndRef = useRef(null);
+
 
   const [dockStyle, setDockStyle] = useState(null);
 
   // Prevent observer from fighting click jumps
   const scrollLockRef = useRef({ id: "", until: 0 });
 
-  // Keep a stable measurement loop (scroll + resize)
-  const rafRef = useRef(0);
+  const toc = useMemo(() => {
+    const sections = Array.isArray(remote?.sections) ? remote.sections : [];
+    return sections.map((s) => ({ id: s.id, label: `${s.order}. ${s.title}` }));
+  }, [remote]);
 
-  useLayoutEffect(() => {
-    function measureAndDock() {
-      if (typeof window === "undefined") return;
+    useLayoutEffect(() => {
+      let raf = 0;
 
-      const isLg = window.matchMedia("(min-width: 1024px)").matches;
-      if (!isLg) {
-        setDockStyle(null);
-        return;
+      function measure() {
+        if (typeof window === "undefined") return;
+
+        const isLg = window.matchMedia("(min-width: 1024px)").matches;
+        if (!isLg) {
+          setDockStyle(null);
+          return;
+        }
+
+        const bounds = boundsRef.current;
+        const col = tocColRef.current;
+        const box = tocBoxRef.current;
+        if (!bounds || !col || !box) {
+          setDockStyle(null);
+          return;
+        }
+
+        const nav = getNavHeightPx();
+        const fixedTop = nav + 16;
+
+        const colRect = col.getBoundingClientRect();
+        const boundsRect = bounds.getBoundingClientRect();
+
+        const boundsTop = window.scrollY + boundsRect.top;
+        const boundsBottom = boundsTop + boundsRect.height;
+
+        const tocHeight = box.getBoundingClientRect().height;
+        const fixedTopDoc = window.scrollY + fixedTop;
+
+        // Above bounds → normal flow
+        if (fixedTopDoc < boundsTop) {
+          setDockStyle(null);
+          return;
+        }
+
+        // Past bottom bounds → pin inside bounds
+        const maxTopWithinBounds = Math.max(0, boundsRect.height - tocHeight);
+        const pinnedTopWithinBounds = Math.min(maxTopWithinBounds, boundsRect.height - tocHeight);
+
+        if (fixedTopDoc + tocHeight > boundsBottom) {
+          setDockStyle({
+            position: "absolute",
+            left: "0px",
+            right: "0px",
+            top: `${Math.max(0, pinnedTopWithinBounds)}px`,
+            width: "100%",
+          });
+          return;
+        }
+
+        // Normal dock
+        setDockStyle({
+          position: "fixed",
+          left: `${Math.round(colRect.left)}px`,
+          top: `${fixedTop}px`,
+          width: `${Math.round(colRect.width)}px`,
+          maxHeight: `calc(100vh - ${nav + 32}px)`,
+          overflowY: "auto",
+        });
       }
 
-      const col = tocColRef.current;
-      const box = tocBoxRef.current;
-      const startEl = contentStartRef.current;
-      const endEl = contentEndRef.current;
-
-      if (!col || !box || !startEl || !endEl) {
-        setDockStyle(null);
-        return;
+      function onScrollOrResize() {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(measure);
       }
 
-      const nav = getNavHeightPx();
-      const padTop = 16;
+      onScrollOrResize();
+      window.addEventListener("resize", onScrollOrResize);
+      window.addEventListener("scroll", onScrollOrResize, { passive: true });
 
-      // Column geometry (so fixed TOC matches the grid column)
-      const colRect = col.getBoundingClientRect();
+      return () => {
+        cancelAnimationFrame(raf);
+        window.removeEventListener("resize", onScrollOrResize);
+        window.removeEventListener("scroll", onScrollOrResize);
+      };
+    }, [toc.length]);
 
-      // Content bounds in document space
-      const startAbsY = window.scrollY + startEl.getBoundingClientRect().top;
-      const endAbsY = window.scrollY + endEl.getBoundingClientRect().top;
-
-      const boxH = box.offsetHeight || 0;
-
-      // Desired top (document space) = keep below navbar
-      const desiredAbsY = window.scrollY + nav + padTop;
-
-      // Clamp so TOC never rises above the first section (hero stays above),
-      // and never goes past the last section (stops at the bottom of content).
-      let clampedAbsY = desiredAbsY;
-      if (Number.isFinite(startAbsY)) clampedAbsY = Math.max(clampedAbsY, startAbsY);
-      if (Number.isFinite(endAbsY) && boxH > 0) clampedAbsY = Math.min(clampedAbsY, endAbsY - boxH);
-
-      // If content is shorter than the TOC itself, just pin to start.
-      if (Number.isFinite(startAbsY) && Number.isFinite(endAbsY) && endAbsY - boxH < startAbsY) {
-        clampedAbsY = startAbsY;
-      }
-
-      const topPx = Math.round(clampedAbsY - window.scrollY);
-
-      setDockStyle({
-        position: "fixed",
-        left: `${Math.round(colRect.left)}px`,
-        top: `${topPx}px`,
-        width: `${Math.round(colRect.width)}px`,
-        maxHeight: `calc(100vh - ${nav + padTop + 16}px)`,
-        overflowY: "auto",
-      });
-    }
-
-    function schedule() {
-      if (rafRef.current) return;
-      rafRef.current = window.requestAnimationFrame(() => {
-        rafRef.current = 0;
-        measureAndDock();
-      });
-    }
-
-    // Initial pass after layout
-    schedule();
-
-    window.addEventListener("scroll", schedule, { passive: true });
-    window.addEventListener("resize", schedule);
-
-    return () => {
-      window.removeEventListener("scroll", schedule);
-      window.removeEventListener("resize", schedule);
-      if (rafRef.current) {
-        window.cancelAnimationFrame(rafRef.current);
-        rafRef.current = 0;
-      }
-    };
-  }, [remote?.sections?.length]);
 
   // Data load
   useEffect(() => {
@@ -234,50 +251,53 @@ export default function DynastyConstitutionClient({ season = CURRENT_SEASON, ver
     };
   }, [version, manifest]);
 
-  const toc = useMemo(() => {
-    const sections = Array.isArray(remote?.sections) ? remote.sections : [];
-    return sections.map((s) => ({ id: s.id, label: `${s.order}. ${s.title}` }));
-  }, [remote]);
+  
 
   // Active section highlighting
   useEffect(() => {
-    const sections = Array.isArray(remote?.sections) ? remote.sections : [];
-    if (!sections.length) return;
+    if (typeof window === "undefined") return;
 
-    const ids = sections.map((s) => s.id).filter(Boolean);
+    const ids = toc.map((t) => t.id);
+    if (!ids.length) {
+      setActiveId("");
+      return;
+    }
 
-    const obs = new IntersectionObserver(
+    const els = ids.map((id) => document.getElementById(id)).filter(Boolean);
+    if (!els.length) return;
+
+    const navOffset = getScrollOffsetPx();
+
+    const io = new IntersectionObserver(
       (entries) => {
-        const now = Date.now();
-        if (now < (scrollLockRef.current?.until || 0)) return;
+        const lock = scrollLockRef.current;
+        if (lock?.until && Date.now() < lock.until) return;
 
         const visible = entries
           .filter((e) => e.isIntersecting)
-          .sort((a, b) => (b.intersectionRatio || 0) - (a.intersectionRatio || 0))[0];
+          .sort((a, b) => (a.boundingClientRect.top || 0) - (b.boundingClientRect.top || 0));
 
-        if (!visible?.target?.id) return;
+        if (!visible.length) return;
 
-        const id = visible.target.id;
-        setActiveId((prev) => (prev === id ? prev : id));
-
-        try {
-          window.history.replaceState(null, "", `#${id}`);
-        } catch {}
+        const id = visible[0]?.target?.id || "";
+        if (id) {
+          setActiveId(id);
+          try {
+            window.history.replaceState(null, "", `#${id}`);
+          } catch {}
+        }
       },
       {
         root: null,
-        threshold: [0.15, 0.25, 0.35, 0.5],
-        rootMargin: "-20% 0px -70% 0px",
+        rootMargin: `-${navOffset}px 0px -60% 0px`,
+        threshold: [0.01, 0.1, 0.25],
       }
     );
 
-    ids.forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) obs.observe(el);
-    });
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, [toc]);
 
-    return () => obs.disconnect();
-  }, [remote?.sections]);
 
   // Initial hash handling
   useEffect(() => {
@@ -310,7 +330,7 @@ export default function DynastyConstitutionClient({ season = CURRENT_SEASON, ver
       </div>
 
       <section className="section">
-        <div ref={containerRef} className="container-site space-y-8">
+        <div className="container-site space-y-8">
           {/* HERO */}
           <header className="relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-10">
             <div className="pointer-events-none absolute inset-0 opacity-55 mix-blend-screen">
@@ -346,14 +366,7 @@ export default function DynastyConstitutionClient({ season = CURRENT_SEASON, ver
                       href={`#${toc[0].id}`}
                       className="btn btn-primary"
                       onClick={(e) => {
-                        e.preventDefault();
-                        const id = toc[0].id;
-                        scrollLockRef.current = { id, until: Date.now() + 900 };
-                        setActiveId(id);
-                        scrollToIdWithOffset(id);
-                        try {
-                          window.history.replaceState(null, "", `#${id}`);
-                        } catch {}
+                       onTocClick(e, s.id);
                       }}
                     >
                       Start Reading →
@@ -382,7 +395,10 @@ export default function DynastyConstitutionClient({ season = CURRENT_SEASON, ver
           </header>
 
           {/* TOC + CONTENT */}
-          <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-start">
+          <section
+            ref={boundsRef}
+            className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-start"
+          >
             {/* TOC */}
             <aside ref={tocColRef} className="space-y-4">
               <div
@@ -418,17 +434,7 @@ export default function DynastyConstitutionClient({ season = CURRENT_SEASON, ver
                             : "text-muted hover:text-primary hover:bg-subtle-surface",
                         ].join(" ")}
                         onClick={(e) => {
-                          e.preventDefault();
-                          const id = s.id;
-
-                          scrollLockRef.current = { id, until: Date.now() + 900 };
-                          setActiveId(id);
-
-                          scrollToIdWithOffset(id);
-
-                          try {
-                            window.history.replaceState(null, "", `#${id}`);
-                          } catch {}
+                          onTocClick(e, s.id);
                         }}
                       >
                         {s.label}
@@ -442,7 +448,6 @@ export default function DynastyConstitutionClient({ season = CURRENT_SEASON, ver
             {/* CONTENT */}
             <div className="space-y-6">
               {/* Start clamp boundary: first section begins here */}
-              <div ref={contentStartRef} />
 
               {loading ? (
                 <InlineNotice>Loading…</InlineNotice>
@@ -457,9 +462,6 @@ export default function DynastyConstitutionClient({ season = CURRENT_SEASON, ver
                   <SectionCard key={s.id} id={s.id} order={s.order} title={s.title} bodyHtml={s.bodyHtml} />
                 ))
               )}
-
-              {/* End clamp boundary: TOC stops at the last section */}
-              <div ref={contentEndRef} className="h-0" />
             </div>
           </section>
         </div>

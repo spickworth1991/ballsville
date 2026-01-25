@@ -42,7 +42,6 @@ function getNavHeightPx() {
 }
 
 function getScrollOffsetPx() {
-  // Keep anchor scroll below fixed navbar
   const nav = getNavHeightPx();
   return nav + 20;
 }
@@ -73,16 +72,14 @@ function RemoteSectionCard({ id, title, bodyHtml }) {
  * - Fixed-position TOC on lg+ (sticky can break when ancestors use overflow-x clip)
  * - Clamped so TOC never overlays the HERO and never runs past the last section
  * - Active section highlighting + hash sync
- * - Remote override (R2 JSON) with static fallback children
+ * - Remote-only content (no static fallback)
  */
 export default function ConstitutionClient({
   version = "0",
   manifest = null,
   remoteKey = "content/constitution/main.json",
-  fallbackToc = [],
-  children,
 }) {
-  const [remote, setRemote] = useState(null);
+  const [remoteSections, setRemoteSections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeId, setActiveId] = useState("");
@@ -95,19 +92,9 @@ export default function ConstitutionClient({
   // Prevent IntersectionObserver from fighting during click-jumps
   const scrollLockRef = useRef({ id: "", until: 0 });
 
-  // Load remote (if published) — fallback to children otherwise
+  // Load remote (R2 JSON)
   useEffect(() => {
     let cancelled = false;
-
-    // If you haven't published yet, keep fallback content without flashing errors.
-    if (!manifest && String(version || "0") === "0") {
-      setRemote(null);
-      setError("");
-      setLoading(false);
-      return () => {
-        cancelled = true;
-      };
-    }
 
     const bust = `v=${encodeURIComponent(String(version || "0"))}`;
     const url = adminR2Url(`${remoteKey}?${bust}`);
@@ -120,7 +107,7 @@ export default function ConstitutionClient({
       .then((json) => {
         if (cancelled) return;
         const sections = normalizeRemoteSections(json?.sections || json?.items || []);
-        setRemote(sections.length ? { sections } : null);
+        setRemoteSections(sections);
       })
       .catch((e) => {
         if (!cancelled) setError(e?.message || "Failed to load constitution.");
@@ -134,11 +121,11 @@ export default function ConstitutionClient({
     };
   }, [version, manifest, remoteKey]);
 
+  // TOC is remote-only (so it always matches what’s published)
   const toc = useMemo(() => {
-    const sections = Array.isArray(remote?.sections) ? remote.sections : null;
-    if (sections) return sections.map((s) => ({ id: s.id, label: `${s.order}. ${s.title}` }));
-    return (Array.isArray(fallbackToc) ? fallbackToc : []).map((s) => ({ id: s.id, label: s.label }));
-  }, [remote, fallbackToc]);
+    const sections = Array.isArray(remoteSections) ? remoteSections : [];
+    return sections.map((s) => ({ id: s.id, label: `${s.order}. ${s.title}` }));
+  }, [remoteSections]);
 
   // Clamp / dock TOC (lg+)
   useLayoutEffect(() => {
@@ -170,19 +157,16 @@ export default function ConstitutionClient({
       const boundsTop = window.scrollY + boundsRect.top;
       const boundsBottom = boundsTop + boundsRect.height;
 
-      // TOC height should be measured with its current styles
       const tocHeight = box.getBoundingClientRect().height;
-
-      // Where the top of the fixed TOC would land in document space
       const fixedTopDoc = window.scrollY + fixedTop;
 
-      // 1) Above bounds → behave like normal flow (no fixed overlay on hero)
+      // Above bounds → normal flow
       if (fixedTopDoc < boundsTop) {
         setDockStyle(null);
         return;
       }
 
-      // 2) Past bottom bounds → pin to bottom of bounds (prevents running past last section)
+      // Past bottom bounds → pin inside bounds
       const maxTopWithinBounds = Math.max(0, boundsRect.height - tocHeight);
       const pinnedTopWithinBounds = Math.min(maxTopWithinBounds, boundsRect.height - tocHeight);
 
@@ -197,7 +181,7 @@ export default function ConstitutionClient({
         return;
       }
 
-      // 3) Normal dock
+      // Normal dock
       setDockStyle({
         position: "fixed",
         left: `${Math.round(colRect.left)}px`,
@@ -223,147 +207,125 @@ export default function ConstitutionClient({
     };
   }, [toc.length]);
 
-  // IntersectionObserver: update active section while scrolling (unless locked)
+  // Active section highlight
   useEffect(() => {
-    if (!toc?.length) return;
+    if (typeof window === "undefined") return;
 
-    const ids = toc.map((s) => s.id).filter(Boolean);
-
-    const obs = new IntersectionObserver(
-      (entries) => {
-        const now = Date.now();
-        if (now < (scrollLockRef.current?.until || 0)) return;
-
-        const visible = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => (b.intersectionRatio || 0) - (a.intersectionRatio || 0))[0];
-
-        if (!visible?.target?.id) return;
-
-        const id = visible.target.id;
-        setActiveId((prev) => (prev === id ? prev : id));
-
-        try {
-          window.history.replaceState(null, "", `#${id}`);
-        } catch {}
-      },
-      {
-        root: null,
-        threshold: [0.15, 0.25, 0.35, 0.5],
-        // makes "active" switch when section header enters upper area
-        rootMargin: "-20% 0px -70% 0px",
-      }
-    );
-
-    ids.forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) obs.observe(el);
-    });
-
-    return () => obs.disconnect();
-  }, [toc]);
-
-  // Initial hash handling (jump once, correctly, with offset)
-  useEffect(() => {
-    if (!toc?.length) return;
-
-    let hash = "";
-    try {
-      hash = (window.location.hash || "").replace(/^#/, "");
-    } catch {}
-
-    const defaultId = toc[0]?.id || "";
-
-    if (!hash) {
-      setActiveId(defaultId);
+    const ids = toc.map((t) => t.id);
+    if (!ids.length) {
+      setActiveId("");
       return;
     }
 
-    scrollLockRef.current = { id: hash, until: Date.now() + 900 };
-    setActiveId(hash);
+    const els = ids
+      .map((id) => document.getElementById(id))
+      .filter(Boolean);
 
-    const t = setTimeout(() => {
-      scrollToIdWithOffset(hash);
-    }, 50);
+    if (!els.length) return;
 
-    return () => clearTimeout(t);
+    const navOffset = getScrollOffsetPx();
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        const lock = scrollLockRef.current;
+        if (lock?.until && Date.now() < lock.until) return;
+
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => (a.boundingClientRect.top || 0) - (b.boundingClientRect.top || 0));
+
+        if (!visible.length) return;
+
+        const id = visible[0]?.target?.id || "";
+        if (id) setActiveId(id);
+      },
+      {
+        root: null,
+        rootMargin: `-${navOffset}px 0px -60% 0px`,
+        threshold: [0.01, 0.1, 0.25],
+      }
+    );
+
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
   }, [toc]);
 
-  const hasRemote = !!remote?.sections?.length;
+  function onTocClick(e, id) {
+    e.preventDefault();
+
+    scrollLockRef.current = { id, until: Date.now() + 900 };
+    setActiveId(id);
+
+    // Update URL hash without jumping (then do offset scroll)
+    try {
+      history.replaceState(null, "", `#${id}`);
+    } catch {}
+
+    scrollToIdWithOffset(id);
+  }
 
   return (
-    <section ref={boundsRef} className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)] items-start">
+    <section ref={boundsRef} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-start">
       {/* TOC */}
-      <aside ref={tocColRef} className="space-y-4 relative">
+      <aside ref={tocColRef} className="relative space-y-3">
         <div
           ref={tocBoxRef}
-          className="bg-card-surface border border-subtle rounded-2xl p-5 shadow-sm"
           style={dockStyle || undefined}
+          className="rounded-2xl border border-subtle bg-card-surface p-5 shadow-sm"
         >
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <h2 className="text-sm font-semibold text-primary uppercase tracking-wide m-0">
-              Table of Contents
-            </h2>
-            <span className="rounded-full border border-subtle bg-card-trans px-2 py-1 text-[11px] font-semibold text-muted">
-              LIVE
-            </span>
+          <h2 className="text-sm font-semibold text-primary uppercase tracking-wide m-0">
+            Table of Contents
+          </h2>
+
+          <div className="mt-3 space-y-1">
+            {loading ? (
+              <div className="text-sm text-muted">Loading…</div>
+            ) : error ? (
+              <div className="text-sm text-red-200">{error}</div>
+            ) : toc.length === 0 ? (
+              <div className="text-sm text-muted">No sections published yet.</div>
+            ) : (
+              toc.map((t) => {
+                const isActive = t.id === activeId;
+                return (
+                  <a
+                    key={t.id}
+                    href={`#${t.id}`}
+                    onClick={(e) => onTocClick(e, t.id)}
+                    className={[
+                      "block rounded-lg px-3 py-2 text-sm transition",
+                      isActive
+                        ? "bg-subtle-surface text-primary"
+                        : "text-muted hover:text-primary hover:bg-subtle-surface",
+                    ].join(" ")}
+                  >
+                    {t.label}
+                  </a>
+                );
+              })
+            )}
           </div>
-
-          {loading ? (
-            <div className="text-sm text-muted">Loading…</div>
-          ) : error ? (
-            <div className="text-sm text-red-200">{error}</div>
-          ) : toc.length === 0 ? (
-            <div className="text-sm text-muted">No sections yet.</div>
-          ) : (
-            <nav className="space-y-1">
-              {toc.map((s) => (
-                <a
-                  key={s.id}
-                  href={`#${s.id}`}
-                  className={[
-                    "block rounded-lg px-3 py-2 text-sm transition",
-                    activeId === s.id
-                      ? "text-primary bg-subtle-surface border border-subtle"
-                      : "text-muted hover:text-primary hover:bg-subtle-surface",
-                  ].join(" ")}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    const id = s.id;
-                    scrollLockRef.current = { id, until: Date.now() + 900 };
-                    setActiveId(id);
-                    scrollToIdWithOffset(id);
-                    try {
-                      window.history.replaceState(null, "", `#${id}`);
-                    } catch {}
-                  }}
-                >
-                  {s.label}
-                </a>
-              ))}
-            </nav>
-          )}
-
-          {/* Keep legacy helper text from the old page (always visible) */}
-          <p className="mt-4 text-[11px] text-muted leading-snug">
-            Use this Constitution as the baseline. Each league’s <span className="font-semibold">League Info</span>{" "}
-            page and any posted bylaws clarify which options are enabled (trades, FAAB, best ball rules, etc.).
-          </p>
         </div>
       </aside>
 
-      {/* CONTENT */}
-      <div className="space-y-6 leading-relaxed text-sm md:text-base">
-        {loading && !children ? (
+      {/* BODY */}
+      <div className="space-y-6">
+        {loading ? (
           <div className="rounded-2xl border border-subtle bg-subtle-surface p-4 text-sm text-muted text-center">
             Loading…
           </div>
-        ) : hasRemote ? (
-          remote.sections.map((s) => (
+        ) : error ? (
+          <div className="rounded-2xl border border-red-500/25 bg-red-950/30 p-4 text-sm text-red-200">
+            {error}
+          </div>
+        ) : remoteSections.length === 0 ? (
+          <div className="rounded-2xl border border-subtle bg-subtle-surface p-6 text-sm text-muted">
+            No constitution sections have been published yet.
+          </div>
+        ) : (
+          remoteSections.map((s) => (
             <RemoteSectionCard key={s.id} id={s.id} title={`${s.order}. ${s.title}`} bodyHtml={s.bodyHtml} />
           ))
-        ) : (
-          children
         )}
       </div>
     </section>

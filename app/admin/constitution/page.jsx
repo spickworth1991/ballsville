@@ -1,10 +1,13 @@
+// app/admin/constitution/page.jsx
+import { siteConfig } from "@/app/config/siteConfig";
 import ConstitutionAdminClient from "@/components/admin/constitution/ConstitutionAdminClient";
 
 export const metadata = {
-  title: "Admin · Constitution | BALLSVILLE",
-  description: "Edit and publish the League Constitution content.",
+  title: `Constitution Admin | ${siteConfig.shortName}`,
+  description: "Admin editor for the main league constitution (R2-backed).",
+  alternates: { canonical: "/admin/constitution" },
 };
 
-export default function AdminConstitutionPage() {
+export default function Page() {
   return <ConstitutionAdminClient />;
 }

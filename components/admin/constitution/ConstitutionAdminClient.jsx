@@ -1,11 +1,14 @@
+// components/admin/constitution/ConstitutionAdminClient.jsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
+import { safeStr } from "@/lib/safe";
 
-function safeStr(v) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
+function toInt(v, fallback) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : fallback;
 }
 
 function slugify(s) {
@@ -17,24 +20,14 @@ function slugify(s) {
     .replace(/-+/g, "-");
 }
 
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function normalizeSections(raw) {
-  const rows = Array.isArray(raw) ? raw : [];
-  const cleaned = rows
-    .map((s, i) => {
-      const title = safeStr(s?.title || "").trim();
-      const id = slugify(s?.id || s?.anchor || title || `section-${i + 1}`);
-      const order = Number.isFinite(Number(s?.order)) ? Number(s.order) : i + 1;
-      const bodyHtml = safeStr(s?.bodyHtml || s?.html || "").trim();
-      return { id, title, order, bodyHtml };
-    })
-    .filter((s) => s.id && s.title);
-
-  cleaned.sort((a, b) => a.order - b.order);
-  return cleaned.map((s, idx) => ({ ...s, order: idx + 1 }));
+function fmtDate(iso) {
+  try {
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) return "";
+    return d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+  } catch {
+    return "";
+  }
 }
 
 async function getAuthToken() {
@@ -43,104 +36,94 @@ async function getAuthToken() {
   return data?.session?.access_token || "";
 }
 
-export default function ConstitutionAdminClient() {
-  const API = "/api/admin/constitution";
+function normalizeClientSections(raw) {
+  const arr = Array.isArray(raw) ? raw : [];
+  const cleaned = arr
+    .map((s, idx) => {
+      const title = safeStr(s?.title).trim();
+      const incomingIdRaw = safeStr(s?.id || s?.anchor || "").trim();
+      const derived = slugify(title || `section-${idx + 1}`);
 
-  const [loaded, setLoaded] = useState(false);
+      const id = incomingIdRaw || derived;
+      const idMode = id === derived ? "auto" : "manual";
+
+      const order = toInt(s?.order, idx + 1);
+      const bodyHtml = safeStr(s?.bodyHtml || s?.html || "");
+
+      return { id, title, order, bodyHtml, _idMode: idMode };
+    })
+    .filter((s) => s.title);
+
+  cleaned.sort((a, b) => a.order - b.order);
+  cleaned.forEach((s, i) => {
+    s.order = i + 1;
+    const derived = slugify(s.title || `section-${i + 1}`);
+    if (!s.id) {
+      s.id = derived;
+      s._idMode = "auto";
+    } else if (s.id === derived) {
+      s._idMode = "auto";
+    }
+  });
+
+  return cleaned;
+}
+
+export default function ConstitutionAdminClient() {
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [success, setSuccess] = useState("");
 
   const [updatedAt, setUpdatedAt] = useState("");
   const [sections, setSections] = useState([]);
 
+  const apiUrl = "/api/admin/constitution";
+
   async function load() {
+    setLoading(true);
     setError("");
-    setNotice("");
-    setLoaded(false);
+    setSuccess("");
 
     try {
       const token = await getAuthToken();
       if (!token) throw new Error("No admin session. Please sign in again.");
 
-      const res = await fetch(API, {
-        headers: { authorization: `Bearer ${token}` },
-      });
-
+      const res = await fetch(apiUrl, { headers: { authorization: `Bearer ${token}` } });
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.ok) throw new Error(json?.error || `Failed to load (${res.status})`);
 
       const data = json?.data || {};
-      const normalized = normalizeSections(data?.sections || data?.items || []);
-      setSections(normalized);
       setUpdatedAt(safeStr(data?.updatedAt || ""));
+      setSections(normalizeClientSections(data?.sections || []));
     } catch (e) {
       setError(e?.message || "Failed to load constitution.");
       setUpdatedAt("");
       setSections([]);
     } finally {
-      setLoaded(true);
+      setLoading(false);
     }
-  }
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const toc = useMemo(
-    () => sections.map((s) => ({ id: s.id, label: `${s.order}. ${s.title}` })),
-    [sections]
-  );
-
-  function updateSection(id, patch) {
-    setSections((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
-  }
-
-  function addSection() {
-    setSections((prev) => {
-      const nextOrder = prev.length + 1;
-      const id = `section-${nextOrder}`;
-      return [...prev, { id, title: `New Section ${nextOrder}`, order: nextOrder, bodyHtml: "" }];
-    });
-  }
-
-  function deleteSection(id) {
-    setSections((prev) => {
-      const kept = prev.filter((s) => s.id !== id);
-      return kept.map((s, idx) => ({ ...s, order: idx + 1 }));
-    });
-  }
-
-  function moveSection(id, dir) {
-    setSections((prev) => {
-      const idx = prev.findIndex((s) => s.id === id);
-      if (idx < 0) return prev;
-      const next = [...prev];
-      const swapWith = dir < 0 ? idx - 1 : idx + 1;
-      if (swapWith < 0 || swapWith >= next.length) return prev;
-      const t = next[idx];
-      next[idx] = next[swapWith];
-      next[swapWith] = t;
-      return next.map((s, i) => ({ ...s, order: i + 1 }));
-    });
   }
 
   async function save() {
     setSaving(true);
     setError("");
-    setNotice("");
+    setSuccess("");
 
     try {
       const token = await getAuthToken();
       if (!token) throw new Error("No admin session. Please sign in again.");
 
       const payload = {
-        updatedAt: nowIso(),
-        sections: normalizeSections(sections),
+        sections: (sections || []).map((s, idx) => ({
+          id: safeStr(s?.id || ""),
+          title: safeStr(s?.title || "").trim(),
+          order: toInt(s?.order, idx + 1),
+          bodyHtml: safeStr(s?.bodyHtml || ""),
+        })),
       };
 
-      const res = await fetch(API, {
+      const res = await fetch(apiUrl, {
         method: "PUT",
         headers: {
           authorization: `Bearer ${token}`,
@@ -152,9 +135,7 @@ export default function ConstitutionAdminClient() {
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.ok) throw new Error(json?.error || `Save failed (${res.status})`);
 
-      // your API returns { ok, key, version, updatedAt, count } (no data),
-      // so reload to reflect server-normalized sections + updatedAt
-      setNotice(`Published · ${json?.count ?? sections.length} sections`);
+      setSuccess(`Saved · ${json.count} sections`);
       await load();
     } catch (e) {
       setError(e?.message || "Failed to save.");
@@ -163,141 +144,215 @@ export default function ConstitutionAdminClient() {
     }
   }
 
+  function addSection() {
+    setSuccess("");
+    setSections((prev) => {
+      const nextOrder = (Array.isArray(prev) ? prev.length : 0) + 1;
+      return [
+        ...(prev || []),
+        {
+          id: `section-${Date.now()}`,
+          title: "",
+          order: nextOrder,
+          bodyHtml: "",
+        },
+      ];
+    });
+  }
+
+  function removeSection(id) {
+    setSuccess("");
+    setSections((prev) => normalizeClientSections((prev || []).filter((s) => s.id !== id)));
+  }
+
+  function updateSection(id, patch) {
+    setSuccess("");
+    setSections((prev) =>
+      (prev || []).map((s) => {
+        if (s.id !== id) return s;
+        const next = { ...s, ...patch };
+
+        if (patch?.title != null) {
+          const oldDerived = slugify(s.title || "");
+          const isAuto =
+            s._idMode === "auto" ||
+            !s.id ||
+            s.id === oldDerived ||
+            String(s.id).startsWith("section-");
+
+          if (isAuto) {
+            const newDerived = slugify(patch.title || "");
+            next.id = newDerived || s.id;
+            next._idMode = "auto";
+          }
+        }
+
+        return next;
+      })
+    );
+  }
+
+  const toc = useMemo(
+    () => (sections || []).map((s) => ({ id: s.id, label: `${toInt(s.order, 1)}. ${safeStr(s.title)}` })),
+    [sections]
+  );
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiUrl]);
+
   return (
-    <main className="relative min-h-screen text-fg">
+    <main className="min-h-screen text-fg relative">
       <div className="pointer-events-none absolute inset-0 -z-10">
         <div className="hero-glow" />
       </div>
 
       <section className="section">
-        <div className="container-site space-y-6">
-          <header className="rounded-3xl border border-subtle bg-card-surface p-6 shadow-xl">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
+        <div className="container-site space-y-8">
+          <header className="rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-10">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="space-y-2">
                 <p className="text-xs uppercase tracking-[0.35em] text-accent">ADMIN</p>
-                <h1 className="text-2xl md:text-3xl font-semibold text-primary">League Constitution</h1>
-                <p className="text-sm text-muted mt-1">
-                  Edit sections and publish to R2.
-                  {updatedAt ? ` Last updated ${updatedAt.slice(0, 10)}.` : ""}
-                </p>
+                <h1 className="text-2xl sm:text-3xl font-semibold text-primary">League Constitution</h1>
+                <p className="text-sm text-muted">Edit sections, reorder them, and publish instantly.</p>
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                <Link href="/constitution" prefetch={false} className="btn btn-outline">
-                  View Live
+              <div className="flex items-center gap-3">
+                <Link prefetch={false} href="/constitution" className="btn btn-outline">
+                  View Public
                 </Link>
-                <button className="btn btn-outline" onClick={addSection} type="button">
-                  + Add Section
-                </button>
-                <button className="btn btn-primary" onClick={save} disabled={saving} type="button">
-                  {saving ? "Publishing…" : "Publish"}
-                </button>
+                <Link prefetch={false} href="/admin" className="btn btn-outline">
+                  Admin Home
+                </Link>
               </div>
             </div>
 
-            {error ? (
-              <div className="mt-4 rounded-2xl border border-red-500/25 bg-red-950/30 p-3 text-sm text-red-200">
-                {error}
-              </div>
-            ) : null}
-            {notice ? (
-              <div className="mt-4 rounded-2xl border border-emerald-500/25 bg-emerald-950/30 p-3 text-sm text-emerald-200">
-                {notice}
-              </div>
-            ) : null}
+            <div className="mt-6 flex flex-wrap items-end gap-3">
+              <div className="flex-1" />
+
+              <button type="button" onClick={addSection} className="btn btn-outline" disabled={loading || saving}>
+                + Add section
+              </button>
+
+              <button type="button" onClick={save} className="btn btn-primary" disabled={loading || saving}>
+                {saving ? "Saving…" : "Save"}
+              </button>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+              <span className="rounded-full border border-subtle bg-card-trans px-3 py-1 text-muted">
+                Live · Last updated {updatedAt ? fmtDate(updatedAt) : "—"}
+              </span>
+              {success ? (
+                <span className="rounded-full border border-emerald-500/25 bg-emerald-950/30 px-3 py-1 text-emerald-200">
+                  {success}
+                </span>
+              ) : null}
+              {error ? (
+                <span className="rounded-full border border-red-500/25 bg-red-950/30 px-3 py-1 text-red-200">
+                  {error}
+                </span>
+              ) : null}
+            </div>
           </header>
 
-          <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-start">
-            <aside className="space-y-3">
-              <div className="rounded-2xl border border-subtle bg-card-surface p-5 shadow-sm">
-                <h2 className="text-sm font-semibold text-primary uppercase tracking-wide m-0">Table of Contents</h2>
-                <div className="mt-3 space-y-1">
-                  {!loaded ? (
-                    <div className="text-sm text-muted">Loading…</div>
-                  ) : toc.length === 0 ? (
-                    <div className="text-sm text-muted">No sections yet.</div>
-                  ) : (
-                    toc.map((t) => (
-                      <a
-                        key={t.id}
-                        href={`#${t.id}`}
-                        className="block rounded-lg px-3 py-2 text-sm text-muted hover:text-primary hover:bg-subtle-surface"
-                      >
-                        {t.label}
-                      </a>
-                    ))
-                  )}
+          {/* Layout matches dynasty: TOC left, editor right */}
+          {loading ? (
+            <div className="rounded-2xl border border-subtle bg-card-surface p-6 text-muted">Loading…</div>
+          ) : (
+            <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-start">
+              <aside className="space-y-3">
+                <div className="sticky top-24 rounded-2xl border border-subtle bg-card-surface p-5 shadow-sm">
+                  <h2 className="text-sm font-semibold text-primary uppercase tracking-wide m-0">Table of Contents</h2>
+                  <div className="mt-3 space-y-1">
+                    {!toc.length ? (
+                      <div className="text-sm text-muted">No sections yet.</div>
+                    ) : (
+                      toc.map((t) => (
+                        <a
+                          key={t.id}
+                          href={`#${t.id}`}
+                          className="block rounded-lg px-3 py-2 text-sm text-muted hover:text-primary hover:bg-subtle-surface"
+                        >
+                          {t.label}
+                        </a>
+                      ))
+                    )}
+                  </div>
                 </div>
-              </div>
-            </aside>
+              </aside>
 
-            <div className="space-y-6">
-              {!loaded ? (
-                <div className="rounded-2xl border border-subtle bg-subtle-surface p-4 text-sm text-muted text-center">
-                  Loading…
-                </div>
-              ) : sections.length === 0 ? (
-                <div className="rounded-2xl border border-subtle bg-subtle-surface p-6 text-sm text-muted">
-                  No constitution sections yet.
-                </div>
-              ) : (
-                sections.map((s, idx) => (
+              <div className="space-y-6">
+                {(sections || []).map((s, idx) => (
                   <section
                     key={s.id}
                     id={s.id}
-                    className="scroll-mt-28 rounded-2xl border border-subtle bg-card-surface p-6 shadow-sm"
+                    className="scroll-mt-28 rounded-3xl border border-subtle bg-card-surface shadow-sm p-6 space-y-4"
                   >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-[200px] flex-1">
-                        <label className="label">Title</label>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-full border border-subtle bg-card-trans px-3 text-sm font-semibold text-primary">
+                            {toInt(s.order, idx + 1)}
+                          </span>
+                          <div className="text-sm text-muted">
+                            Anchor: <span className="text-fg">#{safeStr(s.id)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => removeSection(s.id)}
+                        className="rounded-xl border border-red-500/25 bg-red-950/20 px-3 py-2 text-xs font-semibold text-red-200 hover:bg-red-950/35"
+                      >
+                        Delete
+                      </button>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-[140px_1fr] md:items-start">
+                      <label className="text-sm text-muted">
+                        Order
                         <input
-                          className="input mt-1"
-                          value={s.title}
-                          onChange={(e) => updateSection(s.id, { title: e.target.value })}
+                          value={toInt(s.order, idx + 1)}
+                          onChange={(e) => updateSection(s.id, { order: toInt(e.target.value, s.order) })}
+                          className="mt-1 block w-full rounded-xl border border-subtle bg-card-trans px-3 py-2 text-fg"
+                          inputMode="numeric"
                         />
-                        <div className="mt-2 text-xs text-muted">ID: {s.id}</div>
-                      </div>
+                      </label>
 
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          className="btn btn-outline"
-                          onClick={() => moveSection(s.id, -1)}
-                          disabled={idx === 0}
-                        >
-                          ↑
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-outline"
-                          onClick={() => moveSection(s.id, 1)}
-                          disabled={idx === sections.length - 1}
-                        >
-                          ↓
-                        </button>
-                        <button type="button" className="btn btn-outline" onClick={() => deleteSection(s.id)}>
-                          Delete
-                        </button>
-                      </div>
+                      <label className="text-sm text-muted">
+                        Title
+                        <input
+                          value={safeStr(s.title)}
+                          onChange={(e) => updateSection(s.id, { title: e.target.value })}
+                          className="mt-1 block w-full rounded-xl border border-subtle bg-card-trans px-3 py-2 text-fg"
+                          placeholder="Section title"
+                        />
+                      </label>
                     </div>
 
-                    <div className="mt-4">
-                      <label className="label">HTML body</label>
+                    <label className="text-sm text-muted block">
+                      Body (HTML)
                       <textarea
-                        className="input mt-1"
-                        rows={10}
-                        value={s.bodyHtml}
+                        value={safeStr(s.bodyHtml)}
                         onChange={(e) => updateSection(s.id, { bodyHtml: e.target.value })}
+                        className="mt-1 block w-full min-h-[180px] rounded-2xl border border-subtle bg-card-trans px-4 py-3 font-mono text-xs text-fg"
+                        placeholder="<p>Write your content here…</p>"
                       />
-                      <p className="mt-2 text-xs text-muted">
-                        Tip: paste HTML from your editor. (The public page renders this as-is.)
-                      </p>
-                    </div>
+                    </label>
                   </section>
-                ))
-              )}
-            </div>
-          </section>
+                ))}
+
+                {!sections?.length ? (
+                  <div className="rounded-2xl border border-subtle bg-card-surface p-6 text-muted">
+                    No sections yet. Click “Add section” to start.
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          )}
         </div>
       </section>
     </main>
