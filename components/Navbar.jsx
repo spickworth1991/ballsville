@@ -22,20 +22,22 @@ import {
 } from "react-icons/fi";
 
 /**
- * Add `isNew: true` to any item (or child/sub-child) to show a "NEW" pill.
+ * Add `isNew: true` or `isUpdate: true` to any item (or child/sub-child)
+ * to show a "NEW" or "UPDATE" pill.
  */
+
 const NAV_ITEMS = [
   { id: "home", name: "Home", to: "/", icon: FiHome },
   {
     id: "game-modes",
     name: "Game Modes",
     icon: FiGrid,
+    isNew: true,
     children: [
       {
         id: "leaderboards",
         name: "Leaderboards",
         to: "/leaderboards",
-        // isNew: true,
       },
 
       {
@@ -67,7 +69,7 @@ const NAV_ITEMS = [
         id: "dynasty",
         name: "Dynasty",
         to: "/dynasty",
-        children: [{ name: "Wagers", to: "/dynasty/wagers" },{name: "Constitution", to: "/constitution/dynasty"}],
+        children: [{ name: "Wagers", to: "/dynasty/wagers" },{name: "Constitution", to: "/constitution/dynasty", isUpdate: true}],
       },
       {
         id: "gauntlet",
@@ -117,6 +119,17 @@ function isNodeActive(node, pathname) {
   return false;
 }
 
+function UpdatePill() {
+  return (
+    <span
+      className="ml-2 inline-flex items-center rounded-full border border-subtle bg-white/5 px-2 py-0.5 text-[10px] font-bold tracking-wide text-primary"
+      aria-label="Update"
+    >
+      UPDATE
+    </span>
+  );
+}
+
 function NewPill() {
   return (
     <span
@@ -127,6 +140,17 @@ function NewPill() {
     </span>
   );
 }
+
+function NavPills({ node }) {
+  return (
+    <>
+      {node?.isNew && <NewPill />}
+      {node?.isUpdate && <UpdatePill />}
+    </>
+  );
+}
+
+
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -384,7 +408,7 @@ export default function Navbar() {
                       <span className="inline-flex items-center space-x-1">
                         {item.icon && <item.icon className="w-5 h-5" />}
                         <span className="whitespace-nowrap">{item.name}</span>
-                        {item?.isNew && <NewPill />}
+                        <NavPills node={item} />
                         {hasChildren && <FiChevronDown className="w-4 h-4" />}
                       </span>
                     </span>
@@ -402,7 +426,7 @@ export default function Navbar() {
                       >
                         {item.icon && <item.icon className="w-5 h-5" />}
                         <span className="whitespace-nowrap">{item.name}</span>
-                        {item?.isNew && <NewPill />}
+                        <NavPills node={item} />
                       </Link>
                     )}
 
@@ -427,7 +451,7 @@ export default function Navbar() {
                         >
                           {item.icon && <item.icon className="w-5 h-5" />}
                           <span className="whitespace-nowrap">{item.name}</span>
-                          {item?.isNew && <NewPill />}
+                          <NavPills node={item} />
                           <FiChevronDown
                             className={`w-4 h-4 transition-transform ${
                               openDesktopMenuId === item.id ? "rotate-180" : ""
@@ -461,7 +485,7 @@ export default function Navbar() {
                                     role="menuitem"
                                   >
                                     <span>{child.name}</span>
-                                    {child?.isNew && <NewPill />}
+                                    <NavPills node={child} />
                                   </Link>
                                 );
                               }
@@ -486,7 +510,7 @@ export default function Navbar() {
                                   >
                                     <span className="inline-flex items-center">
                                       {child.name}
-                                      {child?.isNew && <NewPill />}
+                                      <NavPills node={child} />
                                     </span>
                                     <FiChevronDown className="w-4 h-4 opacity-70 -rotate-90" />
                                   </Link>
@@ -506,7 +530,7 @@ export default function Navbar() {
                                         onClick={handleNavClick}
                                       >
                                         <span>{sub.name}</span>
-                                        {sub?.isNew && <NewPill />}
+                                        <NavPills node={sub} />
                                       </Link>
                                     ))}
                                   </div>
@@ -594,7 +618,7 @@ export default function Navbar() {
                   >
                     {item.icon && <item.icon className="w-6 h-6" />}
                     <span>{item.name}</span>
-                    {item?.isNew && <NewPill />}
+                    <NavPills node={item} />
                   </Link>
                 );
               }
@@ -615,7 +639,7 @@ export default function Navbar() {
                     <span className="inline-flex items-center space-x-2">
                       {item.icon && <item.icon className="w-6 h-6" />}
                       <span>{item.name}</span>
-                      {item?.isNew && <NewPill />}
+                      <NavPills node={item} />
                     </span>
                     <FiChevronDown
                       className={`w-5 h-5 transition-transform ${
@@ -646,7 +670,7 @@ export default function Navbar() {
                               onClick={handleNavClick}
                             >
                               <span>{child.name}</span>
-                              {child?.isNew && <NewPill />}
+                              <NavPills node={child} />
                             </Link>
                           );
                         }
@@ -668,7 +692,7 @@ export default function Navbar() {
                             >
                               <span className="inline-flex items-center">
                                 {child.name}
-                                {child?.isNew && <NewPill />}
+                                <NavPills node={child} />
                               </span>
                               <FiChevronDown
                                 className={`w-5 h-5 transition-transform ${
@@ -692,7 +716,7 @@ export default function Navbar() {
                                     onClick={handleNavClick}
                                   >
                                     <span>{sub.name}</span>
-                                    {sub?.isNew && <NewPill />}
+                                    <NavPills node={sub} />
                                   </Link>
                                 ))}
                               </div>

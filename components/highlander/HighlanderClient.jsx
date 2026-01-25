@@ -1,11 +1,9 @@
-// components/highlander/HighlanderClient.jsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import OwnerHeroBlock from "@/components/blocks/OwnerHeroBlock";
-import { adminR2UrlForKey as adminR2Url } from "@/lib/r2Client";
+import { adminR2Url as r2Url } from "@/lib/r2Client";
 
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
@@ -61,6 +59,10 @@ function normLeague(l, idx) {
     status: safeStr(l?.status || "tbd").toLowerCase(),
     active,
     order: Number.isFinite(order) ? order : idx + 1,
+
+    // images (admin saves may use either casing)
+    imageKey: safeStr(l?.imageKey || l?.image_key || "").trim(),
+    imageUrl: safeStr(l?.imageUrl || l?.image_url || "").trim(),
   };
 }
 
@@ -86,7 +88,7 @@ export default function HighlanderClient({ season }) {
 
       try {
         // page content
-        const pageRes = await fetch(adminR2Url(`content/highlander/page_${season}.json?${bust}`));
+        const pageRes = await fetch(r2Url(`content/highlander/page_${season}.json?v=${bust}`));
         if (pageRes.ok) {
           const pageData = await pageRes.json();
           const hero = pageData?.hero || {};
@@ -107,7 +109,7 @@ export default function HighlanderClient({ season }) {
         }
 
         // leagues list
-        const lRes = await fetch(adminR2Url(`data/highlander/leagues_${season}.json?${bust}`));
+        const lRes = await fetch(r2Url(`data/highlander/leagues_${season}.json?v=${bust}`));
         if (lRes.ok) {
           const lData = await lRes.json();
           const raw = safeArray(lData?.leagues);
@@ -131,20 +133,62 @@ export default function HighlanderClient({ season }) {
   const promoSrc = useMemo(() => {
     const key = safeStr(editable?.hero?.promoImageKey || "").trim();
     const fallback = safeStr(editable?.hero?.promoImageUrl || "").trim() || DEFAULT_EDITABLE.hero.promoImageUrl;
-    return key ? adminR2Url(key) : fallback;
+    // promoImageKey is an R2 key like "media/highlander/updates_2026.png"
+    return key ? r2Url(`${key}?v=${Date.now()}`) : fallback;
   }, [editable]);
 
   return (
     <div className="space-y-10 sm:space-y-14">
-      <OwnerHeroBlock
-        mode="highlander"
-        eyebrow={HERO_STATIC.eyebrow}
-        title={HERO_STATIC.title}
-        subtitle={HERO_STATIC.subtitle}
-        imageSrc={promoSrc}
-        imageAlt="Highlander"
-        align="left"
-      />
+      {/* HERO */}
+      <section className="section pt-0">
+        <div className="container-site">
+          <div className="relative overflow-hidden rounded-3xl border border-border/60 bg-card-trans backdrop-blur-sm shadow-xl shadow-black/40">
+            <div className="pointer-events-none absolute inset-0">
+              <div className="absolute -top-24 -left-24 h-64 w-64 rounded-full bg-cyan-400/10 blur-3xl" />
+              <div className="absolute -bottom-24 -right-24 h-64 w-64 rounded-full bg-amber-400/10 blur-3xl" />
+              <div className="absolute inset-0 bg-gradient-to-b from-white/5 via-transparent to-black/25" />
+            </div>
+
+            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-6 p-6 sm:p-9">
+              <div className="lg:col-span-6 flex flex-col justify-center">
+                <p className="text-xs tracking-widest text-muted uppercase">{HERO_STATIC.eyebrow}</p>
+                <h1 className="mt-2 text-4xl sm:text-5xl font-semibold text-primary">{HERO_STATIC.title}</h1>
+                <p className="mt-4 text-sm sm:text-base text-muted leading-relaxed">{HERO_STATIC.subtitle}</p>
+
+                <div className="mt-6 flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-subtle px-3 py-1 bg-card-surface">
+                    <span className="text-xs text-muted">18 Teams</span>
+                    <span className="text-xs text-muted">•</span>
+                    <span className="text-xs text-muted">Best Ball</span>
+                    <span className="text-xs text-muted">•</span>
+                    <span className="text-xs text-muted">No Trades</span>
+                  </span>
+                </div>
+              </div>
+
+              <div className="lg:col-span-6">
+                {promoSrc ? (
+                  <div className="relative w-full overflow-hidden rounded-2xl border border-subtle bg-black/20">
+                    <div
+                      className="relative mx-auto flex items-center justify-center w-full"
+                      style={{ height: "clamp(220px, 26vw, 340px)" }}
+                    >
+                      <Image
+                        src={promoSrc}
+                        alt="Highlander"
+                        width={1600}
+                        height={900}
+                        sizes="(max-width: 1024px) 100vw, 50vw"
+                        className="object-contain p-3"
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="section pt-0">
         <div className="container-site">
@@ -156,17 +200,15 @@ export default function HighlanderClient({ season }) {
                   <h2 className="mt-2 text-2xl sm:text-3xl font-semibold text-primary">Survive the blade.</h2>
                   <p className="mt-2 text-sm sm:text-base text-muted leading-relaxed">
                     Each week, the <span className="text-text font-semibold">lowest scoring team is eliminated</span>.
-                    Their season ends, and their roster is released to waivers/free agency.
-                    This repeats all season — <span className="text-text font-semibold">there can only be one</span>.
+                    Their season ends, and their roster is released to waivers/free agency. This repeats all season —
+                    <span className="text-text font-semibold"> there can only be one</span>.
                   </p>
                 </div>
                 <div className="hidden sm:block text-right">
                   <div className="inline-flex items-center gap-2 rounded-full border border-subtle px-3 py-1 bg-card-trans">
-                    <span className="text-xs text-muted">18 Teams</span>
+                    <span className="text-xs text-muted">12 Round Draft</span>
                     <span className="text-xs text-muted">•</span>
-                    <span className="text-xs text-muted">Best Ball</span>
-                    <span className="text-xs text-muted">•</span>
-                    <span className="text-xs text-muted">No Trades</span>
+                    <span className="text-xs text-muted">$200 FAAB</span>
                   </div>
                 </div>
               </div>
@@ -181,8 +223,8 @@ export default function HighlanderClient({ season }) {
                 <div className="rounded-2xl border border-subtle bg-subtle-surface p-4">
                   <h3 className="font-semibold text-primary">Waivers & FAAB</h3>
                   <p className="mt-1 text-sm text-muted">
-                    Weekly waivers all season. Sundays are open FA.
-                    Each team gets <span className="text-text font-semibold">$200 FAAB</span> after the draft (no reset).
+                    Weekly waivers all season. Sundays are open FA. Each team gets{" "}
+                    <span className="text-text font-semibold">$200 FAAB</span> after the draft (no reset).
                   </p>
                 </div>
                 <div className="rounded-2xl border border-subtle bg-subtle-surface p-4">
@@ -191,9 +233,7 @@ export default function HighlanderClient({ season }) {
                 </div>
                 <div className="rounded-2xl border border-subtle bg-subtle-surface p-4">
                   <h3 className="font-semibold text-primary">Elimination</h3>
-                  <p className="mt-1 text-sm text-muted">
-                    Lowest weekly score is eliminated. Their entire roster hits waivers.
-                  </p>
+                  <p className="mt-1 text-sm text-muted">Lowest weekly score is eliminated. Their entire roster hits waivers.</p>
                 </div>
               </div>
 
@@ -254,8 +294,8 @@ export default function HighlanderClient({ season }) {
                 <p className="text-xs tracking-widest text-muted uppercase">Payouts</p>
                 <h3 className="mt-2 text-xl font-semibold text-primary">$25 Buy-In</h3>
                 <p className="mt-2 text-sm text-muted leading-relaxed">
-                  Each league is 18 teams ($450). $50 goes to the gamewide championship and $50 goes to Ballsville
-                  for giveaways/freebies/expenses.
+                  Each league is 18 teams ($450). $50 goes to the gamewide championship and $50 goes to Ballsville for
+                  giveaways/freebies/expenses.
                 </p>
 
                 <div className="mt-4 rounded-2xl border border-subtle bg-subtle-surface p-4 text-sm">
@@ -308,9 +348,7 @@ export default function HighlanderClient({ season }) {
           </div>
 
           {err ? (
-            <div className="mt-6 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-100">
-              {err}
-            </div>
+            <div className="mt-6 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-100">{err}</div>
           ) : null}
 
           {loading ? (
@@ -320,24 +358,30 @@ export default function HighlanderClient({ season }) {
               Leagues will appear here when they’re posted.
             </div>
           ) : (
-            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
               {list.map((l) => {
                 const label = statusBadge(l.status);
                 const badgeClass = STATUS_BADGE[safeStr(l.status).toLowerCase()] || STATUS_BADGE.tbd;
                 const joinable = !!l.url && (l.status === "filling" || l.status === "drafting" || l.status === "tbd");
+
+                const cardImgSrc = l.imageKey ? r2Url(`${l.imageKey}?v=${Date.now()}`) : l.imageUrl || "";
+
                 return (
                   <div key={l.id} className="rounded-2xl border border-subtle bg-card-surface shadow-sm overflow-hidden">
-                    {safeStr(l.imageKey || "").trim() ? (
-                      <div className="relative aspect-[16/9] w-full">
-                        <Image
-                          src={adminR2Url(safeStr(l.imageKey || "").trim())}
-                          alt={safeStr(l.name || "Highlander League")}
-                          fill
-                          className="object-cover"
-                          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                        />
-                      </div>
+                    {cardImgSrc ? (
+                      <div className="relative aspect-[99/100] w-full">
+                    <Image
+                      src={cardImgSrc}
+                      alt={safeStr(l.name)}
+                      fill
+                      className="object-cover object-top"
+                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                  </div>
+
                     ) : null}
+
                     <div className="p-5">
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -351,12 +395,7 @@ export default function HighlanderClient({ season }) {
 
                       <div className="mt-4 flex items-center gap-3">
                         {joinable ? (
-                          <a
-                            className="btn btn-primary"
-                            href={l.url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
+                          <a className="btn btn-primary" href={l.url} target="_blank" rel="noreferrer">
                             Join League
                           </a>
                         ) : (
@@ -364,11 +403,10 @@ export default function HighlanderClient({ season }) {
                             Join League
                           </button>
                         )}
-                        <div className="text-xs text-muted">
-                          {l.url ? "Sleeper link available" : "Link coming soon"}
-                        </div>
+                        <div className="text-xs text-muted">{l.url ? "Sleeper link available" : "Link coming soon"}</div>
                       </div>
                     </div>
+
                     <div className="h-1 bg-gradient-to-r from-[rgba(59,130,246,0.25)] via-[rgba(236,72,153,0.25)] to-[rgba(245,158,11,0.25)]" />
                   </div>
                 );
@@ -378,16 +416,7 @@ export default function HighlanderClient({ season }) {
         </div>
       </section>
 
-      <section className="section pt-0">
-        <div className="container-site">
-          <div className="rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm p-6 sm:p-8">
-            <h2 className="text-xl sm:text-2xl font-semibold text-primary">Need a league created?</h2>
-            <p className="mt-2 text-sm text-muted">
-              Commissioners: if you’re running a Highlander league and need it listed here, send the Sleeper invite link to an admin and we’ll add it.
-            </p>
-          </div>
-        </div>
-      </section>
+      
     </div>
   );
 }
