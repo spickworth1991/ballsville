@@ -2,6 +2,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { siteConfig } from "@/app/config/siteConfig";
+import ConstitutionClient from "@/components/constitution/ConstitutionClient";
 
 const pageTitle = `League Constitution | ${siteConfig.shortName}`;
 
@@ -119,36 +120,11 @@ export default function Page() {
             </div>
           </header>
 
-          {/* Main layout */}
-          <section className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)] items-start">
-            {/* TOC Card */}
-            <aside className="space-y-4">
-              <div className="bg-card-surface border border-subtle rounded-2xl p-5 shadow-sm sticky top-4">
-                <h2 className="text-sm font-semibold text-primary uppercase tracking-wide mb-3">
-                  Table of Contents
-                </h2>
-
-                <nav className="space-y-2 text-sm">
-                  {sections.map((s) => (
-                    <a
-                      key={s.id}
-                      href={`#${s.id}`}
-                      className="block rounded-lg px-3 py-2 text-left text-muted hover:text-accent hover:bg-subtle-surface transition"
-                    >
-                      {s.label}
-                    </a>
-                  ))}
-                </nav>
-
-                <p className="mt-4 text-[11px] text-muted leading-snug">
-                  Use this Constitution as the baseline. Each league’s{" "}
-                  <span className="font-semibold">League Info</span> page and any posted bylaws clarify
-                  which options are enabled (trades, FAAB, best ball rules, etc.).
-                </p>
-              </div>
-            </aside>
-
-            {/* Content Cards */}
+          <ConstitutionClient
+            manifestSection="constitution"
+            remotePath="content/constitution/main.json"
+            fallbackToc={sections}
+          >
             <div className="space-y-6 leading-relaxed text-sm md:text-base">
               {/* Section 1 */}
               <section
@@ -617,8 +593,8 @@ export default function Page() {
                 abide by these decisions in good faith.
               </p>
             </section>
-          </div>
-          </section>
+            </div>
+          </ConstitutionClient>
         </div>
       </section>
     </main>

@@ -27,12 +27,21 @@ export default function AdminConstitutionsHubPage() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Link
                 prefetch={false}
+                href="/admin/constitutions"
+                className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
+              >
+                <h2 className="text-lg font-semibold text-primary">Main Constitution</h2>
+                <p className="mt-1 text-sm text-muted">Edit sections, reorder, and publish updates.</p>
+              </Link>
+              <Link
+                prefetch={false}
                 href="/admin/constitution/dynasty"
                 className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
               >
                 <h2 className="text-lg font-semibold text-primary">Dynasty Constitution</h2>
                 <p className="mt-1 text-sm text-muted">Edit sections, reorder, and publish updates.</p>
               </Link>
+              
             </div>
           </div>
         </section>

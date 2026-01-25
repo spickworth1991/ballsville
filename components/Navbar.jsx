@@ -61,7 +61,7 @@ const NAV_ITEMS = [
         id: "dynasty",
         name: "Dynasty",
         to: "/dynasty",
-        children: [{ name: "Wagers", to: "/dynasty/wagers" }],
+        children: [{ name: "Wagers", to: "/dynasty/wagers" },{name: "Constitution", to: "/constitution/dynasty"}],
       },
       {
         id: "gauntlet",
