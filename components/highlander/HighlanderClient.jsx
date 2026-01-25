@@ -342,9 +342,6 @@ export default function HighlanderClient({ season }) {
               <h2 className="mt-2 text-2xl sm:text-3xl font-semibold text-primary">Highlander Leagues</h2>
               <p className="mt-2 text-sm text-muted">Pick a league, draft, and survive.</p>
             </div>
-            <Link href="/faq" className="btn btn-subtle hidden sm:inline-flex">
-              FAQ
-            </Link>
           </div>
 
           {err ? (
