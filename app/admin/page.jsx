@@ -42,6 +42,17 @@ export default function AdminHomePage() {
 
             <Link
               prefetch={false}
+              href="/admin/constitutions"
+              className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
+            >
+              <h2 className="text-lg font-semibold text-primary">Constitutions</h2>
+              <p className="mt-1 text-sm text-muted">
+                Edit constitution pages (Dynasty now; main constitution coming later).
+              </p>
+            </Link>
+
+            <Link
+              prefetch={false}
               href="/admin/big-game"
               className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
             >
@@ -66,6 +77,17 @@ export default function AdminHomePage() {
               <h2 className="text-lg font-semibold text-primary">Redraft</h2>
               <p className="mt-1 text-sm text-muted">
                 Manage the Redraft page updates block and live league list.
+              </p>
+            </Link>
+
+            <Link
+              prefetch={false}
+              href="/admin/highlander"
+              className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
+            >
+              <h2 className="text-lg font-semibold text-primary">Highlander</h2>
+              <p className="mt-1 text-sm text-muted">
+                Manage the Highlander page updates block and live league list.
               </p>
             </Link>
 

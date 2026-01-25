@@ -17,7 +17,7 @@
 html,
 body {
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: visible;
 }
 
 :root {
@@ -498,7 +498,7 @@ body {
   background-size: cover;
   background-position: top center;
   background-repeat: no-repeat;
-  background-attachment: local;
+  background-attachment: scroll;
 
   position: relative;
 
@@ -506,8 +506,11 @@ body {
   z-index: 0;
 
   width: 100%;
-  overflow-x: hidden;
+
+  /* ✅ leave x-clipping to html/body instead (you already do that) */
+  overflow-x: visible;
 }
+
 
 
 /* Sitewide background video */

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import BigGameWagerTracker from "@/components/big-game/BigGameWagerTracker";
-import { CURRENT_SEASON } from "@/lib/season";
+import { CURRENT_SEASON } from "@/lib/season2";
 
 export const metadata = {
   title: "Big Game Wager Tracker | Ballsville",

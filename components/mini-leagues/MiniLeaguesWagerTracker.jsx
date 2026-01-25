@@ -280,9 +280,6 @@ export default function MiniLeaguesWagerTracker({ season, version }) {
         {divisionNames.length === 0 ? (
           <Card>
             <p className="text-sm text-muted">No Week 14 eligibility has been imported yet.</p>
-            <p className="mt-3 text-xs text-muted">
-              If you’re an admin, go to <Link className="underline hover:text-white" href="/admin/mini-leagues/wagers">/admin/mini-leagues/wagers</Link>.
-            </p>
           </Card>
         ) : (
           divisionNames.map((div) => {

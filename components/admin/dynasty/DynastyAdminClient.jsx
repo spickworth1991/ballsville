@@ -3,6 +3,7 @@
 "use client";
 import { safeStr } from "@/lib/safe";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import { CURRENT_SEASON } from "@/lib/season";
 
@@ -642,6 +643,12 @@ export default function DynastyAdminClient() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <Link
+            href="/admin/constitution/dynasty"
+            className="btn btn-outline text-sm"
+          >
+            Edit Dynasty Constitution
+          </Link>
           {/* <button className="btn btn-outline text-sm" type="button" onClick={loadFromR2} disabled={saving}>
             Reload from R2
           </button> */}

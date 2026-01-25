@@ -215,44 +215,10 @@ function ModeInner({ mode, season, version, gateError }) {
     return buildPlayerResults(groupA, groupB);
   }, [groupA, groupB]);
 
-  // Adjusted order: renumber players strictly by ADP order (1..N), then map to round.pick.
-  // Used for the draftboard and as an extra column in the list.
-  const adjustedRankByKey = useMemo(() => {
-    if (!groupA) return Object.create(null);
-
-    const base = comparing
-      ? safeArray(compareRows).map((r) => ({
-          key: `${safeStr(r?.name)}|||${safeStr(r?.position)}`,
-          // If a player only appears on one side, use the side that exists
-          // so they land in the correct adjusted slot instead of 1.01.
-          adp: safeNum(r?.sortAdp || r?.adpA || r?.adpB),
-        }))
-      : groupPlayersArray(groupA).map((p) => ({
-          key: `${safeStr(p?.name)}|||${safeStr(p?.position)}`,
-          adp: safeNum(p?.avgOverallPick ?? p?.adp ?? p?.avgPick),
-        }));
-
-    const sorted = base
-      .filter((x) => x.key && Number.isFinite(x.adp) && x.adp > 0)
-      .slice()
-      .sort((a, b) => a.adp - b.adp);
-
-    const out = Object.create(null);
-    let rank = 0;
-    for (const it of sorted) {
-      rank += 1;
-      out[it.key] = {
-        adjustedOverall: rank,
-        adjustedRoundPick: formatRoundPickFromAvgOverall(rank, teams),
-      };
-    }
-    return out;
-  }, [groupA, compareRows, comparing, teams]);
-
   // --- list controls ---
   const [query, setQuery] = useState("");
   const [pos, setPos] = useState("ALL");
-  const [sortKey, setSortKey] = useState("adp"); // adp | rp | name | pos | delta | adj
+  const [sortKey, setSortKey] = useState("adp"); // adp | rp | name | pos | delta
   const [sortDir, setSortDir] = useState("asc"); // asc/desc
 
   const positions = useMemo(() => {
@@ -278,9 +244,11 @@ function ModeInner({ mode, season, version, gateError }) {
       ? compareRows.map((r) => {
           const adpA = r.adpA == null ? null : safeNum(r.adpA);
           const adpB = r.adpB == null ? null : safeNum(r.adpB);
+
           // Sorting should never treat "missing" as 0 (which forces 1.01).
           const adpSortA = adpA && adpA > 0 ? adpA : Number.POSITIVE_INFINITY;
           const adpSortB = adpB && adpB > 0 ? adpB : Number.POSITIVE_INFINITY;
+
           return {
             key: `${safeStr(r.name)}|||${safeStr(r.position)}`,
             name: r.name,
@@ -290,41 +258,24 @@ function ModeInner({ mode, season, version, gateError }) {
             adpSortA,
             adpSortB,
             delta: r.delta == null ? null : safeNum(r.delta), // B - A
+            // Round.pick for *average overall pick* (A and B stay separate when comparing).
+            avgRoundPickA: Number.isFinite(adpA) && adpA > 0 ? formatRoundPickFromAvgOverall(adpA, teams) : "—",
+            avgRoundPickB: Number.isFinite(adpB) && adpB > 0 ? formatRoundPickFromAvgOverall(adpB, teams) : "—",
           };
         })
-      : groupPlayersArray(groupA).map((r) => ({
-          key: `${safeStr(r.name)}|||${safeStr(r.position)}`,
-          name: r.name,
-          position: r.position,
-          adp: safeNum(r.avgOverallPick ?? r.adp ?? r.avgPick),
-          delta: null,
-        }));
+      : groupPlayersArray(groupA).map((r) => {
+          const adp = safeNum(r.avgOverallPick ?? r.adp ?? r.avgPick);
+          return {
+            key: `${safeStr(r.name)}|||${safeStr(r.position)}`,
+            name: r.name,
+            position: r.position,
+            adp,
+            delta: null,
+            avgRoundPick: Number.isFinite(adp) && adp > 0 ? formatRoundPickFromAvgOverall(adp, teams) : "—",
+          };
+        });
 
-    const withAdj = base.map((r) => {
-      const adj = adjustedRankByKey?.[r.key];
-      if (comparing) {
-        const a = r.adpA;
-        const b = r.adpB;
-        return {
-          ...r,
-          avgPickA: a,
-          avgPickB: b,
-          // Round.pick for *average overall pick* (A and B stay separate when comparing).
-          avgRoundPickA: Number.isFinite(a) && a > 0 ? formatRoundPickFromAvgOverall(a, teams) : "—",
-          avgRoundPickB: Number.isFinite(b) && b > 0 ? formatRoundPickFromAvgOverall(b, teams) : "—",
-          adjustedOverall: adj?.adjustedOverall ?? null,
-          adjustedRoundPick: adj?.adjustedRoundPick ?? "—",
-        };
-      }
-      return {
-        ...r,
-        avgRoundPick: Number.isFinite(safeNum(r.adp)) && safeNum(r.adp) > 0 ? formatRoundPickFromAvgOverall(safeNum(r.adp), teams) : "—",
-        adjustedOverall: adj?.adjustedOverall ?? null,
-        adjustedRoundPick: adj?.adjustedRoundPick ?? "—",
-      };
-    });
-
-    const filtered = withAdj.filter((r) => {
+    const filtered = base.filter((r) => {
       if (pFilter !== "ALL" && safeStr(r.position).toUpperCase() !== pFilter) return false;
       if (q && !safeStr(r.name).toLowerCase().includes(q)) return false;
       return true;
@@ -334,26 +285,27 @@ function ModeInner({ mode, season, version, gateError }) {
     filtered.sort((a, b) => {
       if (sortKey === "name") return dir * safeStr(a.name).localeCompare(safeStr(b.name));
       if (sortKey === "pos") return dir * safeStr(a.position).localeCompare(safeStr(b.position));
-      if (sortKey === "adj") return dir * (safeNum(a.adjustedOverall) - safeNum(b.adjustedOverall));
       if (sortKey === "delta") return dir * (safeNum(a.delta) - safeNum(b.delta));
+
       if (comparing) {
-      const aA = Number.isFinite(a.adpSortA) ? a.adpSortA : Number.POSITIVE_INFINITY;
-      const bA = Number.isFinite(b.adpSortA) ? b.adpSortA : Number.POSITIVE_INFINITY;
+        const aA = Number.isFinite(a.adpSortA) ? a.adpSortA : Number.POSITIVE_INFINITY;
+        const bA = Number.isFinite(b.adpSortA) ? b.adpSortA : Number.POSITIVE_INFINITY;
 
-      const aB = Number.isFinite(a.adpSortB) ? a.adpSortB : Number.POSITIVE_INFINITY;
-      const bB = Number.isFinite(b.adpSortB) ? b.adpSortB : Number.POSITIVE_INFINITY;
+        const aB = Number.isFinite(a.adpSortB) ? a.adpSortB : Number.POSITIVE_INFINITY;
+        const bB = Number.isFinite(b.adpSortB) ? b.adpSortB : Number.POSITIVE_INFINITY;
 
-      // Support sorting by either side when comparing
-      if (sortKey === "adpB" || sortKey === "rpB") return dir * (aB - bB);
-      // Default compare sorting remains Side A
+        // Support sorting by either side when comparing
+        if (sortKey === "adpB" || sortKey === "rpB") return dir * (aB - bB);
+        // Default compare sorting remains Side A
         return dir * (aA - bA);
       }
-      if (sortKey === "rp") return dir * (safeNum(a.adp) - safeNum(b.adp));
+
+      // Single-side view: rp and adp both sort by average overall pick.
       return dir * (safeNum(a.adp) - safeNum(b.adp));
     });
 
     return filtered;
-  }, [groupA, comparing, compareRows, query, pos, sortKey, sortDir, adjustedRankByKey, teams]);
+  }, [groupA, comparing, compareRows, query, pos, sortKey, sortDir, teams]);
 
   function toggleSort(k) {
     // Click same column to toggle direction; switching columns defaults to ascending.
@@ -530,11 +482,7 @@ function ModeInner({ mode, season, version, gateError }) {
                       <Th onClick={() => toggleSort("rp")} active={sortKey === "rp"} dir={sortDir}>
                         Avg R.P.
                       </Th>
-                      {!comparing ? (
-                          <Th onClick={() => toggleSort("adj")} active={sortKey === "adj"} dir={sortDir}>
-                            Adj Pick
-                          </Th>
-                        ) : null}
+
                       {comparing ? (
                         <>
                           <Th onClick={() => toggleSort("adpB")} active={sortKey === "adpB"} dir={sortDir}>
@@ -574,13 +522,7 @@ function ModeInner({ mode, season, version, gateError }) {
                               ? safeNum(r.adp).toFixed(3)
                               : "—"}
                           </td>
-                          {!comparing ? (
-                              <td className="px-4 py-3 font-semibold text-primary tabular-nums">
-                                {r.adjustedRoundPick || "—"}
-                                
-                              </td>
-                            ) : null}
-                          <td className="px-4 py-3 text-muted tabular-nums">
+<td className="px-4 py-3 text-muted tabular-nums">
                             {comparing ? r.avgRoundPickA : r.avgRoundPick || "—"}
                           </td>
                           {comparing ? (
@@ -612,7 +554,7 @@ function ModeInner({ mode, season, version, gateError }) {
 
                     {!listRows.length ? (
                       <tr>
-                        <td colSpan={comparing ? 7 : 5} className="px-4 py-8 text-center text-sm text-muted">
+                        <td colSpan={comparing ? 7 : 4} className="px-4 py-8 text-center text-sm text-muted">
                           No results.
                         </td>
                       </tr>

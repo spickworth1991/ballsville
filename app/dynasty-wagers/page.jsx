@@ -1,6 +1,6 @@
 import Link from "next/link";
 import DynastyWagerTracker from "@/components/dynasty/DynastyWagerTracker";
-import { CURRENT_SEASON } from "@/lib/season";
+import { CURRENT_SEASON } from "@/lib/season2";
 
 export const metadata = {
   title: "Dynasty Wager Tracker | Ballsville",

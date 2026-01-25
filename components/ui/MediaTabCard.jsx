@@ -25,25 +25,35 @@ export default function MediaTabCard({
   badgeRight,
   className = "",
   external = false,
+  disabled = false,
   // Next.js Link prefetch is on by default and can cause background requests.
   // Allow callers to disable it per-card where needed.
   prefetch = true,
 }) {
   const footer = footerLabel ?? footerText ?? "View";
   const safeHref = href || "#";
+  const interactive = !disabled && safeHref !== "#";
 
-  const Wrapper = external ? "a" : Link;
-  const wrapperProps = external
+  const Wrapper = interactive ? (external ? "a" : Link) : "div";
+  const wrapperProps = !interactive
+    ? {}
+    : external
     ? { href: safeHref, target: "_blank", rel: "noreferrer" }
     : { href: safeHref, prefetch };
 
   return (
     <Wrapper
       {...wrapperProps}
-      className={`group relative overflow-hidden rounded-2xl border border-subtle bg-card-surface shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/70 ${className}`}
+      className={`group relative overflow-hidden rounded-2xl border border-subtle bg-card-surface shadow-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-accent)]/70 ${
+        interactive ? "hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30" : "cursor-default opacity-70"
+      } ${className}`}
     >
       {/* ambient glow */}
-      <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+      <div
+        className={`pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 ${
+          interactive ? "group-hover:opacity-100" : ""
+        }`}
+      >
         <div className="absolute -top-24 -left-16 h-48 w-48 rounded-full bg-[color:var(--color-accent)]/14 blur-3xl" />
         <div className="absolute -bottom-24 -right-16 h-48 w-48 rounded-full bg-[color:var(--color-primary)]/12 blur-3xl" />
       </div>
