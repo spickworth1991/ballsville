@@ -16,6 +16,12 @@
 //    "biggame-league"
 //    "about-managers"
 // - season: "2025" (required for all sections in this endpoint)
+// - leagueOrder: "1" (required for highlander-league)
+//
+// HIGHLANDER sections:
+//    "highlander-updates"   (main Highlander page image)
+//    "highlander-league"    (per-league image; requires leagueOrder)
+
 // - divisionCode: "100" (required for mini-leagues-division and mini-leagues-league)
 // - leagueOrder: "1" (required for mini-leagues-league and redraft-league and biggame-league)
 // - leagueId: "<string>" (required for dynasty-league)
@@ -341,6 +347,10 @@ export async function onRequest(context) {
       return json({ ok: false, error: "Missing leagueOrder" }, 400);
     }
 
+    if (section === "highlander-league" && !leagueOrder) {
+      return json({ ok: false, error: "Missing leagueOrder" }, 400);
+    }
+
     if (section === "dynasty-league" && !leagueId) {
       return json({ ok: false, error: "Missing leagueId" }, 400);
     }
@@ -427,6 +437,9 @@ export async function onRequest(context) {
       // Mini Leagues
       if (section.startsWith("mini-leagues-")) return "mini-leagues";
 
+      // Highlander
+      if (section.startsWith("highlander-")) return "highlander";
+
       // About
       if (section.startsWith("about-")) return "about-managers";
 
@@ -448,7 +461,7 @@ export async function onRequest(context) {
     if (manifestSection) {
       // Fire-and-forget; a failure here shouldn't block the upload.
       try {
-        await touchManifest(env, manifestSection, season);
+        await touchManifest(context.env, manifestSection, season);
       } catch {
         // ignore
       }
