@@ -1,6 +1,6 @@
 import Link from "next/link";
 import MiniLeaguesWagerTracker from "@/components/mini-leagues/MiniLeaguesWagerTracker";
-import { CURRENT_SEASON } from "@/lib/season";
+import { CURRENT_SEASON } from "@/lib/season2";
 
 export const metadata = {
   title: "Mini Leagues Wager Tracker | Ballsville",

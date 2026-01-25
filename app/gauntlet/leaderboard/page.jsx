@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useMemo, Fragment } from "react";
-import { CURRENT_SEASON } from "@/lib/season";
+import { CURRENT_SEASON } from "@/lib/season2";
 
 const LEG3_YEAR = CURRENT_SEASON;
 

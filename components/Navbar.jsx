@@ -75,6 +75,7 @@ const NAV_ITEMS = [
         id: "gauntlet",
         name: "Gauntlet",
         to: "/gauntlet",
+        isUpdate: true,
         children: [{ name: "Gauntlet Bracket", to: "/gauntlet/leaderboard" }],
       },
     ],

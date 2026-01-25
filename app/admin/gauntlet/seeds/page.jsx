@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabaseClient";
-import { CURRENT_SEASON } from "@/lib/season";
+import { CURRENT_SEASON } from "@/lib/season2";
 import AdminGuard from "@/components/AdminGuard";
 
 const YEAR = CURRENT_SEASON;
