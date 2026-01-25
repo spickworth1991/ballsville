@@ -56,9 +56,12 @@ export default function ConstitutionAdminClient() {
       .then((r) => (r.ok ? r.json() : null))
       .then((json) => {
         if (cancelled) return;
-        const normalized = normalizeSections(json?.sections || json?.items || []);
+
+        // ✅ main constitution API returns { ok, data }
+        const data = json?.data || {};
+        const normalized = normalizeSections(data?.sections || data?.items || []);
         setSections(normalized);
-        setUpdatedAt(safeStr(json?.updatedAt || ""));
+        setUpdatedAt(safeStr(data?.updatedAt || ""));
       })
       .catch((e) => {
         if (!cancelled) setError(e?.message || "Failed to load constitution.");
@@ -78,9 +81,7 @@ export default function ConstitutionAdminClient() {
   );
 
   function updateSection(id, patch) {
-    setSections((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, ...patch } : s))
-    );
+    setSections((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   }
 
   function addSection() {
@@ -123,8 +124,9 @@ export default function ConstitutionAdminClient() {
         sections: normalizeSections(sections),
       };
 
+      // ✅ main constitution API expects PUT
       const res = await fetch(API, {
-        method: "POST",
+        method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
@@ -135,8 +137,12 @@ export default function ConstitutionAdminClient() {
       }
 
       const json = await res.json().catch(() => ({}));
-      setUpdatedAt(safeStr(json?.updatedAt || payload.updatedAt));
-      setSections(normalizeSections(json?.sections || payload.sections));
+
+      // ✅ main constitution API returns { ok, manifest, data }
+      const data = json?.data || payload;
+
+      setUpdatedAt(safeStr(data?.updatedAt || payload.updatedAt));
+      setSections(normalizeSections(data?.sections || payload.sections));
       setNotice("Published to R2.");
     } catch (e) {
       setError(e?.message || "Failed to save.");
@@ -257,11 +263,7 @@ export default function ConstitutionAdminClient() {
                         >
                           ↓
                         </button>
-                        <button
-                          type="button"
-                          className="btn btn-outline"
-                          onClick={() => deleteSection(s.id)}
-                        >
+                        <button type="button" className="btn btn-outline" onClick={() => deleteSection(s.id)}>
                           Delete
                         </button>
                       </div>
