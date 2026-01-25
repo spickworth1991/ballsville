@@ -138,7 +138,7 @@ export default function HighlanderClient({ season }) {
   }, [editable]);
 
   return (
-    <div className="space-y-10 sm:space-y-14">
+    <div className="space-y-1 sm:space-y-1">
       {/* HERO */}
       <section className="section pt-0">
         <div className="container-site">
@@ -355,7 +355,7 @@ export default function HighlanderClient({ season }) {
               Leagues will appear here when they’re posted.
             </div>
           ) : (
-            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+            <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
               {list.map((l) => {
                 const label = statusBadge(l.status);
                 const badgeClass = STATUS_BADGE[safeStr(l.status).toLowerCase()] || STATUS_BADGE.tbd;
