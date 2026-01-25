@@ -398,7 +398,12 @@ function ModeInner({ mode, season, version, gateError }) {
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
                 <div>
                   <h2 className="text-lg font-semibold text-primary">Draftboard</h2>
-                  <p className="text-xs text-muted">Click a pick square to see all players drafted at that slot.</p>
+                  <p className="text-xs text-muted">
+                    Hint: Click a pick square to see all players drafted at that slot.
+                  </p>
+                  <p className="text-xs text-muted">
+                    Note: Players are placed based on average draft position, so they may not appear in the exact pick they were selected at.
+                  </p>
                 </div>
 
                 <div className="flex items-center gap-2 text-xs text-muted">
@@ -444,6 +449,9 @@ function ModeInner({ mode, season, version, gateError }) {
             <div className="rounded-2xl border border-border bg-card-surface shadow-sm">
               <div className="border-b border-border px-5 py-4">
                 <h2 className="text-lg font-semibold text-primary">{comparing ? "Compare List" : "Player List"}</h2>
+                <p className="text-xs text-muted">
+                    Hint: Click select leagues to change which leagues are included, or to compare sets of leagues within a mode.
+                  </p>
 
                 <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex flex-1 items-center gap-2">
@@ -515,12 +523,13 @@ function ModeInner({ mode, season, version, gateError }) {
                         <tr key={r.key} className="border-t border-border/60 hover:bg-background/30">
                           <td className="px-4 py-3 font-semibold text-muted tabular-nums">
                             {comparing
-                              ? r.avgPickA && r.avgPickA > 0
-                                ? r.avgPickA.toFixed(3)
+                              ? r.adpA != null && r.adpA > 0
+                                ? r.adpA.toFixed(3)
                                 : "—"
                               : safeNum(r.adp)
                               ? safeNum(r.adp).toFixed(3)
                               : "—"}
+
                           </td>
 <td className="px-4 py-3 text-muted tabular-nums">
                             {comparing ? r.avgRoundPickA : r.avgRoundPick || "—"}
@@ -528,7 +537,7 @@ function ModeInner({ mode, season, version, gateError }) {
                           {comparing ? (
                             <>
                               <td className="px-4 py-3 font-semibold text-accent tabular-nums">
-                                {r.avgPickB && r.avgPickB > 0 ? r.avgPickB.toFixed(3) : "—"}
+                                {r.adpB != null && r.adpB > 0 ? r.adpB.toFixed(3) : "—"}
                               </td>
                               <td className="px-4 py-3 text-muted tabular-nums">{r.avgRoundPickB || "—"}</td>
                             </>
