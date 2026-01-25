@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { getSupabase } from "@/lib/supabaseClient";
 
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
@@ -36,6 +37,12 @@ function normalizeSections(raw) {
   return cleaned.map((s, idx) => ({ ...s, order: idx + 1 }));
 }
 
+async function getAuthToken() {
+  const supabase = getSupabase();
+  const { data } = await supabase.auth.getSession();
+  return data?.session?.access_token || "";
+}
+
 export default function ConstitutionAdminClient() {
   const API = "/api/admin/constitution";
 
@@ -47,32 +54,38 @@ export default function ConstitutionAdminClient() {
   const [updatedAt, setUpdatedAt] = useState("");
   const [sections, setSections] = useState([]);
 
-  useEffect(() => {
-    let cancelled = false;
+  async function load() {
     setError("");
     setNotice("");
+    setLoaded(false);
 
-    fetch(API)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((json) => {
-        if (cancelled) return;
+    try {
+      const token = await getAuthToken();
+      if (!token) throw new Error("No admin session. Please sign in again.");
 
-        // ✅ main constitution API returns { ok, data }
-        const data = json?.data || {};
-        const normalized = normalizeSections(data?.sections || data?.items || []);
-        setSections(normalized);
-        setUpdatedAt(safeStr(data?.updatedAt || ""));
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e?.message || "Failed to load constitution.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoaded(true);
+      const res = await fetch(API, {
+        headers: { authorization: `Bearer ${token}` },
       });
 
-    return () => {
-      cancelled = true;
-    };
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) throw new Error(json?.error || `Failed to load (${res.status})`);
+
+      const data = json?.data || {};
+      const normalized = normalizeSections(data?.sections || data?.items || []);
+      setSections(normalized);
+      setUpdatedAt(safeStr(data?.updatedAt || ""));
+    } catch (e) {
+      setError(e?.message || "Failed to load constitution.");
+      setUpdatedAt("");
+      setSections([]);
+    } finally {
+      setLoaded(true);
+    }
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const toc = useMemo(
@@ -119,31 +132,30 @@ export default function ConstitutionAdminClient() {
     setNotice("");
 
     try {
+      const token = await getAuthToken();
+      if (!token) throw new Error("No admin session. Please sign in again.");
+
       const payload = {
         updatedAt: nowIso(),
         sections: normalizeSections(sections),
       };
 
-      // ✅ main constitution API expects PUT
       const res = await fetch(API, {
         method: "PUT",
-        headers: { "content-type": "application/json" },
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(txt || `Save failed (${res.status})`);
-      }
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) throw new Error(json?.error || `Save failed (${res.status})`);
 
-      const json = await res.json().catch(() => ({}));
-
-      // ✅ main constitution API returns { ok, manifest, data }
-      const data = json?.data || payload;
-
-      setUpdatedAt(safeStr(data?.updatedAt || payload.updatedAt));
-      setSections(normalizeSections(data?.sections || payload.sections));
-      setNotice("Published to R2.");
+      // your API returns { ok, key, version, updatedAt, count } (no data),
+      // so reload to reflect server-normalized sections + updatedAt
+      setNotice(`Published · ${json?.count ?? sections.length} sections`);
+      await load();
     } catch (e) {
       setError(e?.message || "Failed to save.");
     } finally {
