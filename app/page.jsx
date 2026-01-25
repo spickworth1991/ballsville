@@ -232,6 +232,29 @@ export default function Page() {
 
             <Link
               prefetch={false}
+              href="/highlander"
+              className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
+            >
+              <div className="relative w-full aspect-square overflow-hidden bg-card-trans backdrop-blur-sm">
+                <img
+                  src="/photos/biggame-v2.webp"
+                  alt="Highlander elimination best ball"
+                  className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-300"
+                  loading="lazy"
+                />
+              </div>
+              <div className="bg-card-surface p-4 flex-1 flex flex-col justify-between group-hover:bg-subtle-surface transition-colors">
+                <h3 className="text-lg font-semibold text-primary group-hover:text-accent">
+                  Highlander
+                </h3>
+                <p className="mt-2 text-sm text-muted">
+                  18-team survival Best Ball — lowest score each week is eliminated.
+                </p>
+              </div>
+            </Link>
+
+            <Link
+              prefetch={false}
               href="/news"
               className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
             >

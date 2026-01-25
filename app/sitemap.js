@@ -44,6 +44,7 @@ export default function sitemap() {
     "/mini-leagues",
     "/mini-leagues/wagers",
     "/minileagues-wagers",
+    "/highlander",
 
     // Governance
     "/constitution",

@@ -6,7 +6,7 @@ import { CURRENT_SEASON } from "@/lib/season";
 
 function safeMode(mode) {
   const m = String(mode || "").trim().toLowerCase();
-  const allow = new Set(["redraft", "biggame", "big-game", "gauntlet", "dynasty", "mini-leagues"]);
+  const allow = new Set(["redraft", "biggame", "big-game", "gauntlet", "dynasty", "mini-leagues", "highlander"]);
   if (!allow.has(m)) return "";
   if (m === "big-game") return "biggame";
   return m;

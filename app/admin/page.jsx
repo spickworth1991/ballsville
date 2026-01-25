@@ -82,6 +82,17 @@ export default function AdminHomePage() {
 
             <Link
               prefetch={false}
+              href="/admin/highlander"
+              className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
+            >
+              <h2 className="text-lg font-semibold text-primary">Highlander</h2>
+              <p className="mt-1 text-sm text-muted">
+                Manage the Highlander page updates block and live league list.
+              </p>
+            </Link>
+
+            <Link
+              prefetch={false}
               href="/admin/gauntlet"
               className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
             >
