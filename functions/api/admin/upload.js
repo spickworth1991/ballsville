@@ -186,7 +186,14 @@ function baseKeyForUpload({
   if (section === "mini-leagues-division") return `media/mini-leagues/divisions/${season}/${divisionCode}`;
   if (section === "mini-leagues-league") return `media/mini-leagues/leagues/${season}/${divisionCode}/${leagueOrder}`;
 
-  // =======
+  
+  // ==========
+  // HIGHLANDER
+  // ==========
+  if (section === "highlander-updates") return `media/highlander/updates_${season}`;
+  if (section === "highlander-league") return `media/highlander/leagues/${season}/${leagueOrder}`;
+
+// =======
   // REDRAFT
   // =======
   if (section === "redraft-updates") return `media/redraft/updates_${season}`;
