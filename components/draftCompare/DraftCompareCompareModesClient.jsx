@@ -446,7 +446,10 @@ export default function DraftCompareCompareModesClient() {
                 <div>
                   <h2 className="text-lg font-semibold text-primary">Draftboard</h2>
                   <p className="text-xs text-muted">
-                    Click a pick square to see all players drafted at that slot.
+                    Hint: Click a pick square to see all players drafted at that slot.
+                  </p>
+                  <p className="text-xs text-muted">
+                    Note: Players are placed based on average draft position, so they may not appear in the exact pick they were selected at.
                   </p>
                   {showReliabilityNote ? (
                     <p className="mt-1 text-xs text-white/60">
