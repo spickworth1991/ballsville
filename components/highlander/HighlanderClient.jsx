@@ -327,6 +327,17 @@ export default function HighlanderClient({ season }) {
                 const joinable = !!l.url && (l.status === "filling" || l.status === "drafting" || l.status === "tbd");
                 return (
                   <div key={l.id} className="rounded-2xl border border-subtle bg-card-surface shadow-sm overflow-hidden">
+                    {safeStr(l.imageKey || "").trim() ? (
+                      <div className="relative aspect-[16/9] w-full">
+                        <Image
+                          src={adminR2Url(safeStr(l.imageKey || "").trim())}
+                          alt={safeStr(l.name || "Highlander League")}
+                          fill
+                          className="object-cover"
+                          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                        />
+                      </div>
+                    ) : null}
                     <div className="p-5">
                       <div className="flex items-start justify-between gap-3">
                         <div>
