@@ -25,6 +25,10 @@ function safeNum(v) {
   const x = typeof v === "number" ? v : Number(v);
   return Number.isFinite(x) ? x : 0;
 }
+function numOrNull(v) {
+  const x = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(x) && x > 0 ? x : null;
+}
 function cleanSlug(s) {
   return safeStr(s)
     .trim()
@@ -54,16 +58,13 @@ function ListScroller({ children }) {
     <div
       className="overflow-auto"
       style={{
-        maxHeight: isPhoneLandscape
-          ? "calc(100dvh - 180px)" // taller list in phone landscape
-          : "calc(100dvh - 320px)", // normal cap elsewhere
+        maxHeight: isPhoneLandscape ? "calc(100dvh - 180px)" : "calc(100dvh - 320px)",
       }}
     >
       {children}
     </div>
   );
 }
-
 
 function groupPlayersArray(group) {
   if (!group) return [];
@@ -73,6 +74,260 @@ function groupPlayersArray(group) {
   return safeArray(g?.playersList);
 }
 
+/* ===========================
+   Draft Breakdown helpers
+=========================== */
+
+function playerKey(name, position) {
+  return `${safeStr(name).trim()}|||${safeStr(position).trim()}`;
+}
+
+function parseRP(rp) {
+  // "3.07" -> { round: 3, pick: 7 }
+  const s = safeStr(rp).trim();
+  const m = s.match(/^(\d+)\.(\d+)$/);
+  if (!m) return { round: null, pick: null };
+  return { round: safeNum(m[1]), pick: safeNum(m[2]) };
+}
+
+function buildLeagueIndexFromRaw(raw) {
+  // Map(leagueId -> { leagueId, name, players })
+  const out = new Map();
+  const per = raw?.perLeague || {};
+  const all = [...safeArray(per?.sideA), ...safeArray(per?.sideB), ...safeArray(raw?.leagues)];
+
+  for (const l of all) {
+    const id = safeStr(l?.leagueId || l?.id).trim();
+    if (!id) continue;
+    if (!out.has(id)) {
+      out.set(id, {
+        leagueId: id,
+        name: safeStr(l?.name || l?.leagueName || id).trim() || id,
+        players: l?.players || {},
+      });
+    }
+  }
+  return out;
+}
+
+function getDraftBreakdownForPlayer({ leagueIndex, leagueIds, name, position }) {
+  const key = playerKey(name, position);
+  const rows = [];
+
+  for (const id of safeArray(leagueIds)) {
+    const l = leagueIndex.get(id);
+    if (!l) continue;
+
+    const p = l.players?.[key];
+    if (!p) continue;
+
+    const overall = safeNum(p?.modeOverallPick ?? p?.avgOverallPick ?? 0) || null;
+    const rp = safeStr(p?.modeRoundPick ?? p?.avgRoundPick ?? "").trim() || "—";
+    const { round, pick } = parseRP(rp);
+
+    rows.push({
+      leagueId: id,
+      leagueName: l.name,
+      overallPick: overall,
+      roundPick: rp,
+      round,
+      pickInRound: pick,
+    });
+  }
+
+  rows.sort((a, b) => (a.overallPick ?? 999999) - (b.overallPick ?? 999999));
+  return rows;
+}
+
+/* ===========================
+   Breakdown Modal
+=========================== */
+
+function Chip({ children, tone = "muted" }) {
+  const toneCls =
+    tone === "accent"
+      ? "border-accent/25 bg-accent/10 text-accent"
+      : tone === "primary"
+      ? "border-primary/25 bg-primary/10 text-primary"
+      : "border-border bg-background/30 text-muted";
+
+  return (
+    <span className={cls("inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] tabular-nums", toneCls)}>
+      {children}
+    </span>
+  );
+}
+
+function PlayerDraftBreakdownModal({
+  open,
+  title,
+  subtitle,
+  aLabel,
+  bLabel,
+  sideAData,
+  sideBData,
+  selectedCountA,
+  selectedCountB,
+  onClose,
+}) {
+  const { isPhoneLike, isPortrait } = useDraftboardLandscapeTip();
+  const isPhoneLandscape = isPhoneLike && !isPortrait;
+
+  if (!open) return null;
+
+  const NAV_OFFSET_PX = isPhoneLike ? 64 : 72;
+
+  const hasA = safeArray(sideAData).length > 0 || selectedCountA > 0;
+  const hasB = safeArray(sideBData).length > 0 || selectedCountB > 0;
+
+  const emptyExplainer = (
+    <div className="rounded-2xl border border-border bg-background/30 p-4 text-sm text-muted">
+      <div className="font-semibold text-primary">No draft selections recorded in this set.</div>
+      <p className="mt-1 leading-6">
+        Totally normal, especially late in drafts. Some leagues use that pick on a different sleeper/reach, so a player
+        can have an ADP in the overall pool but still be{" "}
+        <span className="font-semibold">undrafted in this specific sample</span>. Only leagues where the player was
+        actually drafted contribute to that player’s average.
+      </p>
+    </div>
+  );
+
+  function SideBlock({ label, rows, selectedCount, accent }) {
+    const draftedCount = safeArray(rows).length;
+    const tone = accent ? "accent" : "primary";
+
+    return (
+      <div className={cls("rounded-2xl border border-border", "bg-card-surface/70 backdrop-blur")}>
+        <div className="px-4 py-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className={cls("text-xs font-semibold", accent ? "text-accent" : "text-primary")}>{label}</div>
+              <div className="mt-1 text-xs text-muted">
+                Drafted in{" "}
+                <span className={cls("font-semibold", accent ? "text-accent" : "text-primary")}>{draftedCount}</span> of{" "}
+                <span className="font-semibold text-primary">{safeNum(selectedCount)}</span> leagues
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3">
+            {!draftedCount ? (
+              emptyExplainer
+            ) : isPhoneLike ? (
+              <div className="space-y-2">
+                {safeArray(rows).map((r) => (
+                  <button
+                    key={`${r.leagueId}|||${r.roundPick}`}
+                    type="button"
+                    className="w-full rounded-2xl border border-border bg-background/20 p-3 text-left hover:bg-background/30"
+                    onClick={() => {
+                      // no-op (keeps the card tappable and consistent)
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold text-primary">{r.leagueName}</div>
+                        <div className="mt-0.5 truncate text-[11px] text-muted">{r.leagueId}</div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <Chip tone={tone}>{r.roundPick}</Chip>
+                        <Chip>{r.overallPick ?? "—"}</Chip>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-2xl border border-border">
+                <table className="w-full text-sm">
+                  <thead className="bg-card-surface/95 backdrop-blur">
+                    <tr className="text-left text-xs text-muted">
+                      <th className="px-4 py-3">League</th>
+                      <th className="px-4 py-3">Round.Pick</th>
+                      <th className="px-4 py-3">Overall</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {safeArray(rows).map((r) => (
+                      <tr key={`${r.leagueId}|||${r.roundPick}`} className="border-t border-border/60">
+                        <td className="px-4 py-3 text-primary">
+                          <div className="truncate font-semibold">{r.leagueName}</div>
+                          <div className="truncate text-xs text-muted">{r.leagueId}</div>
+                        </td>
+                        <td className="px-4 py-3 text-muted tabular-nums">
+                          <span className="inline-flex rounded-full border border-border bg-background/30 px-2 py-0.5 text-xs">
+                            {r.roundPick}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-muted tabular-nums">{r.overallPick ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={cls(
+        "fixed inset-0 z-[80] flex bg-black/55",
+        isPhoneLandscape ? "items-start justify-center" : "items-center justify-center",
+        "p-3 sm:p-4"
+      )}
+      style={{
+        paddingTop: `calc(env(safe-area-inset-top, 0px) + ${NAV_OFFSET_PX}px)`,
+        paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)",
+      }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Player draft breakdown"
+    >
+      <div
+        className="w-full max-w-4xl overflow-hidden rounded-2xl border border-border bg-card-surface shadow-2xl flex flex-col"
+        style={{ maxHeight: `calc(100dvh - ${NAV_OFFSET_PX}px - 24px)` }}
+      >
+        <div className="sticky top-0 z-10 border-b border-border bg-card-surface/95 px-4 py-3 backdrop-blur sm:px-5 sm:py-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[11px] text-muted sm:text-xs">{subtitle}</div>
+              <div className="mt-1 truncate text-base font-semibold text-primary sm:text-lg">{title}</div>
+            </div>
+            <button
+              onClick={onClose}
+              className="rounded-xl border border-border bg-background/40 px-3 py-2 text-sm text-primary hover:bg-background/60"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-auto p-3 sm:p-5">
+          <div className={cls("grid gap-3 sm:gap-4", hasB ? "md:grid-cols-2" : "md:grid-cols-1")}>
+            {hasA ? <SideBlock label={aLabel} rows={sideAData} selectedCount={selectedCountA} /> : null}
+            {hasB ? <SideBlock label={bLabel} rows={sideBData} selectedCount={selectedCountB} accent /> : null}
+          </div>
+
+          <div className="mt-3 text-[11px] text-muted sm:mt-4 sm:text-xs">
+            Tip: this list shows the exact slot in each league where the player was drafted (the “why” behind the ADP).
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ===========================
+   Component
+=========================== */
+
 export default function DraftCompareModeClient() {
   const sp = useSearchParams();
   const mode = cleanSlug(sp.get("mode") || "");
@@ -80,9 +335,7 @@ export default function DraftCompareModeClient() {
 
   return (
     <SectionManifestGate section="draft-compare" season={season}>
-      {({ version, error }) => (
-        <ModeInner mode={mode} season={season} version={version} gateError={error} />
-      )}
+      {({ version, error }) => <ModeInner mode={mode} season={season} version={version} gateError={error} />}
     </SectionManifestGate>
   );
 }
@@ -109,11 +362,14 @@ function ModeInner({ mode, season, version, gateError }) {
   const [sideB, setSideB] = useState([]);
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  // view toggle (board/list) — split removed
+  // view toggle (board/list)
   const [view, setView] = useState("list"); // "board" | "list"
 
   // which group is shown on the board when comparing
   const [boardSide, setBoardSide] = useState("A"); // "A" | "B"
+
+  // NEW: player breakdown modal
+  const [playerModal, setPlayerModal] = useState(null); // { name, position }
 
   const dataUrl = useMemo(() => {
     if (!mode) return "";
@@ -218,7 +474,7 @@ function ModeInner({ mode, season, version, gateError }) {
   // --- list controls ---
   const [query, setQuery] = useState("");
   const [pos, setPos] = useState("ALL");
-  const [sortKey, setSortKey] = useState("adp"); // adp | rp | name | pos | delta
+  const [sortKey, setSortKey] = useState("adp"); // adp | rp | name | pos | delta | adpB | rpB
   const [sortDir, setSortDir] = useState("asc"); // asc/desc
 
   const positions = useMemo(() => {
@@ -258,7 +514,6 @@ function ModeInner({ mode, season, version, gateError }) {
             adpSortA,
             adpSortB,
             delta: r.delta == null ? null : safeNum(r.delta), // B - A
-            // Round.pick for *average overall pick* (A and B stay separate when comparing).
             avgRoundPickA: Number.isFinite(adpA) && adpA > 0 ? formatRoundPickFromAvgOverall(adpA, teams) : "—",
             avgRoundPickB: Number.isFinite(adpB) && adpB > 0 ? formatRoundPickFromAvgOverall(adpB, teams) : "—",
           };
@@ -294,13 +549,10 @@ function ModeInner({ mode, season, version, gateError }) {
         const aB = Number.isFinite(a.adpSortB) ? a.adpSortB : Number.POSITIVE_INFINITY;
         const bB = Number.isFinite(b.adpSortB) ? b.adpSortB : Number.POSITIVE_INFINITY;
 
-        // Support sorting by either side when comparing
         if (sortKey === "adpB" || sortKey === "rpB") return dir * (aB - bB);
-        // Default compare sorting remains Side A
         return dir * (aA - bA);
       }
 
-      // Single-side view: rp and adp both sort by average overall pick.
       return dir * (safeNum(a.adp) - safeNum(b.adp));
     });
 
@@ -308,10 +560,12 @@ function ModeInner({ mode, season, version, gateError }) {
   }, [groupA, comparing, compareRows, query, pos, sortKey, sortDir, teams]);
 
   function toggleSort(k) {
-    // Click same column to toggle direction; switching columns defaults to ascending.
     setSortDir((prevDir) => (sortKey === k ? (prevDir === "asc" ? "desc" : "asc") : "asc"));
     setSortKey(k);
   }
+
+  // NEW: league index (from raw) for breakdown modal
+  const leagueIndex = useMemo(() => (raw ? buildLeagueIndexFromRaw(raw) : new Map()), [raw]);
 
   if (!mode) {
     return (
@@ -335,9 +589,7 @@ function ModeInner({ mode, season, version, gateError }) {
             <span className="text-sm text-muted">{season}</span>
           </div>
           <h1 className="mt-2 text-2xl font-semibold text-primary">{pageTitle}</h1>
-          <p className="mt-1 text-sm text-muted">
-            {comparing ? "Comparing Side A vs Side B" : "Aggregated view (Side A)"}
-          </p>
+          <p className="mt-1 text-sm text-muted">{comparing ? "Comparing Side A vs Side B" : "Aggregated view (Side A)"}</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -386,9 +638,7 @@ function ModeInner({ mode, season, version, gateError }) {
       ) : null}
 
       {loading ? (
-        <div className="mt-6 rounded-2xl border border-border bg-card-surface p-6 text-sm text-muted">
-          Loading…
-        </div>
+        <div className="mt-6 rounded-2xl border border-border bg-card-surface p-6 text-sm text-muted">Loading…</div>
       ) : null}
 
       {!loading && raw && groupA ? (
@@ -398,11 +648,10 @@ function ModeInner({ mode, season, version, gateError }) {
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
                 <div>
                   <h2 className="text-lg font-semibold text-primary">Draftboard</h2>
+                  <p className="text-xs text-muted">Hint: Click a pick square to see all players drafted at that slot.</p>
                   <p className="text-xs text-muted">
-                    Hint: Click a pick square to see all players drafted at that slot.
-                  </p>
-                  <p className="text-xs text-muted">
-                    Note: Players are placed based on average draft position, so they may not appear in the exact pick they were selected at.
+                    Note: Players are placed based on average draft position, so they may not appear in the exact pick
+                    they were selected at.
                   </p>
                 </div>
 
@@ -442,7 +691,10 @@ function ModeInner({ mode, season, version, gateError }) {
                 ) : null}
               </div>
               <div className="p-5">
-                <DraftBoard group={effectiveGroupForBoard} />
+                <DraftBoard
+                  group={effectiveGroupForBoard}
+                  onPlayer={(p) => setPlayerModal({ name: p?.name, position: p?.position })}
+                />
               </div>
             </div>
           ) : (
@@ -450,8 +702,9 @@ function ModeInner({ mode, season, version, gateError }) {
               <div className="border-b border-border px-5 py-4">
                 <h2 className="text-lg font-semibold text-primary">{comparing ? "Compare List" : "Player List"}</h2>
                 <p className="text-xs text-muted">
-                    Hint: Click select leagues to change which leagues are included, or to compare sets of leagues within a mode.
-                  </p>
+                  Hint: Click select leagues to change which leagues are included, or to compare sets of leagues within a
+                  mode.
+                </p>
 
                 <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex flex-1 items-center gap-2">
@@ -494,11 +747,11 @@ function ModeInner({ mode, season, version, gateError }) {
                       {comparing ? (
                         <>
                           <Th onClick={() => toggleSort("adpB")} active={sortKey === "adpB"} dir={sortDir}>
-                          B Avg Pick
-                        </Th>
+                            B Avg Pick
+                          </Th>
                           <Th onClick={() => toggleSort("rpB")} active={sortKey === "rpB"} dir={sortDir}>
-                          B Avg R.P.
-                        </Th>
+                            B Avg R.P.
+                          </Th>
                         </>
                       ) : null}
                       <Th onClick={() => toggleSort("name")} active={sortKey === "name"} dir={sortDir}>
@@ -519,6 +772,7 @@ function ModeInner({ mode, season, version, gateError }) {
                       const delta = r.delta;
                       const deltaGood = delta != null && delta > 0;
                       const deltaBad = delta != null && delta < 0;
+
                       return (
                         <tr key={r.key} className="border-t border-border/60 hover:bg-background/30">
                           <td className="px-4 py-3 font-semibold text-muted tabular-nums">
@@ -529,11 +783,12 @@ function ModeInner({ mode, season, version, gateError }) {
                               : safeNum(r.adp)
                               ? safeNum(r.adp).toFixed(3)
                               : "—"}
-
                           </td>
-<td className="px-4 py-3 text-muted tabular-nums">
+
+                          <td className="px-4 py-3 text-muted tabular-nums">
                             {comparing ? r.avgRoundPickA : r.avgRoundPick || "—"}
                           </td>
+
                           {comparing ? (
                             <>
                               <td className="px-4 py-3 font-semibold text-accent tabular-nums">
@@ -542,9 +797,20 @@ function ModeInner({ mode, season, version, gateError }) {
                               <td className="px-4 py-3 text-muted tabular-nums">{r.avgRoundPickB || "—"}</td>
                             </>
                           ) : null}
-                        
-                          <td className="px-4 py-3 text-primary">{r.name}</td>
+
+                          <td className="px-4 py-3">
+                            <button
+                              type="button"
+                              onClick={() => setPlayerModal({ name: r.name, position: r.position })}
+                              className="text-left text-primary hover:underline"
+                              title="View draft breakdown"
+                            >
+                              {r.name}
+                            </button>
+                          </td>
+
                           <td className="px-4 py-3 text-muted">{r.position}</td>
+
                           {comparing ? (
                             <td
                               className={cls(
@@ -554,7 +820,7 @@ function ModeInner({ mode, season, version, gateError }) {
                                 delta == null && "text-muted"
                               )}
                             >
-                              {delta == null ? "—" : `${delta > 0 ? "+" : ""}${delta.toFixed(1)}`}
+                              {delta == null ? "—" : `${delta > 0 ? "+" : ""}${delta.toFixed(3)}`}
                             </td>
                           ) : null}
                         </tr>
@@ -569,8 +835,8 @@ function ModeInner({ mode, season, version, gateError }) {
                       </tr>
                     ) : null}
                   </tbody>
-              </table>
-            </ListScroller>
+                </table>
+              </ListScroller>
             </div>
           )}
         </div>
@@ -587,6 +853,35 @@ function ModeInner({ mode, season, version, gateError }) {
             setSideA(nextA);
             setSideB(b);
           }}
+        />
+      ) : null}
+
+      {playerModal ? (
+        <PlayerDraftBreakdownModal
+          open={!!playerModal}
+          title={`${safeStr(playerModal.name)} (${safeStr(playerModal.position)})`}
+          subtitle="Draft breakdown"
+          aLabel={comparing ? "Side A" : "Selected leagues"}
+          bLabel={comparing ? "Side B" : ""}
+          selectedCountA={effectiveSideA.length}
+          selectedCountB={comparing ? sideB.length : 0}
+          sideAData={getDraftBreakdownForPlayer({
+            leagueIndex,
+            leagueIds: effectiveSideA,
+            name: playerModal.name,
+            position: playerModal.position,
+          })}
+          sideBData={
+            comparing
+              ? getDraftBreakdownForPlayer({
+                  leagueIndex,
+                  leagueIds: sideB,
+                  name: playerModal.name,
+                  position: playerModal.position,
+                })
+              : []
+          }
+          onClose={() => setPlayerModal(null)}
         />
       ) : null}
     </section>
@@ -612,13 +907,15 @@ function Th({ children, onClick, active, dir }) {
   );
 }
 
-function DraftBoard({ group }) {
+function DraftBoard({ group, onPlayer }) {
   const g = group;
   const m = g?.meta;
   const [openKey, setOpenKey] = useState(null);
 
   const { isPhoneLike, isPortrait, showTip, acknowledge } = useDraftboardLandscapeTip();
 
+  // auto-scale for phone landscape so it "zooms out"
+  const [fitScale, setFitScale] = useState(1);
 
   function posTheme(posRaw) {
     const pos = safeStr(posRaw).toUpperCase().trim();
@@ -627,14 +924,6 @@ function DraftBoard({ group }) {
     if (pos === "QB") return { cell: "bg-rose-400/20 hover:bg-rose-400/30", border: "border-rose-400/25" };
     if (pos === "TE") return { cell: "bg-amber-300/20 hover:bg-amber-300/30", border: "border-amber-300/25" };
     return { cell: "bg-background/12 hover:bg-background/25", border: "border-border/70" };
-  }
-
-  function nameTwoLines(fullName) {
-    const s = safeStr(fullName).trim();
-    if (!s) return { first: "", last: "" };
-    const parts = s.split(/\s+/).filter(Boolean);
-    if (parts.length === 1) return { first: parts[0], last: "" };
-    return { first: parts[0], last: parts.slice(1).join(" ") };
   }
 
   if (!g || !m) return null;
@@ -691,10 +980,50 @@ function DraftBoard({ group }) {
     };
   }
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    function computeScale() {
+      if (!isPhoneLike || isPortrait) {
+        setFitScale(1);
+        return;
+      }
+      const vv = window.visualViewport;
+      const vw = vv?.width || window.innerWidth;
+      const pad = 16;
+      const available = Math.max(320, vw - pad);
+      const s = available / boardMinWidthPx;
+      const clamped = Math.max(0.5, Math.min(1, s));
+      setFitScale(clamped);
+    }
+
+    computeScale();
+
+    const vv = window.visualViewport;
+    vv?.addEventListener?.("resize", computeScale);
+    vv?.addEventListener?.("scroll", computeScale);
+    window.addEventListener("resize", computeScale);
+    window.addEventListener("orientationchange", computeScale);
+
+    return () => {
+      vv?.removeEventListener?.("resize", computeScale);
+      vv?.removeEventListener?.("scroll", computeScale);
+      window.removeEventListener("resize", computeScale);
+      window.removeEventListener("orientationchange", computeScale);
+    };
+  }, [isPhoneLike, isPortrait, boardMinWidthPx]);
+
+  function nameTwoLines(fullName) {
+    const s = safeStr(fullName).trim();
+    if (!s) return { first: "", last: "" };
+    const parts = s.split(/\s+/).filter(Boolean);
+    if (parts.length === 1) return { first: parts[0], last: "" };
+    return { first: parts[0], last: parts.slice(1).join(" ") };
+  }
+
   return (
     <div className="space-y-3">
       <div className="overflow-hidden rounded-2xl border border-border bg-background/10 shadow-sm">
-        {/* swipe hint only on phone */}
         {isPhoneLike ? (
           <div className="flex items-center justify-between px-3 py-2 text-[11px] text-muted">
             <span>Swipe to view all picks</span>
@@ -702,18 +1031,22 @@ function DraftBoard({ group }) {
           </div>
         ) : null}
 
-        {/* Phones: horizontal swipe; non-phones: locked */}
         <div className={cls(isPhoneLike ? "overflow-x-auto overflow-y-hidden" : "overflow-hidden")}>
-          <div className="relative" style={{ minWidth: isPhoneLike ? `max(100%, ${boardMinWidthPx}px)` : "100%" }}>
+          <div
+            className="relative"
+            style={{
+              minWidth: isPhoneLike ? `max(100%, ${boardMinWidthPx}px)` : "100%",
+              transform: `scale(${fitScale})`,
+              transformOrigin: "left top",
+              willChange: fitScale !== 1 ? "transform" : undefined,
+            }}
+          >
             {grid.map((row, i) => (
               <div key={i} className="grid" style={{ gridTemplateColumns: `repeat(${teams}, minmax(0, 1fr))` }}>
                 {row.map((cell, j) => {
                   if (!cell) {
                     return (
-                      <div
-                        key={`blank-${i}-${j}`}
-                        className="h-[88px] border-r border-b border-border/70 bg-background/5"
-                      />
+                      <div key={`blank-${i}-${j}`} className="h-[88px] border-r border-b border-border/70 bg-background/5" />
                     );
                   }
 
@@ -734,7 +1067,6 @@ function DraftBoard({ group }) {
                       )}
                       title={cell.player ? `${cell.player.name} (${cell.player.position})` : rpAdjusted}
                     >
-                      {/* Always show ONLY round.pick pill (white text) */}
                       <div className="flex items-center justify-between gap-2">
                         <span
                           className={cls(
@@ -749,7 +1081,6 @@ function DraftBoard({ group }) {
 
                       {cell.player ? (
                         <div className="mt-2">
-                          {/* Always two-line split name */}
                           <div className="truncate text-[13px] font-semibold leading-4 text-white">{nm.first}</div>
                           <div className="truncate text-[12px] leading-4 text-white/90">{nm.last || " "}</div>
                         </div>
@@ -767,58 +1098,71 @@ function DraftBoard({ group }) {
 
       <DraftboardLandscapeTipOverlay open={showTip} isPortrait={isPortrait} onClose={acknowledge} />
 
-
       {openKey ? (
-        <CellModal cellKey={openKey} teams={teams} list={safeArray(cells[openKey])} onClose={() => setOpenKey(null)} />
+        <CellModal
+          cellKey={openKey}
+          teams={teams}
+          list={safeArray(cells[openKey])}
+          onClose={() => setOpenKey(null)}
+          onPlayer={(p) => onPlayer?.(p)}
+        />
       ) : null}
     </div>
   );
 }
 
-function CellModal({ cellKey, teams, list, onClose }) {
+function CellModal({ cellKey, teams, list, onClose, onPlayer }) {
   const [rStr, pStr] = safeStr(cellKey).split("-");
   const round = safeNum(rStr);
   const pickInRound = safeNum(pStr);
   const overall = (round - 1) * (safeNum(teams) || 12) + pickInRound;
   const rp = `${round}.${String(pickInRound).padStart(2, "0")}`;
 
-  // NEW: reuse the same phone/orientation logic
   const { isPhoneLike, isPortrait } = useDraftboardLandscapeTip();
   const isPhoneLandscape = isPhoneLike && !isPortrait;
-  const NAV_OFFSET_PX = 72; // adjust if your navbar is taller
+  const NAV_OFFSET_PX = isPhoneLike ? 64 : 72;
+
+  function nameTwoLines(fullName) {
+    const s = safeStr(fullName).trim();
+    if (!s) return { first: "", last: "" };
+    const parts = s.split(/\s+/).filter(Boolean);
+    if (parts.length === 1) return { first: parts[0], last: "" };
+    return { first: parts[0], last: parts.slice(1).join(" ") };
+  }
+
+  const sorted = safeArray(list)
+    .slice()
+    .sort((a, b) => safeNum(b?.pct) - safeNum(a?.pct) || safeStr(a?.name).localeCompare(safeStr(b?.name)));
 
   return (
     <div
-        className={cls(
-          "fixed inset-0 z-[60] flex bg-black/50",
-          isPhoneLandscape ? "items-start justify-center" : "items-center justify-center",
-          "p-4"
-        )}
-        style={{
-          // Always reserve space for the navbar (desktop included).
-          paddingTop: `calc(env(safe-area-inset-top, 0px) + ${NAV_OFFSET_PX}px)`,
-          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
-        }}
-        onMouseDown={(e) => {
-          if (e.target === e.currentTarget) onClose();
-        }}
+      className={cls(
+        "fixed inset-0 z-[60] flex bg-black/50",
+        isPhoneLandscape ? "items-start justify-center" : "items-center justify-center",
+        "p-3 sm:p-4"
+      )}
+      style={{
+        paddingTop: `calc(env(safe-area-inset-top, 0px) + ${NAV_OFFSET_PX}px)`,
+        paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)",
+      }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Pick distribution"
+    >
+      <div
+        className="w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card-surface shadow-xl flex flex-col"
+        style={{ maxHeight: `calc(100dvh - ${NAV_OFFSET_PX}px - 24px)` }}
       >
-        <div
-          className="w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card-surface shadow-xl flex flex-col"
-          style={{
-            // Match the reserved padding so the modal never hides under the nav or bottom.
-            maxHeight: `calc(100dvh - ${NAV_OFFSET_PX}px - 32px)`,
-          }}
-        >
-
-        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+        <div className="sticky top-0 z-10 bg-card-surface/95 backdrop-blur flex items-start justify-between gap-3 border-b border-border px-4 py-3 sm:px-5 sm:py-4">
           <div>
             <div className="text-xs text-muted">Pick</div>
-            <div className="text-lg font-semibold text-primary">
-              {rp} <span className="text-sm text-muted">•</span>{" "}
-              <span className="text-sm text-muted">#{overall}</span>
+            <div className="text-base sm:text-lg font-semibold text-primary">
+              {rp} <span className="text-sm text-muted">•</span> <span className="text-sm text-muted">#{overall}</span>
             </div>
-            <div className="mt-1 text-xs text-muted">{list.length ? `${list.length} unique players` : "No data"}</div>
+            <div className="mt-1 text-xs text-muted">{sorted.length ? `${sorted.length} unique players` : "No data"}</div>
           </div>
           <button
             onClick={onClose}
@@ -828,42 +1172,95 @@ function CellModal({ cellKey, teams, list, onClose }) {
           </button>
         </div>
 
-        <div className="flex-1 overflow-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-card-surface/95 backdrop-blur">
-              <tr className="text-left text-xs text-muted">
-                <th className="px-5 py-3">Player</th>
-                <th className="px-5 py-3">Pos</th>
-                <th className="px-5 py-3">%</th>
-                <th className="px-5 py-3">Count</th>
-              </tr>
-            </thead>
-            <tbody>
-              {safeArray(list)
-                .slice()
-                .sort((a, b) => safeNum(b?.pct) - safeNum(a?.pct) || safeStr(a?.name).localeCompare(safeStr(b?.name)))
-                .map((p) => (
-                  <tr key={`${p.name}|||${p.position}`} className="border-t border-border/60">
-                    <td className="px-5 py-3 text-primary">{p.name}</td>
-                    <td className="px-5 py-3 text-muted">{p.position}</td>
-                    <td className="px-5 py-3 text-muted">{pctFmt(safeNum(p.pct))}</td>
-                    <td className="px-5 py-3 text-muted">{safeNum(p.count)}</td>
+        <div className="flex-1 overflow-auto p-3 sm:p-4">
+          {isPhoneLike ? (
+            <div className="space-y-2">
+              {sorted.map((p) => {
+                const nm = nameTwoLines(p.name);
+                return (
+                  <div key={`${p.name}|||${p.position}`} className="rounded-2xl border border-border bg-background/20 p-3">
+                    <button
+                      type="button"
+                      onClick={() => onPlayer?.(p)}
+                      className="w-full text-left"
+                      title="View draft breakdown"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold leading-5 text-white">{nm.first}</div>
+                        <div className="truncate text-white/70 leading-5">{nm.last || " "}</div>
+                      </div>
+                    </button>
+
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                      <Chip>{safeStr(p.position)}</Chip>
+                      <Chip>{pctFmt(safeNum(p.pct))}</Chip>
+                      <Chip>{safeNum(p.count)}</Chip>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {!sorted.length ? (
+                <div className="rounded-2xl border border-border bg-background/20 p-5 text-center text-sm text-white/60">
+                  No picks were recorded at this exact slot in the selected drafts. Late picks often diverge due to
+                  players not being taken in some drafts at all.
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-card-surface/95 backdrop-blur">
+                <tr className="text-left text-xs text-white/70">
+                  <th className="px-5 py-3">Player</th>
+                  <th className="px-5 py-3">Pos</th>
+                  <th className="px-5 py-3">%</th>
+                  <th className="px-5 py-3">Count</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((p) => (
+                  <tr key={`${p.name}|||${p.position}`} className="border-t border-white/10">
+                    <td className="px-5 py-3">
+                      <button
+                        type="button"
+                        onClick={() => onPlayer?.(p)}
+                        className="w-full text-left text-white hover:underline"
+                        title="View draft breakdown"
+                      >
+                        {(() => {
+                          const nm = nameTwoLines(p.name);
+                          return (
+                            <div className="min-w-0">
+                              <div className="truncate font-semibold leading-4 text-white">{nm.first}</div>
+                              <div className="truncate text-white/70 leading-4">{nm.last || " "}</div>
+                            </div>
+                          );
+                        })()}
+                      </button>
+                    </td>
+                    <td className="px-5 py-3 text-white/70">{p.position}</td>
+                    <td className="px-5 py-3 text-white/70">{pctFmt(safeNum(p.pct))}</td>
+                    <td className="px-5 py-3 text-white/70">{safeNum(p.count)}</td>
                   </tr>
                 ))}
-              {!list.length ? (
-                <tr>
-                  <td colSpan={4} className="px-5 py-8 text-center text-sm text-muted">
-                    Nothing recorded at this slot.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
+
+                {!sorted.length ? (
+                  <tr>
+                    <td colSpan={4} className="px-5 py-8 text-center text-sm text-white/60">
+                      No picks were recorded at this exact slot in the selected drafts. Late picks often diverge due to
+                      players not being taken in some drafts at all.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>
   );
 }
+
 
 function LeaguePicker({ leagues, sideA, sideB, onClose, onChange }) {
   const [a, setA] = useState(sideA);
@@ -883,6 +1280,7 @@ function LeaguePicker({ leagues, sideA, sideB, onClose, onChange }) {
       setB(nextB);
       return;
     }
+
     const nextB = inB ? b.filter((x) => x !== id) : [...b, id];
     const nextA = inA ? a.filter((x) => x !== id) : a;
     setA(nextA);
@@ -894,39 +1292,62 @@ function LeaguePicker({ leagues, sideA, sideB, onClose, onChange }) {
     onClose();
   }
 
-    // NEW: detect phone landscape
+  function clearB() {
+    setB([]);
+  }
+
   const { isPhoneLike, isPortrait } = useDraftboardLandscapeTip();
   const isPhoneLandscape = isPhoneLike && !isPortrait;
-  const NAV_OFFSET_PX = 72; // adjust if your navbar is taller
+  const NAV_OFFSET_PX = isPhoneLike ? 64 : 72;
+
+  const rows = safeArray(leagues);
 
   return (
     <div
-        className={cls(
-          "fixed inset-0 z-[70] flex bg-black/50",
-          isPhoneLandscape ? "items-start justify-center" : "items-center justify-center",
-          "p-4"
-        )}
-        style={{
-          paddingTop: `calc(env(safe-area-inset-top, 0px) + ${NAV_OFFSET_PX}px)`,
-          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
-        }}
-        onMouseDown={(e) => {
-          if (e.target === e.currentTarget) onClose();
-        }}
+      className={cls(
+        "fixed inset-0 z-[70] flex bg-black/50",
+        isPhoneLandscape ? "items-start justify-center" : "items-center justify-center",
+        "p-3 sm:p-4"
+      )}
+      style={{
+        paddingTop: `calc(env(safe-area-inset-top, 0px) + ${NAV_OFFSET_PX}px)`,
+        paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)",
+      }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Select leagues"
+    >
+      <div
+        className="w-full max-w-3xl overflow-hidden rounded-2xl border border-border bg-card-surface shadow-xl flex flex-col"
+        style={{ maxHeight: `calc(100dvh - ${NAV_OFFSET_PX}px - 24px)` }}
       >
-        <div
-          className="w-full max-w-3xl overflow-hidden rounded-2xl border border-border bg-card-surface shadow-xl flex flex-col"
-          style={{
-            maxHeight: `calc(100dvh - ${NAV_OFFSET_PX}px - 32px)`,
-          }}
-        >
+        {/* Header */}
+        <div className="sticky top-0 z-10 bg-card-surface/95 backdrop-blur flex items-start justify-between gap-3 border-b border-border px-4 py-3 sm:px-5 sm:py-4">
+          <div className="min-w-0">
+            <div className="text-base sm:text-lg font-semibold text-primary">Select leagues</div>
+            <div className="mt-1 text-xs text-muted">
+              Tap <span className="font-semibold text-primary">A</span> or{" "}
+              <span className="font-semibold text-accent">B</span> per league. A league cannot be in both sides.
+            </div>
 
-       
-        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
-          <div>
-            <div className="text-lg font-semibold text-primary">Select leagues</div>
-            <div className="mt-1 text-xs text-muted">Click A or B per league. A league cannot be in both sides.</div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+              <Chip tone="primary">Side A: {a.length}</Chip>
+              <Chip tone="accent">Side B: {b.length}</Chip>
+              {b.length ? (
+                <button
+                  type="button"
+                  onClick={clearB}
+                  className="rounded-full border border-border bg-background/30 px-3 py-1 text-[11px] font-semibold text-muted hover:bg-background/40"
+                >
+                  Clear Side B
+                </button>
+              ) : null}
+            </div>
           </div>
+
           <button
             onClick={onClose}
             className="rounded-xl border border-border bg-background/40 px-3 py-2 text-sm text-primary hover:bg-background/60"
@@ -935,8 +1356,62 @@ function LeaguePicker({ leagues, sideA, sideB, onClose, onChange }) {
           </button>
         </div>
 
-        <div className="flex-1 overflow-auto">
-          <table className="w-full text-sm">
+        {/* Body */}
+        <div className="flex-1 overflow-auto p-3 sm:p-0">
+          {/* Mobile: Cards */}
+          <div className="space-y-2 sm:hidden">
+            {rows.map((l) => {
+              const id = l.leagueId;
+              const inA = setASet.has(id);
+              const inB = setBSet.has(id);
+
+              return (
+                <div key={id} className="rounded-2xl border border-border bg-background/20 p-3">
+                  <div className="min-w-0">
+                    <div className="truncate font-semibold text-primary">{l.name || id}</div>
+                    <div className="mt-0.5 truncate text-[11px] text-muted">{id}</div>
+                  </div>
+
+                  <div className="mt-3 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => toggle(id, "A")}
+                      className={cls(
+                        "flex-1 rounded-xl border px-3 py-2 text-xs font-semibold transition",
+                        inA
+                          ? "border-primary bg-primary/15 text-primary"
+                          : "border-border bg-background/30 text-muted hover:bg-background/40"
+                      )}
+                    >
+                      Side A
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => toggle(id, "B")}
+                      className={cls(
+                        "flex-1 rounded-xl border px-3 py-2 text-xs font-semibold transition",
+                        inB
+                          ? "border-accent bg-accent/15 text-accent"
+                          : "border-border bg-background/30 text-muted hover:bg-background/40"
+                      )}
+                    >
+                      Side B
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+
+            {!rows.length ? (
+              <div className="rounded-2xl border border-border bg-background/20 p-5 text-center text-sm text-muted">
+                No leagues found in this draft JSON.
+              </div>
+            ) : null}
+          </div>
+
+          {/* Desktop: Table */}
+          <table className="hidden sm:table w-full text-sm">
             <thead className="sticky top-0 bg-card-surface/95 backdrop-blur">
               <tr className="text-left text-xs text-muted">
                 <th className="px-5 py-3">League</th>
@@ -945,15 +1420,21 @@ function LeaguePicker({ leagues, sideA, sideB, onClose, onChange }) {
               </tr>
             </thead>
             <tbody>
-              {safeArray(leagues).map((l) => {
+              {rows.map((l) => {
                 const id = l.leagueId;
                 const inA = setASet.has(id);
                 const inB = setBSet.has(id);
+
                 return (
                   <tr key={id} className="border-t border-border/60">
-                    <td className="px-5 py-3 text-primary">{l.name || id}</td>
+                    <td className="px-5 py-3 text-primary">
+                      <div className="font-semibold">{l.name || id}</div>
+                      <div className="text-xs text-muted">{id}</div>
+                    </td>
+
                     <td className="px-5 py-3">
                       <button
+                        type="button"
                         onClick={() => toggle(id, "A")}
                         className={cls(
                           "rounded-lg border px-3 py-1 text-xs font-semibold",
@@ -963,8 +1444,10 @@ function LeaguePicker({ leagues, sideA, sideB, onClose, onChange }) {
                         A
                       </button>
                     </td>
+
                     <td className="px-5 py-3">
                       <button
+                        type="button"
                         onClick={() => toggle(id, "B")}
                         className={cls(
                           "rounded-lg border px-3 py-1 text-xs font-semibold",
@@ -977,7 +1460,8 @@ function LeaguePicker({ leagues, sideA, sideB, onClose, onChange }) {
                   </tr>
                 );
               })}
-              {!safeArray(leagues).length ? (
+
+              {!rows.length ? (
                 <tr>
                   <td colSpan={3} className="px-5 py-8 text-center text-sm text-muted">
                     No leagues found in this draft JSON.
@@ -988,11 +1472,13 @@ function LeaguePicker({ leagues, sideA, sideB, onClose, onChange }) {
           </table>
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-4">
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-3 sm:px-5 sm:py-4">
           <div className="text-xs text-muted">
             Side A: <span className="font-semibold text-primary">{a.length}</span> • Side B:{" "}
             <span className="font-semibold text-accent">{b.length}</span>
           </div>
+
           <button
             onClick={apply}
             className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-background shadow-sm transition hover:opacity-90"
