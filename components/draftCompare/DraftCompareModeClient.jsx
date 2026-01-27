@@ -168,6 +168,7 @@ function PlayerDraftBreakdownModal({
   sideBData,
   selectedCountA,
   selectedCountB,
+  context, // NEW
   onClose,
 }) {
   const { isPhoneLike, isPortrait } = useDraftboardLandscapeTip();
@@ -179,6 +180,52 @@ function PlayerDraftBreakdownModal({
 
   const hasA = safeArray(sideAData).length > 0 || selectedCountA > 0;
   const hasB = safeArray(sideBData).length > 0 || selectedCountB > 0;
+
+  const placedRp = safeStr(context?.placed?.rp).trim();
+  const placedOverall = context?.placed?.overall;
+
+  const from = context?.clickedFrom;
+  const fromRp = safeStr(from?.rp).trim();
+  const fromOverall = from?.overall;
+  const topName = safeStr(from?.topName).trim();
+  const topPos = safeStr(from?.topPos).trim();
+  const topPct = from?.topPct;
+
+  const headline = (() => {
+    // If we clicked from a specific slot on the board/cell list
+    if (fromRp) {
+      if (topName) {
+        return `You clicked from ${fromRp} (#${fromOverall}). Most common at this slot: ${topName}${topPos ? ` (${topPos})` : ""}${
+          Number.isFinite(topPct) ? ` • ${pctFmt(topPct)}` : ""
+        }.`;
+      }
+      return `You clicked from ${fromRp} (#${fromOverall}).`;
+    }
+    return null;
+  })();
+
+  const placementLine =
+    placedRp && placedOverall ? `Placed on the board at ${placedRp} (#${placedOverall}) based on ADP order.` : null;
+
+  const draftedA = safeArray(sideAData).length;
+  const draftedB = safeArray(sideBData).length;
+
+  const mismatchHint = (() => {
+    // Only show if we have a clicked slot AND the player has draft rows (so we can compare)
+    if (!fromRp) return null;
+    if (!draftedA && !draftedB) return null;
+
+    // If any row matches the clicked slot, no need to warn
+    const matches = [...safeArray(sideAData), ...safeArray(sideBData)].some((r) => safeStr(r?.roundPick).trim() === fromRp);
+    if (matches) return `This player was drafted at this exact slot in at least one league in your sample.`;
+
+    return `This player wasn’t drafted at ${fromRp} in your selected leagues — the board placement is based on ADP averages, so the “typical” slot can differ from the exact pick distribution at that square.`;
+  })();
+
+  const emptyReason = (() => {
+    if (draftedA || draftedB) return null;
+    return `In the leagues you selected, this player either went undrafted, was drafted outside the captured draft data, or simply wasn’t taken in those specific drafts. Only leagues where the player was actually drafted contribute to the player’s average.`;
+  })();
 
   const emptyExplainer = (
     <div className="rounded-2xl border border-border bg-background/30 p-4 text-sm text-muted">
@@ -310,6 +357,12 @@ function PlayerDraftBreakdownModal({
         </div>
 
         <div className="flex-1 overflow-auto p-3 sm:p-5">
+          <div className="mb-3 space-y-2 rounded-2xl border border-border bg-background/25 p-4 text-sm text-muted">
+            {headline ? <div className="font-semibold text-primary">{headline}</div> : null}
+            {placementLine ? <div className="text-muted">{placementLine}</div> : null}
+            {mismatchHint ? <div className="text-muted">{mismatchHint}</div> : null}
+            {emptyReason ? <div className="text-muted">{emptyReason}</div> : null}
+          </div>
           <div className={cls("grid gap-3 sm:gap-4", hasB ? "md:grid-cols-2" : "md:grid-cols-1")}>
             {hasA ? <SideBlock label={aLabel} rows={sideAData} selectedCount={selectedCountA} /> : null}
             {hasB ? <SideBlock label={bLabel} rows={sideBData} selectedCount={selectedCountB} accent /> : null}
@@ -369,7 +422,9 @@ function ModeInner({ mode, season, version, gateError }) {
   const [boardSide, setBoardSide] = useState("A"); // "A" | "B"
 
   // NEW: player breakdown modal
-  const [playerModal, setPlayerModal] = useState(null); // { name, position }
+  const [playerModal, setPlayerModal] = useState(null);
+  // { name, position, clickedFrom?: { cellKey, rp, overall, topName, topPos, topPct, uniqueCount }, placed?: { rp, overall } }
+
 
   const dataUrl = useMemo(() => {
     if (!mode) return "";
@@ -559,6 +614,40 @@ function ModeInner({ mode, season, version, gateError }) {
     return filtered;
   }, [groupA, comparing, compareRows, query, pos, sortKey, sortDir, teams]);
 
+  function getPlacedSlotForPlayer(group, name, position, teams) {
+    const arr = groupPlayersArray(group);
+    const targetKey = playerKey(name, position);
+
+    const ranked = safeArray(arr)
+      .map((p) => {
+        const nm = safeStr(p?.name).trim();
+        const pos = safeStr(p?.position).trim() || "UNK";
+        const rawAdp = p?.avgOverallPick ?? p?.adp ?? p?.avgPick;
+        const adpNum = typeof rawAdp === "number" ? rawAdp : Number(rawAdp);
+        const adp = Number.isFinite(adpNum) && adpNum > 0 ? adpNum : null;
+        return { nm, pos, adp };
+      })
+      .filter((p) => p.nm && p.pos)
+      .sort((a, b) => {
+        const aAdp = a.adp ?? Number.POSITIVE_INFINITY;
+        const bAdp = b.adp ?? Number.POSITIVE_INFINITY;
+        if (aAdp !== bAdp) return aAdp - bAdp;
+        const n = safeStr(a.nm).localeCompare(safeStr(b.nm));
+        if (n) return n;
+        return safeStr(a.pos).localeCompare(safeStr(b.pos));
+      });
+
+    const idx = ranked.findIndex((p) => playerKey(p.nm, p.pos) === targetKey);
+    if (idx < 0) return null;
+
+    const overall = idx + 1;
+    return {
+      overall,
+      rp: formatRoundPickFromAvgOverall(overall, teams),
+    };
+  }
+
+
   function toggleSort(k) {
     setSortDir((prevDir) => (sortKey === k ? (prevDir === "asc" ? "desc" : "asc") : "asc"));
     setSortKey(k);
@@ -693,8 +782,22 @@ function ModeInner({ mode, season, version, gateError }) {
               <div className="p-5">
                 <DraftBoard
                   group={effectiveGroupForBoard}
-                  onPlayer={(p) => setPlayerModal({ name: p?.name, position: p?.position })}
+                  onPlayer={(p, ctx) => {
+                    const nm = p?.name;
+                    const ps = p?.position;
+                    if (!nm) return;
+
+                    const placed = getPlacedSlotForPlayer(effectiveGroupForBoard, nm, ps, teams);
+
+                    setPlayerModal({
+                      name: nm,
+                      position: ps,
+                      clickedFrom: ctx || null,
+                      placed: placed || null,
+                    });
+                  }}
                 />
+
               </div>
             </div>
           ) : (
@@ -801,7 +904,15 @@ function ModeInner({ mode, season, version, gateError }) {
                           <td className="px-4 py-3">
                             <button
                               type="button"
-                              onClick={() => setPlayerModal({ name: r.name, position: r.position })}
+                              onClick={() => {
+                                const placed = getPlacedSlotForPlayer(groupA, r.name, r.position, teams);
+                                setPlayerModal({
+                                  name: r.name,
+                                  position: r.position,
+                                  placed: placed || null,
+                                  clickedFrom: null,
+                                });
+                              }}
                               className="text-left text-primary hover:underline"
                               title="View draft breakdown"
                             >
@@ -858,31 +969,33 @@ function ModeInner({ mode, season, version, gateError }) {
 
       {playerModal ? (
         <PlayerDraftBreakdownModal
-          open={!!playerModal}
-          title={`${safeStr(playerModal.name)} (${safeStr(playerModal.position)})`}
-          subtitle="Draft breakdown"
-          aLabel={comparing ? "Side A" : "Selected leagues"}
-          bLabel={comparing ? "Side B" : ""}
-          selectedCountA={effectiveSideA.length}
-          selectedCountB={comparing ? sideB.length : 0}
-          sideAData={getDraftBreakdownForPlayer({
-            leagueIndex,
-            leagueIds: effectiveSideA,
-            name: playerModal.name,
-            position: playerModal.position,
-          })}
-          sideBData={
-            comparing
-              ? getDraftBreakdownForPlayer({
-                  leagueIndex,
-                  leagueIds: sideB,
-                  name: playerModal.name,
-                  position: playerModal.position,
-                })
-              : []
-          }
-          onClose={() => setPlayerModal(null)}
-        />
+        open={!!playerModal}
+        title={`${safeStr(playerModal.name)} (${safeStr(playerModal.position)})`}
+        subtitle="Draft breakdown"
+        aLabel={comparing ? "Side A" : "Selected leagues"}
+        bLabel={comparing ? "Side B" : ""}
+        selectedCountA={effectiveSideA.length}
+        selectedCountB={comparing ? sideB.length : 0}
+        sideAData={getDraftBreakdownForPlayer({
+          leagueIndex,
+          leagueIds: effectiveSideA,
+          name: playerModal.name,
+          position: playerModal.position,
+        })}
+        sideBData={
+          comparing
+            ? getDraftBreakdownForPlayer({
+                leagueIndex,
+                leagueIds: sideB,
+                name: playerModal.name,
+                position: playerModal.position,
+              })
+            : []
+        }
+        context={playerModal}   // ✅ NEW
+        onClose={() => setPlayerModal(null)}
+      />
+
       ) : null}
     </section>
   );
@@ -910,7 +1023,7 @@ function Th({ children, onClick, active, dir }) {
 function DraftBoard({ group, onPlayer }) {
   const g = group;
   const m = g?.meta;
-  const [openKey, setOpenKey] = useState(null);
+  const [openCell, setOpenCell] = useState(null);
 
   const { isPhoneLike, isPortrait, showTip, acknowledge } = useDraftboardLandscapeTip();
 
@@ -940,14 +1053,35 @@ function DraftBoard({ group, onPlayer }) {
     : safeArray(g?.playersList);
 
   const ranked = safeArray(playersArr)
-    .map((p) => ({
-      name: safeStr(p?.name).trim(),
-      position: safeStr(p?.position).trim() || "UNK",
-      adp: safeNum(p?.avgOverallPick ?? p?.adp ?? p?.avgPick),
-      count: safeNum(p?.count ?? 0),
-    }))
+    .map((p) => {
+      const name = safeStr(p?.name).trim();
+      const position = safeStr(p?.position).trim() || "UNK";
+
+      // IMPORTANT: do NOT let missing/invalid ADP become 0
+      const rawAdp = p?.avgOverallPick ?? p?.adp ?? p?.avgPick;
+      const adpNum = typeof rawAdp === "number" ? rawAdp : Number(rawAdp);
+      const adp = Number.isFinite(adpNum) && adpNum > 0 ? adpNum : null;
+
+      return {
+        name,
+        position,
+        adp, // null means "no valid ADP"
+        count: safeNum(p?.count ?? 0),
+      };
+    })
     .filter((p) => p.name)
-    .sort((a, b) => safeNum(a.adp) - safeNum(b.adp));
+    .sort((a, b) => {
+      const aAdp = a.adp ?? Number.POSITIVE_INFINITY;
+      const bAdp = b.adp ?? Number.POSITIVE_INFINITY;
+
+      // Primary: ADP (valid numbers only)
+      if (aAdp !== bAdp) return aAdp - bAdp;
+
+      // Secondary: deterministic tie-breakers so the board doesn't "shuffle"
+      const n = safeStr(a.name).localeCompare(safeStr(b.name));
+      if (n) return n;
+      return safeStr(a.position).localeCompare(safeStr(b.position));
+    });
 
   const grid = [];
   for (let r = 1; r <= rounds; r++) {
@@ -1057,7 +1191,15 @@ function DraftBoard({ group, onPlayer }) {
                   return (
                     <button
                       key={`${cell.r}-${cell.displayCol}`}
-                      onClick={() => setOpenKey(cell.origKey)}
+                      onClick={() =>
+                        setOpenCell({
+                          cellKey: cell.origKey,
+                          rp: rpAdjusted,
+                          overall: cell.overall,
+                          placedPlayer: cell.player || null,
+                        })
+                      }
+
                       className={cls(
                         "group relative h-[88px] border-r border-b p-2.5 text-left transition",
                         theme.border,
@@ -1098,20 +1240,23 @@ function DraftBoard({ group, onPlayer }) {
 
       <DraftboardLandscapeTipOverlay open={showTip} isPortrait={isPortrait} onClose={acknowledge} />
 
-      {openKey ? (
+      {openCell ? (
         <CellModal
-          cellKey={openKey}
+          cellKey={openCell.cellKey}
           teams={teams}
-          list={safeArray(cells[openKey])}
-          onClose={() => setOpenKey(null)}
-          onPlayer={(p) => onPlayer?.(p)}
+          list={safeArray(cells[openCell.cellKey])}
+          placedPlayer={openCell.placedPlayer}
+          placedOverallRank={openCell.overall}
+          placedRp={openCell.rp}
+          onClose={() => setOpenCell(null)}
+          onPlayer={(p, ctx) => onPlayer?.(p, ctx)}
         />
       ) : null}
     </div>
   );
 }
 
-function CellModal({ cellKey, teams, list, onClose, onPlayer }) {
+function CellModal({ cellKey, teams, list, placedPlayer, placedOverallRank, placedRp, onClose, onPlayer }) {
   const [rStr, pStr] = safeStr(cellKey).split("-");
   const round = safeNum(rStr);
   const pickInRound = safeNum(pStr);
@@ -1133,6 +1278,18 @@ function CellModal({ cellKey, teams, list, onClose, onPlayer }) {
   const sorted = safeArray(list)
     .slice()
     .sort((a, b) => safeNum(b?.pct) - safeNum(a?.pct) || safeStr(a?.name).localeCompare(safeStr(b?.name)));
+
+
+    const top = sorted[0] || null;
+    const ctx = {
+      cellKey,
+      rp,
+      overall,
+      topName: top?.name || null,
+      topPos: top?.position || null,
+      topPct: Number.isFinite(safeNum(top?.pct)) ? safeNum(top?.pct) : null,
+      uniqueCount: sorted.length,
+    };
 
   return (
     <div
@@ -1162,7 +1319,27 @@ function CellModal({ cellKey, teams, list, onClose, onPlayer }) {
             <div className="text-base sm:text-lg font-semibold text-primary">
               {rp} <span className="text-sm text-muted">•</span> <span className="text-sm text-muted">#{overall}</span>
             </div>
-            <div className="mt-1 text-xs text-muted">{sorted.length ? `${sorted.length} unique players` : "No data"}</div>
+            <div className="mt-1 space-y-1 text-xs text-muted">
+            <div>{sorted.length ? `${sorted.length} unique players drafted here` : "No data for this exact slot"}</div>
+
+            {top?.name ? (
+              <div className="text-white/80">
+                Most common:{" "}
+                <span className="font-semibold text-white">{safeStr(top.name)}</span>
+                {top?.position ? <span className="text-white/60"> ({safeStr(top.position)})</span> : null}
+                {Number.isFinite(safeNum(top.pct)) ? (
+                  <span className="text-white/60"> • {pctFmt(safeNum(top.pct))}</span>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="text-white/60">
+              Tip: this is the <span className="font-semibold text-white/80">distribution</span> for {rp}. The draftboard square
+              itself is filled by <span className="font-semibold text-white/80">ADP placement</span>, so it won’t always match
+              the most common pick here.
+            </div>
+          </div>
+
           </div>
           <button
             onClick={onClose}
@@ -1181,7 +1358,7 @@ function CellModal({ cellKey, teams, list, onClose, onPlayer }) {
                   <div key={`${p.name}|||${p.position}`} className="rounded-2xl border border-border bg-background/20 p-3">
                     <button
                       type="button"
-                      onClick={() => onPlayer?.(p)}
+                      onClick={() => onPlayer?.(p, ctx)}
                       className="w-full text-left"
                       title="View draft breakdown"
                     >
@@ -1201,10 +1378,29 @@ function CellModal({ cellKey, teams, list, onClose, onPlayer }) {
               })}
 
               {!sorted.length ? (
-                <div className="rounded-2xl border border-border bg-background/20 p-5 text-center text-sm text-white/60">
-                  No picks were recorded at this exact slot in the selected drafts. Late picks often diverge due to
-                  players not being taken in some drafts at all.
+                <div className="rounded-2xl border border-border bg-background/20 p-5 text-center text-sm text-white/70">
+                <div className="font-semibold text-white">No draft picks recorded at {rp} in your selected leagues.</div>
+
+                {placedPlayer?.name ? (
+                  <div className="mt-2 leading-6 text-white/70">
+                    This square is still filled because the board is built from <span className="font-semibold text-white/80">ADP placement</span>.
+                    <span className="font-semibold text-white"> {safeStr(placedPlayer.name)}</span>
+                    {placedPlayer?.position ? <span className="text-white/60"> ({safeStr(placedPlayer.position)})</span> : null}
+                    {" "}lands here because they rank <span className="font-semibold text-white/80">#{safeNum(placedOverallRank)}</span> by average pick
+                    (mapped to <span className="font-semibold text-white/80">{safeStr(placedRp || rp)}</span>).
+                  </div>
+                ) : (
+                  <div className="mt-2 leading-6 text-white/70">
+                    This square exists on the board due to <span className="font-semibold text-white/80">ADP placement</span>, but no leagues in your
+                    selection recorded a pick at this exact slot.
+                  </div>
+                )}
+
+                <div className="mt-2 text-white/55 leading-6">
+                  Common reasons: some leagues draft fewer rounds, use keepers, or the saved draft data doesn’t include this deep of a pick.
                 </div>
+              </div>
+
               ) : null}
             </div>
           ) : (
@@ -1223,7 +1419,7 @@ function CellModal({ cellKey, teams, list, onClose, onPlayer }) {
                     <td className="px-5 py-3">
                       <button
                         type="button"
-                        onClick={() => onPlayer?.(p)}
+                        onClick={() => onPlayer?.(p, ctx)}
                         className="w-full text-left text-white hover:underline"
                         title="View draft breakdown"
                       >
@@ -1246,10 +1442,29 @@ function CellModal({ cellKey, teams, list, onClose, onPlayer }) {
 
                 {!sorted.length ? (
                   <tr>
-                    <td colSpan={4} className="px-5 py-8 text-center text-sm text-white/60">
-                      No picks were recorded at this exact slot in the selected drafts. Late picks often diverge due to
-                      players not being taken in some drafts at all.
-                    </td>
+                    <td colSpan={4} className="px-5 py-8 text-center text-sm text-white/70">
+                    <div className="font-semibold text-white">No draft picks recorded at {rp} in your selected leagues.</div>
+
+                    {placedPlayer?.name ? (
+                      <div className="mt-2 leading-6 text-white/70">
+                        This square is filled by <span className="font-semibold text-white/80">ADP placement</span>.
+                        <span className="font-semibold text-white"> {safeStr(placedPlayer.name)}</span>
+                        {placedPlayer?.position ? <span className="text-white/60"> ({safeStr(placedPlayer.position)})</span> : null}
+                        {" "}is shown here because they rank <span className="font-semibold text-white/80">#{safeNum(placedOverallRank)}</span> by average pick
+                        (mapped to <span className="font-semibold text-white/80">{safeStr(placedRp || rp)}</span>).
+                      </div>
+                    ) : (
+                      <div className="mt-2 leading-6 text-white/70">
+                        This square exists on the board due to <span className="font-semibold text-white/80">ADP placement</span>, but no leagues in your
+                        selection recorded a pick at this exact slot.
+                      </div>
+                    )}
+
+                    <div className="mt-2 text-white/55 leading-6">
+                      Common reasons: fewer draft rounds, keepers, or incomplete saved draft depth for this slot.
+                    </div>
+                  </td>
+
                   </tr>
                 ) : null}
               </tbody>
