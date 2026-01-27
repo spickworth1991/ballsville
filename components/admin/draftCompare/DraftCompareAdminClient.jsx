@@ -11,6 +11,10 @@ function safeArray(v) {
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
+function safeInt(v, fallback) {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : fallback;
+}
 function cleanSlug(s) {
   return safeStr(s)
     .trim()
@@ -55,7 +59,14 @@ async function getAccessToken() {
 }
 
 export default function DraftCompareAdminClient() {
-  const [season, setSeason] = useState(CURRENT_SEASON);
+  const initialSeason = safeInt(CURRENT_SEASON, new Date().getFullYear());
+
+  // The "active" season we are viewing/editing
+  const [season, setSeason] = useState(initialSeason);
+
+  // Editable input box (so typing doesn't instantly reload unless you want it)
+  const [seasonInput, setSeasonInput] = useState(String(initialSeason));
+
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -82,6 +93,7 @@ export default function DraftCompareAdminClient() {
     };
   }, []);
 
+  // Load rows whenever "season" changes (the active season)
   useEffect(() => {
     let cancelled = false;
 
@@ -171,6 +183,27 @@ export default function DraftCompareAdminClient() {
     });
   }
 
+  function applySeasonInput() {
+    const next = safeInt(seasonInput, NaN);
+    if (!Number.isFinite(next) || next < 2000 || next > 2100) {
+      setErr("Season must be a valid year (2000–2100).");
+      return;
+    }
+    setErr("");
+    setMsg("");
+    // clear staged images when switching seasons (prevents accidental cross-season uploads)
+    setPendingImages((prev) => {
+      const current = prev || {};
+      for (const k of Object.keys(current)) {
+        try {
+          URL.revokeObjectURL(current[k]?.previewUrl);
+        } catch {}
+      }
+      return Object.create(null);
+    });
+    setSeason(next);
+  }
+
   const saveModes = async () => {
     setErr("");
     setMsg("");
@@ -179,8 +212,6 @@ export default function DraftCompareAdminClient() {
       // 1) Build payload from current form state
       let payload = normalized
         .map((r) => ({
-          // IMPORTANT: do not auto-change existing slugs (modeSlug is derived
-          // from the stored slug when present; otherwise it is derived from title).
           modeSlug: cleanSlug(r.modeSlug),
           title: safeStr(r.title).trim(),
           subtitle: safeStr(r.subtitle).trim(),
@@ -226,13 +257,11 @@ export default function DraftCompareAdminClient() {
           };
         }
 
-        // patch payload
         payload = payload.map((r) => {
           const up = uploadedBySlug[r.modeSlug];
           return up ? { ...r, ...up } : r;
         });
 
-        // patch rows so UI reflects newly uploaded key/url
         setRows((prev) =>
           safeArray(prev).map((r) => {
             const slug = cleanSlug(r?.modeSlug || r?.slug || r?.id || r?.name) || deriveSlug(r);
@@ -241,7 +270,6 @@ export default function DraftCompareAdminClient() {
           })
         );
 
-        // clear staged previews + revoke URLs
         setPendingImages((prev) => {
           const next = { ...(prev || {}) };
           for (const slug of Object.keys(uploadedBySlug)) {
@@ -293,7 +321,6 @@ export default function DraftCompareAdminClient() {
         data: json,
       });
 
-      // Mark as uploaded in UI
       setRows((prev) =>
         safeArray(prev).map((r) => {
           const slug = cleanSlug(r?.modeSlug || r?.slug || r?.id || r?.name);
@@ -327,15 +354,28 @@ export default function DraftCompareAdminClient() {
 
         <div className="rounded-2xl border border-subtle bg-card-surface p-4 flex flex-wrap items-center gap-3">
           <label className="text-sm text-muted">Modes JSON season</label>
+
           <input
-            className="input bg-black/5 text-muted"
-            value={season}
-            disabled
-            readOnly
+            className="input"
+            value={seasonInput}
+            onChange={(e) => setSeasonInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") applySeasonInput();
+            }}
             type="number"
+            min={2000}
+            max={2100}
             style={{ width: 140 }}
           />
-          <div className="text-[11px] text-muted">Adjust each mode’s Year below (that controls the homepage sections).</div>
+
+          <button className="btn btn-secondary" onClick={applySeasonInput} disabled={loading || saving}>
+            Load season
+          </button>
+
+          <div className="text-[11px] text-muted">
+            Loaded: <span className="font-semibold text-primary">{season}</span>. Change it to edit older seasons.
+          </div>
+
           <button className="btn btn-secondary" onClick={addMode}>
             Add mode
           </button>
@@ -348,7 +388,9 @@ export default function DraftCompareAdminClient() {
           <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 p-4 text-sm text-rose-100">{err}</div>
         ) : null}
         {msg ? (
-          <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm text-emerald-100">{msg}</div>
+          <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm text-emerald-100">
+            {msg}
+          </div>
         ) : null}
 
         {loading ? (
@@ -414,6 +456,9 @@ export default function DraftCompareAdminClient() {
                         min={2000}
                         max={2100}
                       />
+                      <div className="text-[11px] text-muted">
+                        This controls which year the mode appears under on the homepage.
+                      </div>
                     </div>
 
                     <div className="space-y-2">
