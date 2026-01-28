@@ -53,6 +53,19 @@ body {
   --overlay-alpha: 0.55;     /* slightly lighter mobile scrim */
   --nav-height: 100px;
 
+  /* Ensure the Home logo never collapses on real mobile browsers */
+.nav-home-logo {
+  display: block;
+  flex: 0 0 auto;      /* don't let flexbox shrink it */
+  flex-shrink: 0;
+  min-width: 28px;     /* matches ~h-7 */
+  min-height: 28px;
+  width: auto;
+  height: auto;
+}
+
+
+
   /* Footer (light shell) */
   --footer-height: 180px;
   --footer-color-bg: #050d33;
@@ -639,6 +652,15 @@ body {
 }
 
 /* ========== RESPONSIVE TWEAKS ========== */
+/* Extra safety for true touch devices (differs from DevTools emulation) */
+@media (hover: none) and (pointer: coarse) {
+  .nav-home-logo {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+}
+
 
 @media (max-width: 768px) {
   .page-bg {
