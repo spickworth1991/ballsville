@@ -27,7 +27,7 @@ import {
  */
 
 const NAV_ITEMS = [
-  { id: "home", name: "Home", to: "/", icon: FiHome },
+  { id: "home", name: "Home", to: "/"},
   {
     id: "game-modes",
     name: "Game Modes",
@@ -123,7 +123,7 @@ function isNodeActive(node, pathname) {
 function UpdatePill() {
   return (
     <span
-      className="ml-2 inline-flex items-center rounded-full border border-subtle bg-white/5 px-2 py-0.5 text-[10px] font-bold tracking-wide text-primary"
+      className="ml-2 inline-flex items-center rounded-full border border-subtle bg-white/5 px-1.5 py-0.5 text-[8px] font-semibold tracking-wide text-primary"
       aria-label="Update"
     >
       UPDATE
@@ -134,7 +134,7 @@ function UpdatePill() {
 function NewPill() {
   return (
     <span
-      className="ml-2 inline-flex items-center rounded-full border border-subtle bg-white/5 px-2 py-0.5 text-[10px] font-bold tracking-wide text-accent"
+      className="ml-2 inline-flex items-center rounded-full border border-subtle bg-white/5 px-2 py-0.5 text-[8px] font-semibold tracking-wide text-accent"
       aria-label="New"
     >
       NEW
@@ -169,7 +169,6 @@ export default function Navbar() {
 
   const containerRef = useRef(null);
   const linksRef = useRef([]);
-  const logoRef = useRef(null);
   const rightRef = useRef(null);
   const innerRef = useRef(null);
 
@@ -206,7 +205,7 @@ export default function Navbar() {
     if (!innerRef.current) return;
 
     const rowWidth = innerRef.current.offsetWidth || 0;
-    const logoWidth = logoRef.current?.offsetWidth || 0;
+    const logoWidth = 0; // no logo, so zero
 
     // right side measured width (theme + maybe hamburger)
     let rightWidth = rightRef.current?.offsetWidth || 0;
@@ -366,27 +365,12 @@ export default function Navbar() {
       >
         <div
           ref={innerRef}
-          className="max-w-7xl mx-auto flex items-center justify-between h-full px-4 md:px-8"
+          className="max-w-7xl mx-auto flex items-center justify-between h-full px-3 sm:px-4 md:px-8"
+
         >
           {/* Left: logo + links */}
           <div className="flex items-center flex-1 min-w-0">
-            <Link
-              href="/"
-              className="flex items-center flex-shrink-0"
-              prefetch={false}
-              ref={logoRef}
-              onClick={handleNavClick}
-            >
-              <img
-                src="/logo_navbar@2x-v2.png"
-                alt={siteConfig.name}
-                width={scrolled ? 24 : 32}
-                height={scrolled ? 24 : 32}
-                className={`${scrolled ? "h-8 w-8" : "h-14 w-14"} transition-all`}
-              />
-            </Link>
-
-            <ul className="flex flex-1 min-w-0 items-center space-x-4 ml-6 flex-nowrap overflow-visible">
+            <ul className="flex flex-1 min-w-0 items-center space-x-3 sm:space-x-4 flex-nowrap overflow-visible ml-5 landscape:ml-2 sm:ml-6">
               {NAV_ITEMS.map((item, i) => {
                 const hasChildren = hasKids(item);
                 const isActive = isNodeActive(item, pathname);
@@ -407,7 +391,25 @@ export default function Navbar() {
                       aria-hidden="true"
                     >
                       <span className="inline-flex items-center space-x-1">
-                        {item.icon && <item.icon className="w-5 h-5" />}
+                       {item.id === "home" ? (
+                        <span className="inline-flex items-center mr-1">
+                          <img
+  src="/logo_navbar@2x-v2.png"
+  alt=""
+  loading="eager"
+  decoding="async"
+  className={`${scrolled ? "h-7 w-7" : "h-8 w-8"} !block !opacity-100 shrink-0 object-contain`}
+  style={{ display: "block" }}
+  aria-hidden="true"
+/>
+
+                        </span>
+
+                      ) : (
+                        item.icon ? <item.icon className="w-5 h-5" /> : null
+                      )}
+
+
                         <span className="whitespace-nowrap">{item.name}</span>
                         <NavPills node={item} />
                         {hasChildren && <FiChevronDown className="w-4 h-4" />}
@@ -425,7 +427,26 @@ export default function Navbar() {
                         }`}
                         onClick={handleNavClick}
                       >
-                        {item.icon && <item.icon className="w-5 h-5" />}
+                        {item.id === "home" ? (
+                          <span className="inline-flex items-center mr-1">
+                           <img
+  src="/logo_navbar@2x-v2.png"
+  alt=""
+  loading="eager"
+  decoding="async"
+  className={`${scrolled ? "h-7 w-7" : "h-8 w-8"} !block !opacity-100 shrink-0 object-contain`}
+  style={{ display: "block" }}
+  aria-hidden="true"
+/>
+
+                          </span>
+
+
+                        ) : (
+                          item.icon ? <item.icon className="w-5 h-5" /> : null
+                        )}
+
+
                         <span className="whitespace-nowrap">{item.name}</span>
                         <NavPills node={item} />
                       </Link>
@@ -450,7 +471,26 @@ export default function Navbar() {
                           }
                           aria-haspopup="menu"
                         >
-                          {item.icon && <item.icon className="w-5 h-5" />}
+                            {item.id === "home" ? (
+                              <span className="inline-flex items-center mr-1">
+                                <img
+  src="/logo_navbar@2x-v2.png"
+  alt=""
+  loading="eager"
+  decoding="async"
+  className={`${scrolled ? "h-7 w-7" : "h-8 w-8"} !block !opacity-100 shrink-0 object-contain`}
+  style={{ display: "block" }}
+  aria-hidden="true"
+/>
+
+                              </span>
+
+
+                            ) : (
+                              item.icon ? <item.icon className="w-5 h-5" /> : null
+                            )}
+
+
                           <span className="whitespace-nowrap">{item.name}</span>
                           <NavPills node={item} />
                           <FiChevronDown
@@ -617,7 +657,24 @@ export default function Navbar() {
                     }`}
                     onClick={handleNavClick}
                   >
-                    {item.icon && <item.icon className="w-6 h-6" />}
+                    {item.id === "home" ? (
+                      <span className="inline-flex items-center mr-1">
+                        <img
+  src="/logo_navbar@2x-v2.png"
+  alt=""
+  loading="eager"
+  decoding="async"
+  className={`${scrolled ? "h-7 w-7" : "h-8 w-8"} !block !opacity-100 shrink-0 object-contain`}
+  style={{ display: "block" }}
+  aria-hidden="true"
+/>
+
+                      </span>
+
+                    ) : (
+                      item.icon ? <item.icon className="w-5 h-5" /> : null
+                    )}
+
                     <span>{item.name}</span>
                     <NavPills node={item} />
                   </Link>
@@ -638,7 +695,25 @@ export default function Navbar() {
                     }`}
                   >
                     <span className="inline-flex items-center space-x-2">
-                      {item.icon && <item.icon className="w-6 h-6" />}
+                      {item.id === "home" ? (
+                        <span className="inline-flex items-center mr-1">
+                          <img
+  src="/logo_navbar@2x-v2.png"
+  alt=""
+  loading="eager"
+  decoding="async"
+  className={`${scrolled ? "h-7 w-7" : "h-8 w-8"} !block !opacity-100 shrink-0 object-contain`}
+  style={{ display: "block" }}
+  aria-hidden="true"
+/>
+
+                        </span>
+
+                      ) : (
+                        item.icon ? <item.icon className="w-5 h-5" /> : null
+                      )}
+
+
                       <span>{item.name}</span>
                       <NavPills node={item} />
                     </span>
