@@ -394,14 +394,14 @@ export default function Navbar() {
                        {item.id === "home" ? (
                         <span className="inline-flex items-center mr-1">
                           <img
-  src="/logo_navbar@2x-v2.png"
-  alt=""
-  loading="eager"
-  decoding="async"
-  className={`${scrolled ? "h-7 w-7" : "h-8 w-8"} !block !opacity-100 shrink-0 object-contain`}
-  style={{ display: "block" }}
-  aria-hidden="true"
-/>
+                            src="/logo_navbar@2x-v2.png"
+                            alt=""
+                            loading="eager"
+                            decoding="async"
+                            className={`${scrolled ? "h-7 w-7" : "h-8 w-8"} object-contain nav-home-logo`}
+                            style={{ display: "block" }}
+                            aria-hidden="true"
+                          />
 
                         </span>
 
@@ -430,14 +430,14 @@ export default function Navbar() {
                         {item.id === "home" ? (
                           <span className="inline-flex items-center mr-1">
                            <img
-  src="/logo_navbar@2x-v2.png"
-  alt=""
-  loading="eager"
-  decoding="async"
-  className={`${scrolled ? "h-7 w-7" : "h-8 w-8"} !block !opacity-100 shrink-0 object-contain`}
-  style={{ display: "block" }}
-  aria-hidden="true"
-/>
+                            src="/logo_navbar@2x-v2.png"
+                            alt=""
+                            loading="eager"
+                            decoding="async"
+                            className={`${scrolled ? "h-7 w-7" : "h-8 w-8"} object-contain nav-home-logo`}
+                            style={{ display: "block" }}
+                            aria-hidden="true"
+                          />
 
                           </span>
 
@@ -474,14 +474,14 @@ export default function Navbar() {
                             {item.id === "home" ? (
                               <span className="inline-flex items-center mr-1">
                                 <img
-  src="/logo_navbar@2x-v2.png"
-  alt=""
-  loading="eager"
-  decoding="async"
-  className={`${scrolled ? "h-7 w-7" : "h-8 w-8"} !block !opacity-100 shrink-0 object-contain`}
-  style={{ display: "block" }}
-  aria-hidden="true"
-/>
+                                src="/logo_navbar@2x-v2.png"
+                                alt=""
+                                loading="eager"
+                                decoding="async"
+                                className={`${scrolled ? "h-7 w-7" : "h-8 w-8"} object-contain nav-home-logo`}
+                                style={{ display: "block" }}
+                                aria-hidden="true"
+                              />
 
                               </span>
 
@@ -660,14 +660,14 @@ export default function Navbar() {
                     {item.id === "home" ? (
                       <span className="inline-flex items-center mr-1">
                         <img
-  src="/logo_navbar@2x-v2.png"
-  alt=""
-  loading="eager"
-  decoding="async"
-  className={`${scrolled ? "h-7 w-7" : "h-8 w-8"} !block !opacity-100 shrink-0 object-contain`}
-  style={{ display: "block" }}
-  aria-hidden="true"
-/>
+                          src="/logo_navbar@2x-v2.png"
+                          alt=""
+                          loading="eager"
+                          decoding="async"
+                          className={`${scrolled ? "h-7 w-7" : "h-8 w-8"} object-contain nav-home-logo`}
+                          style={{ display: "block" }}
+                          aria-hidden="true"
+                        />
 
                       </span>
 
@@ -698,14 +698,14 @@ export default function Navbar() {
                       {item.id === "home" ? (
                         <span className="inline-flex items-center mr-1">
                           <img
-  src="/logo_navbar@2x-v2.png"
-  alt=""
-  loading="eager"
-  decoding="async"
-  className={`${scrolled ? "h-7 w-7" : "h-8 w-8"} !block !opacity-100 shrink-0 object-contain`}
-  style={{ display: "block" }}
-  aria-hidden="true"
-/>
+                            src="/logo_navbar@2x-v2.png"
+                            alt=""
+                            loading="eager"
+                            decoding="async"
+                            className={`${scrolled ? "h-7 w-7" : "h-8 w-8"} object-contain nav-home-logo`}
+                            style={{ display: "block" }}
+                            aria-hidden="true"
+                          />
 
                         </span>
 
