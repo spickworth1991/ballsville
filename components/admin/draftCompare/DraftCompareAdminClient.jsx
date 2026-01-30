@@ -403,6 +403,7 @@ export default function DraftCompareAdminClient() {
               const slug = cleanSlug(r.modeSlug);
               const stagedPreview = pendingImages?.[slug]?.previewUrl || "";
               const previewUrl = stagedPreview || r.image_url || "";
+              const canBuild = !!safeStr(r.title).trim() && Number(r.order) > 0 && Number(r.year) > 0 && !!cleanSlug(r.modeSlug);
 
               return (
                 <div key={`${idx}-${r.modeSlug}`} className="rounded-2xl border border-subtle bg-card-surface p-4">
@@ -482,6 +483,24 @@ export default function DraftCompareAdminClient() {
                   </div>
 
                   <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <Link
+                      prefetch={false}
+                      className={`btn btn-primary${!canBuild ? " pointer-events-none opacity-50" : ""}`}
+                      href={`/admin/draft-compare/build?season=${encodeURIComponent(String(season))}&modeSlug=${encodeURIComponent(
+                        cleanSlug(r.modeSlug)
+                      )}&title=${encodeURIComponent(safeStr(r.title).trim())}&year=${encodeURIComponent(
+                        String(r.year)
+                      )}&order=${encodeURIComponent(String(r.order))}&action=${encodeURIComponent(
+                        r.hasDraftJson ? "rebuild" : "create"
+                      )}`}
+                      aria-disabled={!canBuild}
+                      onClick={(e) => {
+                        if (!canBuild) e.preventDefault();
+                      }}
+                    >
+                      {r.hasDraftJson ? "Rebuild database" : "Create database"}
+                    </Link>
+
                     <label className="btn btn-secondary">
                       Upload draft JSON
                       <input
