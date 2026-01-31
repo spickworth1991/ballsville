@@ -149,6 +149,12 @@ function normalizeRow(r, idx) {
   // Keep backward compat by OR-ing any existing boolean-ish values.
   const is_orphan = statusNorm.includes("ORPHAN") || asBool(r?.is_orphan, false);
 
+  // Preserve Sleeper IDs coming from the automation flow.
+  // Used for public directory fallback links and future tooling.
+  const league_id = asStr(r?.league_id || r?.leagueId || r?.sleeper_league_id || "").trim();
+  const draft_id = asStr(r?.draft_id || r?.draftId || "").trim();
+  const avatar = asStr(r?.avatar || "").trim();
+
   return {
     id,
     year,
@@ -157,6 +163,10 @@ function normalizeRow(r, idx) {
     theme_imageKey: theme_imageKey || null,
     theme_image_url: theme_image_url || null,
     name: asStr(r?.name || "").trim() || `League ${idx + 1}`,
+    // Sleeper metadata (persisted from automation)
+    league_id: league_id || null,
+    draft_id: draft_id || null,
+    avatar: avatar || null,
     status,
     sleeper_url: asStr(r?.sleeper_url || r?.url || "").trim() || null,
     imageKey: imageKey || null,
@@ -167,6 +177,11 @@ function normalizeRow(r, idx) {
     display_order: asNum(r?.display_order, null),
     is_active: asBool(r?.is_active, true),
     is_orphan,
+
+    // Sleeper identifiers (optional but highly recommended)
+    league_id: league_id || null,
+    draft_id: draft_id || null,
+    avatar: avatar || null,
   };
 }
 
