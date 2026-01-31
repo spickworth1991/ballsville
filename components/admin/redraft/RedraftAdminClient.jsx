@@ -1,4 +1,4 @@
-// app/admin/redraft/RedraftAdminClient.jsx
+// components/admin/redraft/RedraftAdminClient.jsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -8,13 +8,6 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { CURRENT_SEASON } from "@/lib/season";
 
 const SEASON = CURRENT_SEASON;
-
-const STATUS_OPTIONS = [
-  { value: "tbd", label: "TBD" },
-  { value: "filling", label: "FILLING" },
-  { value: "drafting", label: "DRAFTING" },
-  { value: "full", label: "FULL" },
-];
 
 const DEFAULT_PAGE = {
   season: SEASON,
@@ -27,9 +20,12 @@ const DEFAULT_PAGE = {
 
 function emptyLeague(order) {
   return {
+    leagueId: "", // Sleeper league_id (optional for legacy/manual leagues)
+    sleeperUrl: "",
+    avatarId: "",
     name: `League ${order}`,
-    url: "",
-    status: "tbd",
+    url: "", // invite link (manual)
+    status: "tbd", // legacy/manual; Sleeper-driven leagues use: predraft|drafting|inseason|complete
     active: true,
     order,
     imageKey: "",
@@ -89,8 +85,7 @@ async function uploadImage(file, payload) {
   form.append("file", file);
   form.append("section", payload.section);
   form.append("season", String(payload.season));
-  if (payload.leagueOrder) form.append("leagueOrder", String(payload.leagueOrder));
-
+  if (payload.leagueOrder != null) form.append("leagueOrder", String(payload.leagueOrder));
   const res = await fetch("/api/admin/upload", {
     method: "POST",
     headers: { authorization: `Bearer ${token}` },
@@ -101,39 +96,39 @@ async function uploadImage(file, payload) {
 }
 
 function useObjectUrl() {
-  const urlsRef = useRef(new Set());
+  const cacheRef = useRef(new Map());
   useEffect(() => {
     return () => {
-      for (const url of urlsRef.current) URL.revokeObjectURL(url);
-      urlsRef.current.clear();
+      for (const url of cacheRef.current.values()) URL.revokeObjectURL(url);
+      cacheRef.current.clear();
     };
   }, []);
   return (file) => {
     if (!file) return "";
+    const key = `${file.name}:${file.size}:${file.lastModified}`;
+    const existing = cacheRef.current.get(key);
+    if (existing) return existing;
     const url = URL.createObjectURL(file);
-    urlsRef.current.add(url);
+    cacheRef.current.set(key, url);
     return url;
   };
 }
 
-function StatusSelect({ value, onChange }) {
-  return (
-    <select
-      className="input"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    >
-      {STATUS_OPTIONS.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
-  );
+function statusLabel(raw) {
+  const s = String(raw || "").toLowerCase().trim();
+  if (s === "predraft" || s === "pre-draft" || s === "pre_draft") return "PRE-DRAFT";
+  if (s === "drafting") return "DRAFTING";
+  if (s === "inseason" || s === "in-season" || s === "in_season") return "IN-SEASON";
+  if (s === "complete") return "COMPLETE";
+
+  // legacy fallbacks
+  if (s === "filling") return "PRE-DRAFT";
+  if (s === "full") return "FULL";
+  if (s === "tbd") return "TBD";
+  return s ? s.toUpperCase() : "TBD";
 }
 
 export default function RedraftAdminClient() {
-  const [tab, setTab] = useState("updates"); // updates | leagues
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [ok, setOk] = useState("");
@@ -145,7 +140,7 @@ export default function RedraftAdminClient() {
   const makeUrl = useObjectUrl();
 
   const [pendingUpdatesFile, setPendingUpdatesFile] = useState(null);
-  const [pendingLeagueFiles, setPendingLeagueFiles] = useState(() => ({})); // key: order -> File
+  const [pendingLeagueFiles, setPendingLeagueFiles] = useState(() => ({})); // order -> File (legacy/manual)
 
   const updatesPreview = pendingUpdatesFile
     ? makeUrl(pendingUpdatesFile)
@@ -195,13 +190,33 @@ export default function RedraftAdminClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function addLeague() {
+  function normalizeOrders(next) {
+    const sorted = [...next].sort((a, b) => Number(a.order) - Number(b.order));
+    return sorted.map((l, idx) => ({ ...l, order: idx + 1 }));
+  }
+
+  function moveLeague(order, dir) {
+    setLeagues((prev) => {
+      const sorted = [...prev].sort((a, b) => Number(a.order) - Number(b.order));
+      const i = sorted.findIndex((l) => Number(l.order) === Number(order));
+      if (i < 0) return prev;
+      const j = dir === "up" ? i - 1 : i + 1;
+      if (j < 0 || j >= sorted.length) return prev;
+      const swapped = [...sorted];
+      const tmp = swapped[i];
+      swapped[i] = swapped[j];
+      swapped[j] = tmp;
+      return normalizeOrders(swapped);
+    });
+  }
+
+  function addManualLeague() {
     const nextOrder = leagues.length ? Math.max(...leagues.map((l) => Number(l.order) || 0)) + 1 : 1;
     setLeagues((prev) => [...prev, emptyLeague(nextOrder)]);
   }
 
   function removeLeague(order) {
-    setLeagues((prev) => prev.filter((l) => Number(l.order) !== Number(order)));
+    setLeagues((prev) => normalizeOrders(prev.filter((l) => Number(l.order) !== Number(order))));
     setPendingLeagueFiles((prev) => {
       const next = { ...prev };
       delete next[String(order)];
@@ -230,6 +245,8 @@ export default function RedraftAdminClient() {
 
       let nextLeagues = leagues.map((l) => ({ ...l }));
       for (const l of nextLeagues) {
+        // Only allow manual image overrides for legacy/manual entries (no leagueId),
+        // or if the admin explicitly uploaded a replacement.
         const f = pendingLeagueFiles[String(l.order)];
         if (!f) continue;
         const up = await uploadImage(f, { section: "redraft-league", season: SEASON, leagueOrder: l.order });
@@ -249,228 +266,278 @@ export default function RedraftAdminClient() {
     }
   }
 
+  const sortedLeagues = useMemo(() => {
+    const next = [...leagues];
+    next.sort((a, b) => Number(a.order) - Number(b.order));
+    return next;
+  }, [leagues]);
+
   if (loading) {
     return (
-      <section className="section">
-        <div className="container-site max-w-3xl">
-          <div className="card bg-card-surface border border-subtle p-6 text-center">
-            <p className="text-muted">Loading Redraft admin…</p>
-          </div>
-        </div>
-      </section>
+      <div className="mx-auto max-w-6xl px-4 py-8">
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-white/80">Loading…</div>
+      </div>
     );
   }
 
   return (
-    <section className="section">
-      <div className="container-site max-w-5xl space-y-6">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <span className="badge">Admins</span>
-            <h1 className="h2 mt-3 text-primary">Redraft Manager</h1>
-            <p className="text-muted mt-1 text-sm">Edits live content on /redraft from R2 (no divisions).</p>
-          </div>
-          <div className="flex gap-2">
-            <Link prefetch={false} href="/redraft" className="btn btn-primary">
-              View Page
-            </Link>
-            <Link prefetch={false} href="/admin" className="btn btn-primary">
-              Admin Home
-            </Link>
-          </div>
+    <div className="mx-auto max-w-6xl px-4 py-8 text-white">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Redraft Admin</h1>
+          <p className="text-white/60">Season: {SEASON}</p>
         </div>
 
-        <div className="flex gap-2 flex-wrap">
-          <button
-            className={`btn ${tab === "updates" ? "btn-primary" : "btn-primary"}`}
-            onClick={() => setTab("updates")}
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`/admin/redraft/add-leagues`}
+            className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15"
           >
-            Updates
-          </button>
+            Add leagues (from Sleeper)
+          </Link>
+
           <button
-            className={`btn ${tab === "leagues" ? "btn-primary" : "btn-outline"}`}
-            onClick={() => setTab("leagues")}
+            type="button"
+            onClick={addManualLeague}
+            className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15"
           >
-            Leagues
+            Add manual league
           </button>
-        </div>
 
-        {err ? (
-          <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 p-4 text-sm text-rose-100">{err}</div>
-        ) : null}
-        {ok ? (
-          <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm text-emerald-100">{ok}</div>
-        ) : null}
-
-        {tab === "updates" ? (
-          <div className="rounded-3xl border border-subtle bg-card-surface p-6 md:p-8 space-y-5">
-            <div className="flex items-end justify-between gap-4 flex-wrap">
-              <div>
-                <h2 className="text-lg font-semibold text-primary">Updates Block</h2>
-                <p className="text-sm text-muted mt-1">Image + HTML content shown on /redraft.</p>
-              </div>
-              <div className="text-xs text-muted">Season {SEASON}</div>
-            </div>
-
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-              <div className="space-y-3">
-                <label className="text-sm font-semibold text-fg">Updates image</label>
-                <div className="relative w-full aspect-[16/9] rounded-2xl overflow-hidden border border-subtle bg-black/20">
-                  <Image src={updatesPreview || "/photos/redraft/how-it-works.jpg"} alt="Updates" fill className="object-cover" />
-                </div>
-                <input
-                  className="input"
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => setPendingUpdatesFile(e.target.files?.[0] || null)}
-                />
-                <p className="text-xs text-muted">Uploads on Save (deterministic key in R2).</p>
-              </div>
-
-              <div className="space-y-3">
-                <label className="text-sm font-semibold text-fg">Updates HTML</label>
-                <textarea
-                  className="input min-h-[200px]"
-                  value={pageCfg?.hero?.updatesHtml || ""}
-                  onChange={(e) => setPageCfg((p) => ({ ...p, hero: { ...p.hero, updatesHtml: e.target.value } }))}
-                />
-                <div className="rounded-2xl border border-subtle bg-subtle-surface p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Preview</p>
-                  <div
-                    className="prose prose-invert max-w-none text-sm text-muted mt-2"
-                    dangerouslySetInnerHTML={{ __html: pageCfg?.hero?.updatesHtml || "" }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {tab === "leagues" ? (
-          <div className="rounded-3xl border border-subtle bg-card-surface p-6 md:p-8 space-y-5">
-            <div className="flex items-end justify-between gap-4 flex-wrap">
-              <div>
-                <h2 className="text-lg font-semibold text-primary">Redraft Leagues</h2>
-                <p className="text-sm text-muted mt-1">Add as many as you want. Order controls display.</p>
-              </div>
-              <button className="btn btn-outline" onClick={addLeague}>
-                + Add league
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              {leagues
-                .slice()
-                .sort((a, b) => Number(a.order) - Number(b.order))
-                .map((l) => (
-                  <div key={String(l.order)} className="rounded-2xl border border-subtle bg-subtle-surface p-5">
-                    <div className="flex items-start justify-between gap-3 flex-wrap">
-                      <div className="min-w-[160px]">
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">League #{l.order}</p>
-                        <label className="mt-2 block text-xs text-muted">Status</label>
-                        <StatusSelect
-                          value={l.status || "tbd"}
-                          onChange={(v) =>
-                            setLeagues((prev) => prev.map((x) => (Number(x.order) === Number(l.order) ? { ...x, status: v } : x)))
-                          }
-                        />
-                        <label className="mt-3 flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={l.active !== false}
-                            onChange={(e) =>
-                              setLeagues((prev) =>
-                                prev.map((x) => (Number(x.order) === Number(l.order) ? { ...x, active: e.target.checked } : x))
-                              )
-                            }
-                          />
-                          Active
-                        </label>
-                      </div>
-
-                      <div className="flex-1 min-w-[220px] space-y-3">
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div>
-                            <label className="text-xs text-muted">Name</label>
-                            <input
-                              className="input"
-                              value={l.name || ""}
-                              onChange={(e) =>
-                                setLeagues((prev) => prev.map((x) => (Number(x.order) === Number(l.order) ? { ...x, name: e.target.value } : x)))
-                              }
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs text-muted">Sleeper link</label>
-                            <input
-                              className="input"
-                              value={l.url || ""}
-                              onChange={(e) =>
-                                setLeagues((prev) => prev.map((x) => (Number(x.order) === Number(l.order) ? { ...x, url: e.target.value } : x)))
-                              }
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div>
-                            <label className="text-xs text-muted">Order</label>
-                            <input
-                              className="input"
-                              type="number"
-                              value={Number(l.order) || 1}
-                              onChange={(e) => {
-                                const v = Number(e.target.value);
-                                if (!Number.isFinite(v)) return;
-                                setLeagues((prev) => prev.map((x) => (Number(x.order) === Number(l.order) ? { ...x, order: v } : x)));
-                              }}
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs text-muted">League image (optional)</label>
-                            <input
-                              className="input"
-                              type="file"
-                              accept="image/*"
-                              onChange={(e) =>
-                                setPendingLeagueFiles((prev) => ({ ...prev, [String(l.order)]: e.target.files?.[0] || null }))
-                              }
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="w-full sm:w-[220px] space-y-3">
-                        {leaguePreviewSrc(l) ? (
-                          <div className="relative w-full aspect-[16/9] rounded-xl overflow-hidden border border-subtle bg-black/20">
-                            <Image src={leaguePreviewSrc(l)} alt="League" fill className="object-cover" />
-                          </div>
-                        ) : (
-                          <div className="w-full aspect-[16/9] rounded-xl border border-subtle bg-black/10 flex items-center justify-center text-xs text-muted">
-                            No image
-                          </div>
-                        )}
-
-                        <button className="btn btn-outline w-full" onClick={() => removeLeague(l.order)}>
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </div>
-        ) : null}
-
-        <div className="flex items-center justify-end gap-2">
-          <button className="btn btn-outline" onClick={loadAll} disabled={saving}>
-            Reload
-          </button>
-          <button className="btn btn-primary" onClick={saveAll} disabled={saving}>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={saveAll}
+            className="rounded-xl bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-black disabled:opacity-60"
+          >
             {saving ? "Saving…" : "Save"}
           </button>
         </div>
       </div>
-    </section>
+
+      {(ok || err) && (
+        <div className="mb-5 grid gap-2">
+          {ok && <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/10 p-3 text-emerald-100">{ok}</div>}
+          {err && <div className="rounded-xl border border-red-400/20 bg-red-500/10 p-3 text-red-100">{err}</div>}
+        </div>
+      )}
+
+      {/* HERO */}
+      <div className="mb-8 grid gap-4 rounded-2xl border border-white/10 bg-white/5 p-5 md:grid-cols-3">
+        <div className="md:col-span-1">
+          <div className="text-sm font-semibold text-white/80">Promo image</div>
+          <div className="mt-3 overflow-hidden rounded-xl border border-white/10 bg-black/30">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={updatesPreview} alt="promo" className="h-40 w-full object-cover" />
+          </div>
+          <label className="mt-3 block">
+            <div className="mb-1 text-xs text-white/60">Upload new promo image</div>
+            <input
+              type="file"
+              accept="image/*"
+              className="block w-full text-sm text-white/70 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-white hover:file:bg-white/15"
+              onChange={(e) => setPendingUpdatesFile(e.target.files?.[0] || null)}
+            />
+          </label>
+        </div>
+
+        <div className="md:col-span-2">
+          <div className="text-sm font-semibold text-white/80">Updates HTML</div>
+          <textarea
+            className="mt-3 h-40 w-full rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-white/90 outline-none focus:border-white/20"
+            value={pageCfg?.hero?.updatesHtml || ""}
+            onChange={(e) =>
+              setPageCfg((prev) => ({
+                ...prev,
+                hero: { ...(prev.hero || {}), updatesHtml: e.target.value },
+              }))
+            }
+          />
+          <div className="mt-2 text-xs text-white/50">
+            This renders on the Redraft page (keep it clean — links/buttons ok).
+          </div>
+        </div>
+      </div>
+
+      {/* LEAGUES */}
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-lg font-semibold">Leagues</h2>
+        <div className="text-xs text-white/50">
+          Tip: Only <span className="text-white/80">PRE-DRAFT</span> leagues will be clickable on the public page.
+        </div>
+      </div>
+
+      <div className="grid gap-4">
+        {sortedLeagues.map((l, idx) => {
+          const isSleeper = Boolean(l.leagueId);
+          const preview = leaguePreviewSrc(l);
+          const sleeperUrl = l.sleeperUrl || (l.leagueId ? `https://sleeper.app/league/${l.leagueId}` : "");
+          return (
+            <div key={`${l.order}-${l.leagueId || l.name}`} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="flex flex-col gap-4 md:flex-row">
+                <div className="w-full md:w-56">
+                  <div className="overflow-hidden rounded-xl border border-white/10 bg-black/30">
+                    {preview ? (
+                      <Image
+                        src={preview}
+                        alt={l.name || "league"}
+                        width={600}
+                        height={340}
+                        className="h-32 w-full object-cover"
+                        unoptimized
+                      />
+                    ) : (
+                      <div className="flex h-32 items-center justify-center text-xs text-white/40">No image</div>
+                    )}
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <div className="text-xs font-semibold text-white/70">Order</div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => moveLeague(l.order, "up")}
+                        disabled={idx === 0}
+                        className="rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/80 disabled:opacity-40"
+                        title="Move up"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveLeague(l.order, "down")}
+                        disabled={idx === sortedLeagues.length - 1}
+                        className="rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/80 disabled:opacity-40"
+                        title="Move down"
+                      >
+                        ↓
+                      </button>
+                      <div className="rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/70">
+                        {l.order}
+                      </div>
+                    </div>
+                  </div>
+
+                  {!isSleeper && (
+                    <label className="mt-3 block">
+                      <div className="mb-1 text-xs text-white/60">Upload league image (manual only)</div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="block w-full text-sm text-white/70 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-white hover:file:bg-white/15"
+                        onChange={(e) =>
+                          setPendingLeagueFiles((prev) => ({
+                            ...prev,
+                            [String(l.order)]: e.target.files?.[0] || null,
+                          }))
+                        }
+                      />
+                    </label>
+                  )}
+                </div>
+
+                <div className="flex-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-white/80">
+                        {statusLabel(l.status)}
+                      </div>
+                      {sleeperUrl ? (
+                        <a
+                          href={sleeperUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs text-[var(--color-accent)] hover:underline"
+                        >
+                          Sleeper link
+                        </a>
+                      ) : (
+                        <span className="text-xs text-white/40">No Sleeper link</span>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => removeLeague(l.order)}
+                      className="rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-100 hover:bg-red-500/15"
+                    >
+                      Remove
+                    </button>
+                  </div>
+
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <label className="block">
+                      <div className="mb-1 text-xs text-white/60">League name</div>
+                      <input
+                        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 outline-none focus:border-white/20 disabled:opacity-60"
+                        value={l.name || ""}
+                        disabled={isSleeper}
+                        onChange={(e) =>
+                          setLeagues((prev) =>
+                            prev.map((x) => (Number(x.order) === Number(l.order) ? { ...x, name: e.target.value } : x))
+                          )
+                        }
+                      />
+                      {isSleeper && <div className="mt-1 text-[11px] text-white/40">Synced from Sleeper</div>}
+                    </label>
+
+                    <label className="block">
+                      <div className="mb-1 text-xs text-white/60">Invite link (manual)</div>
+                      <input
+                        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 outline-none focus:border-white/20"
+                        value={l.url || ""}
+                        onChange={(e) =>
+                          setLeagues((prev) =>
+                            prev.map((x) => (Number(x.order) === Number(l.order) ? { ...x, url: e.target.value } : x))
+                          )
+                        }
+                        placeholder="https://sleeper.com/i/..."
+                      />
+                      <div className="mt-1 text-[11px] text-white/40">
+                        Only used for filling leagues — keep this up to date.
+                      </div>
+                    </label>
+                  </div>
+
+                  {!isSleeper && (
+                    <div className="mt-3">
+                      <label className="block">
+                        <div className="mb-1 text-xs text-white/60">Status (manual only)</div>
+                        <select
+                          className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 outline-none focus:border-white/20"
+                          value={l.status || "tbd"}
+                          onChange={(e) =>
+                            setLeagues((prev) =>
+                              prev.map((x) => (Number(x.order) === Number(l.order) ? { ...x, status: e.target.value } : x))
+                            )
+                          }
+                        >
+                          <option value="tbd">TBD</option>
+                          <option value="predraft">PRE-DRAFT</option>
+                          <option value="drafting">DRAFTING</option>
+                          <option value="inseason">IN-SEASON</option>
+                          <option value="complete">COMPLETE</option>
+                        </select>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-white/60">
+        <div className="font-semibold text-white/80">Workflow</div>
+        <ul className="mt-2 list-disc space-y-1 pl-5">
+          <li>
+            Use <span className="text-white/80">Add leagues (from Sleeper)</span> to pull name/status/avatar automatically.
+          </li>
+          <li>Set the invite link manually (Sleeper does not provide this).</li>
+          <li>Reorder with ↑ ↓. Save when done.</li>
+        </ul>
+      </div>
+    </div>
   );
 }

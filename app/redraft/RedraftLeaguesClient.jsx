@@ -10,19 +10,33 @@ import { CURRENT_SEASON } from "@/lib/season";
 const SEASON = CURRENT_SEASON;
 
 const STATUS_LABEL = {
-  full: "FULL",
-  filling: "FILLING",
+  predraft: "PRE-DRAFT",
   drafting: "DRAFTING",
+  inseason: "IN-SEASON",
+  complete: "COMPLETE",
   tbd: "TBD",
 };
 
 
+function normalizeStatus(raw) {
+  const s = safeStr(raw).trim().toLowerCase();
+  if (s === "pre_draft" || s === "pre-draft" || s === "predraft") return "predraft";
+  if (s === "drafting") return "drafting";
+  if (s === "in_season" || s === "in-season" || s === "inseason") return "inseason";
+  if (s === "complete") return "complete";
+  // legacy mapping (older redraft JSON)
+  if (s === "filling") return "predraft";
+  if (s === "full") return "complete";
+  return s || "tbd";
+}
+
 function statusBadge(raw) {
-  const s = safeStr(raw).trim().toUpperCase();
-  if (s.includes("DRAFT")) return STATUS_LABEL.drafting;
-  if (s.includes("FILL")) return STATUS_LABEL.filling;
-  if (s.includes("TBD")) return STATUS_LABEL.tbd;
-  return STATUS_LABEL.full;
+  const s = normalizeStatus(raw);
+  if (s === "drafting") return STATUS_LABEL.drafting;
+  if (s === "predraft") return STATUS_LABEL.predraft;
+  if (s === "inseason") return STATUS_LABEL.inseason;
+  if (s === "complete") return STATUS_LABEL.complete;
+  return STATUS_LABEL.tbd;
 }
 
 function leagueImageSrc(l, updatedAt) {
@@ -151,8 +165,8 @@ export default function RedraftLeaguesClient({
         {sorted.map((l, idx) => {
           const href = safeStr(l?.url || l?.sleeper_url || l?.sleeperUrl || "").trim();
           const badge = statusBadge(l?.status);
-          const isFilling = badge === STATUS_LABEL.filling;
-          const isClickable = isFilling && Boolean(href);
+          const isPreDraft = normalizeStatus(l?.status) === "predraft";
+          const isClickable = isPreDraft && Boolean(href);
           const img = leagueImageSrc(l, updatedAt);
 
           const CardTag = isClickable ? "a" : "div";
