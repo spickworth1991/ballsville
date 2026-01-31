@@ -99,7 +99,11 @@ function normalizeRow(r, idx = 0) {
   const orphanOpen = Boolean(r?.orphanOpen) || Boolean(r?.is_orphan);
 
   // Single source of truth for "ready": if notReady true, the public page should treat it as TBD.
-  const notReady = Boolean(r?.notReady) || r?.is_active === false;
+  // IMPORTANT: do NOT tie this to `is_active` (that would hide the league in the public directory).
+  // Back-compat: older rows may have used `is_active:false` to mean "not ready".
+  const explicitNotReady = Boolean(r?.notReady ?? r?.not_ready);
+  const legacyNotReady = r?.is_active === false && r?.notReady == null && r?.not_ready == null;
+  const notReady = explicitNotReady || legacyNotReady;
 
   return {
     id,
@@ -138,7 +142,9 @@ function normalizeRow(r, idx = 0) {
 
     // backward compat
     is_orphan: orphanOpen,
-    is_active: !notReady,
+    // `is_active` should not be driven by the "not ready" UI.
+    // Keep it truthy so the league remains visible in the public directory.
+    is_active: r?.is_active === false && !legacyNotReady ? false : true,
 
     is_theme_stub: Boolean(r?.is_theme_stub),
   };
@@ -377,15 +383,26 @@ export default function DynastyAdminClient() {
     if (!id) {
       return { total_rosters: 0, filled_rosters: 0, open_spots: 0, last_refreshed: new Date().toISOString() };
     }
-    const res = await fetch(`https://api.sleeper.app/v1/league/${id}/rosters`, { cache: "no-store" });
-    if (!res.ok) {
+    // Match the proven script logic:
+    // - totalTeams = league.total_rosters (fallback: rosters.length)
+    // - filledTeams = rosters with owner_id
+    const [leagueRes, rostersRes] = await Promise.all([
+      fetch(`https://api.sleeper.app/v1/league/${id}`, { cache: "no-store" }),
+      fetch(`https://api.sleeper.app/v1/league/${id}/rosters`, { cache: "no-store" }),
+    ]);
+
+    if (!leagueRes.ok || !rostersRes.ok) {
       return { total_rosters: 0, filled_rosters: 0, open_spots: 0, last_refreshed: new Date().toISOString() };
     }
-    const list = await res.json().catch(() => []);
+
+    const league = await leagueRes.json().catch(() => ({}));
+    const list = await rostersRes.json().catch(() => []);
     const rosters = Array.isArray(list) ? list : [];
-    const total_rosters = rosters.length;
-    const filled_rosters = rosters.reduce((acc, r) => (r?.owner_id ? acc + 1 : acc), 0);
+
+    const total_rosters = Number(league?.total_rosters) || rosters.length;
+    const filled_rosters = rosters.filter((r) => r && r.owner_id).length;
     const open_spots = Math.max(0, total_rosters - filled_rosters);
+
     return { total_rosters, filled_rosters, open_spots, last_refreshed: new Date().toISOString() };
   }
 
@@ -927,7 +944,7 @@ export default function DynastyAdminClient() {
                                       <input
                                         type="checkbox"
                                         checked={lg.notReady}
-                                        onChange={(e) => updateLeague(lg.id, { notReady: e.target.checked, is_active: !e.target.checked })}
+                                        onChange={(e) => updateLeague(lg.id, { notReady: e.target.checked })}
                                       />
                                       League not ready
                                     </label>

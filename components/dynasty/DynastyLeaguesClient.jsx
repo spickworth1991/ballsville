@@ -96,8 +96,9 @@ function slugify(s) {
  * - byYear: Map<year, Map<themeName, leagues[]>>
  */
 function transformLeagues(rows) {
-  // Only show leagues marked active (or with null/undefined treated as active)
-  const active = (rows || []).filter((r) => r?.is_active !== false);
+  // Only hide leagues that are explicitly deactivated.
+  // IMPORTANT: "Not Ready" leagues should still appear (as TBD) in the directory.
+  const active = (rows || []).filter((r) => r?.is_active !== false || r?.notReady === true);
 
   const orphans = active.filter((r) => {
     const st = String(r?.status || "").trim().toUpperCase();
