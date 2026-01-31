@@ -1,4 +1,3 @@
-
 // app/redraft/RedraftLeaguesClient.jsx
 "use client";
 import { r2Url } from "@/lib/r2Url";
@@ -10,19 +9,32 @@ import { CURRENT_SEASON } from "@/lib/season";
 const SEASON = CURRENT_SEASON;
 
 const STATUS_LABEL = {
-  full: "FULL",
-  filling: "FILLING",
+  predraft: "PRE-DRAFT",
   drafting: "DRAFTING",
+  inseason: "IN-SEASON",
+  complete: "COMPLETE",
   tbd: "TBD",
 };
 
+function normalizeStatus(raw) {
+  const s = safeStr(raw).trim().toLowerCase();
+  if (s === "pre_draft" || s === "pre-draft" || s === "predraft") return "predraft";
+  if (s === "drafting") return "drafting";
+  if (s === "in_season" || s === "in-season" || s === "inseason") return "inseason";
+  if (s === "complete") return "complete";
+  // legacy mapping (older redraft JSON)
+  if (s === "filling") return "predraft";
+  if (s === "full") return "complete";
+  return s || "tbd";
+}
 
 function statusBadge(raw) {
-  const s = safeStr(raw).trim().toUpperCase();
-  if (s.includes("DRAFT")) return STATUS_LABEL.drafting;
-  if (s.includes("FILL")) return STATUS_LABEL.filling;
-  if (s.includes("TBD")) return STATUS_LABEL.tbd;
-  return STATUS_LABEL.full;
+  const s = normalizeStatus(raw);
+  if (s === "drafting") return STATUS_LABEL.drafting;
+  if (s === "predraft") return STATUS_LABEL.predraft;
+  if (s === "inseason") return STATUS_LABEL.inseason;
+  if (s === "complete") return STATUS_LABEL.complete;
+  return STATUS_LABEL.tbd;
 }
 
 function leagueImageSrc(l, updatedAt) {
@@ -32,6 +44,13 @@ function leagueImageSrc(l, updatedAt) {
   if (!base) return "";
   if (!updatedAt) return base;
   return base.includes("?") ? base : `${base}?v=${encodeURIComponent(updatedAt)}`;
+}
+
+function sleeperDesktopLeagueUrl(leagueId, fallbackSleeperUrl) {
+  const id = safeStr(leagueId).trim();
+  if (id) return `https://sleeper.com/leagues/${encodeURIComponent(id)}`;
+  const fb = safeStr(fallbackSleeperUrl).trim();
+  return fb || "";
 }
 
 export default function RedraftLeaguesClient({
@@ -139,38 +158,57 @@ export default function RedraftLeaguesClient({
     <section className={embedded ? "" : "mt-8"}>
       {(title || subtitle) && (
         <header className="mb-5">
-          {title && (
-            <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">{title}</h2>
-          )}
-          {subtitle && (
-            <p className="mt-1 text-sm sm:text-base text-white/70 max-w-3xl">{subtitle}</p>
-          )}
+          {title && <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-white">{title}</h2>}
+          {subtitle && <p className="mt-1 text-sm sm:text-base text-white/70 max-w-3xl">{subtitle}</p>}
         </header>
       )}
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {sorted.map((l, idx) => {
-          const href = safeStr(l?.url || l?.sleeper_url || l?.sleeperUrl || "").trim();
-          const badge = statusBadge(l?.status);
-          const isFilling = badge === STATUS_LABEL.filling;
-          const isClickable = isFilling && Boolean(href);
+
+          const inviteHref = safeStr(l?.url || "").trim();
+          const leagueId = safeStr(l?.leagueId || l?.league_id || "").trim();
+
+          const sleeperFallback = safeStr(l?.sleeper_url || l?.sleeperUrl || "").trim();
+          const sleeperDesktopUrl = sleeperDesktopLeagueUrl(leagueId, sleeperFallback);
+
+          const effectiveStatus = l?.notReady ? "tbd" : l?.status;
+          const badge = statusBadge(effectiveStatus);
+          const isPreDraft = normalizeStatus(effectiveStatus) === "predraft";
+
+          // Whole card clickable ONLY when predraft.
+          // In predraft: prefer invite link; otherwise fall back to desktop-safe Sleeper URL.
+          const cardHref = isPreDraft ? (inviteHref || sleeperDesktopUrl) : "";
+          const isClickable = Boolean(cardHref);
+
           const img = leagueImageSrc(l, updatedAt);
 
-          const CardTag = isClickable ? "a" : "div";
-          const cardProps = isClickable
-            ? { href, target: "_blank", rel: "noreferrer" }
-            : {};
+          function openCard() {
+            if (!isClickable) return;
+            // open in new tab
+            window.open(cardHref, "_blank", "noopener,noreferrer");
+          }
 
           return (
-            <CardTag
+            <div
               key={l?.id || `${l?.name}-${idx}`}
-              {...cardProps}
+              role={isClickable ? "link" : undefined}
+              tabIndex={isClickable ? 0 : -1}
+              aria-disabled={!isClickable}
+              onClick={openCard}
+              onKeyDown={(e) => {
+                if (!isClickable) return;
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openCard();
+                }
+              }}
               className={
                 "group rounded-2xl border border-subtle bg-card-surface p-4 transition " +
                 (isClickable
-                  ? "hover:border-accent hover:-translate-y-0.5"
+                  ? "hover:border-accent hover:-translate-y-0.5 cursor-pointer"
                   : "opacity-70 cursor-not-allowed")
               }
-              aria-disabled={!isClickable}
             >
               <div className="flex items-start gap-4">
                 {img ? (
@@ -181,7 +219,9 @@ export default function RedraftLeaguesClient({
 
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-sm font-semibold text-foreground truncate">{safeStr(l?.name || "League")}</h3>
+                    <h3 className="text-sm font-semibold text-foreground truncate">
+                      {safeStr(l?.name || "League")}
+                    </h3>
                     <span className="rounded-full border border-subtle bg-panel px-2 py-0.5 text-[11px] text-muted">
                       {badge}
                     </span>
@@ -193,14 +233,36 @@ export default function RedraftLeaguesClient({
 
                   <div className="mt-4 text-xs text-muted flex items-center justify-between">
                     <span className="truncate">
-                      {isClickable ? "Open in Sleeper" : isFilling ? "Link not set" : "Not currently filling"}
+                      {isPreDraft
+                        ? (inviteHref ? "Open invite link" : (sleeperDesktopUrl ? "Open Sleeper league" : "Link not set"))
+                        : "Not currently pre-draft"}
                     </span>
-                    {isClickable ? <span className="opacity-0 group-hover:opacity-100 transition">→</span> : null}
+
+                    <div className="flex items-center gap-2">
+                      {/* Sleeper link/button ONLY when predraft (your rule). */}
+                      {isPreDraft && sleeperDesktopUrl ? (
+                        <a
+                          href={sleeperDesktopUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-md border border-white/10 bg-black/20 px-2 py-0.5 text-xs text-[var(--color-accent)] hover:bg-white/10"
+                          title="View league on Sleeper"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Sleeper ↗
+                        </a>
+                      ) : null}
+
+                      {isClickable ? (
+                        <span className="opacity-0 transition group-hover:opacity-100">→</span>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               </div>
-            </CardTag>
+            </div>
           );
+
         })}
       </div>
     </section>

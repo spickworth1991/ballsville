@@ -18,27 +18,18 @@ export default function AdminHomePage() {
           />
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Link
-              prefetch={false}
-              href="/admin/posts"
-              className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
-            >
-              <h2 className="text-lg font-semibold text-primary">News & Mini Games</h2>
-              <p className="mt-1 text-sm text-muted">
-                Create and edit news posts, feature updates, and mini games. Controls what appears on the News page.
-              </p>
-            </Link>
 
             <Link
               prefetch={false}
-              href="/admin/dynasty"
+              href="/admin/games"
               className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
             >
-              <h2 className="text-lg font-semibold text-primary">Dynasty Leagues</h2>
+              <h2 className="text-lg font-semibold text-primary">Game Modes</h2>
               <p className="mt-1 text-sm text-muted">
-                Manage Heroes & Dragons of Dynasty league metadata, Sleeper links, and orphan status.
+                Edit all game modes here.
               </p>
             </Link>
+            
 
             <Link
               prefetch={false}
@@ -50,57 +41,7 @@ export default function AdminHomePage() {
                 Edit constitution pages (Dynasty now; main constitution coming later).
               </p>
             </Link>
-
-            <Link
-              prefetch={false}
-              href="/admin/big-game"
-              className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
-            >
-              <h2 className="text-lg font-semibold text-primary">Big Game Divisions/Leagues</h2>
-              <p className="mt-1 text-sm text-muted">Manage the Big Game.</p>
-            </Link>
-
-            <Link
-              prefetch={false}
-              href="/admin/mini-leagues"
-              className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
-            >
-              <h2 className="text-lg font-semibold text-primary">Mini Divisions/Leagues</h2>
-              <p className="mt-1 text-sm text-muted">Manage the mini league game.</p>
-            </Link>
-
-            <Link
-              prefetch={false}
-              href="/admin/redraft"
-              className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
-            >
-              <h2 className="text-lg font-semibold text-primary">Redraft</h2>
-              <p className="mt-1 text-sm text-muted">
-                Manage the Redraft page updates block and live league list.
-              </p>
-            </Link>
-
-            <Link
-              prefetch={false}
-              href="/admin/highlander"
-              className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
-            >
-              <h2 className="text-lg font-semibold text-primary">Highlander</h2>
-              <p className="mt-1 text-sm text-muted">
-                Manage the Highlander page updates block and live league list.
-              </p>
-            </Link>
-
-            <Link
-              prefetch={false}
-              href="/admin/gauntlet"
-              className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
-            >
-              <h2 className="text-lg font-semibold text-primary">Gauntlet Legions</h2>
-              <p className="mt-1 text-sm text-muted">Manage the Gauntlet.</p>
-            </Link>
-
-              
+   
             <Link
               prefetch={false}
               href="/admin/draft-compare"
@@ -139,6 +80,17 @@ export default function AdminHomePage() {
             >
               <h2 className="text-lg font-semibold text-primary">Wager Trackers</h2>
               <p className="mt-1 text-sm text-muted">Manage Big Game + Mini Leagues wager tracking.</p>
+            </Link>
+
+            <Link
+              prefetch={false}
+              href="/admin/posts"
+              className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
+            >
+              <h2 className="text-lg font-semibold text-primary">News & Mini Games</h2>
+              <p className="mt-1 text-sm text-muted">
+                Create and edit news posts, feature updates, and mini games. Controls what appears on the News page.
+              </p>
             </Link>
           </div>
         </div>
