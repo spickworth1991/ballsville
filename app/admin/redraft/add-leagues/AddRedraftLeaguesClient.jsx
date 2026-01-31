@@ -297,7 +297,7 @@ export default function AddRedraftLeaguesClient() {
 
         <Link
           href="/admin/redraft"
-          className="inline-flex w-fit items-center justify-center rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15"
+          className="inline-flex w-fit items-center justify-center rounded-xl bg-card-surface px-4 py-2 text-sm font-semibold hover:bg-white/15"
         >
           ← Back to Redraft Admin
         </Link>
@@ -310,7 +310,7 @@ export default function AddRedraftLeaguesClient() {
         </div>
       )}
 
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+      <div className="rounded-2xl border border-white/10 bg-card-surface p-5">
         <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
           <label className="block">
             <div className="mb-1 text-xs text-white/60">Sleeper username</div>

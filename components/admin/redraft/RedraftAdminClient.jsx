@@ -291,7 +291,7 @@ export default function RedraftAdminClient() {
         <div className="flex flex-wrap gap-2">
           <Link
             href={`/admin/redraft/add-leagues`}
-            className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15"
+            className="rounded-xl bg-card-surface px-4 py-2 text-sm font-semibold hover:bg-white/15"
           >
             Add leagues (from Sleeper)
           </Link>
@@ -299,7 +299,7 @@ export default function RedraftAdminClient() {
           <button
             type="button"
             onClick={addManualLeague}
-            className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/15"
+            className="rounded-xl bg-card-surface px-4 py-2 text-sm font-semibold hover:bg-white/15"
           >
             Add manual league
           </button>
@@ -323,7 +323,7 @@ export default function RedraftAdminClient() {
       )}
 
       {/* HERO */}
-      <div className="mb-8 grid gap-4 rounded-2xl border border-white/10 bg-white/5 p-5 md:grid-cols-3">
+      <div className="mb-8 grid gap-4 rounded-2xl border border-white/10 bg-card-surface p-5 md:grid-cols-3">
         <div className="md:col-span-1">
           <div className="text-sm font-semibold text-white/80">Promo image</div>
           <div className="mt-3 overflow-hidden rounded-xl border border-white/10 bg-black/30">
@@ -376,7 +376,7 @@ export default function RedraftAdminClient() {
             <div key={`${l.order}-${l.leagueId || l.name}`} className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <div className="flex flex-col gap-4 md:flex-row">
                 <div className="w-full md:w-56">
-                  <div className="overflow-hidden rounded-xl border border-white/10 bg-black/30">
+                  <div className="overflow-hidden rounded-xl border border-white/10 bg-card-surface">
                     {preview ? (
                       <Image
                         src={preview}
@@ -528,7 +528,7 @@ export default function RedraftAdminClient() {
         })}
       </div>
 
-      <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-white/60">
+      <div className="mt-8 rounded-2xl border border-white/10 bg-card-surface p-4 text-xs text-white/60">
         <div className="font-semibold text-white/80">Workflow</div>
         <ul className="mt-2 list-disc space-y-1 pl-5">
           <li>
