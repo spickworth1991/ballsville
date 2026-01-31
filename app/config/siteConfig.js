@@ -67,7 +67,7 @@ export const siteConfig = {
     instagram: "",
     linkedin: "",
     youtube: "https://youtube.com/@theballsvillegame",
-    discord: "https://discord.gg/mtqCRRW3",
+    discord: "https://discord.gg/K6Bam5QJpA",
   },
 
   // Hero video (YouTube ID and optional MP4 fallback)
@@ -81,5 +81,5 @@ export const siteConfig = {
 
   // Direct links used elsewhere
   youtubeUrl: "https://youtube.com/@theballsvillegame",
-  discordUrl: "https://discord.gg/mtqCRRW3",
+  discordUrl: "https://discord.gg/K6Bam5QJpA",
 };
