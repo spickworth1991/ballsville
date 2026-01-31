@@ -3,7 +3,6 @@ import DraftCompareBuildHomeClient from "./DraftCompareBuildHomeClient";
 
 // This page reads URL query params via useSearchParams().
 // In Next (App Router), that must be done in a client component under Suspense.
-export const dynamic = "force-dynamic";
 
 export default function DraftCompareBuildHomePage() {
   return (
