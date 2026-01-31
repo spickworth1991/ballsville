@@ -436,18 +436,29 @@ const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows])
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 	                  {divisionThemeLeagues.map((lg, idx) => {
 	                    const img = imageSrcForRow(lg, updatedAt);
-	                    const effectiveStatus = lg?.notReady ? "tbd" : lg?.orphanOpen ? "orphan_open" : lg?.status;
-                    const inviteHref =
-                      safeStr(lg?.sleeper_url) ||
-                      ((effectiveStatus === "pre_draft" || effectiveStatus === "orphan_open") && lg?.league_id
-                        ? `https://sleeper.com/leagues/${lg.league_id}`
-                        : "");
-	                    const isClickable = Boolean(inviteHref) && (effectiveStatus === "pre_draft" || effectiveStatus === "orphan_open");
+	                    // Single source of truth for clickability:
+	                    // - Not Ready => status TBD + NOT clickable
+	                    // - Orphan Open => clickable
+	                    // - Currently Filling (pre_draft) => clickable
+	                    // - All other statuses => NOT clickable
+	                    const baseStatus = normalizeStatus(lg?.status);
+	                    const effectiveStatus = lg?.notReady
+	                      ? "tbd"
+	                      : lg?.orphanOpen
+	                        ? "orphan_open"
+	                        : baseStatus;
+
+	                    const inviteLink = safeStr(lg?.sleeper_url).trim();
+	                    const desktopFallback = lg?.league_id ? `https://sleeper.com/leagues/${lg.league_id}` : "";
+	
+	                    const shouldLink = effectiveStatus === "pre_draft" || effectiveStatus === "orphan_open";
+	                    const href = shouldLink ? (inviteLink || desktopFallback) : "";
+	                    const isClickable = Boolean(href) && shouldLink;
 
                     return (
                       <MediaTabCard
                         key={lg?.id || `${yearNum}-${divisionThemeName}-${lg?.name}-${idx}`}
-                        href={isClickable ? inviteHref : undefined}
+                        href={isClickable ? href : undefined}
                         external={isClickable}
                         prefetch={false}
                         title={lg?.name || "League"}
