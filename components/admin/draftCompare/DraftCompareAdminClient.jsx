@@ -73,6 +73,60 @@ export default function DraftCompareAdminClient() {
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
 
+
+function normalizeModeRows(inputRows, activeSeason) {
+  const y = safeInt(activeSeason, new Date().getFullYear());
+  return safeArray(inputRows).map((r0) => {
+    const r = r0 || {};
+    const modeSlug = deriveSlug(r);
+    return {
+      ...r,
+      modeSlug,
+      year: safeInt(r.year, y) || y,
+      order: safeInt(r.order, 0),
+      title: safeStr(r.title || "").trim(),
+      subtitle: safeStr(r.subtitle || "").trim(),
+    };
+  });
+}
+
+function canBuildRow(r) {
+  return !!(
+    safeStr(r?.title).trim() &&
+    safeInt(r?.year, 0) > 0 &&
+    safeInt(r?.order, 0) > 0 &&
+    deriveSlug(r)
+  );
+}
+
+function buildHrefForRow(r, action) {
+  const slug = encodeURIComponent(deriveSlug(r));
+  const title = encodeURIComponent(safeStr(r?.title).trim());
+  const year = encodeURIComponent(String(safeInt(r?.year, season)));
+  const order = encodeURIComponent(String(safeInt(r?.order, 0)));
+  const act = encodeURIComponent(action || "create");
+  return `/admin/draft-compare/build?season=${encodeURIComponent(String(season))}&modeSlug=${slug}&title=${title}&year=${year}&order=${order}&action=${act}`;
+}
+
+async function saveModesBeforeBuild() {
+  // IMPORTANT:
+  // The public/admin pages list modes from modes_<season>.json.
+  // If you click "Create/Rebuild" without saving modes, the mode won't exist publicly.
+  const normalized = normalizeModeRows(rows, season);
+  setSaving(true);
+  setErr("");
+  setMsg("");
+  try {
+    await apiPost(`/api/admin/draft-compare`, { season, type: "modes", rows: normalized });
+    setRows(normalized);
+    setMsg("Modes saved.");
+    return normalized;
+  } finally {
+    setSaving(false);
+  }
+}
+
+
   // Image selection should preview immediately, but only upload on "Save modes".
   // Map: modeSlug -> { file: File, previewUrl: string }
   const [pendingImages, setPendingImages] = useState(() => Object.create(null));
@@ -483,23 +537,23 @@ export default function DraftCompareAdminClient() {
                   </div>
 
                   <div className="mt-4 flex flex-wrap items-center gap-3">
-                    <Link
-                      prefetch={false}
-                      className={`btn btn-primary${!canBuild ? " pointer-events-none opacity-50" : ""}`}
-                      href={`/admin/draft-compare/build?season=${encodeURIComponent(String(season))}&modeSlug=${encodeURIComponent(
-                        cleanSlug(r.modeSlug)
-                      )}&title=${encodeURIComponent(safeStr(r.title).trim())}&year=${encodeURIComponent(
-                        String(r.year)
-                      )}&order=${encodeURIComponent(String(r.order))}&action=${encodeURIComponent(
-                        r.hasDraftJson ? "rebuild" : "create"
-                      )}`}
-                      aria-disabled={!canBuild}
-                      onClick={(e) => {
-                        if (!canBuild) e.preventDefault();
+                    <button
+                      type="button"
+                      className={`btn btn-primary${!canBuild ? " opacity-50 cursor-not-allowed" : ""}`}
+                      disabled={!canBuild || saving}
+                      onClick={async () => {
+                        if (!canBuild || saving) return;
+                        try {
+                          await saveModesBeforeBuild();
+                          const action = r.hasDraftJson ? "rebuild" : "create";
+                          window.location.href = buildHrefForRow(r, action);
+                        } catch (e) {
+                          setErr(e?.message || "Failed to start build");
+                        }
                       }}
                     >
                       {r.hasDraftJson ? "Rebuild database" : "Create database"}
-                    </Link>
+                    </button>
 
                     <label className="btn btn-secondary">
                       Upload draft JSON
