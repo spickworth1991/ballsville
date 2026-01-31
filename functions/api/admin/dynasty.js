@@ -184,6 +184,7 @@ function normalizeRow(r, idx) {
     display_order: asNum(r?.display_order, null),
     is_active: asBool(r?.is_active, true),
     is_orphan,
+    is_theme_stub: asBool(r?.is_theme_stub, false),
   };
 }
 
