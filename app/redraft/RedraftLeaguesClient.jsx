@@ -163,7 +163,11 @@ export default function RedraftLeaguesClient({
       )}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {sorted.map((l, idx) => {
-          const href = safeStr(l?.url || l?.sleeper_url || l?.sleeperUrl || "").trim();
+          const href = safeStr(l?.url || "").trim();
+          const leagueId = safeStr(l?.leagueId || l?.league_id || "").trim();
+          const sleeperLeagueUrl = leagueId
+            ? `https://sleeper.app/league/${leagueId}`
+            : safeStr(l?.sleeper_url || l?.sleeperUrl || "").trim();
           const effectiveStatus = l?.notReady ? "tbd" : l?.status;
           const badge = statusBadge(effectiveStatus);
           const isPreDraft = normalizeStatus(effectiveStatus) === "predraft";
@@ -209,12 +213,28 @@ export default function RedraftLeaguesClient({
                   <div className="mt-4 text-xs text-muted flex items-center justify-between">
                     <span className="truncate">
                       {isClickable
-                        ? "Open in Sleeper"
+                        ? "Open invite link"
                         : isPreDraft
                         ? "Link not set"
                         : "Not currently pre-draft"}
                     </span>
-                    {isClickable ? <span className="opacity-0 group-hover:opacity-100 transition">→</span> : null}
+                    <div className="flex items-center gap-2">
+                    {sleeperLeagueUrl ? (
+                      <a
+                        href={sleeperLeagueUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-md border border-white/10 bg-black/20 px-2 py-0.5 text-xs text-[var(--color-accent)] hover:bg-white/10"
+                        title="View league on Sleeper"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Sleeper ↗
+                      </a>
+                    ) : null}
+                    {isClickable ? (
+                      <span className="opacity-0 transition group-hover:opacity-100">→</span>
+                    ) : null}
+                  </div>
                   </div>
                 </div>
               </div>
