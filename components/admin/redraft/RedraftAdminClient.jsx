@@ -306,8 +306,12 @@ export default function RedraftAdminClient() {
       const next = [...leagues].sort((a, b) => Number(a.order) - Number(b.order)).map((l) => ({ ...l }));
 
       for (const l of next) {
-        if (!l?.leagueId) continue; // only Sleeper-backed leagues
-        const info = await sleeperLeagueInfo(l.leagueId);
+        const leagueId = String(l?.leagueId || l?.league_id || "").trim();
+        if (!leagueId) continue; // only Sleeper-backed leagues
+        // normalize to canonical camelCase so future refreshes always work
+        l.leagueId = leagueId;
+
+        const info = await sleeperLeagueInfo(leagueId);
 
         const name = info?.name;
         const status = normalizeSleeperStatus(info?.status);
@@ -319,7 +323,7 @@ export default function RedraftAdminClient() {
         if (name) l.name = name;
         l.status = status;
         l.avatarId = nextAvatarId;
-        l.sleeperUrl = `https://sleeper.app/league/${l.leagueId}`;
+        l.sleeperUrl = `https://sleeper.app/league/${leagueId}`;
 
         // If avatar changed (or we don't have an image yet), refresh the stored image.
         const shouldUploadAvatar = Boolean(nextAvatarId) && (nextAvatarId !== prevAvatarId || !l.imageKey);
