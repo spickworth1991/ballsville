@@ -241,7 +241,7 @@ export default function AddRedraftLeaguesClient() {
 
         newLeagues.push({
           leagueId,
-          sleeperUrl: `https://sleeper.com/league/${leagueId}`,
+          sleeperUrl: `https://sleeper.com/leagues/${leagueId}`,
           avatarId,
           name,
           status, // predraft|drafting|inseason|complete
@@ -386,7 +386,7 @@ export default function AddRedraftLeaguesClient() {
                           <span>League ID: {l.id}</span>
                           {l.already && <span className="text-emerald-200/80">Already added</span>}
                           <a
-                            href={`https://sleeper.com/league/${l.id}`}
+                            href={`https://sleeper.com/leagues/${l.id}`}
                             target="_blank"
                             rel="noreferrer"
                             className="text-[var(--color-accent)] hover:underline"
