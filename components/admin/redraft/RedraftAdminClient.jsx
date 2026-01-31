@@ -26,6 +26,7 @@ function emptyLeague(order) {
     name: `League ${order}`,
     url: "", // invite link (manual)
     status: "tbd", // legacy/manual; Sleeper-driven leagues use: predraft|drafting|inseason|complete
+    notReady: false, // manual override: force TBD on public page
     active: true,
     order,
     imageKey: "",
@@ -274,7 +275,7 @@ export default function RedraftAdminClient() {
         };
       }
 
-      let nextLeagues = leagues.map((l) => ({ ...l }));
+      let nextLeagues = normalizeOrders(leagues.map((l) => ({ ...l })));
       for (const l of nextLeagues) {
         // Only allow manual image overrides for legacy/manual entries (no leagueId),
         // or if the admin explicitly uploaded a replacement.
@@ -306,12 +307,8 @@ export default function RedraftAdminClient() {
       const next = [...leagues].sort((a, b) => Number(a.order) - Number(b.order)).map((l) => ({ ...l }));
 
       for (const l of next) {
-        const leagueId = String(l?.leagueId || l?.league_id || "").trim();
-        if (!leagueId) continue; // only Sleeper-backed leagues
-        // normalize to canonical camelCase so future refreshes always work
-        l.leagueId = leagueId;
-
-        const info = await sleeperLeagueInfo(leagueId);
+        if (!l?.leagueId) continue; // only Sleeper-backed leagues
+        const info = await sleeperLeagueInfo(l.leagueId);
 
         const name = info?.name;
         const status = normalizeSleeperStatus(info?.status);
@@ -321,9 +318,10 @@ export default function RedraftAdminClient() {
         const prevAvatarId = String(l.avatarId || "").trim();
 
         if (name) l.name = name;
-        l.status = status;
+        // If the admin has manually marked this league as "not ready", keep it forced TBD.
+        l.status = l.notReady ? "tbd" : status;
         l.avatarId = nextAvatarId;
-        l.sleeperUrl = `https://sleeper.app/league/${leagueId}`;
+        l.sleeperUrl = `https://sleeper.app/league/${l.leagueId}`;
 
         // If avatar changed (or we don't have an image yet), refresh the stored image.
         const shouldUploadAvatar = Boolean(nextAvatarId) && (nextAvatarId !== prevAvatarId || !l.imageKey);
@@ -336,8 +334,9 @@ export default function RedraftAdminClient() {
         }
       }
 
-      await apiPUT("leagues", { season: SEASON, leagues: next });
-      setLeagues(next);
+      const normalized = normalizeOrders(next);
+      await apiPUT("leagues", { season: SEASON, leagues: normalized });
+      setLeagues(normalized);
       setOk("Statuses refreshed from Sleeper.");
     } catch (e) {
       setErr(e?.message || "Failed to refresh statuses.");
@@ -461,6 +460,7 @@ export default function RedraftAdminClient() {
           const isSleeper = Boolean(l.leagueId);
           const preview = leaguePreviewSrc(l);
           const sleeperUrl = l.sleeperUrl || (l.leagueId ? `https://sleeper.app/league/${l.leagueId}` : "");
+          const effectiveStatus = l.notReady ? "tbd" : l.status;
           return (
             <div key={`${l.order}-${l.leagueId || l.name}`} className="rounded-2xl border border-white/10 bg-card-surface p-4">
               <div className="flex flex-col gap-4 md:flex-row">
@@ -529,7 +529,7 @@ export default function RedraftAdminClient() {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <div className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-white/80">
-                        {statusLabel(l.status)}
+                        {statusLabel(effectiveStatus)}
                       </div>
                       {sleeperUrl ? (
                         <a
@@ -584,6 +584,31 @@ export default function RedraftAdminClient() {
                       />
                       <div className="mt-1 text-[11px] text-white/40">
                         Only used for filling leagues — keep this up to date.
+                      </div>
+                    </label>
+
+                    <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-[var(--color-accent)]"
+                        checked={Boolean(l.notReady)}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setLeagues((prev) =>
+                            prev.map((x) => {
+                              if (Number(x.order) !== Number(l.order)) return x;
+                              // When checked, force the stored status to TBD.
+                              // When unchecked, leave status as-is (use Refresh to re-sync if needed).
+                              return { ...x, notReady: checked, status: checked ? "tbd" : x.status };
+                            })
+                          );
+                        }}
+                      />
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold text-white/80">League not ready</div>
+                        <div className="text-[11px] text-white/50 truncate">
+                          Forces status to <span className="text-white/70">TBD</span> on the public page.
+                        </div>
                       </div>
                     </label>
                   </div>

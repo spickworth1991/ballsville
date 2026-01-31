@@ -124,58 +124,30 @@ function sanitizeLeaguesInput(data, season) {
     return "tbd";
   }
 
-  const leagues = leaguesRaw.map((l, idx) => {
-    // Back-compat: older JSON used snake_case (league_id, sleeper_url, avatar_id, image_key, image_url)
-    const leagueIdRaw =
-      typeof l?.leagueId === "string"
-        ? l.leagueId
-        : typeof l?.league_id === "string"
-        ? l.league_id
-        : "";
-    const sleeperUrlRaw =
-      typeof l?.sleeperUrl === "string"
-        ? l.sleeperUrl
-        : typeof l?.sleeper_url === "string"
-        ? l.sleeper_url
-        : "";
-    const avatarIdRaw =
-      typeof l?.avatarId === "string"
-        ? l.avatarId
-        : typeof l?.avatar_id === "string"
-        ? l.avatar_id
-        : "";
-    const imageKeyRaw =
-      typeof l?.imageKey === "string"
-        ? l.imageKey
-        : typeof l?.image_key === "string"
-        ? l.image_key
-        : "";
-    const imageUrlRaw =
-      typeof l?.imageUrl === "string"
-        ? l.imageUrl
-        : typeof l?.image_url === "string"
-        ? l.image_url
-        : "";
+  const leagues = leaguesRaw.map((l, idx) => ({
+    // Sleeper-backed fields (kept if present)
+    leagueId: typeof l?.leagueId === "string" ? l.leagueId : "",
+    sleeperUrl: typeof l?.sleeperUrl === "string" ? l.sleeperUrl : "",
+    avatarId: typeof l?.avatarId === "string" ? l.avatarId : "",
 
-    return {
-      // Sleeper-backed fields (kept if present)
-      leagueId: leagueIdRaw,
-      sleeperUrl: sleeperUrlRaw,
-      avatarId: avatarIdRaw,
-
-      // Admin-controlled / display fields
-      name: typeof l?.name === "string" ? l.name : `League ${idx + 1}`,
-      url: typeof l?.url === "string" ? l.url : "", // invite link (manual)
-      status: normalizeStatus(l?.status),
-      active: l?.active !== false,
-      order: Number.isFinite(Number(l?.order)) ? Number(l.order) : idx + 1,
-      imageKey: imageKeyRaw,
-      imageUrl: imageUrlRaw,
-    };
-  });
+    // Admin-controlled / display fields
+    name: typeof l?.name === "string" ? l.name : `League ${idx + 1}`,
+    url: typeof l?.url === "string" ? l.url : "", // invite link (manual)
+    notReady: Boolean(l?.notReady),
+    status: Boolean(l?.notReady) ? "tbd" : normalizeStatus(l?.status),
+    active: l?.active !== false,
+    order: Number.isFinite(Number(l?.order)) ? Number(l.order) : idx + 1,
+    imageKey: typeof l?.imageKey === "string" ? l.imageKey : "",
+    imageUrl: typeof l?.imageUrl === "string" ? l.imageUrl : "",
+  }));
 
   // keep order stable
   leagues.sort((a, b) => a.order - b.order);
+
+  // Normalize order to 1..N (avoids weird gaps/duplicates breaking the UI sort).
+  for (let i = 0; i < leagues.length; i++) {
+    leagues[i].order = i + 1;
+  }
 
   return { season: Number(season || DEFAULT_SEASON), leagues };
 }
@@ -225,7 +197,7 @@ export async function onRequest(context) {
       await r2.bucket.put(key, JSON.stringify(payload, null, 2), {
         httpMetadata: { contentType: "application/json; charset=utf-8" },
       });
-      await touchManifest(context.env, season);
+    await touchManifest(context.env, season);
 
       return json({ ok: true, key });
     }

@@ -164,8 +164,9 @@ export default function RedraftLeaguesClient({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {sorted.map((l, idx) => {
           const href = safeStr(l?.url || l?.sleeper_url || l?.sleeperUrl || "").trim();
-          const badge = statusBadge(l?.status);
-          const isPreDraft = normalizeStatus(l?.status) === "predraft";
+          const effectiveStatus = l?.notReady ? "tbd" : l?.status;
+          const badge = statusBadge(effectiveStatus);
+          const isPreDraft = normalizeStatus(effectiveStatus) === "predraft";
           const isClickable = isPreDraft && Boolean(href);
           const img = leagueImageSrc(l, updatedAt);
 
