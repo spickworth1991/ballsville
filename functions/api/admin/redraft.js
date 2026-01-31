@@ -105,29 +105,35 @@ function sanitizePageInput(data, season) {
   };
 }
 
-function normalizeLeagueStatus(s) {
-  const v = String(s || "").toLowerCase().trim();
-  // Legacy values
-  if (v === "filling" || v === "full") return "predraft";
-  // Common variants
-  if (v === "pre_draft" || v === "predraft" || v === "pre-draft") return "predraft";
-  if (v === "drafting") return "drafting";
-  if (v === "in_season" || v === "inseason" || v === "in-season") return "inseason";
-  if (v === "complete") return "complete";
-  if (v === "tbd") return "tbd";
-  return "tbd";
-}
-
 function sanitizeLeaguesInput(data, season) {
   const leaguesRaw = Array.isArray(data?.leagues) ? data.leagues : Array.isArray(data) ? data : [];
 
+  // New status model (Sleeper-driven): predraft | drafting | inseason | complete
+  // Legacy/admin model: tbd | filling | full
+  // We normalize everything into: tbd | predraft | drafting | inseason | complete
+  function normalizeStatus(raw) {
+    const s = String(raw || "").toLowerCase().trim();
+    if (s === "predraft" || s === "pre_draft" || s === "pre-draft") return "predraft";
+    if (s === "drafting") return "drafting";
+    if (s === "inseason" || s === "in_season" || s === "in-season") return "inseason";
+    if (s === "complete") return "complete";
+    // legacy mappings
+    if (s === "filling") return "predraft";
+    if (s === "full") return "predraft";
+    if (s === "tbd") return "tbd";
+    return "tbd";
+  }
+
   const leagues = leaguesRaw.map((l, idx) => ({
+    // Sleeper-backed fields (kept if present)
     leagueId: typeof l?.leagueId === "string" ? l.leagueId : "",
     sleeperUrl: typeof l?.sleeperUrl === "string" ? l.sleeperUrl : "",
     avatarId: typeof l?.avatarId === "string" ? l.avatarId : "",
+
+    // Admin-controlled / display fields
     name: typeof l?.name === "string" ? l.name : `League ${idx + 1}`,
-    url: typeof l?.url === "string" ? l.url : "",
-    status: normalizeLeagueStatus(l?.status),
+    url: typeof l?.url === "string" ? l.url : "", // invite link (manual)
+    status: normalizeStatus(l?.status),
     active: l?.active !== false,
     order: Number.isFinite(Number(l?.order)) ? Number(l.order) : idx + 1,
     imageKey: typeof l?.imageKey === "string" ? l.imageKey : "",

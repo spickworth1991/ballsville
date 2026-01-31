@@ -311,17 +311,20 @@ export default function RedraftAdminClient() {
 
         const name = info?.name;
         const status = normalizeSleeperStatus(info?.status);
-        const avatarId = String(info?.avatar || "").trim();
+        const nextAvatarId = String(info?.avatar || "").trim();
+
+        // Compare against the *previous* stored avatar id before overwriting.
+        const prevAvatarId = String(l.avatarId || "").trim();
 
         if (name) l.name = name;
         l.status = status;
-        l.avatarId = avatarId;
+        l.avatarId = nextAvatarId;
         l.sleeperUrl = `https://sleeper.app/league/${l.leagueId}`;
 
         // If avatar changed (or we don't have an image yet), refresh the stored image.
-        const shouldUploadAvatar = Boolean(avatarId) && (avatarId !== String(l.avatarId || "") || !l.imageKey);
+        const shouldUploadAvatar = Boolean(nextAvatarId) && (nextAvatarId !== prevAvatarId || !l.imageKey);
         if (shouldUploadAvatar) {
-          const f = await fetchAvatarFile(avatarId);
+          const f = await fetchAvatarFile(nextAvatarId);
           if (f) {
             const up = await uploadImage(f, { section: "redraft-league", season: SEASON, leagueOrder: l.order });
             l.imageKey = up?.key || l.imageKey || "";
