@@ -151,15 +151,26 @@ export default function RedraftLeaguesClient({
         {sorted.map((l, idx) => {
           const href = safeStr(l?.url || l?.sleeper_url || l?.sleeperUrl || "").trim();
           const badge = statusBadge(l?.status);
+          const isFilling = badge === STATUS_LABEL.filling;
+          const isClickable = isFilling && Boolean(href);
           const img = leagueImageSrc(l, updatedAt);
 
+          const CardTag = isClickable ? "a" : "div";
+          const cardProps = isClickable
+            ? { href, target: "_blank", rel: "noreferrer" }
+            : {};
+
           return (
-            <a
+            <CardTag
               key={l?.id || `${l?.name}-${idx}`}
-              href={href || "#"}
-              target={href ? "_blank" : undefined}
-              rel={href ? "noreferrer" : undefined}
-              className="group rounded-2xl border border-subtle bg-card-surface p-4 hover:border-accent hover:-translate-y-0.5 transition"
+              {...cardProps}
+              className={
+                "group rounded-2xl border border-subtle bg-card-surface p-4 transition " +
+                (isClickable
+                  ? "hover:border-accent hover:-translate-y-0.5"
+                  : "opacity-70 cursor-not-allowed")
+              }
+              aria-disabled={!isClickable}
             >
               <div className="flex items-start gap-4">
                 {img ? (
@@ -181,12 +192,14 @@ export default function RedraftLeaguesClient({
                   ) : null}
 
                   <div className="mt-4 text-xs text-muted flex items-center justify-between">
-                    <span className="truncate">{href ? "Open in Sleeper" : "Link not set"}</span>
-                    <span className="opacity-0 group-hover:opacity-100 transition">→</span>
+                    <span className="truncate">
+                      {isClickable ? "Open in Sleeper" : isFilling ? "Link not set" : "Not currently filling"}
+                    </span>
+                    {isClickable ? <span className="opacity-0 group-hover:opacity-100 transition">→</span> : null}
                   </div>
                 </div>
               </div>
-            </a>
+            </CardTag>
           );
         })}
       </div>
