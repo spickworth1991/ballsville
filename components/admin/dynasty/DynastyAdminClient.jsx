@@ -5,7 +5,6 @@ import { CURRENT_SEASON } from "@/lib/season";
 import { getSupabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 const R2_KEY = "data/dynasty/leagues.json";

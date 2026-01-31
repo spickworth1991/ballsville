@@ -42,16 +42,6 @@ function statusLabel(s) {
   return v || "League Not Ready";
 }
 
-function statusLabel(s) {
-  const v = String(s || "").trim().toLowerCase();
-  if (v === "tbd") return "League Not Ready";
-  if (v === "orphan_open") return "Orphan Open";
-  if (v === "pre_draft") return "Currently Filling";
-  if (v === "drafting") return "Drafting";
-  if (v === "in_season") return "In Season";
-  if (v === "complete") return "Complete";
-  return String(s || "");
-}
 
 function normalize(row) {
   const r = row && typeof row === "object" ? row : {};

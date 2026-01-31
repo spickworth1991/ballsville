@@ -40,31 +40,6 @@ function normalizeStatus(raw) {
   return lower || "tbd";
 }
 
-async function fetchAvatarFile(avatarId, label = "avatar") {
-  const id = safeStr(avatarId).trim();
-  if (!id) return null;
-  const url = `https://sleepercdn.com/avatars/${id}`;
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) return null;
-  const blob = await res.blob();
-  return new File([blob], `${label}.png`, { type: blob.type || "image/png" });
-}
-
-async function uploadLeagueAvatar({ year, leagueId, file, token }) {
-  const fd = new FormData();
-  fd.append("file", file);
-  fd.append("section", "dynasty-league");
-  fd.append("season", String(year));
-  fd.append("leagueId", String(leagueId));
-  const res = await fetch(`/api/admin/upload`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: fd,
-  });
-  if (!res.ok) throw new Error(`Upload failed (${res.status})`);
-  const out = await res.json();
-  return safeStr(out.key);
-}
 
 function slugify(input) {
   return safeStr(input)
