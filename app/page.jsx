@@ -230,7 +230,7 @@ export default function Page() {
               </div>
             </Link>
 
-            <Link
+            {/* <Link
               prefetch={false}
               href="/highlander"
               className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
@@ -251,7 +251,7 @@ export default function Page() {
                   18-team survival Best Ball — lowest score each week is eliminated.
                 </p>
               </div>
-            </Link>
+            </Link> */}
 
             <Link
               prefetch={false}
