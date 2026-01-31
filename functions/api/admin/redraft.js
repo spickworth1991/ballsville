@@ -105,13 +105,29 @@ function sanitizePageInput(data, season) {
   };
 }
 
+function normalizeLeagueStatus(s) {
+  const v = String(s || "").toLowerCase().trim();
+  // Legacy values
+  if (v === "filling" || v === "full") return "predraft";
+  // Common variants
+  if (v === "pre_draft" || v === "predraft" || v === "pre-draft") return "predraft";
+  if (v === "drafting") return "drafting";
+  if (v === "in_season" || v === "inseason" || v === "in-season") return "inseason";
+  if (v === "complete") return "complete";
+  if (v === "tbd") return "tbd";
+  return "tbd";
+}
+
 function sanitizeLeaguesInput(data, season) {
   const leaguesRaw = Array.isArray(data?.leagues) ? data.leagues : Array.isArray(data) ? data : [];
 
   const leagues = leaguesRaw.map((l, idx) => ({
+    leagueId: typeof l?.leagueId === "string" ? l.leagueId : "",
+    sleeperUrl: typeof l?.sleeperUrl === "string" ? l.sleeperUrl : "",
+    avatarId: typeof l?.avatarId === "string" ? l.avatarId : "",
     name: typeof l?.name === "string" ? l.name : `League ${idx + 1}`,
     url: typeof l?.url === "string" ? l.url : "",
-    status: ["tbd", "filling", "drafting", "full"].includes(l?.status) ? l.status : "tbd",
+    status: normalizeLeagueStatus(l?.status),
     active: l?.active !== false,
     order: Number.isFinite(Number(l?.order)) ? Number(l.order) : idx + 1,
     imageKey: typeof l?.imageKey === "string" ? l.imageKey : "",
