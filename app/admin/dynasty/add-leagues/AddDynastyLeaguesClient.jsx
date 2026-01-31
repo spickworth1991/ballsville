@@ -67,6 +67,27 @@ function statusFromSleeper(sleeperStatus) {
   return "tbd";
 }
 
+async function fetchRosterCounts(leagueId) {
+  // Determine how many roster slots are actually assigned to a manager.
+  // Sleeper's `total_rosters` is capacity; `rosters[].owner_id` tells filled.
+  const id = safeStr(leagueId).trim();
+  if (!id) return { total_rosters: null, filled_rosters: null, open_spots: null };
+  try {
+    const res = await fetch(`https://api.sleeper.app/v1/league/${encodeURIComponent(id)}/rosters`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return { total_rosters: null, filled_rosters: null, open_spots: null };
+    const rosters = await res.json();
+    const list = Array.isArray(rosters) ? rosters : [];
+    const total = list.length;
+    const filled = list.filter((r) => safeStr(r?.owner_id).trim()).length;
+    const open = Math.max(0, total - filled);
+    return { total_rosters: total, filled_rosters: filled, open_spots: open };
+  } catch {
+    return { total_rosters: null, filled_rosters: null, open_spots: null };
+  }
+}
+
 async function fetchAvatarFile(avatarId, label = "avatar") {
   const id = safeStr(avatarId).trim();
   if (!id) return null;
@@ -230,6 +251,18 @@ export default function AddDynastyLeaguesClient() {
           }
         }
 
+        // How full is this league right now?
+        let filled_rosters = 0;
+        let total_rosters = Number(lg?.total_rosters) || 0;
+        try {
+          const counts = await fetchRosterCounts(leagueId);
+          filled_rosters = Number(counts?.filled_rosters) || 0;
+          total_rosters = Number(counts?.total_rosters) || total_rosters;
+        } catch {
+          // keep defaults (0/total) if Sleeper is flaky
+        }
+        const open_spots = Math.max(0, (Number(total_rosters) || 0) - (Number(filled_rosters) || 0));
+
         toAdd.push({
           id: newId(`dyn_${slugify(theme)}`),
           year: Number(year),
@@ -247,6 +280,12 @@ export default function AddDynastyLeaguesClient() {
           display_order: order,
           is_active: true,
           is_orphan: false,
+
+          // occupancy
+          filled_rosters,
+          total_rosters,
+          open_spots,
+          status_refreshed_at: nowIso(),
         });
       }
 

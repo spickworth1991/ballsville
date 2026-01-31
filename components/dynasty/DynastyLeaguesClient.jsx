@@ -50,11 +50,6 @@ function normalize(row) {
   const statusRaw = r?.status ?? r?.STATUS ?? "";
   const status = normalizeStatus(statusRaw);
   const orphanOpen = Boolean(r?.orphanOpen ?? r?.is_orphan) || status === "orphan_open";
-  // NOTE:
-  // - `notReady` is a UI override that should show the league as "League Not Ready" (TBD)
-  //   without hiding it from the public directory.
-  // - `is_active === false` historically got used as a "not ready" flag in some JSONs.
-  //   We still treat it as not-ready for display, but we *do not* filter these rows out.
   const notReady = Boolean(r?.notReady) || r?.is_active === false || status === "tbd";
 
   // Backward compatible field names
@@ -65,6 +60,12 @@ function normalize(row) {
     name: r.name ?? r.league_name ?? "",
     league_id: r.league_id ?? r.leagueId ?? r.sleeper_league_id ?? "",
     sleeper_url: r.sleeper_url ?? r.sleeperUrl ?? r.url ?? "",
+
+    // League fill metrics (auto imported from Sleeper)
+    total_rosters: Number.isFinite(Number(r?.total_rosters)) ? Number(r.total_rosters) : Number(r?.totalRosters) || 0,
+    filled_rosters: Number.isFinite(Number(r?.filled_rosters)) ? Number(r.filled_rosters) : Number(r?.filledRosters) || 0,
+    open_spots: Number.isFinite(Number(r?.open_spots)) ? Number(r.open_spots) : Number(r?.openSpots) || 0,
+    last_refreshed: r?.last_refreshed ?? r?.lastRefreshed ?? "",
 
     status,
     orphanOpen,
@@ -95,12 +96,10 @@ function slugify(s) {
  * - byYear: Map<year, Map<themeName, leagues[]>>
  */
 function transformLeagues(rows) {
-  // Public directory should include "not ready" leagues (shown as TBD) instead of hiding them.
-  // Some older rows used `is_active === false` to mean "not ready".
-  // We therefore do NOT filter these out here.
-  const visible = (rows || []).filter((r) => r && typeof r === "object" && r?.deleted !== true);
+  // Only show leagues marked active (or with null/undefined treated as active)
+  const active = (rows || []).filter((r) => r?.is_active !== false);
 
-  const orphans = visible.filter((r) => {
+  const orphans = active.filter((r) => {
     const st = String(r?.status || "").trim().toUpperCase();
     return r?.is_orphan === true || st.includes("ORPHAN");
   });
@@ -108,7 +107,7 @@ function transformLeagues(rows) {
   // IMPORTANT: keep orphans in the main list too, so they still show in their theme
   const byYear = new Map();
 
-  for (const lg of visible) {
+  for (const lg of active) {
     const year = Number(lg?.year) || new Date().getFullYear();
     const themeName =
       (typeof lg?.theme_name === "string" && lg.theme_name.trim()) ||
@@ -390,18 +389,13 @@ const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows])
                   </div>
 
                   <span className="shrink-0 rounded-full border border-accent bg-panel px-2 py-1 text-[11px] tracking-wide uppercase text-accent">
-                    {Number.isFinite(Number(o?.fill_note)) && Number(o?.fill_note) > 0
-                      ? `${Math.trunc(Number(o.fill_note))} Spots`
+                    {Number.isFinite(Number(o?.total_rosters)) && Number(o?.total_rosters) > 0
+                      ? `${Math.trunc(Number(o?.filled_rosters || 0))}/${Math.trunc(Number(o.total_rosters))} Filled`
                       : "Orphan Open"}
                   </span>
                 </div>
 
-                <p className="mt-2 text-[11px] text-muted">
-                  {Number.isFinite(Number(o?.fill_note)) && Number(o?.fill_note) > 0
-                    ? `Spots available: ${Math.trunc(Number(o.fill_note))}. `
-                    : ""}
-                  Click for Sleeper league details and to request the team.
-                </p>
+                <p className="mt-2 text-[11px] text-muted">Click for Sleeper league details and to request the team.</p>
               </Link>
             ))}
           </div>
@@ -470,6 +464,11 @@ const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows])
                         prefetch={false}
                         title={lg?.name || "League"}
                         subtitle={`12-team SF · Division ${lg?.display_order ?? "–"}`}
+                        metaLeft={
+                          Number(lg?.total_rosters) > 0
+                            ? `${Number(lg?.filled_rosters) || 0}/${Number(lg?.total_rosters)} Filled`
+                            : ""
+                        }
                         metaRight={statusLabel(effectiveStatus)}
                         imageSrc={img}
                         imageAlt={lg?.name || "League"}

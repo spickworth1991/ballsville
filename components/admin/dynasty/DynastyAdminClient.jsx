@@ -114,6 +114,12 @@ function normalizeRow(r, idx = 0) {
     fetched_status,
     sleeper_url: safeStr(r?.sleeper_url).trim(), // invite link (optional)
 
+    // League fill metrics (auto imported from Sleeper)
+    total_rosters: safeNum(r?.total_rosters, 0),
+    filled_rosters: safeNum(r?.filled_rosters, 0),
+    open_spots: safeNum(r?.open_spots, 0),
+    last_refreshed: safeStr(r?.last_refreshed).trim(),
+
     // league avatar (auto imported from Sleeper)
     avatar: safeStr(r?.avatar).trim(),
     imageKey: safeStr(r?.imageKey).trim(),
@@ -366,6 +372,23 @@ export default function DynastyAdminClient() {
     return res.json().catch(() => null);
   }
 
+  async function fetchSleeperRosterCounts(leagueId) {
+    const id = safeStr(leagueId).trim();
+    if (!id) {
+      return { total_rosters: 0, filled_rosters: 0, open_spots: 0, last_refreshed: new Date().toISOString() };
+    }
+    const res = await fetch(`https://api.sleeper.app/v1/league/${id}/rosters`, { cache: "no-store" });
+    if (!res.ok) {
+      return { total_rosters: 0, filled_rosters: 0, open_spots: 0, last_refreshed: new Date().toISOString() };
+    }
+    const list = await res.json().catch(() => []);
+    const rosters = Array.isArray(list) ? list : [];
+    const total_rosters = rosters.length;
+    const filled_rosters = rosters.reduce((acc, r) => (r?.owner_id ? acc + 1 : acc), 0);
+    const open_spots = Math.max(0, total_rosters - filled_rosters);
+    return { total_rosters, filled_rosters, open_spots, last_refreshed: new Date().toISOString() };
+  }
+
   function stageDivisionImage({ year, themeName, file }) {
     const previewUrl = file ? URL.createObjectURL(file) : "";
 
@@ -513,8 +536,8 @@ export default function DynastyAdminClient() {
         const leagueId = safeStr(r.league_id).trim();
         if (!leagueId) continue;
 
-        // If admin is overriding, don't overwrite.
-        if (r.notReady || r.orphanOpen) continue;
+        const overrideNotReady = Boolean(r.notReady);
+        const overrideOrphan = Boolean(r.orphanOpen);
 
         const res = await fetch(`https://api.sleeper.app/v1/league/${encodeURIComponent(leagueId)}`, {
           cache: "no-store",
@@ -526,8 +549,22 @@ export default function DynastyAdminClient() {
         if (i == null) continue;
 
         next[i].name = safeStr(lg?.name).trim() || next[i].name;
-        next[i].status = normalizeStatus(lg?.status) || next[i].status;
+
+        // Only refresh status if admin is NOT overriding via checkboxes.
+        if (!overrideNotReady && !overrideOrphan) {
+          next[i].status = normalizeStatus(lg?.status) || next[i].status;
+        }
+
         next[i].avatar = safeStr(lg?.avatar).trim() || next[i].avatar;
+
+        // Always refresh fill counts (even when status is overridden).
+        const counts = await fetchSleeperRosterCounts(leagueId);
+        if (counts) {
+          next[i].total_rosters = counts.total_rosters;
+          next[i].filled_rosters = counts.filled_rosters;
+          next[i].open_spots = counts.open_spots;
+          next[i].last_refreshed = counts.last_refreshed;
+        }
 
         // If avatar changed or image missing, fetch + upload.
         const avatarId = safeStr(lg?.avatar).trim();
@@ -792,6 +829,12 @@ export default function DynastyAdminClient() {
                         .map((lg) => {
                           const disabled = Boolean(lg?.notReady);
                           const previewSrc = lg.imageKey ? `/r2/${lg.imageKey}` : lg.image_url || "";
+                          const filled = Number(lg?.filled_rosters);
+                          const total = Number(lg?.total_rosters);
+                          const fillText =
+                            Number.isFinite(filled) && Number.isFinite(total) && total > 0
+                              ? `${Math.max(0, Math.min(total, filled))}/${total} Filled`
+                              : "";
 
                           return (
                             <div
@@ -857,6 +900,13 @@ export default function DynastyAdminClient() {
                                       <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-fg">
                                         {statusLabel(lg.notReady ? "tbd" : lg.orphanOpen ? "orphan_open" : lg.status)}
                                       </span>
+                                      {fillText ? (
+                                        <div className="mt-1">
+                                          <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-muted">
+                                            {fillText}
+                                          </span>
+                                        </div>
+                                      ) : null}
                                     </div>
                                   </div>
                                 </div>
