@@ -50,6 +50,11 @@ function normalize(row) {
   const statusRaw = r?.status ?? r?.STATUS ?? "";
   const status = normalizeStatus(statusRaw);
   const orphanOpen = Boolean(r?.orphanOpen ?? r?.is_orphan) || status === "orphan_open";
+  // NOTE:
+  // - `notReady` is a UI override that should show the league as "League Not Ready" (TBD)
+  //   without hiding it from the public directory.
+  // - `is_active === false` historically got used as a "not ready" flag in some JSONs.
+  //   We still treat it as not-ready for display, but we *do not* filter these rows out.
   const notReady = Boolean(r?.notReady) || r?.is_active === false || status === "tbd";
 
   // Backward compatible field names
@@ -90,10 +95,12 @@ function slugify(s) {
  * - byYear: Map<year, Map<themeName, leagues[]>>
  */
 function transformLeagues(rows) {
-  // Only show leagues marked active (or with null/undefined treated as active)
-  const active = (rows || []).filter((r) => r?.is_active !== false);
+  // Public directory should include "not ready" leagues (shown as TBD) instead of hiding them.
+  // Some older rows used `is_active === false` to mean "not ready".
+  // We therefore do NOT filter these out here.
+  const visible = (rows || []).filter((r) => r && typeof r === "object" && r?.deleted !== true);
 
-  const orphans = active.filter((r) => {
+  const orphans = visible.filter((r) => {
     const st = String(r?.status || "").trim().toUpperCase();
     return r?.is_orphan === true || st.includes("ORPHAN");
   });
@@ -101,7 +108,7 @@ function transformLeagues(rows) {
   // IMPORTANT: keep orphans in the main list too, so they still show in their theme
   const byYear = new Map();
 
-  for (const lg of active) {
+  for (const lg of visible) {
     const year = Number(lg?.year) || new Date().getFullYear();
     const themeName =
       (typeof lg?.theme_name === "string" && lg.theme_name.trim()) ||
