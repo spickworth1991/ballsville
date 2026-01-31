@@ -373,10 +373,10 @@ export default function RedraftAdminClient() {
           const preview = leaguePreviewSrc(l);
           const sleeperUrl = l.sleeperUrl || (l.leagueId ? `https://sleeper.app/league/${l.leagueId}` : "");
           return (
-            <div key={`${l.order}-${l.leagueId || l.name}`} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div key={`${l.order}-${l.leagueId || l.name}`} className="rounded-2xl border border-white/10 bg-card-surface p-4">
               <div className="flex flex-col gap-4 md:flex-row">
                 <div className="w-full md:w-56">
-                  <div className="overflow-hidden rounded-xl border border-white/10 bg-card-surface">
+                  <div className="overflow-hidden rounded-xl border border-white/10 bg-white/5">
                     {preview ? (
                       <Image
                         src={preview}
