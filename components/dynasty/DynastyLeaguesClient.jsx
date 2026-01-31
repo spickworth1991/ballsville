@@ -356,7 +356,9 @@ const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows])
             {scopedOrphans.map((o, idx) => (
               <Link
                 key={o?.id || `${o?.year}-${o?.theme_name}-${o?.name}-${idx}`}
-                href={o?.sleeper_url || "#"}
+                href={
+                  o?.sleeper_url || (o?.league_id ? `https://sleeper.com/leagues/${o.league_id}` : "#")
+                }
                 className={[
                   "group rounded-2xl border border-accent/60 bg-card-surface p-4",
                   "hover:border-accent hover:-translate-y-0.5 transition",
@@ -435,7 +437,11 @@ const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows])
 	                  {divisionThemeLeagues.map((lg, idx) => {
 	                    const img = imageSrcForRow(lg, updatedAt);
 	                    const effectiveStatus = lg?.notReady ? "tbd" : lg?.orphanOpen ? "orphan_open" : lg?.status;
-	                    const inviteHref = safeStr(lg?.sleeper_url) || (effectiveStatus === "pre_draft" && lg?.league_id ? `https://sleeper.com/leagues/${lg.league_id}` : "");
+                    const inviteHref =
+                      safeStr(lg?.sleeper_url) ||
+                      ((effectiveStatus === "pre_draft" || effectiveStatus === "orphan_open") && lg?.league_id
+                        ? `https://sleeper.com/leagues/${lg.league_id}`
+                        : "");
 	                    const isClickable = Boolean(inviteHref) && (effectiveStatus === "pre_draft" || effectiveStatus === "orphan_open");
 
                     return (

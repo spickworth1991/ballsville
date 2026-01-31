@@ -90,8 +90,13 @@ function normalizeRow(r, idx = 0) {
   const theme_name = safeStr(r?.theme_name || r?.kind || "Untitled Theme").trim();
   const display_order = safeNum(r?.display_order ?? r?.order, idx + 1);
 
-  const status = normalizeStatus(r?.status);
-  const orphanOpen = Boolean(r?.orphanOpen) || Boolean(r?.is_orphan) || status === "orphan_open";
+  // Base status pulled from Sleeper (or last refresh). This is NOT affected by the override checkboxes.
+  // We persist it so an admin can toggle Orphan/Not Ready off and still land back on the real Sleeper state.
+  const fetched_status = normalizeStatus(r?.fetched_status ?? r?.sleeper_status ?? r?.status);
+
+  // Override checkboxes (admin controlled). These are the source of truth for orphan/not-ready.
+  // Do NOT infer orphanOpen from status; otherwise unchecking will "snap back" on normalize.
+  const orphanOpen = Boolean(r?.orphanOpen) || Boolean(r?.is_orphan);
 
   // Single source of truth for "ready": if notReady true, the public page should treat it as TBD.
   const notReady = Boolean(r?.notReady) || r?.is_active === false;
@@ -104,7 +109,9 @@ function normalizeRow(r, idx = 0) {
 
     name: safeStr(r?.name).trim(),
     league_id: safeStr(r?.league_id || r?.leagueId || r?.sleeper_league_id).trim(),
-    status,
+    // Keep `status` as the base Sleeper status; the public page derives the *effective* status using overrides.
+    status: fetched_status,
+    fetched_status,
     sleeper_url: safeStr(r?.sleeper_url).trim(), // invite link (optional)
 
     // league avatar (auto imported from Sleeper)
@@ -879,7 +886,13 @@ export default function DynastyAdminClient() {
                                       <input
                                         type="checkbox"
                                         checked={!!lg.orphanOpen}
-                                        onChange={(e) => updateLeague(lg.id, { orphanOpen: e.target.checked })}
+                                  onChange={(e) =>
+                                    updateLeague(lg.id, {
+                                      orphanOpen: e.target.checked,
+                                      // Keep the persisted field in sync so it does not snap back on normalize/save.
+                                      is_orphan: e.target.checked,
+                                    })
+                                  }
                                       />
                                       Orphan
                                     </label>
