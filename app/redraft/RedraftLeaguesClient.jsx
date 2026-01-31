@@ -207,7 +207,11 @@ export default function RedraftLeaguesClient({
 
                   <div className="mt-4 text-xs text-muted flex items-center justify-between">
                     <span className="truncate">
-                      {isClickable ? "Open in Sleeper" : isFilling ? "Link not set" : "Not currently filling"}
+                      {isClickable
+                        ? "Open in Sleeper"
+                        : isPreDraft
+                        ? "Link not set"
+                        : "Not currently pre-draft"}
                     </span>
                     {isClickable ? <span className="opacity-0 group-hover:opacity-100 transition">→</span> : null}
                   </div>

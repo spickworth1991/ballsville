@@ -31,15 +31,6 @@ function emptyLeague(order) {
     imageKey: "",
     imageUrl: "",
   };
-
-function normalizeStatus(s) {
-  const v = String(s || "").toLowerCase().trim();
-  if (v === "pre_draft" || v === "predraft" || v === "pre-draft") return "predraft";
-  if (v === "drafting") return "drafting";
-  if (v === "in_season" || v === "inseason" || v === "in-season") return "inseason";
-  if (v === "complete") return "complete";
-  return v || "predraft";
-}
 }
 
 async function getAccessToken() {
@@ -104,18 +95,6 @@ async function uploadImage(file, payload) {
   return res.json();
 }
 
-async function fetchSleeperAvatarFile(avatarId) {
-  const id = String(avatarId || "").trim();
-  if (!id) return null;
-  const url = `https://sleepercdn.com/avatars/${id}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to fetch avatar (${res.status})`);
-  const blob = await res.blob();
-  const type = blob.type || "image/png";
-  const ext = type.includes("jpeg") ? "jpg" : type.includes("webp") ? "webp" : "png";
-  return new File([blob], `sleeper_${id}.${ext}`, { type });
-}
-
 function useObjectUrl() {
   const cacheRef = useRef(new Map());
   useEffect(() => {
@@ -147,6 +126,36 @@ function statusLabel(raw) {
   if (s === "full") return "FULL";
   if (s === "tbd") return "TBD";
   return s ? s.toUpperCase() : "TBD";
+}
+
+function normalizeSleeperStatus(raw) {
+  const s = String(raw || "").toLowerCase().trim();
+  if (s === "pre_draft" || s === "predraft" || s === "pre-draft") return "predraft";
+  if (s === "drafting") return "drafting";
+  if (s === "in_season" || s === "inseason" || s === "in-season") return "inseason";
+  if (s === "complete") return "complete";
+  // legacy / unknown
+  if (s === "filling") return "predraft";
+  return s || "tbd";
+}
+
+async function sleeperLeagueInfo(leagueId) {
+  const id = String(leagueId || "").trim();
+  if (!id) throw new Error("Missing league id.");
+  const res = await fetch(`https://api.sleeper.app/v1/league/${encodeURIComponent(id)}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Sleeper league request failed (${res.status})`);
+  return res.json();
+}
+
+async function fetchAvatarFile(avatarId) {
+  const a = String(avatarId || "").trim();
+  if (!a) return null;
+  const url = `https://sleepercdn.com/avatars/${encodeURIComponent(a)}`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) return null;
+  const blob = await res.blob();
+  const type = blob.type || "image/png";
+  return new File([blob], `${a}.png`, { type });
 }
 
 export default function RedraftAdminClient() {
@@ -288,6 +297,48 @@ export default function RedraftAdminClient() {
     }
   }
 
+  async function refreshStatuses() {
+    setErr("");
+    setOk("");
+    setRefreshing(true);
+    try {
+      // Work on a stable ordered copy.
+      const next = [...leagues].sort((a, b) => Number(a.order) - Number(b.order)).map((l) => ({ ...l }));
+
+      for (const l of next) {
+        if (!l?.leagueId) continue; // only Sleeper-backed leagues
+        const info = await sleeperLeagueInfo(l.leagueId);
+
+        const name = info?.name;
+        const status = normalizeSleeperStatus(info?.status);
+        const avatarId = String(info?.avatar || "").trim();
+
+        if (name) l.name = name;
+        l.status = status;
+        l.avatarId = avatarId;
+        l.sleeperUrl = `https://sleeper.app/league/${l.leagueId}`;
+
+        // If avatar changed (or we don't have an image yet), refresh the stored image.
+        const shouldUploadAvatar = Boolean(avatarId) && (avatarId !== String(l.avatarId || "") || !l.imageKey);
+        if (shouldUploadAvatar) {
+          const f = await fetchAvatarFile(avatarId);
+          if (f) {
+            const up = await uploadImage(f, { section: "redraft-league", season: SEASON, leagueOrder: l.order });
+            l.imageKey = up?.key || l.imageKey || "";
+          }
+        }
+      }
+
+      await apiPUT("leagues", { season: SEASON, leagues: next });
+      setLeagues(next);
+      setOk("Statuses refreshed from Sleeper.");
+    } catch (e) {
+      setErr(e?.message || "Failed to refresh statuses.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   const sortedLeagues = useMemo(() => {
     const next = [...leagues];
     next.sort((a, b) => Number(a.order) - Number(b.order));
@@ -320,21 +371,21 @@ export default function RedraftAdminClient() {
 
           <button
             type="button"
+            disabled={refreshing || saving}
+            onClick={refreshStatuses}
+            className="rounded-xl bg-card-surface px-4 py-2 text-sm font-semibold hover:bg-white/15 disabled:opacity-60"
+          >
+            {refreshing ? "Refreshing…" : "Refresh statuses"}
+          </button>
+
+          <button
+            type="button"
             onClick={addManualLeague}
             className="rounded-xl bg-card-surface px-4 py-2 text-sm font-semibold hover:bg-white/15"
           >
             Add manual league
           </button>
 
-
-          <button
-            type="button"
-            disabled={refreshing || saving}
-            onClick={refreshSleeperStatuses}
-            className="rounded-xl bg-card-surface px-4 py-2 text-sm font-semibold hover:bg-white/15 disabled:opacity-60"
-          >
-            {refreshing ? "Refreshing…" : "Refresh statuses"}
-          </button>
           <button
             type="button"
             disabled={saving}
@@ -572,84 +623,3 @@ export default function RedraftAdminClient() {
     </div>
   );
 }
-
-
-  async function refreshSleeperStatuses() {
-    setOk("");
-    setErr("");
-    setRefreshing(true);
-    try {
-      const token = await getAccessToken();
-      if (!token) throw new Error("Not authenticated");
-
-      const list = Array.isArray(leagues) ? leagues : [];
-      const sleeperLeagues = list.filter((l) => String(l?.leagueId || "").trim());
-      if (!sleeperLeagues.length) {
-        setOk("No Sleeper leagues to refresh.");
-        return;
-      }
-
-      // Fetch latest league info from Sleeper (name/status/avatar)
-      const refreshed = await Promise.all(
-        list.map(async (l) => {
-          const leagueId = String(l?.leagueId || "").trim();
-          if (!leagueId) return l;
-
-          try {
-            const res = await fetch(`https://api.sleeper.app/v1/league/${leagueId}`, { cache: "no-store" });
-            if (!res.ok) throw new Error(`Sleeper ${res.status}`);
-            const j = await res.json();
-
-            const nextStatus = normalizeStatus(j?.status);
-            const nextName = String(j?.name || l.name || "").trim() || l.name;
-            const nextAvatarId = String(j?.avatar || "").trim();
-
-            let next = { ...l, status: nextStatus, name: nextName, avatarId: nextAvatarId || l.avatarId };
-
-            // If we have an avatar id, refresh the stored image in R2 (deterministic key by leagueOrder).
-            // Only re-upload if:
-            // - there is no imageKey yet, OR
-            // - the avatarId changed.
-            const avatarChanged = nextAvatarId && nextAvatarId !== String(l.avatarId || "").trim();
-            const needsImage = !String(l.imageKey || "").trim() || avatarChanged;
-
-            if (needsImage && nextAvatarId) {
-              const file = await fetchSleeperAvatarFile(nextAvatarId);
-              if (file) {
-                const up = await uploadImage(file, { section: "redraft-league", season: SEASON, leagueOrder: l.order });
-                next = {
-                  ...next,
-                  imageKey: up?.key || next.imageKey,
-                  imageUrl: up?.url || next.imageUrl,
-                };
-              }
-            }
-
-            return next;
-          } catch {
-            // If Sleeper fails, keep current row untouched
-            return l;
-          }
-        })
-      );
-
-      setLeagues(refreshed);
-
-      // Persist leagues JSON immediately so public/admin stay in sync
-      const res = await fetch(`/api/admin/redraft?season=${SEASON}`, {
-        method: "PUT",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ ...pageCfg, leagues: refreshed }),
-      });
-
-      if (!res.ok) throw new Error(await readApiError(res));
-      setOk("Statuses refreshed.");
-    } catch (e) {
-      setErr(e?.message || "Failed to refresh statuses");
-    } finally {
-      setRefreshing(false);
-    }
-  }
