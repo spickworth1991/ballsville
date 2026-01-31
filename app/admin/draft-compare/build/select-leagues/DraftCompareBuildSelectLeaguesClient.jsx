@@ -239,7 +239,7 @@ export default function DraftCompareBuildSelectLeaguesClient() {
   return (
     <section className="section">
       <div className="container-site">
-        <div className="rounded-3xl border border-border bg-card-surface/80 p-6 backdrop-blur">
+        <div className="rounded-3xl border border-border bg-card-surface p-6 backdrop-blur">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <div className="text-xs font-semibold text-muted">Draft Compare • Build</div>
@@ -308,7 +308,7 @@ export default function DraftCompareBuildSelectLeaguesClient() {
                   const hasDrafts = drafts.length > 0;
 
                   return (
-                    <div key={leagueId} className="rounded-2xl border border-border bg-background/20 p-4">
+                    <div key={leagueId} className="rounded-2xl border border-border bg-background p-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <div className="text-sm font-semibold text-primary">{leagueName}</div>

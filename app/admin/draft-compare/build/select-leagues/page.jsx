@@ -10,7 +10,7 @@ export default function DraftCompareBuildSelectLeaguesPage() {
       fallback={
         <section className="section">
           <div className="container-site">
-            <div className="rounded-3xl border border-border bg-card-surface/80 p-6 backdrop-blur">
+            <div className="rounded-3xl border border-border bg-card-surface p-6 backdrop-blur">
               <div className="text-sm text-muted">Loading…</div>
             </div>
           </div>
