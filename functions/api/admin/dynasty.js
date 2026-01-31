@@ -168,6 +168,13 @@ function normalizeRow(r, idx) {
     draft_id: draft_id || null,
     avatar: avatar || null,
     status,
+    // Admin flags
+    notReady: Boolean(r?.notReady),
+    is_active: typeof r?.is_active === "boolean" ? r.is_active : true,
+    // Fill metrics (computed in admin refresh)
+    total_teams: Number.isFinite(Number(r?.total_teams)) ? Number(r.total_teams) : null,
+    filled_teams: Number.isFinite(Number(r?.filled_teams)) ? Number(r.filled_teams) : null,
+    open_teams: Number.isFinite(Number(r?.open_teams)) ? Number(r.open_teams) : null,
     sleeper_url: asStr(r?.sleeper_url || r?.url || "").trim() || null,
     imageKey: imageKey || null,
     image_url: image_url || null,
@@ -175,7 +182,6 @@ function normalizeRow(r, idx) {
     fill_note: null,
     note: asStr(r?.note || "").trim() || null,
     display_order: asNum(r?.display_order, null),
-    is_active: asBool(r?.is_active, true),
     is_orphan,
 
   };

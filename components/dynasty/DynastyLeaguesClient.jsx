@@ -50,7 +50,10 @@ function normalize(row) {
   const statusRaw = r?.status ?? r?.STATUS ?? "";
   const status = normalizeStatus(statusRaw);
   const orphanOpen = Boolean(r?.orphanOpen ?? r?.is_orphan) || status === "orphan_open";
-  const notReady = Boolean(r?.notReady) || r?.is_active === false || status === "tbd";
+  // NOTE:
+  // - `notReady` is an admin override: show status as TBD and disable click-through.
+  // - `is_active === false` means the league is hidden from the public directory (filtered out elsewhere).
+  const notReady = Boolean(r?.notReady) || status === "tbd";
 
   // Backward compatible field names
   return {
@@ -61,15 +64,14 @@ function normalize(row) {
     league_id: r.league_id ?? r.leagueId ?? r.sleeper_league_id ?? "",
     sleeper_url: r.sleeper_url ?? r.sleeperUrl ?? r.url ?? "",
 
-    // League fill metrics (auto imported from Sleeper)
-    total_rosters: Number.isFinite(Number(r?.total_rosters)) ? Number(r.total_rosters) : Number(r?.totalRosters) || 0,
-    filled_rosters: Number.isFinite(Number(r?.filled_rosters)) ? Number(r.filled_rosters) : Number(r?.filledRosters) || 0,
-    open_spots: Number.isFinite(Number(r?.open_spots)) ? Number(r.open_spots) : Number(r?.openSpots) || 0,
-    last_refreshed: r?.last_refreshed ?? r?.lastRefreshed ?? "",
-
     status,
     orphanOpen,
     notReady,
+
+    // Fill metrics
+    total_teams: Number.isFinite(Number(r?.total_teams ?? r?.totalTeams)) ? Number(r.total_teams ?? r.totalTeams) : 0,
+    filled_teams: Number.isFinite(Number(r?.filled_teams ?? r?.filledTeams)) ? Number(r.filled_teams ?? r.filledTeams) : 0,
+    open_teams: Number.isFinite(Number(r?.open_teams ?? r?.openTeams)) ? Number(r.open_teams ?? r.openTeams) : 0,
 
     // League image
     imageKey: r.imageKey ?? r.image_key ?? r.league_image_key ?? "",
@@ -96,11 +98,12 @@ function slugify(s) {
  * - byYear: Map<year, Map<themeName, leagues[]>>
  */
 function transformLeagues(rows) {
-  // Only hide leagues that are explicitly deactivated.
-  // IMPORTANT: "Not Ready" leagues should still appear (as TBD) in the directory.
-  const active = (rows || []).filter((r) => r?.is_active !== false || r?.notReady === true);
+  // Public directory should include "not ready" leagues (shown as TBD) instead of hiding them.
+  // Some older rows used `is_active === false` to mean "not ready".
+  // We therefore do NOT filter these out here.
+  const visible = (rows || []).filter((r) => r && typeof r === "object" && r?.deleted !== true);
 
-  const orphans = active.filter((r) => {
+  const orphans = visible.filter((r) => {
     const st = String(r?.status || "").trim().toUpperCase();
     return r?.is_orphan === true || st.includes("ORPHAN");
   });
@@ -108,7 +111,7 @@ function transformLeagues(rows) {
   // IMPORTANT: keep orphans in the main list too, so they still show in their theme
   const byYear = new Map();
 
-  for (const lg of active) {
+  for (const lg of visible) {
     const year = Number(lg?.year) || new Date().getFullYear();
     const themeName =
       (typeof lg?.theme_name === "string" && lg.theme_name.trim()) ||
@@ -390,13 +393,18 @@ const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows])
                   </div>
 
                   <span className="shrink-0 rounded-full border border-accent bg-panel px-2 py-1 text-[11px] tracking-wide uppercase text-accent">
-                    {Number.isFinite(Number(o?.total_rosters)) && Number(o?.total_rosters) > 0
-                      ? `${Math.trunc(Number(o?.filled_rosters || 0))}/${Math.trunc(Number(o.total_rosters))} Filled`
+                    {Number.isFinite(Number(o?.fill_note)) && Number(o?.fill_note) > 0
+                      ? `${Math.trunc(Number(o.fill_note))} Spots`
                       : "Orphan Open"}
                   </span>
                 </div>
 
-                <p className="mt-2 text-[11px] text-muted">Click for Sleeper league details and to request the team.</p>
+                <p className="mt-2 text-[11px] text-muted">
+                  {Number.isFinite(Number(o?.fill_note)) && Number(o?.fill_note) > 0
+                    ? `Spots available: ${Math.trunc(Number(o.fill_note))}. `
+                    : ""}
+                  Click for Sleeper league details and to request the team.
+                </p>
               </Link>
             ))}
           </div>
@@ -438,6 +446,11 @@ const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows])
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 	                  {divisionThemeLeagues.map((lg, idx) => {
 	                    const img = imageSrcForRow(lg, updatedAt);
+
+                    const totalTeams = Number(lg?.total_teams);
+                    const filledTeams = Number(lg?.filled_teams);
+                    const hasCounts = Number.isFinite(totalTeams) && totalTeams > 0 && Number.isFinite(filledTeams) && filledTeams >= 0;
+                    const fillText = hasCounts ? `· ${filledTeams}/${totalTeams} filled` : "";
 	                    // Single source of truth for clickability:
 	                    // - Not Ready => status TBD + NOT clickable
 	                    // - Orphan Open => clickable
@@ -464,12 +477,7 @@ const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows])
                         external={isClickable}
                         prefetch={false}
                         title={lg?.name || "League"}
-                        subtitle={`12-team SF · Division ${lg?.display_order ?? "–"}`}
-                        metaLeft={
-                          Number(lg?.total_rosters) > 0
-                            ? `${Number(lg?.filled_rosters) || 0}/${Number(lg?.total_rosters)} Filled`
-                            : ""
-                        }
+                        subtitle={`12-team SF · Division ${lg?.display_order ?? "–"} ${fillText}`}
                         metaRight={statusLabel(effectiveStatus)}
                         imageSrc={img}
                         imageAlt={lg?.name || "League"}

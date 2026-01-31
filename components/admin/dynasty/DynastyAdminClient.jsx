@@ -98,12 +98,12 @@ function normalizeRow(r, idx = 0) {
   // Do NOT infer orphanOpen from status; otherwise unchecking will "snap back" on normalize.
   const orphanOpen = Boolean(r?.orphanOpen) || Boolean(r?.is_orphan);
 
-  // Single source of truth for "ready": if notReady true, the public page should treat it as TBD.
-  // IMPORTANT: do NOT tie this to `is_active` (that would hide the league in the public directory).
-  // Back-compat: older rows may have used `is_active:false` to mean "not ready".
-  const explicitNotReady = Boolean(r?.notReady ?? r?.not_ready);
-  const legacyNotReady = r?.is_active === false && r?.notReady == null && r?.not_ready == null;
-  const notReady = explicitNotReady || legacyNotReady;
+  // "Not Ready" is an override that forces the public directory to show status = TBD
+  // and disables click-through. It should NOT hide the league.
+  const notReady = Boolean(r?.notReady);
+
+  // Separate admin toggle. `is_active: false` hides the league from the public directory.
+  const isActive = typeof r?.is_active === "boolean" ? r.is_active : true;
 
   return {
     id,
@@ -116,13 +116,11 @@ function normalizeRow(r, idx = 0) {
     // Keep `status` as the base Sleeper status; the public page derives the *effective* status using overrides.
     status: fetched_status,
     fetched_status,
+    // Fill metrics (saved in JSON) – derived from Sleeper league + rosters
+    total_teams: safeNum(r?.total_teams ?? r?.totalTeams),
+    filled_teams: safeNum(r?.filled_teams ?? r?.filledTeams),
+    open_teams: safeNum(r?.open_teams ?? r?.openTeams),
     sleeper_url: safeStr(r?.sleeper_url).trim(), // invite link (optional)
-
-    // League fill metrics (auto imported from Sleeper)
-    total_rosters: safeNum(r?.total_rosters, 0),
-    filled_rosters: safeNum(r?.filled_rosters, 0),
-    open_spots: safeNum(r?.open_spots, 0),
-    last_refreshed: safeStr(r?.last_refreshed).trim(),
 
     // league avatar (auto imported from Sleeper)
     avatar: safeStr(r?.avatar).trim(),
@@ -142,9 +140,7 @@ function normalizeRow(r, idx = 0) {
 
     // backward compat
     is_orphan: orphanOpen,
-    // `is_active` should not be driven by the "not ready" UI.
-    // Keep it truthy so the league remains visible in the public directory.
-    is_active: r?.is_active === false && !legacyNotReady ? false : true,
+    is_active: isActive,
 
     is_theme_stub: Boolean(r?.is_theme_stub),
   };
@@ -208,6 +204,34 @@ export default function DynastyAdminClient() {
   const pageSeason = DEFAULT_PAGE_SEASON;
 
   const groups = useMemo(() => groupByYearAndTheme(rows), [rows]);
+
+  // Shared persistence helper so "Refresh Status" updates are actually saved (same as Redraft).
+  async function persistRows(cleanRows, token, successMsg) {
+    const payload = { updatedAt: nowIso(), rows: cleanRows };
+
+    const res = await fetch(`/api/admin/dynasty`, {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`Save failed: ${res.status} ${res.statusText} ${t.slice(0, 200)}`);
+    }
+
+    // Clear session cache for the public directory so it refetches immediately.
+    try {
+      sessionStorage.removeItem("dynasty:leagues:version");
+      sessionStorage.removeItem("dynasty:leagues:rows");
+      sessionStorage.removeItem("dynasty:leagues:updatedAt");
+    } catch {}
+
+    setRows(cleanRows.map(normalizeRow));
+    setInfoMsg(successMsg || "Saved!");
+  }
 
   async function loadFromR2() {
     setErrorMsg("");
@@ -378,34 +402,6 @@ export default function DynastyAdminClient() {
     return res.json().catch(() => null);
   }
 
-  async function fetchSleeperRosterCounts(leagueId) {
-    const id = safeStr(leagueId).trim();
-    if (!id) {
-      return { total_rosters: 0, filled_rosters: 0, open_spots: 0, last_refreshed: new Date().toISOString() };
-    }
-    // Match the proven script logic:
-    // - totalTeams = league.total_rosters (fallback: rosters.length)
-    // - filledTeams = rosters with owner_id
-    const [leagueRes, rostersRes] = await Promise.all([
-      fetch(`https://api.sleeper.app/v1/league/${id}`, { cache: "no-store" }),
-      fetch(`https://api.sleeper.app/v1/league/${id}/rosters`, { cache: "no-store" }),
-    ]);
-
-    if (!leagueRes.ok || !rostersRes.ok) {
-      return { total_rosters: 0, filled_rosters: 0, open_spots: 0, last_refreshed: new Date().toISOString() };
-    }
-
-    const league = await leagueRes.json().catch(() => ({}));
-    const list = await rostersRes.json().catch(() => []);
-    const rosters = Array.isArray(list) ? list : [];
-
-    const total_rosters = Number(league?.total_rosters) || rosters.length;
-    const filled_rosters = rosters.filter((r) => r && r.owner_id).length;
-    const open_spots = Math.max(0, total_rosters - filled_rosters);
-
-    return { total_rosters, filled_rosters, open_spots, last_refreshed: new Date().toISOString() };
-  }
-
   function stageDivisionImage({ year, themeName, file }) {
     const previewUrl = file ? URL.createObjectURL(file) : "";
 
@@ -553,34 +549,32 @@ export default function DynastyAdminClient() {
         const leagueId = safeStr(r.league_id).trim();
         if (!leagueId) continue;
 
-        const overrideNotReady = Boolean(r.notReady);
-        const overrideOrphan = Boolean(r.orphanOpen);
+        const [leagueRes, rostersRes] = await Promise.all([
+          fetch(`https://api.sleeper.app/v1/league/${encodeURIComponent(leagueId)}`, { cache: "no-store" }),
+          fetch(`https://api.sleeper.app/v1/league/${encodeURIComponent(leagueId)}/rosters`, { cache: "no-store" }),
+        ]);
+        if (!leagueRes.ok) continue;
+        const lg = await leagueRes.json();
+        const rosters = rostersRes.ok ? await rostersRes.json().catch(() => []) : [];
 
-        const res = await fetch(`https://api.sleeper.app/v1/league/${encodeURIComponent(leagueId)}`, {
-          cache: "no-store",
-        });
-        if (!res.ok) continue;
-        const lg = await res.json();
+        // Filled teams logic must match your local script:
+        const totalTeams = Number(lg?.total_rosters) || (Array.isArray(rosters) ? rosters.length : 0);
+        const filledTeams = Array.isArray(rosters) ? rosters.filter((x) => x && x.owner_id).length : 0;
+        const openTeams = Math.max(0, totalTeams - filledTeams);
 
         const i = idxById.get(r.id);
         if (i == null) continue;
 
-        next[i].name = safeStr(lg?.name).trim() || next[i].name;
+        // Always update fill counts (even if status is overridden)
+        next[i].total_teams = totalTeams;
+        next[i].filled_teams = filledTeams;
+        next[i].open_teams = openTeams;
 
-        // Only refresh status if admin is NOT overriding via checkboxes.
-        if (!overrideNotReady && !overrideOrphan) {
+        // If admin is overriding, don't overwrite status.
+        if (!r.notReady && !r.orphanOpen) {
+          next[i].name = safeStr(lg?.name).trim() || next[i].name;
           next[i].status = normalizeStatus(lg?.status) || next[i].status;
-        }
-
-        next[i].avatar = safeStr(lg?.avatar).trim() || next[i].avatar;
-
-        // Always refresh fill counts (even when status is overridden).
-        const counts = await fetchSleeperRosterCounts(leagueId);
-        if (counts) {
-          next[i].total_rosters = counts.total_rosters;
-          next[i].filled_rosters = counts.filled_rosters;
-          next[i].open_spots = counts.open_spots;
-          next[i].last_refreshed = counts.last_refreshed;
+          next[i].avatar = safeStr(lg?.avatar).trim() || next[i].avatar;
         }
 
         // If avatar changed or image missing, fetch + upload.
@@ -594,8 +588,10 @@ export default function DynastyAdminClient() {
         }
       }
 
-      setRows(next);
-      setInfoMsg("Statuses refreshed from Sleeper.");
+      // Persist immediately (same UX as Redraft)
+      const cleaned = next.map((r, idx) => normalizeRow(r, idx));
+      await persistRows(cleaned, token, "Status + fill counts refreshed from Sleeper.");
+      setRows(cleaned);
     } catch (err) {
       setErrorMsg(err?.message || "Failed to refresh");
     } finally {
@@ -846,12 +842,6 @@ export default function DynastyAdminClient() {
                         .map((lg) => {
                           const disabled = Boolean(lg?.notReady);
                           const previewSrc = lg.imageKey ? `/r2/${lg.imageKey}` : lg.image_url || "";
-                          const filled = Number(lg?.filled_rosters);
-                          const total = Number(lg?.total_rosters);
-                          const fillText =
-                            Number.isFinite(filled) && Number.isFinite(total) && total > 0
-                              ? `${Math.max(0, Math.min(total, filled))}/${total} Filled`
-                              : "";
 
                           return (
                             <div
@@ -917,11 +907,10 @@ export default function DynastyAdminClient() {
                                       <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-fg">
                                         {statusLabel(lg.notReady ? "tbd" : lg.orphanOpen ? "orphan_open" : lg.status)}
                                       </span>
-                                      {fillText ? (
-                                        <div className="mt-1">
-                                          <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-muted">
-                                            {fillText}
-                                          </span>
+                                      {Number.isFinite(Number(lg?.total_teams)) && Number(lg.total_teams) > 0 ? (
+                                        <div className="mt-1 text-[11px] text-muted">
+                                          {Math.trunc(Number(lg?.filled_teams) || 0)}/{Math.trunc(Number(lg.total_teams))} filled
+                                          {Number.isFinite(Number(lg?.open_teams)) ? ` · ${Math.trunc(Number(lg.open_teams))} open` : ""}
                                         </div>
                                       ) : null}
                                     </div>
@@ -943,7 +932,16 @@ export default function DynastyAdminClient() {
                                     <label className="flex items-center gap-2 text-xs text-muted">
                                       <input
                                         type="checkbox"
-                                        checked={lg.notReady}
+                                        checked={!!lg.is_active}
+                                        onChange={(e) => updateLeague(lg.id, { is_active: e.target.checked })}
+                                      />
+                                      Active
+                                    </label>
+
+                                    <label className="flex items-center gap-2 text-xs text-muted">
+                                      <input
+                                        type="checkbox"
+                                        checked={!!lg.notReady}
                                         onChange={(e) => updateLeague(lg.id, { notReady: e.target.checked })}
                                       />
                                       League not ready
