@@ -95,19 +95,19 @@ async function sleeperFetchJson(url) {
 async function sleeperUserId(username) {
   const u = String(username || "").trim();
   if (!u) throw new Error("Enter a Sleeper username.");
-  const user = await sleeperFetchJson(`https://api.sleeper.app/v1/user/${encodeURIComponent(u)}`);
+  const user = await sleeperFetchJson(`https://api.sleeper.com/v1/user/${encodeURIComponent(u)}`);
   const id = user?.user_id;
   if (!id) throw new Error("Sleeper user not found.");
   return { userId: id, display: user?.display_name || u };
 }
 
 async function sleeperUserLeagues(userId) {
-  const arr = await sleeperFetchJson(`https://api.sleeper.app/v1/user/${encodeURIComponent(userId)}/leagues/nfl/${SEASON}`);
+  const arr = await sleeperFetchJson(`https://api.sleeper.com/v1/user/${encodeURIComponent(userId)}/leagues/nfl/${SEASON}`);
   return Array.isArray(arr) ? arr : [];
 }
 
 async function sleeperLeagueInfo(leagueId) {
-  return sleeperFetchJson(`https://api.sleeper.app/v1/league/${encodeURIComponent(leagueId)}`);
+  return sleeperFetchJson(`https://api.sleeper.com/v1/league/${encodeURIComponent(leagueId)}`);
 }
 
 function leagueAvatarUrl(avatarId) {
@@ -241,7 +241,7 @@ export default function AddRedraftLeaguesClient() {
 
         newLeagues.push({
           leagueId,
-          sleeperUrl: `https://sleeper.app/league/${leagueId}`,
+          sleeperUrl: `https://sleeper.com/league/${leagueId}`,
           avatarId,
           name,
           status, // predraft|drafting|inseason|complete
@@ -386,7 +386,7 @@ export default function AddRedraftLeaguesClient() {
                           <span>League ID: {l.id}</span>
                           {l.already && <span className="text-emerald-200/80">Already added</span>}
                           <a
-                            href={`https://sleeper.app/league/${l.id}`}
+                            href={`https://sleeper.com/league/${l.id}`}
                             target="_blank"
                             rel="noreferrer"
                             className="text-[var(--color-accent)] hover:underline"

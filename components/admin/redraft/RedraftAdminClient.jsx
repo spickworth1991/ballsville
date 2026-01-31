@@ -208,8 +208,8 @@ export default function RedraftAdminClient() {
 
       const ls = await apiGET("leagues");
       const list = Array.isArray(ls?.data?.leagues) ? ls.data.leagues : [];
-      list.sort((a, b) => Number(a.order) - Number(b.order));
-      setLeagues(normalizeOrders(list.length ? list : [emptyLeague(1)]));
+      const seeded = list.length ? list : [emptyLeague(1)];
+      setLeagues(normalizeOrders(sortByOrder(seeded)));
     } catch (e) {
       setErr(e?.message || "Failed to load Redraft admin data.");
     } finally {
@@ -222,34 +222,26 @@ export default function RedraftAdminClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function normalizeOrders(next) {
-    // Ensure `order` is always a clean 1..N sequence, even if older rows have missing/invalid order.
-    const withPos = (Array.isArray(next) ? next : []).map((l, i) => ({ ...l, __pos: i }));
-    withPos.sort((a, b) => {
-      const ao = Number(a.order);
-      const bo = Number(b.order);
-      const af = Number.isFinite(ao);
-      const bf = Number.isFinite(bo);
-      if (af && bf) return ao - bo;
-      if (af && !bf) return -1;
-      if (!af && bf) return 1;
-      return a.__pos - b.__pos;
-    });
-
-    return withPos.map((l, idx) => {
-      const { __pos, ...rest } = l;
-      return { ...rest, order: idx + 1 };
-    });
+  function sortByOrder(arr) {
+    const a = Array.isArray(arr) ? arr : [];
+    return [...a].sort((x, y) => Number(x.order) - Number(y.order));
   }
 
+  function normalizeOrders(next) {
+    // IMPORTANT: do NOT sort here.
+    // This only re-numbers in the *current array order*.
+    // (Sorting inside normalizeOrders would undo "move up/down" swaps.)
+    const a = Array.isArray(next) ? next : [];
+    return a.map((l, idx) => ({ ...l, order: idx + 1 }));
+  }
 
-  function moveLeague(index, dir) {
+  function moveLeague(order, dir) {
     setLeagues((prev) => {
-      const sorted = normalizeOrders(prev);
-      const i = Number(index);
-      if (!Number.isFinite(i)) return sorted;
+      const sorted = sortByOrder(prev);
+      const i = sorted.findIndex((l) => Number(l.order) === Number(order));
+      if (i < 0) return prev;
       const j = dir === "up" ? i - 1 : i + 1;
-      if (j < 0 || j >= sorted.length) return sorted;
+      if (j < 0 || j >= sorted.length) return prev;
       const swapped = [...sorted];
       const tmp = swapped[i];
       swapped[i] = swapped[j];
@@ -258,14 +250,13 @@ export default function RedraftAdminClient() {
     });
   }
 
-
   function addManualLeague() {
     const nextOrder = leagues.length ? Math.max(...leagues.map((l) => Number(l.order) || 0)) + 1 : 1;
     setLeagues((prev) => [...prev, emptyLeague(nextOrder)]);
   }
 
   function removeLeague(order) {
-    setLeagues((prev) => normalizeOrders(prev.filter((l) => Number(l.order) !== Number(order))));
+    setLeagues((prev) => normalizeOrders(sortByOrder(prev).filter((l) => Number(l.order) !== Number(order))));
     setPendingLeagueFiles((prev) => {
       const next = { ...prev };
       delete next[String(order)];
@@ -338,7 +329,8 @@ export default function RedraftAdminClient() {
         // If the admin has manually marked this league as "not ready", keep it forced TBD.
         l.status = l.notReady ? "tbd" : status;
         l.avatarId = nextAvatarId;
-        l.sleeperUrl = `https://sleeper.app/league/${l.leagueId}`;
+        // Desktop-friendly league page
+        l.sleeperUrl = `https://sleeper.com/leagues/${l.leagueId}`;
 
         // If avatar changed (or we don't have an image yet), refresh the stored image.
         const shouldUploadAvatar = Boolean(nextAvatarId) && (nextAvatarId !== prevAvatarId || !l.imageKey);
@@ -476,7 +468,7 @@ export default function RedraftAdminClient() {
         {sortedLeagues.map((l, idx) => {
           const isSleeper = Boolean(l.leagueId);
           const preview = leaguePreviewSrc(l);
-          const sleeperUrl = l.sleeperUrl || (l.leagueId ? `https://sleeper.app/league/${l.leagueId}` : "");
+          const sleeperUrl = l.sleeperUrl || (l.leagueId ? `https://sleeper.com/leagues/${l.leagueId}` : "");
           const effectiveStatus = l.notReady ? "tbd" : l.status;
           return (
             <div key={`${l.order}-${l.leagueId || l.name}`} className="rounded-2xl border border-white/10 bg-card-surface p-4">
@@ -502,7 +494,7 @@ export default function RedraftAdminClient() {
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => moveLeague(idx, "up")}
+                        onClick={() => moveLeague(l.order, "up")}
                         disabled={idx === 0}
                         className="rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/80 disabled:opacity-40"
                         title="Move up"
@@ -511,7 +503,7 @@ export default function RedraftAdminClient() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => moveLeague(idx, "down")}
+                        onClick={() => moveLeague(l.order, "down")}
                         disabled={idx === sortedLeagues.length - 1}
                         className="rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/80 disabled:opacity-40"
                         title="Move down"
