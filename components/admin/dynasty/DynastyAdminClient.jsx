@@ -1,31 +1,16 @@
-
-// src/lib/DynastyAdminClient.jsx
 "use client";
+
 import { safeStr } from "@/lib/safe";
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { getSupabase } from "@/lib/supabaseClient";
 import { CURRENT_SEASON } from "@/lib/season";
+import { getSupabase } from "@/lib/supabaseClient";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 
 const R2_KEY = "data/dynasty/leagues.json";
-
 const DEFAULT_PAGE_SEASON = CURRENT_SEASON;
-const DEFAULT_PAGE_EDITABLE = {
-  hero: {
-    promoImageKey: "",
-    promoImageUrl: "",
-    updatesHtml: "<p>Updates will show here.</p>",
-  },
-};
 
-const STATUS_OPTIONS = [
-  "FULL & ACTIVE",
-  "CURRENTLY FILLING",
-  "DRAFTING",
-  "ORPHAN OPEN",
-  "TBD",
-];
-
+const STATUS_OPTIONS = ["FULL & ACTIVE", "CURRENTLY FILLING", "DRAFTING", "ORPHAN OPEN", "TBD"];
 
 function nowIso() {
   try {
@@ -35,16 +20,9 @@ function nowIso() {
   }
 }
 
-
 function safeNum(v, fallback = null) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
-}
-
-function setRow(rows, idx, patch) {
-  const next = [...rows];
-  next[idx] = { ...next[idx], ...patch };
-  return next;
 }
 
 function safeRevoke(url) {
@@ -52,7 +30,6 @@ function safeRevoke(url) {
     if (url && url.startsWith("blob:")) URL.revokeObjectURL(url);
   } catch {}
 }
-
 
 function slugify(input) {
   return safeStr(input)
@@ -64,50 +41,58 @@ function slugify(input) {
 }
 
 function newId(prefix = "dyn") {
-  // deterministic-enough for admin use; safe for use in R2 keys
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+}
+
+function normalizeStatus(raw) {
+  const s = safeStr(raw).trim().toUpperCase();
+  if (s === "INACTIVE") return "TBD";
+  if (STATUS_OPTIONS.includes(s)) return s;
+  return "FULL & ACTIVE";
 }
 
 function normalizeRow(r, idx = 0) {
   const id = safeStr(r?.id) || newId("dyn");
   const year = safeNum(r?.year, new Date().getFullYear());
   const theme_name = safeStr(r?.theme_name || r?.kind || "Untitled Theme").trim();
-  const display_order = safeNum(r?.display_order, idx + 1);
-  const rawStatus = safeStr(r?.status);
-  const mappedStatus = rawStatus === "INACTIVE" ? "TBD" : rawStatus; // backward compat
-  const status = STATUS_OPTIONS.includes(mappedStatus) ? mappedStatus : "FULL & ACTIVE";
+  const display_order = safeNum(r?.display_order ?? r?.order, idx + 1);
 
-  const isOrphanByStatus = status.toUpperCase().includes("ORPHAN");
+  const status = normalizeStatus(r?.status);
+  const is_orphan = status === "ORPHAN OPEN";
 
+  // Single source of truth for "ready": if notReady true, the public page should treat it as TBD.
+  const notReady = Boolean(r?.notReady) || r?.is_active === false;
 
   return {
     id,
     year,
     theme_name,
     theme_blurb: safeStr(r?.theme_blurb).trim(),
+
     name: safeStr(r?.name).trim(),
     status,
     sleeper_url: safeStr(r?.sleeper_url).trim(),
+
+    // league image
     imageKey: safeStr(r?.imageKey).trim(),
     image_url: safeStr(r?.image_url).trim(),
+    pendingImageFile: null,
+    pendingImagePreviewUrl: "",
 
-    // Whether this league should be shown as unavailable on the public page.
-    // Back-compat: older JSON used is_active=false for this behavior.
-    notReady: Boolean(r?.notReady ?? r?.not_ready ?? r?.not_ready_league ?? (r?.is_active === false)),
-
-    // Optional: division/theme image (used for the division cards)
+    // theme/division image
     theme_imageKey: safeStr(r?.theme_imageKey || r?.theme_image_key).trim(),
     theme_image_url: safeStr(r?.theme_image_url).trim(),
     pendingThemeImageFile: null,
     pendingThemeImagePreviewUrl: "",
 
-    pendingImageFile: null,
-    pendingImagePreviewUrl: "",
     display_order,
-    // Orphan is controlled by Status (single source of truth).
-    // Keep the boolean for backward compatibility with older JSON,
-    // but do not rely on a separate checkbox going forward.
-    is_orphan: isOrphanByStatus,
+    notReady,
+
+    // keep for backward compat in JSON; we don't render a separate checkbox.
+    is_orphan,
+    is_active: !notReady,
+
+    is_theme_stub: Boolean(r?.is_theme_stub),
   };
 }
 
@@ -115,17 +100,15 @@ function groupByYearAndTheme(rows) {
   const map = new Map();
   for (const row of rows) {
     const year = Number(row.year) || new Date().getFullYear();
-    const theme = (row.theme_name || row.kind || "Untitled Theme").trim();
+    const theme = (row.theme_name || "Untitled Theme").trim();
     const key = `${year}::${theme}`;
     if (!map.has(key)) {
       map.set(key, { key, year, theme_name: theme, leagues: [] });
     }
-    // Theme stubs are used to create a theme before leagues are added.
-    // They should not render as league rows.
-    if (!row?.is_theme_stub) map.get(key).leagues.push(row);
+    if (!row.is_theme_stub) map.get(key).leagues.push(row);
   }
 
-  for (const [, g] of map.entries()) {
+  for (const g of map.values()) {
     g.leagues.sort((a, b) => {
       const ao = a.display_order ?? 9999;
       const bo = b.display_order ?? 9999;
@@ -148,38 +131,28 @@ async function getAccessToken() {
 }
 
 export default function DynastyAdminClient() {
+  const router = useRouter();
+
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [infoMsg, setInfoMsg] = useState("");
 
-  const pageSeason = DEFAULT_PAGE_SEASON;
-  const [pageCfg, setPageCfg] = useState(DEFAULT_PAGE_EDITABLE);
-  const [pageSaving, setPageSaving] = useState(false);
-  const [pageLoading, setPageLoading] = useState(true);
-
   // accordion open/closed
   const [openThemes, setOpenThemes] = useState(() => new Set());
 
-  // quick create
+  // quick create (theme only)
   const [quickOpen, setQuickOpen] = useState(false);
   const [quick, setQuick] = useState({
     year: new Date().getFullYear(),
     theme_name: "",
     theme_blurb: "",
-    base_status: "CURRENTLY FILLING",
-    division_names: "",
   });
 
-  const groups = useMemo(() => groupByYearAndTheme(rows), [rows]);
+  const pageSeason = DEFAULT_PAGE_SEASON;
 
-  const divisionGroupsForSeason = useMemo(() => {
-    const y = Number(pageSeason);
-    return groups
-      .filter((g) => Number(g.year) === y)
-      .sort((a, b) => String(a.themeName).localeCompare(String(b.themeName)));
-  }, [groups, pageSeason]);
+  const groups = useMemo(() => groupByYearAndTheme(rows), [rows]);
 
   async function loadFromR2() {
     setErrorMsg("");
@@ -202,89 +175,94 @@ export default function DynastyAdminClient() {
     }
   }
 
-  async function loadPageConfig(season = pageSeason) {
-    setPageLoading(true);
-    try {
-      const token = await getAccessToken();
-      if (!token) {
-        setPageCfg(DEFAULT_PAGE_EDITABLE);
-        return;
-      }
-      const res = await fetch(`/api/admin/dynasty?season=${encodeURIComponent(String(season))}&type=page`, {
-        headers: { authorization: `Bearer ${token}` },
-        cache: "no-store",
-      });
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok || !out?.ok) {
-        setPageCfg(DEFAULT_PAGE_EDITABLE);
-        return;
-      }
-      const hero = out?.data?.hero || {};
-      setPageCfg({
-        hero: {
-          promoImageKey: safeStr(hero.promoImageKey || ""),
-          promoImageUrl: safeStr(hero.promoImageUrl || ""),
-          updatesHtml: hero.updatesHtml ?? DEFAULT_PAGE_EDITABLE.hero.updatesHtml,
-        },
-      });
-    } catch {
-      setPageCfg(DEFAULT_PAGE_EDITABLE);
-    } finally {
-      setPageLoading(false);
-    }
-  }
-
-  async function savePageConfig(season = pageSeason) {
-    setErrorMsg("");
-    setInfoMsg("");
-    setPageSaving(true);
-    try {
-      const token = await getAccessToken();
-      if (!token) throw new Error("Not logged in.");
-      const res = await fetch(`/api/admin/dynasty?season=${encodeURIComponent(String(season))}&type=page`, {
-        method: "PUT",
-        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-        body: JSON.stringify({ type: "page", data: pageCfg }),
-      });
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok || !out?.ok) throw new Error(out?.error || `Save failed (${res.status})`);
-      setInfoMsg("Owner Updates saved.");
-    } catch (e) {
-      setErrorMsg(e?.message || "Failed to save Owner Updates.");
-    } finally {
-      setPageSaving(false);
-    }
-  }
-
-  async function uploadOwnerUpdatesImage(file) {
-    const token = await getAccessToken();
-    if (!token) throw new Error("Not logged in.");
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("section", "dynasty-updates");
-    fd.append("season", String(pageSeason));
-    const res = await fetch(`/api/admin/upload`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}` },
-      body: fd,
-    });
-    const out = await res.json().catch(() => ({}));
-    if (!res.ok || !out?.ok) throw new Error(out?.error || "Upload failed");
-    setPageCfg((p) => ({
-      ...p,
-      hero: { ...p.hero, promoImageKey: safeStr(out.key || ""), promoImageUrl: safeStr(out.publicUrl || "") },
-    }));
-  }
-
   useEffect(() => {
     loadFromR2();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    loadPageConfig(pageSeason);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageSeason]);
+  function toggleTheme(themeKey) {
+    setOpenThemes((prev) => {
+      const next = new Set(prev);
+      if (next.has(themeKey)) next.delete(themeKey);
+      else next.add(themeKey);
+      return next;
+    });
+  }
+
+  function updateThemeMeta(groupKey, patch) {
+    const [yearStr, themeName] = groupKey.split("::");
+    const year = Number(yearStr);
+    setRows((prev) =>
+      prev.map((r) => {
+        if (Number(r.year) !== year) return r;
+        if ((r.theme_name || "").trim() !== (themeName || "").trim()) return r;
+        return { ...r, ...patch };
+      })
+    );
+  }
+
+  function updateLeague(id, patch) {
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  }
+
+  function deleteLeague(id) {
+    if (!window.confirm("Delete this league row?")) return;
+    setRows((prev) => prev.filter((r) => r.id !== id));
+  }
+
+  function deleteTheme(group) {
+    const ok = window.prompt(
+      'Type BALLSVILLE to delete this entire theme (this removes ALL leagues under it):'
+    );
+    if ((ok || "").trim().toLowerCase() !== "ballsville") return;
+    setRows((prev) =>
+      prev.filter(
+        (r) => !(Number(r.year) === Number(group.year) && (r.theme_name || "").trim() === (group.theme_name || "").trim())
+      )
+    );
+    setOpenThemes((prev) => {
+      const next = new Set(prev);
+      next.delete(group.key);
+      return next;
+    });
+    setInfoMsg(`Theme "${group.theme_name}" removed locally. Click "Save to R2" to publish.`);
+  }
+
+  function addLeague(group) {
+    const id = newId("dyn");
+    const next = normalizeRow(
+      {
+        id,
+        year: group.year,
+        theme_name: group.theme_name,
+        theme_blurb: (group.leagues?.[0]?.theme_blurb || "").trim(),
+        name: "",
+        status: "TBD",
+        sleeper_url: "",
+        imageKey: "",
+        image_url: "",
+        display_order: (group.leagues?.length || 0) + 1,
+        notReady: true,
+      },
+      0
+    );
+    setRows((prev) => [...prev, next]);
+  }
+
+  function moveLeagueWithinTheme(group, leagueId, dir) {
+    const ordered = [...group.leagues].sort((a, b) => (a.display_order ?? 9999) - (b.display_order ?? 9999));
+    const idx = ordered.findIndex((x) => x.id === leagueId);
+    if (idx < 0) return;
+    const swapWith = dir === "up" ? idx - 1 : idx + 1;
+    if (swapWith < 0 || swapWith >= ordered.length) return;
+
+    const a = ordered[idx];
+    const b = ordered[swapWith];
+
+    // swap display_order values
+    updateLeague(a.id, { display_order: b.display_order ?? idx + 1 });
+    updateLeague(b.id, { display_order: a.display_order ?? swapWith + 1 });
+  }
 
   async function uploadDynastyImage({ year, id, file, token }) {
     const fd = new FormData();
@@ -309,7 +287,7 @@ export default function DynastyAdminClient() {
     fd.append("file", file);
     fd.append("section", "dynasty-division");
     fd.append("season", String(year));
-    fd.append("divisionSlug", String(divisionSlug)); // deterministic key
+    fd.append("divisionSlug", String(divisionSlug));
 
     const res = await fetch(`/api/admin/upload`, {
       method: "POST",
@@ -323,7 +301,6 @@ export default function DynastyAdminClient() {
   }
 
   function stageDivisionImage({ year, themeName, file }) {
-    const groupKey = `${year}::${slugify(themeName)}`;
     const previewUrl = file ? URL.createObjectURL(file) : "";
 
     setRows((prev) => {
@@ -333,14 +310,12 @@ export default function DynastyAdminClient() {
         if (Number(r?.year) !== Number(year)) return r;
         if (safeStr(r?.theme_name).trim() !== safeStr(themeName).trim()) return r;
 
-        // Replace staged preview on representative row
         safeRevoke(r.pendingThemeImagePreviewUrl);
         used = true;
         return {
           ...r,
           pendingThemeImageFile: file || null,
           pendingThemeImagePreviewUrl: previewUrl,
-          pendingThemeImageGroupKey: groupKey,
         };
       });
     });
@@ -370,72 +345,72 @@ export default function DynastyAdminClient() {
     setInfoMsg("");
     setSaving(true);
     try {
-            const token = await getAccessToken();
-            if (!token) throw new Error("Missing admin session token. Please sign in again.");
+      const token = await getAccessToken();
+      if (!token) throw new Error("Missing admin session token. Please sign in again.");
 
-            // ✅ 0) Upload any staged DIVISION images first (theme cards)
-            const staged = nextRows.map((r) => ({ ...r }));
+      // clone
+      const staged = nextRows.map((r) => ({ ...r }));
 
-            // group by year + theme_name, but only upload once per group
-            const divKeys = new Map();
-            for (let i = 0; i < staged.length; i++) {
-              const r = staged[i];
-              if (!r?.pendingThemeImageFile) continue;
-              const themeName = safeStr(r?.theme_name).trim() || "Dynasty";
-              const divSlug = slugify(themeName);
-              const key = `${Number(r.year)}::${divSlug}`;
-              if (!divKeys.has(key)) divKeys.set(key, { year: Number(r.year), divSlug, themeName, repIndex: i });
-            }
+      // 0) Upload any staged DIVISION images first (theme cards)
+      const divKeys = new Map();
+      for (let i = 0; i < staged.length; i++) {
+        const r = staged[i];
+        if (!r?.pendingThemeImageFile) continue;
+        const themeName = safeStr(r?.theme_name).trim() || "Dynasty";
+        const divSlug = slugify(themeName);
+        const key = `${Number(r.year)}::${divSlug}`;
+        if (!divKeys.has(key)) divKeys.set(key, { year: Number(r.year), divSlug, themeName, repIndex: i });
+      }
 
-            for (const entry of divKeys.values()) {
-              const rep = staged[entry.repIndex];
-              const uploadedKey = await uploadDynastyDivisionImage({
-                year: entry.year,
-                divisionSlug: entry.divSlug,
-                file: rep.pendingThemeImageFile,
-                token,
-              });
+      for (const entry of divKeys.values()) {
+        const rep = staged[entry.repIndex];
+        const uploadedKey = await uploadDynastyDivisionImage({
+          year: entry.year,
+          divisionSlug: entry.divSlug,
+          file: rep.pendingThemeImageFile,
+          token,
+        });
 
-              // apply the theme image to all rows in that year/theme
-              for (let j = 0; j < staged.length; j++) {
-                const r = staged[j];
-                const themeName = safeStr(r?.theme_name).trim() || "Dynasty";
-                if (Number(r.year) !== entry.year) continue;
-                if (themeName !== entry.themeName) continue;
-                r.theme_imageKey = uploadedKey;
-                r.theme_image_url = "";
-              }
+        // apply the theme image to all rows in that year/theme
+        for (let j = 0; j < staged.length; j++) {
+          const r = staged[j];
+          const themeName = safeStr(r?.theme_name).trim() || "Dynasty";
+          if (Number(r.year) !== entry.year) continue;
+          if (themeName !== entry.themeName) continue;
+          r.theme_imageKey = uploadedKey;
+          r.theme_image_url = "";
+        }
 
-              safeRevoke(rep.pendingThemeImagePreviewUrl);
-              rep.pendingThemeImageFile = null;
-              rep.pendingThemeImagePreviewUrl = "";
-            }
+        safeRevoke(rep.pendingThemeImagePreviewUrl);
+        rep.pendingThemeImageFile = null;
+        rep.pendingThemeImagePreviewUrl = "";
+      }
 
-            // ✅ 1) Upload any staged LEAGUE images
+      // 1) Upload staged LEAGUE images
+      for (let i = 0; i < staged.length; i++) {
+        const r = staged[i];
+        if (!r?.pendingImageFile) continue;
 
-            for (let i = 0; i < staged.length; i++) {
-              const r = staged[i];
-              if (!r?.pendingImageFile) continue;
+        const key = await uploadDynastyImage({
+          year: r.year,
+          id: r.id,
+          file: r.pendingImageFile,
+          token,
+        });
 
-              const key = await uploadDynastyImage({
-                year: r.year,
-                id: r.id,
-                file: r.pendingImageFile,
-                token,
-              });
+        safeRevoke(r.pendingImagePreviewUrl);
 
-              safeRevoke(r.pendingImagePreviewUrl);
+        staged[i] = {
+          ...r,
+          imageKey: key,
+          image_url: "",
+          pendingImageFile: null,
+          pendingImagePreviewUrl: "",
+        };
+      }
 
-              staged[i] = {
-                ...r,
-                imageKey: key,
-                pendingImageFile: null,
-                pendingImagePreviewUrl: "",
-              };
-            }
-
-            // ✅ 2) Normalize + stable sort for diffs
-            const clean = staged.map(normalizeRow);
+      // 2) Normalize + stable sort (and drop any transient props)
+      const clean = staged.map(normalizeRow);
 
       clean.sort((a, b) => {
         if (a.year !== b.year) return b.year - a.year;
@@ -458,9 +433,7 @@ export default function DynastyAdminClient() {
       });
 
       const out = await res.json().catch(() => ({}));
-      if (!res.ok || !out?.ok) {
-        throw new Error(out?.error || `Save failed (${res.status})`);
-      }
+      if (!res.ok || !out?.ok) throw new Error(out?.error || `Save failed (${res.status})`);
 
       setRows(clean);
       setInfoMsg("Saved Dynasty leagues to R2.");
@@ -471,183 +444,45 @@ export default function DynastyAdminClient() {
     }
   }
 
-  async function importFromSupabase() {
-    setErrorMsg("");
-    setInfoMsg("");
-    try {
-      const supabase = getSupabase();
-      if (!supabase) throw new Error("Supabase client not available.");
-
-      const { data, error } = await supabase
-        .from("dynasty_leagues")
-        .select("*")
-        .order("year", { ascending: false })
-        .order("theme_name", { ascending: true })
-        .order("display_order", { ascending: true });
-
-      if (error) throw error;
-      const imported = (data || []).map((r, idx) =>
-        normalizeRow(
-          {
-            ...r,
-            // keep existing image_url, but start imageKey empty
-            imageKey: "",
-          },
-          idx
-        )
-      );
-      setRows(imported);
-      setInfoMsg(`Imported ${imported.length} rows from Supabase. Review, then click "Save to R2".`);
-    } catch (e) {
-      setErrorMsg(e?.message || "Failed to import from Supabase.");
-    }
-  }
-
-  function toggleTheme(themeKey) {
-    setOpenThemes((prev) => {
-      const next = new Set(prev);
-      if (next.has(themeKey)) next.delete(themeKey);
-      else next.add(themeKey);
-      return next;
-    });
-  }
-
-  function updateThemeMeta(groupKey, patch) {
-    const [yearStr, themeName] = groupKey.split("::");
-    const year = Number(yearStr);
-    setRows((prev) =>
-      prev.map((r) => {
-        if (Number(r.year) !== year) return r;
-        if ((r.theme_name || "").trim() !== (themeName || "").trim()) return r;
-        return { ...r, ...patch };
-      })
-    );
-  }
-
-  function updateLeague(id, patch) {
-    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  }
-
-  function toggleOrphan(id, checked) {
-    // Orphan is represented via Status to keep one source of truth.
-    if (checked) updateLeague(id, { status: "ORPHAN OPEN", is_orphan: true });
-    else updateLeague(id, { status: "CURRENTLY FILLING", is_orphan: false });
-  }
-
-  function moveLeague(group, leagueId, dir) {
-    // dir: -1 (up) or +1 (down)
-    const list = (group?.leagues || [])
-      .slice()
-      .sort((a, b) => (a.display_order ?? 9999) - (b.display_order ?? 9999));
-    const idx = list.findIndex((x) => x.id === leagueId);
-    if (idx < 0) return;
-    const swapIdx = idx + dir;
-    if (swapIdx < 0 || swapIdx >= list.length) return;
-    const a = list[idx];
-    const b = list[swapIdx];
-    const aOrder = a.display_order ?? idx + 1;
-    const bOrder = b.display_order ?? swapIdx + 1;
-    setRows((prev) =>
-      prev.map((r) => {
-        if (r.id === a.id) return { ...r, display_order: bOrder };
-        if (r.id === b.id) return { ...r, display_order: aOrder };
-        return r;
-      })
-    );
-  }
-
-  function deleteLeague(id) {
-    if (!window.confirm("Delete this league row?")) return;
-    setRows((prev) => prev.filter((r) => r.id !== id));
-  }
-
-  function deleteTheme(group) {
-    const ok = window.prompt('Type BALLSVILLE to delete this entire theme (this removes ALL leagues under it):');
-    if ((ok || "").trim().toLowerCase() !== "ballsville") return;
-    setRows((prev) => prev.filter((r) => !(Number(r.year) === Number(group.year) && (r.theme_name || "").trim() === (group.theme_name || "").trim())));
-    setOpenThemes((prev) => {
-      const next = new Set(prev);
-      next.delete(group.key);
-      return next;
-    });
-    setInfoMsg(`Theme "${group.theme_name}" removed locally. Click "Save to R2" to publish.`);
-  }
-
-  function addLeague(group) {
-    const id = newId("dyn");
-    const next = normalizeRow(
-      {
-        id,
-        year: group.year,
-        theme_name: group.theme_name,
-        theme_blurb: (group.leagues?.[0]?.theme_blurb || "").trim(),
-        name: "",
-        status: "CURRENTLY FILLING",
-        sleeper_url: "",
-        imageKey: "",
-        image_url: "",
-        notReady: false,
-        note: "",
-        display_order: (group.leagues?.length || 0) + 1,
-        is_orphan: false,
-      },
-      0
-    );
-    setRows((prev) => [...prev, next]);
-  }
-
-
   async function handleQuickCreate(e) {
     e.preventDefault();
     setErrorMsg("");
     setInfoMsg("");
 
     const year = Number(quick.year) || new Date().getFullYear();
-    const theme_name = quick.theme_name.trim();
-    const theme_blurb = quick.theme_blurb.trim();
-    const base_status = quick.base_status || "CURRENTLY FILLING";
+    const theme_name = String(quick.theme_name || "").trim();
+    const theme_blurb = String(quick.theme_blurb || "").trim();
 
-    const names = quick.division_names
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    if (!theme_name) {
-      alert("Please enter a theme name.");
-      return;
-    }
-    if (names.length === 0) {
-      alert("Please enter at least one league name (one per line).");
+    if (theme_name.length < 2) {
+      setErrorMsg("Theme name must be at least 2 characters.");
       return;
     }
 
-    const newRows = names.map((name, idx) =>
-      normalizeRow(
-        {
-          id: newId(slugify(theme_name) || "dyn"),
-          year,
-          theme_name,
-          theme_blurb,
-          name,
-          status: base_status,
-          display_order: idx + 1,
-          notReady: false,
-          is_orphan: String(base_status || "").toUpperCase().includes("ORPHAN"),
-        },
-        idx
-      )
+    // Create a Theme stub row (kept in R2 so the theme exists even if no leagues added yet).
+    const stubId = `theme_stub_${year}_${slugify(theme_name)}`;
+
+    const stub = normalizeRow(
+      {
+        id: stubId,
+        year,
+        theme_name,
+        theme_blurb,
+        name: "",
+        status: "TBD",
+        sleeper_url: "",
+        display_order: 1,
+        notReady: true,
+        is_theme_stub: true,
+      },
+      0
     );
 
-    setRows((prev) => [...prev, ...newRows]);
+    setRows((prev) => [...prev, stub]);
     setQuickOpen(false);
-    setQuick({
-      year: new Date().getFullYear(),
-      theme_name: "",
-      theme_blurb: "",
-      base_status: "CURRENTLY FILLING",
-      division_names: "",
-    });
-    setInfoMsg(`Created ${newRows.length} leagues locally. Click "Save to R2" to publish.`);
+    setQuick({ year: new Date().getFullYear(), theme_name: "", theme_blurb: "" });
+
+    // Go straight into Sleeper flow.
+    router.push(`/admin/dynasty/add-leagues?year=${encodeURIComponent(String(year))}&theme=${encodeURIComponent(theme_name)}`);
   }
 
   if (loading) {
@@ -670,85 +505,12 @@ export default function DynastyAdminClient() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Link
-            href="/admin/constitution/dynasty"
-            className="btn btn-outline text-sm"
-          >
+          <Link href="/admin/constitution/dynasty" className="btn btn-outline text-sm">
             Edit Dynasty Constitution
           </Link>
-          {/* <button className="btn btn-outline text-sm" type="button" onClick={loadFromR2} disabled={saving}>
-            Reload from R2
-          </button> */}
-          {/* <button className="btn btn-outline text-sm" type="button" onClick={importFromSupabase} disabled={saving}>
-            Import from Supabase
-          </button> */}
           <button className="btn btn-primary text-sm" type="button" onClick={() => saveAllToR2()} disabled={saving}>
             {saving ? "Saving…" : "Save to R2"}
           </button>
-        </div>
-      </div>
-
-      {/* Owner Updates (Hero) */}
-      <div className="rounded-2xl border border-subtle bg-card-surface p-6 space-y-4">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <h2 className="text-lg font-semibold text-primary">Owner Updates (Hero)</h2>
-            <p className="text-xs text-muted max-w-prose">
-              This image + text renders in the hero section on the public Dynasty page.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
-<button
-              className="btn btn-primary"
-              type="button"
-              onClick={() => savePageConfig(pageSeason)}
-              disabled={pageSaving || pageLoading}
-            >
-              {pageSaving ? "Saving…" : "Save Owner Updates"}
-            </button>
-          </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <p className="text-xs text-muted">Promo image</p>
-            <div className="rounded-xl border border-subtle bg-black/20 overflow-hidden">
-              {pageCfg.hero.promoImageKey ? (
-                <img src={`/r2/${pageCfg.hero.promoImageKey}`} alt="Owner promo" className="w-full h-auto block" loading="lazy" />
-              ) : (
-                <div className="p-6 text-sm text-muted">No image uploaded.</div>
-              )}
-            </div>
-            <input
-              type="file"
-              accept="image/*"
-              className="input"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                try {
-                  await uploadOwnerUpdatesImage(file);
-                  setInfoMsg("Image uploaded. Click Save Owner Updates to publish.");
-                } catch (err) {
-                  setErrorMsg(err?.message || "Upload failed.");
-                } finally {
-                  e.target.value = "";
-                }
-              }}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-xs text-muted">Updates HTML</p>
-            <textarea
-              className="input min-h-[180px]"
-              value={pageCfg.hero.updatesHtml}
-              onChange={(e) => setPageCfg((p) => ({ ...p, hero: { ...p.hero, updatesHtml: e.target.value } }))}
-              placeholder="<p>Type your updates here…</p>"
-            />
-            <p className="text-xs text-muted">Tip: keep it short (1–4 lines) so the hero stays clean.</p>
-          </div>
         </div>
       </div>
 
@@ -756,9 +518,9 @@ export default function DynastyAdminClient() {
       <div className="rounded-2xl border border-subtle bg-card-surface p-6 space-y-4">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <h2 className="text-lg font-semibold text-primary">Quick create season &amp; theme</h2>
+            <h2 className="text-lg font-semibold text-primary">New season theme</h2>
             <p className="text-xs text-muted max-w-prose">
-              Creates a theme and bulk-adds league rows (one per line). This is local until you click "Save to R2".
+              Create a theme (year + theme name). After you create it, you’ll pick leagues from Sleeper to populate the theme.
             </p>
           </div>
           <button className="btn btn-primary" type="button" onClick={() => setQuickOpen(true)}>
@@ -784,26 +546,10 @@ export default function DynastyAdminClient() {
               <input className="input" value={quick.theme_blurb} onChange={(e) => setQuick((q) => ({ ...q, theme_blurb: e.target.value }))} />
             </label>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="space-y-1">
-                <span className="text-xs text-muted">Default status</span>
-                <select className="input" value={quick.base_status} onChange={(e) => setQuick((q) => ({ ...q, base_status: e.target.value }))}>
-                  {STATUS_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <label className="space-y-1">
-              <span className="text-xs text-muted">League names (one per line)</span>
-              <textarea className="input" rows={6} value={quick.division_names} onChange={(e) => setQuick((q) => ({ ...q, division_names: e.target.value }))} />
-            </label>
-
             <div className="flex gap-2">
-              <button className="btn btn-primary" type="submit">Create</button>
+              <button className="btn btn-primary" type="submit" disabled={String(quick.theme_name || "").trim().length < 2}>
+                Create & Pick Leagues
+              </button>
               <button className="btn btn-outline" type="button" onClick={() => setQuickOpen(false)}>
                 Close
               </button>
@@ -817,11 +563,17 @@ export default function DynastyAdminClient() {
         <h2 className="text-lg font-semibold">Existing themes &amp; leagues</h2>
 
         {groups.length === 0 ? (
-          <p className="text-sm text-muted">No Dynasty rows in R2 yet. "New Year / Theme".</p>
+          <p className="text-sm text-muted">No Dynasty themes in R2 yet. Click “New Year / Theme”.</p>
         ) : (
           groups.map((group) => {
             const open = openThemes.has(group.key);
             const blurb = (group.leagues?.[0]?.theme_blurb || "").trim();
+
+            // representative row for theme images
+            const rep = group.leagues?.[0] || rows.find((r) => Number(r.year) === Number(group.year) && safeStr(r.theme_name).trim() === safeStr(group.theme_name).trim()) || {};
+            const themeImg =
+              rep.pendingThemeImagePreviewUrl ||
+              (rep.theme_imageKey ? `/r2/${rep.theme_imageKey}` : rep.theme_image_url || "");
 
             return (
               <div key={group.key} className="rounded-2xl border border-subtle bg-card-surface overflow-hidden">
@@ -831,7 +583,9 @@ export default function DynastyAdminClient() {
                   className="w-full flex items-center justify-between gap-3 px-5 py-4 border-b border-subtle"
                 >
                   <div className="min-w-0 text-left">
-                    <p className="text-sm font-semibold truncate">{group.theme_name} · {group.year}</p>
+                    <p className="text-sm font-semibold truncate">
+                      {group.theme_name} · {group.year}
+                    </p>
                     <p className="text-xs text-muted truncate">{group.leagues.length} leagues</p>
                   </div>
                   <span className="text-xs text-muted">{open ? "Hide" : "Edit"} →</span>
@@ -839,217 +593,175 @@ export default function DynastyAdminClient() {
 
                 {open && (
                   <div className="p-5 space-y-4">
-                    {(() => {
-                      const rep = group.leagues?.[0] || {};
-                      const img =
-                        rep.pendingThemeImagePreviewUrl ||
-                        (rep.theme_imageKey ? `/r2/${rep.theme_imageKey}` : rep.theme_image_url || "");
-                      const fallback = rep.imageKey ? `/r2/${rep.imageKey}` : rep.image_url || "";
-                      const shown = img || fallback;
-
-                      return (
-                        <div className="rounded-2xl border border-subtle bg-panel p-4">
-                          <div className="flex items-center justify-between gap-3 flex-wrap">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="h-12 w-12 rounded-xl border border-subtle bg-subtle-surface overflow-hidden shrink-0">
-                                {shown ? (
-                                  <img src={shown} alt={group.theme_name} className="h-full w-full object-cover" />
-                                ) : (
-                                  <div className="h-full w-full grid place-items-center text-xs text-muted">No img</div>
-                                )}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-sm font-semibold truncate">Division image</p>
-                                <p className="text-xs text-muted truncate">
-                                  Shows on the public Dynasty page on the division card.
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              <label className="btn btn-outline text-xs cursor-pointer">
-                                Choose
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  className="hidden"
-                                  onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    if (!file) return;
-                                    stageDivisionImage({ year: group.year, themeName: group.theme_name, file });
-                                    e.target.value = "";
-                                  }}
-                                />
-                              </label>
-                              <button
-                                type="button"
-                                className="text-xs text-muted hover:text-fg underline"
-                                onClick={() => clearStagedDivisionImage({ year: group.year, themeName: group.theme_name })}
-                              >
-                                clear
-                              </button>
-                            </div>
+                    {/* Theme meta */}
+                    <div className="rounded-2xl border border-subtle bg-panel p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="h-12 w-12 rounded-xl border border-subtle bg-subtle-surface overflow-hidden shrink-0">
+                            {themeImg ? (
+                              <img src={themeImg} alt={group.theme_name} className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="h-full w-full grid place-items-center text-xs text-muted">No img</div>
+                            )}
                           </div>
-
-                          <p className="mt-2 text-[11px] text-muted">Recommended: square (512×512+). WebP/PNG/JPG. Upload happens when you click “Save to R2”.</p>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold truncate">Theme card image</p>
+                            <p className="text-xs text-muted truncate">Used on the public Dynasty page for this theme.</p>
+                          </div>
                         </div>
-                      );
-                    })()}
 
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="space-y-1">
-                        <span className="text-xs text-muted">Theme name</span>
-                        <input
-                          className="input"
-                          value={group.theme_name}
-                          onChange={(e) => {
-                            // Renaming a theme is a bulk operation: update all rows in this theme.
-                            const nextName = e.target.value;
-                            updateThemeMeta(group.key, { theme_name: nextName });
-                          }}
-                        />
-                      </label>
-                      <label className="space-y-1">
-                        <span className="text-xs text-muted">Theme blurb</span>
-                        <input
-                          className="input"
-                          value={blurb}
-                          onChange={(e) => updateThemeMeta(group.key, { theme_blurb: e.target.value })}
-                        />
-                      </label>
+                        <div className="flex items-center gap-2">
+                          <label className="btn btn-outline text-xs cursor-pointer">
+                            Choose
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                stageDivisionImage({ year: group.year, themeName: group.theme_name, file });
+                                e.target.value = "";
+                              }}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            className="text-xs text-muted hover:text-fg underline"
+                            onClick={() => clearStagedDivisionImage({ year: group.year, themeName: group.theme_name })}
+                          >
+                            clear
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="space-y-1">
+                          <span className="text-xs text-muted">Theme name</span>
+                          <input
+                            className="input"
+                            value={group.theme_name}
+                            onChange={(e) => updateThemeMeta(group.key, { theme_name: e.target.value })}
+                          />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-xs text-muted">Theme blurb (optional)</span>
+                          <input className="input" value={blurb} onChange={(e) => updateThemeMeta(group.key, { theme_blurb: e.target.value })} />
+                        </label>
+                      </div>
+
+                      <p className="text-[11px] text-muted">
+                        Recommended: square (512×512+). WebP/PNG/JPG. Upload happens when you click “Save to R2”.
+                      </p>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Link
+                          href={`/admin/dynasty/add-leagues?year=${encodeURIComponent(String(group.year))}&theme=${encodeURIComponent(group.theme_name)}`}
+                          className="btn btn-outline text-sm"
+                          title="Add leagues from Sleeper"
+                        >
+                          Add leagues (from Sleeper)
+                        </Link>
+                        <button className="btn btn-outline text-sm" type="button" onClick={() => addLeague(group)}>
+                          + Add league (manual)
+                        </button>
+                        <button className="btn btn-outline text-sm" type="button" onClick={() => deleteTheme(group)}>
+                          Delete theme
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
-                      <button className="btn btn-outline text-sm" type="button" onClick={() => addLeague(group)}>
-                        + Add league
-                      </button>
-                      <button className="btn btn-outline text-sm" type="button" onClick={() => deleteTheme(group)}>
-                        Delete theme
-                      </button>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
+                    {/* League cards (redraft-style) */}
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                       {group.leagues
                         .slice()
                         .sort((a, b) => (a.display_order ?? 9999) - (b.display_order ?? 9999))
-                        .map((lg, i, arr) => {
-                          const previewSrc =
-                            lg.pendingImagePreviewUrl || (lg.imageKey ? `/r2/${lg.imageKey}` : lg.image_url || "");
-                          const notReady = Boolean(lg.notReady);
-                          const isOrphan = String(lg.status || "").toUpperCase().includes("ORPHAN");
+                        .map((lg) => {
+                          const previewSrc = lg.pendingImagePreviewUrl || (lg.imageKey ? `/r2/${lg.imageKey}` : lg.image_url || "");
+                          const disabled = lg.notReady;
 
                           return (
-                            <div key={lg.id} className="rounded-2xl border border-subtle bg-panel p-4">
-                              <div className="flex items-start gap-4">
-                                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-subtle bg-black/20">
-                                  {previewSrc ? (
-                                    <img src={previewSrc} alt={lg.name || "League"} className="h-full w-full object-cover" />
-                                  ) : (
-                                    <div className="h-full w-full grid place-items-center text-[11px] text-muted">No img</div>
-                                  )}
+                            <div
+                              key={lg.id}
+                              className={
+                                "rounded-2xl border border-subtle bg-card-surface p-4 space-y-3 " +
+                                (disabled ? "opacity-80" : "")
+                              }
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex items-start gap-3 min-w-0">
+                                  <div className="h-12 w-12 rounded-xl border border-subtle bg-panel overflow-hidden shrink-0">
+                                    {previewSrc ? (
+                                      <img src={previewSrc} alt={lg.name || "League"} className="h-full w-full object-cover" />
+                                    ) : (
+                                      <div className="h-full w-full grid place-items-center text-xs text-muted">No img</div>
+                                    )}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-xs text-muted">League</p>
+                                    <p className="text-sm font-semibold truncate">{safeStr(lg.name) || "(unnamed)"}</p>
+                                  </div>
                                 </div>
 
-                                <div className="min-w-0 flex-1 space-y-3">
-                                  <div className="flex items-center justify-between gap-3">
-                                    <div className="flex items-center gap-2">
-                                      <input
-                                        className="input w-[72px]"
-                                        value={lg.display_order ?? ""}
-                                        onChange={(e) => updateLeague(lg.id, { display_order: safeNum(e.target.value, null) })}
-                                        title="Display order"
-                                      />
-                                      <div className="flex flex-col gap-1">
-                                        <button
-                                          type="button"
-                                          className="btn btn-outline !px-2 !py-1 text-xs"
-                                          onClick={() => moveLeagueWithinTheme(group, lg.id, -1)}
-                                          disabled={i === 0}
-                                          title="Move up"
-                                        >
-                                          ↑
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="btn btn-outline !px-2 !py-1 text-xs"
-                                          onClick={() => moveLeagueWithinTheme(group, lg.id, +1)}
-                                          disabled={i === arr.length - 1}
-                                          title="Move down"
-                                        >
-                                          ↓
-                                        </button>
-                                      </div>
-                                    </div>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline text-xs px-2"
+                                    onClick={() => moveLeagueWithinTheme(group, lg.id, "up")}
+                                    title="Move up"
+                                  >
+                                    ↑
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline text-xs px-2"
+                                    onClick={() => moveLeagueWithinTheme(group, lg.id, "down")}
+                                    title="Move down"
+                                  >
+                                    ↓
+                                  </button>
+                                </div>
+                              </div>
 
-                                    <div className="flex items-center gap-2">
-                                      <label className="flex items-center gap-2 text-xs text-muted">
-                                        <span>Not ready</span>
-                                        <input
-                                          type="checkbox"
-                                          checked={notReady}
-                                          onChange={(e) => updateLeague(lg.id, { notReady: e.target.checked })}
-                                        />
-                                      </label>
-                                      <button
-                                        className="btn btn-outline text-xs"
-                                        type="button"
-                                        onClick={() => deleteLeague(lg.id)}
-                                      >
-                                        Delete
-                                      </button>
-                                    </div>
-                                  </div>
+                              <div className="grid gap-2">
+                                <label className="space-y-1">
+                                  <span className="text-xs text-muted">Name</span>
+                                  <input className="input" value={lg.name} onChange={(e) => updateLeague(lg.id, { name: e.target.value })} />
+                                </label>
 
-                                  <div className="grid gap-3 sm:grid-cols-2">
-                                    <label className="space-y-1">
-                                      <span className="text-xs text-muted">League name</span>
-                                      <input
-                                        className="input"
-                                        value={lg.name}
-                                        onChange={(e) => updateLeague(lg.id, { name: e.target.value })}
-                                      />
-                                    </label>
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                  <label className="space-y-1">
+                                    <span className="text-xs text-muted">Order</span>
+                                    <input
+                                      className="input"
+                                      value={lg.display_order ?? ""}
+                                      onChange={(e) => updateLeague(lg.id, { display_order: safeNum(e.target.value, null) })}
+                                    />
+                                  </label>
+                                  <label className="space-y-1">
+                                    <span className="text-xs text-muted">Status</span>
+                                    <select className="input" value={lg.status} onChange={(e) => updateLeague(lg.id, { status: e.target.value })}>
+                                      {STATUS_OPTIONS.map((s) => (
+                                        <option key={s} value={s}>
+                                          {s}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                </div>
 
-                                    <label className="space-y-1">
-                                      <span className="text-xs text-muted">Status</span>
-                                      <select
-                                        className="input"
-                                        value={lg.status}
-                                        onChange={(e) => updateLeague(lg.id, { status: e.target.value })}
-                                      >
-                                        {STATUS_OPTIONS.map((s) => (
-                                          <option key={s} value={s}>
-                                            {s}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </label>
-                                  </div>
+                                <label className="space-y-1">
+                                  <span className="text-xs text-muted">Sleeper URL</span>
+                                  <input
+                                    className="input"
+                                    value={lg.sleeper_url}
+                                    onChange={(e) => updateLeague(lg.id, { sleeper_url: e.target.value })}
+                                    placeholder="https://sleeper.app/league/…"
+                                  />
+                                </label>
 
-                                  <div className="grid gap-3 sm:grid-cols-2">
-                                    <label className="space-y-1">
-                                      <span className="text-xs text-muted">Sleeper league URL</span>
-                                      <input
-                                        className="input"
-                                        value={lg.sleeper_url}
-                                        onChange={(e) => updateLeague(lg.id, { sleeper_url: e.target.value })}
-                                        placeholder="https://sleeper.app/league/..."
-                                      />
-                                    </label>
-
-                                    <div className="space-y-1">
-                                      <span className="text-xs text-muted">Orphan open</span>
-                                      <div className="flex items-center gap-2">
-                                        <input
-                                          type="checkbox"
-                                          checked={isOrphan}
-                                          onChange={(e) => toggleOrphan(lg.id, e.target.checked)}
-                                        />
-                                        <span className="text-xs text-muted">Show in Orphans section</span>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="flex flex-wrap items-center gap-2">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
                                     <label className="btn btn-outline text-xs cursor-pointer">
                                       Choose image
                                       <input
@@ -1059,12 +771,9 @@ export default function DynastyAdminClient() {
                                         onChange={(e) => {
                                           const file = e.target.files?.[0];
                                           if (!file) return;
-                                          const previewUrl = URL.createObjectURL(file);
+                                          const url = URL.createObjectURL(file);
                                           safeRevoke(lg.pendingImagePreviewUrl);
-                                          updateLeague(lg.id, {
-                                            pendingImageFile: file,
-                                            pendingImagePreviewUrl: previewUrl,
-                                          });
+                                          updateLeague(lg.id, { pendingImageFile: file, pendingImagePreviewUrl: url });
                                           e.target.value = "";
                                         }}
                                       />
@@ -1079,16 +788,39 @@ export default function DynastyAdminClient() {
                                     >
                                       clear
                                     </button>
-                                    <span className="text-[11px] text-muted truncate">
-                                      {lg.pendingImageFile
-                                        ? "Staged"
-                                        : lg.imageKey
-                                        ? "R2: " + lg.imageKey.split("/").slice(-1)[0]
-                                        : lg.image_url
-                                        ? "URL"
-                                        : "—"}
-                                    </span>
                                   </div>
+
+                                  <div className="flex items-center gap-3">
+                                    <label className="flex items-center gap-2 text-xs text-muted">
+                                      <input
+                                        type="checkbox"
+                                        checked={lg.notReady}
+                                        onChange={(e) => updateLeague(lg.id, { notReady: e.target.checked, is_active: !e.target.checked })}
+                                      />
+                                      League not ready
+                                    </label>
+
+                                    <label className="flex items-center gap-2 text-xs text-muted">
+                                      <input
+                                        type="checkbox"
+                                        checked={lg.status === "ORPHAN OPEN"}
+                                        onChange={(e) => {
+                                          const next = e.target.checked ? "ORPHAN OPEN" : "CURRENTLY FILLING";
+                                          updateLeague(lg.id, { status: next });
+                                        }}
+                                      />
+                                      Orphan
+                                    </label>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center justify-between gap-2">
+                                  <button className="btn btn-outline text-xs" type="button" onClick={() => deleteLeague(lg.id)}>
+                                    Delete
+                                  </button>
+                                  <span className="text-[11px] text-muted truncate">
+                                    {lg.pendingImageFile ? "Image staged" : lg.imageKey ? "R2 image" : lg.image_url ? "URL image" : ""}
+                                  </span>
                                 </div>
                               </div>
                             </div>
