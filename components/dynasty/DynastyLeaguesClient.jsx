@@ -39,6 +39,10 @@ function normalize(row) {
     // Theme (division) image
     theme_imageKey: r.theme_imageKey ?? r.theme_image_key ?? r.division_image_key ?? "",
     theme_image_url: r.theme_image_url ?? r.division_image_url ?? "",
+
+    // League readiness (admin toggle). Backward compatible with the older
+    // `is_active` flag (inactive => notReady).
+    notReady: Boolean(r.notReady ?? r.not_ready ?? (r.is_active === false)),
   };
 }
 
@@ -57,10 +61,13 @@ function slugify(s) {
  * - byYear: Map<year, Map<themeName, leagues[]>>
  */
 function transformLeagues(rows) {
-  // Only show leagues marked active (or with null/undefined treated as active)
-  const active = (rows || []).filter((r) => r?.is_active !== false);
+  const normalized = (rows || [])
+    .map((r) => normalize(r))
+    // Theme stubs are used in the admin to create a theme before any leagues exist.
+    // They should not render publicly.
+    .filter((r) => !r?.is_theme_stub);
 
-  const orphans = active.filter((r) => {
+  const orphans = normalized.filter((r) => {
     const st = String(r?.status || "").trim().toUpperCase();
     return r?.is_orphan === true || st.includes("ORPHAN");
   });
@@ -68,7 +75,7 @@ function transformLeagues(rows) {
   // IMPORTANT: keep orphans in the main list too, so they still show in their theme
   const byYear = new Map();
 
-  for (const lg of active) {
+  for (const lg of normalized) {
     const year = Number(lg?.year) || new Date().getFullYear();
     const themeName =
       (typeof lg?.theme_name === "string" && lg.theme_name.trim()) ||
@@ -320,13 +327,18 @@ const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows])
           </EmptyState>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {scopedOrphans.map((o, idx) => (
-              <Link
+            {scopedOrphans.map((o, idx) => {
+              const clickable = Boolean(o?.sleeper_url) && !o?.notReady;
+              const Shell = clickable ? Link : "div";
+              return (
+              <Shell
                 key={o?.id || `${o?.year}-${o?.theme_name}-${o?.name}-${idx}`}
-                href={o?.sleeper_url || "#"}
+                {...(clickable ? { href: o.sleeper_url, prefetch: false } : {})}
                 className={[
                   "group rounded-2xl border border-accent/60 bg-card-surface p-4",
-                  "hover:border-accent hover:-translate-y-0.5 transition",
+                  clickable
+                    ? "hover:border-accent hover:-translate-y-0.5 transition"
+                    : "opacity-70 cursor-not-allowed",
                   "shadow-[0_0_0_1px_rgba(255,255,255,0.03)]",
                 ].join(" ")}
               >
@@ -348,20 +360,18 @@ const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows])
                   </div>
 
                   <span className="shrink-0 rounded-full border border-accent bg-panel px-2 py-1 text-[11px] tracking-wide uppercase text-accent">
-                    {Number.isFinite(Number(o?.fill_note)) && Number(o?.fill_note) > 0
-                      ? `${Math.trunc(Number(o.fill_note))} Spots`
-                      : "Orphan Open"}
+                    {o?.notReady ? "TBD" : "Orphan Open"}
                   </span>
                 </div>
 
                 <p className="mt-2 text-[11px] text-muted">
-                  {Number.isFinite(Number(o?.fill_note)) && Number(o?.fill_note) > 0
-                    ? `Spots available: ${Math.trunc(Number(o.fill_note))}. `
-                    : ""}
-                  Click for Sleeper league details and to request the team.
+                  {clickable
+                    ? "Click for Sleeper league details and to request the team."
+                    : "This orphan will appear here once it's ready."}
                 </p>
-              </Link>
-            ))}
+              </Shell>
+              );
+            })}
           </div>
         )}
       </PremiumSection>
@@ -404,7 +414,11 @@ const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows])
                     const st = String(lg?.status || "").trim().toUpperCase();
                     const isOrphan = st.includes("ORPHAN");
                     const isFilling = st === "CURRENTLY FILLING";
-                    const isClickable = (isFilling || isOrphan) && Boolean(lg?.sleeper_url);
+                    const isClickable =
+                      !lg?.notReady &&
+                      !st.includes("TBD") &&
+                      (isFilling || isOrphan) &&
+                      Boolean(lg?.sleeper_url);
 
                     return (
                       <MediaTabCard
@@ -414,7 +428,7 @@ const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows])
                         prefetch={false}
                         title={lg?.name || "League"}
                         subtitle={`12-team SF · Division ${lg?.display_order ?? "–"}`}
-                        metaRight={lg?.status || "FULL & ACTIVE"}
+                        metaRight={lg?.notReady ? "TBD" : lg?.status || "FULL & ACTIVE"}
                         imageSrc={img}
                         imageAlt={lg?.name || "League"}
                         footerText={lg?.note || ""}
