@@ -178,10 +178,6 @@ function normalizeRow(r, idx) {
     is_active: asBool(r?.is_active, true),
     is_orphan,
 
-    // Sleeper identifiers (optional but highly recommended)
-    league_id: league_id || null,
-    draft_id: draft_id || null,
-    avatar: avatar || null,
   };
 }
 
