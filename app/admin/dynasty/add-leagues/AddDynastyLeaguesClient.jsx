@@ -7,13 +7,8 @@ import { safeStr } from "@/lib/safe";
 import { getSupabase } from "@/lib/supabaseClient";
 
 const R2_KEY = "data/dynasty/leagues.json";
-const STATUS_OPTIONS = [
-  "FULL & ACTIVE",
-  "CURRENTLY FILLING",
-  "DRAFTING",
-  "ORPHAN OPEN",
-  "TBD",
-];
+// Stored status values should match the admin + public UIs.
+
 
 function nowIso() {
   try {
@@ -26,6 +21,49 @@ function nowIso() {
 function safeNum(v, fallback = null) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function normalizeStatus(raw) {
+  const v = safeStr(raw).trim();
+  const lower = v.toLowerCase();
+  if (["pre_draft", "drafting", "in_season", "complete", "tbd", "orphan_open"].includes(lower)) {
+    return lower;
+  }
+  if (lower === "predraft") return "pre_draft";
+  if (lower === "inseason") return "in_season";
+  // legacy labels
+  if (lower.includes("filling")) return "pre_draft";
+  if (lower.includes("drafting")) return "drafting";
+  if (lower.includes("active") || lower.includes("full")) return "in_season";
+  if (lower === "orphan open") return "orphan_open";
+  if (lower === "tbd" || lower === "inactive") return "tbd";
+  return lower || "tbd";
+}
+
+async function fetchAvatarFile(avatarId, label = "avatar") {
+  const id = safeStr(avatarId).trim();
+  if (!id) return null;
+  const url = `https://sleepercdn.com/avatars/${id}`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) return null;
+  const blob = await res.blob();
+  return new File([blob], `${label}.png`, { type: blob.type || "image/png" });
+}
+
+async function uploadLeagueAvatar({ year, leagueId, file, token }) {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("section", "dynasty-league");
+  fd.append("season", String(year));
+  fd.append("leagueId", String(leagueId));
+  const res = await fetch(`/api/admin/upload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: fd,
+  });
+  if (!res.ok) throw new Error(`Upload failed (${res.status})`);
+  const out = await res.json();
+  return safeStr(out.key);
 }
 
 function slugify(input) {
@@ -50,10 +88,38 @@ async function getAccessToken() {
 
 function statusFromSleeper(sleeperStatus) {
   const s = safeStr(sleeperStatus).toLowerCase();
-  if (s === "drafting") return "DRAFTING";
-  if (s === "pre_draft") return "CURRENTLY FILLING";
-  if (s === "complete" || s === "in_season") return "FULL & ACTIVE";
-  return "TBD";
+  if (["pre_draft", "drafting", "in_season", "complete"].includes(s)) return s;
+  return "tbd";
+}
+
+async function fetchAvatarFile(avatarId, label = "avatar") {
+  const id = safeStr(avatarId).trim();
+  if (!id) return null;
+  const url = `https://sleepercdn.com/avatars/${id}`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) return null;
+  const blob = await res.blob();
+  const type = blob?.type || "image/png";
+  const ext = type.includes("jpeg") ? "jpg" : type.includes("webp") ? "webp" : "png";
+  return new File([blob], `${label}.${ext}`, { type });
+}
+
+async function uploadLeagueAvatar({ year, leagueId, file, token }) {
+  if (!file) return "";
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("section", "dynasty-league");
+  fd.append("season", String(year));
+  fd.append("leagueId", String(leagueId));
+
+  const res = await fetch(`/api/admin/upload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: fd,
+  });
+  if (!res.ok) throw new Error("Avatar upload failed");
+  const out = await res.json();
+  return safeStr(out.key);
 }
 
 function parseLeagueId(url) {
@@ -161,10 +227,10 @@ export default function AddDynastyLeaguesClient() {
       );
       const maxOrder = themeRows.reduce((m, r) => Math.max(m, Number(r?.display_order) || 0), 0);
 
-      // Build a duplicate guard across all rows by Sleeper league id
+      // Duplicate guard across all rows by Sleeper league id
       const existingLeagueIds = new Set(
         existingRows
-          .map((r) => parseLeagueId(r?.sleeper_url))
+          .map((r) => safeStr(r?.league_id || r?.leagueId || r?.sleeper_league_id))
           .filter(Boolean)
       );
 
@@ -172,24 +238,34 @@ export default function AddDynastyLeaguesClient() {
       const toAdd = [];
 
       for (const lg of selectedLeagues) {
-        const leagueId = safeStr(lg?.league_id);
+        const leagueId = safeStr(lg?.league_id).trim();
         if (!leagueId) continue;
         if (existingLeagueIds.has(leagueId)) continue;
 
         order += 1;
 
-        const sleeperStatus = safeStr(lg?.status);
-        const status = statusFromSleeper(sleeperStatus);
+        const status = normalizeStatus(lg?.status) || "pre_draft";
+        const avatar = safeStr(lg?.avatar).trim();
+        let imageKey = "";
+        if (avatar) {
+          const file = await fetchAvatarFile(avatar, `${theme}-${leagueId}`);
+          if (file) {
+            const k = await uploadLeagueAvatar({ year, leagueId, file, token });
+            if (k) imageKey = k;
+          }
+        }
 
         toAdd.push({
           id: newId(`dyn_${slugify(theme)}`),
           year: Number(year),
           theme_name: theme,
           theme_blurb: "",
+          league_id: leagueId,
+          avatar,
           name: safeStr(lg?.name),
-          status: STATUS_OPTIONS.includes(status) ? status : "TBD",
-          sleeper_url: `https://sleeper.com/leagues/${leagueId}`,
-          imageKey: "",
+          status,
+          sleeper_url: "", // invite link optional; public page will fall back to desktop if missing
+          imageKey,
           image_url: "",
           theme_imageKey: "",
           theme_image_url: "",

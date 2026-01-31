@@ -5,12 +5,35 @@ import { CURRENT_SEASON } from "@/lib/season";
 import { getSupabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 const R2_KEY = "data/dynasty/leagues.json";
 const DEFAULT_PAGE_SEASON = CURRENT_SEASON;
 
-const STATUS_OPTIONS = ["FULL & ACTIVE", "CURRENTLY FILLING", "DRAFTING", "ORPHAN OPEN", "TBD"];
+// Keep consistent with Redraft: status comes from Sleeper unless overridden by admin checkboxes.
+// Stored values: pre_draft | drafting | in_season | complete | tbd | orphan_open
+
+function statusLabel(s) {
+  const v = safeStr(s).trim().toLowerCase();
+  if (v === "tbd") return "TBD";
+  if (v === "orphan_open") return "ORPHAN OPEN";
+  if (v === "pre_draft") return "CURRENTLY FILLING";
+  if (v === "drafting") return "DRAFTING";
+  if (v === "in_season") return "IN SEASON";
+  if (v === "complete") return "COMPLETE";
+  return v ? v.toUpperCase() : "TBD";
+}
+
+function statusPillClasses(s) {
+  const v = safeStr(s).trim().toLowerCase();
+  if (v === "orphan_open") return "bg-danger/15 text-danger border-danger/30";
+  if (v === "drafting") return "bg-accent/15 text-accent border-accent/30";
+  if (v === "pre_draft") return "bg-primary/15 text-primary border-primary/30";
+  if (v === "in_season") return "bg-emerald-500/15 text-emerald-300 border-emerald-500/30";
+  if (v === "complete") return "bg-white/10 text-muted border-white/10";
+  return "bg-white/10 text-muted border-white/10";
+}
 
 function nowIso() {
   try {
@@ -45,10 +68,21 @@ function newId(prefix = "dyn") {
 }
 
 function normalizeStatus(raw) {
-  const s = safeStr(raw).trim().toUpperCase();
-  if (s === "INACTIVE") return "TBD";
-  if (STATUS_OPTIONS.includes(s)) return s;
-  return "FULL & ACTIVE";
+  const s = safeStr(raw).trim();
+  const up = s.toUpperCase();
+  const low = s.toLowerCase();
+
+  // Already modern values
+  if (["pre_draft", "drafting", "in_season", "complete", "tbd", "orphan_open"].includes(low)) return low;
+
+  // Back-compat legacy labels
+  if (up === "INACTIVE" || up === "TBD") return "tbd";
+  if (up === "ORPHAN OPEN") return "orphan_open";
+  if (up === "CURRENTLY FILLING") return "pre_draft";
+  if (up === "DRAFTING") return "drafting";
+  if (up === "FULL & ACTIVE") return "in_season";
+
+  return "tbd";
 }
 
 function normalizeRow(r, idx = 0) {
@@ -58,7 +92,7 @@ function normalizeRow(r, idx = 0) {
   const display_order = safeNum(r?.display_order ?? r?.order, idx + 1);
 
   const status = normalizeStatus(r?.status);
-  const is_orphan = status === "ORPHAN OPEN";
+  const orphanOpen = Boolean(r?.orphanOpen) || Boolean(r?.is_orphan) || status === "orphan_open";
 
   // Single source of truth for "ready": if notReady true, the public page should treat it as TBD.
   const notReady = Boolean(r?.notReady) || r?.is_active === false;
@@ -70,14 +104,14 @@ function normalizeRow(r, idx = 0) {
     theme_blurb: safeStr(r?.theme_blurb).trim(),
 
     name: safeStr(r?.name).trim(),
+    league_id: safeStr(r?.league_id || r?.leagueId || r?.sleeper_league_id).trim(),
     status,
-    sleeper_url: safeStr(r?.sleeper_url).trim(),
+    sleeper_url: safeStr(r?.sleeper_url).trim(), // invite link (optional)
 
-    // league image
+    // league avatar (auto imported from Sleeper)
+    avatar: safeStr(r?.avatar).trim(),
     imageKey: safeStr(r?.imageKey).trim(),
     image_url: safeStr(r?.image_url).trim(),
-    pendingImageFile: null,
-    pendingImagePreviewUrl: "",
 
     // theme/division image
     theme_imageKey: safeStr(r?.theme_imageKey || r?.theme_image_key).trim(),
@@ -88,8 +122,10 @@ function normalizeRow(r, idx = 0) {
     display_order,
     notReady,
 
-    // keep for backward compat in JSON; we don't render a separate checkbox.
-    is_orphan,
+    orphanOpen,
+
+    // backward compat
+    is_orphan: orphanOpen,
     is_active: !notReady,
 
     is_theme_stub: Boolean(r?.is_theme_stub),
@@ -136,6 +172,7 @@ export default function DynastyAdminClient() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [refreshingKey, setRefreshingKey] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [infoMsg, setInfoMsg] = useState("");
 
@@ -264,23 +301,8 @@ export default function DynastyAdminClient() {
     updateLeague(b.id, { display_order: a.display_order ?? swapWith + 1 });
   }
 
-  async function uploadDynastyImage({ year, id, file, token }) {
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("section", "dynasty-league");
-    fd.append("season", String(year));
-    fd.append("leagueId", String(id)); // deterministic key
-
-    const res = await fetch(`/api/admin/upload`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}` },
-      body: fd,
-    });
-
-    const out = await res.json().catch(() => ({}));
-    if (!res.ok || !out?.ok) throw new Error(out?.error || "Upload failed");
-    return out.key;
-  }
+  // League avatars are pulled from Sleeper during "Add leagues" and "Refresh statuses".
+  // Manual per-league image uploads are no longer needed.
 
   async function uploadDynastyDivisionImage({ year, divisionSlug, file, token }) {
     const fd = new FormData();
@@ -298,6 +320,44 @@ export default function DynastyAdminClient() {
     const out = await res.json().catch(() => ({}));
     if (!res.ok || !out?.ok) throw new Error(out?.error || "Upload failed");
     return out.key;
+  }
+
+  async function uploadLeagueAvatar({ year, leagueId, file, token }) {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("section", "dynasty-league");
+    fd.append("season", String(year));
+    fd.append("leagueId", String(leagueId));
+
+    const res = await fetch(`/api/admin/upload`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: fd,
+    });
+
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok || !out?.ok) throw new Error(out?.error || "Upload failed");
+    return out.key;
+  }
+
+  async function fetchAvatarFile(avatarId, fallbackName = "avatar") {
+    const id = safeStr(avatarId).trim();
+    if (!id) return null;
+    const url = `https://sleepercdn.com/avatars/${id}`;
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    const ext = blob.type?.includes("png") ? "png" : blob.type?.includes("webp") ? "webp" : "jpg";
+    const safeName = safeStr(fallbackName).trim() || "league";
+    return new File([blob], `${safeName}.${ext}`, { type: blob.type || "image/jpeg" });
+  }
+
+  async function fetchSleeperLeague(leagueId) {
+    const id = safeStr(leagueId).trim();
+    if (!id) return null;
+    const res = await fetch(`https://api.sleeper.app/v1/league/${id}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return res.json().catch(() => null);
   }
 
   function stageDivisionImage({ year, themeName, file }) {
@@ -386,30 +446,7 @@ export default function DynastyAdminClient() {
         rep.pendingThemeImagePreviewUrl = "";
       }
 
-      // 1) Upload staged LEAGUE images
-      for (let i = 0; i < staged.length; i++) {
-        const r = staged[i];
-        if (!r?.pendingImageFile) continue;
-
-        const key = await uploadDynastyImage({
-          year: r.year,
-          id: r.id,
-          file: r.pendingImageFile,
-          token,
-        });
-
-        safeRevoke(r.pendingImagePreviewUrl);
-
-        staged[i] = {
-          ...r,
-          imageKey: key,
-          image_url: "",
-          pendingImageFile: null,
-          pendingImagePreviewUrl: "",
-        };
-      }
-
-      // 2) Normalize + stable sort (and drop any transient props)
+      // Normalize + stable sort (and drop any transient props)
       const clean = staged.map(normalizeRow);
 
       clean.sort((a, b) => {
@@ -441,6 +478,68 @@ export default function DynastyAdminClient() {
       setErrorMsg(e?.message || "Failed to save Dynasty data.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function refreshThemeFromSleeper(groupKey) {
+    const group = groups.find((g) => g.key === groupKey);
+    if (!group) return;
+
+    setErrorMsg("");
+    setInfoMsg("");
+    setRefreshingKey(groupKey);
+
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error("Not authenticated");
+
+      const isTargetRow = (r) => r.year === group.year && r.theme_name === group.theme_name && !r.theme_stub;
+      const list = rows.filter(isTargetRow);
+      if (list.length === 0) {
+        setInfoMsg("No leagues found to refresh.");
+        return;
+      }
+
+      const next = rows.map((r) => ({ ...r }));
+      const idxById = new Map(next.map((r, i) => [r.id, i]));
+
+      for (const r of list) {
+        const leagueId = safeStr(r.league_id).trim();
+        if (!leagueId) continue;
+
+        // If admin is overriding, don't overwrite.
+        if (r.notReady || r.orphanOpen) continue;
+
+        const res = await fetch(`https://api.sleeper.app/v1/league/${encodeURIComponent(leagueId)}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) continue;
+        const lg = await res.json();
+
+        const i = idxById.get(r.id);
+        if (i == null) continue;
+
+        next[i].name = safeStr(lg?.name).trim() || next[i].name;
+        next[i].status = normalizeStatus(lg?.status) || next[i].status;
+        next[i].avatar = safeStr(lg?.avatar).trim() || next[i].avatar;
+
+        // If avatar changed or image missing, fetch + upload.
+        const avatarId = safeStr(lg?.avatar).trim();
+        if (avatarId && (avatarId !== safeStr(r.avatar).trim() || !safeStr(r.imageKey).trim())) {
+          const file = await fetchAvatarFile(avatarId, `league_${leagueId}`);
+          if (file) {
+            const key = await uploadLeagueAvatar({ year: r.year, leagueId, file, token });
+            if (key) next[i].imageKey = key;
+          }
+        }
+      }
+
+      setRows(next);
+      setInfoMsg("Statuses refreshed from Sleeper.");
+    } catch (err) {
+      setErrorMsg(err?.message || "Failed to refresh");
+    } finally {
+      setRefreshingKey("");
     }
   }
 
@@ -665,6 +764,14 @@ export default function DynastyAdminClient() {
                         <button className="btn btn-outline text-sm" type="button" onClick={() => addLeague(group)}>
                           + Add league (manual)
                         </button>
+                        <button
+                          className="btn btn-outline text-sm"
+                          type="button"
+                          onClick={() => refreshThemeFromSleeper(group.key)}
+                          disabled={refreshingKey === group.key || saving}
+                        >
+                          {refreshingKey === group.key ? "Refreshing…" : "Refresh statuses"}
+                        </button>
                         <button className="btn btn-outline text-sm" type="button" onClick={() => deleteTheme(group)}>
                           Delete theme
                         </button>
@@ -677,8 +784,7 @@ export default function DynastyAdminClient() {
                         .slice()
                         .sort((a, b) => (a.display_order ?? 9999) - (b.display_order ?? 9999))
                         .map((lg) => {
-                          const previewSrc = lg.pendingImagePreviewUrl || (lg.imageKey ? `/r2/${lg.imageKey}` : lg.image_url || "");
-                          const disabled = lg.notReady;
+                          const previewSrc = lg.imageKey ? `/r2/${lg.imageKey}` : lg.image_url || "";
 
                           return (
                             <div
@@ -726,7 +832,7 @@ export default function DynastyAdminClient() {
                               <div className="grid gap-2">
                                 <label className="space-y-1">
                                   <span className="text-xs text-muted">Name</span>
-                                  <input className="input" value={lg.name} onChange={(e) => updateLeague(lg.id, { name: e.target.value })} />
+                                  <input className="input" value={lg.name} readOnly />
                                 </label>
 
                                 <div className="grid gap-2 sm:grid-cols-2">
@@ -738,58 +844,27 @@ export default function DynastyAdminClient() {
                                       onChange={(e) => updateLeague(lg.id, { display_order: safeNum(e.target.value, null) })}
                                     />
                                   </label>
-                                  <label className="space-y-1">
+                                  <div className="space-y-1">
                                     <span className="text-xs text-muted">Status</span>
-                                    <select className="input" value={lg.status} onChange={(e) => updateLeague(lg.id, { status: e.target.value })}>
-                                      {STATUS_OPTIONS.map((s) => (
-                                        <option key={s} value={s}>
-                                          {s}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </label>
+                                    <div>
+                                      <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-fg">
+                                        {statusLabel(lg.notReady ? "tbd" : lg.orphanOpen ? "orphan_open" : lg.status)}
+                                      </span>
+                                    </div>
+                                  </div>
                                 </div>
 
                                 <label className="space-y-1">
-                                  <span className="text-xs text-muted">Sleeper URL</span>
+                                  <span className="text-xs text-muted">Invite link (optional)</span>
                                   <input
                                     className="input"
                                     value={lg.sleeper_url}
                                     onChange={(e) => updateLeague(lg.id, { sleeper_url: e.target.value })}
-                                    placeholder="https://sleeper.app/league/…"
+                                    placeholder="https://sleeper.app/i/…"
                                   />
                                 </label>
 
                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <div className="flex items-center gap-2">
-                                    <label className="btn btn-outline text-xs cursor-pointer">
-                                      Choose image
-                                      <input
-                                        type="file"
-                                        accept="image/*"
-                                        className="hidden"
-                                        onChange={(e) => {
-                                          const file = e.target.files?.[0];
-                                          if (!file) return;
-                                          const url = URL.createObjectURL(file);
-                                          safeRevoke(lg.pendingImagePreviewUrl);
-                                          updateLeague(lg.id, { pendingImageFile: file, pendingImagePreviewUrl: url });
-                                          e.target.value = "";
-                                        }}
-                                      />
-                                    </label>
-                                    <button
-                                      type="button"
-                                      className="text-xs text-muted hover:text-fg underline"
-                                      onClick={() => {
-                                        safeRevoke(lg.pendingImagePreviewUrl);
-                                        updateLeague(lg.id, { pendingImageFile: null, pendingImagePreviewUrl: "" });
-                                      }}
-                                    >
-                                      clear
-                                    </button>
-                                  </div>
-
                                   <div className="flex items-center gap-3">
                                     <label className="flex items-center gap-2 text-xs text-muted">
                                       <input
@@ -803,11 +878,8 @@ export default function DynastyAdminClient() {
                                     <label className="flex items-center gap-2 text-xs text-muted">
                                       <input
                                         type="checkbox"
-                                        checked={lg.status === "ORPHAN OPEN"}
-                                        onChange={(e) => {
-                                          const next = e.target.checked ? "ORPHAN OPEN" : "CURRENTLY FILLING";
-                                          updateLeague(lg.id, { status: next });
-                                        }}
+                                        checked={!!lg.orphanOpen}
+                                        onChange={(e) => updateLeague(lg.id, { orphanOpen: e.target.checked })}
                                       />
                                       Orphan
                                     </label>
@@ -818,9 +890,7 @@ export default function DynastyAdminClient() {
                                   <button className="btn btn-outline text-xs" type="button" onClick={() => deleteLeague(lg.id)}>
                                     Delete
                                   </button>
-                                  <span className="text-[11px] text-muted truncate">
-                                    {lg.pendingImageFile ? "Image staged" : lg.imageKey ? "R2 image" : lg.image_url ? "URL image" : ""}
-                                  </span>
+                                  <span className="text-[11px] text-muted truncate">{lg.imageKey ? "Avatar saved" : ""}</span>
                                 </div>
                               </div>
                             </div>
