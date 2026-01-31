@@ -783,6 +783,7 @@ export default function DynastyAdminClient() {
                         .slice()
                         .sort((a, b) => (a.display_order ?? 9999) - (b.display_order ?? 9999))
                         .map((lg) => {
+                          const disabled = Boolean(lg?.notReady);
                           const previewSrc = lg.imageKey ? `/r2/${lg.imageKey}` : lg.image_url || "";
 
                           return (
