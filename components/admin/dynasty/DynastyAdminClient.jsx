@@ -929,14 +929,14 @@ export default function DynastyAdminClient() {
 
                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                   <div className="flex items-center gap-3">
-                                    <label className="flex items-center gap-2 text-xs text-muted">
+                                    {/* <label className="flex items-center gap-2 text-xs text-muted">
                                       <input
                                         type="checkbox"
                                         checked={!!lg.is_active}
                                         onChange={(e) => updateLeague(lg.id, { is_active: e.target.checked })}
                                       />
                                       Active
-                                    </label>
+                                    </label> */}
 
                                     <label className="flex items-center gap-2 text-xs text-muted">
                                       <input

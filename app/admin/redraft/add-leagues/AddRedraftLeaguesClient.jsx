@@ -110,6 +110,14 @@ async function sleeperLeagueInfo(leagueId) {
   return sleeperFetchJson(`https://api.sleeper.app/v1/league/${encodeURIComponent(leagueId)}`);
 }
 
+async function sleeperLeagueRosters(leagueId) {
+  const id = String(leagueId || "").trim();
+  if (!id) throw new Error("Missing league id.");
+  const res = await fetch(`https://api.sleeper.app/v1/league/${encodeURIComponent(id)}/rosters`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Sleeper rosters request failed (${res.status})`);
+  return res.json();
+}
+
 function leagueAvatarUrl(avatarId) {
   const a = String(avatarId || "").trim();
   if (!a) return "";
@@ -218,12 +226,19 @@ export default function AddRedraftLeaguesClient() {
         if (!leagueId) continue;
         if (existingIds.has(leagueId)) continue;
 
-        const info = await sleeperLeagueInfo(leagueId);
+        const [info, rosters] = await Promise.all([
+          sleeperLeagueInfo(leagueId),
+          sleeperLeagueRosters(leagueId),
+        ]);
         order += 1;
 
         const name = info?.name || "Unnamed League";
         const status = normalizeStatus(info?.status);
         const avatarId = String(info?.avatar || "").trim();
+
+        const totalTeams = Number(info?.total_rosters) || (Array.isArray(rosters) ? rosters.length : 0);
+        const filledTeams = Array.isArray(rosters) ? rosters.filter((r) => r && r.owner_id).length : 0;
+        const openTeams = Math.max(0, totalTeams - filledTeams);
 
         let imageKey = "";
         if (avatarId) {
@@ -250,6 +265,10 @@ export default function AddRedraftLeaguesClient() {
           order,
           imageKey,
           imageUrl: "", // optional legacy fallback
+
+          totalTeams,
+          filledTeams,
+          openTeams,
         });
       }
 

@@ -31,6 +31,11 @@ function emptyLeague(order) {
     order,
     imageKey: "",
     imageUrl: "",
+
+    // Sleeper-derived fill counts (persisted to JSON)
+    totalTeams: 0,
+    filledTeams: 0,
+    openTeams: 0,
   };
 }
 
@@ -148,6 +153,21 @@ async function sleeperLeagueInfo(leagueId) {
   return res.json();
 }
 
+async function sleeperLeagueRosters(leagueId) {
+  const id = String(leagueId || "").trim();
+  if (!id) throw new Error("Missing league id.");
+  const res = await fetch(`https://api.sleeper.app/v1/league/${encodeURIComponent(id)}/rosters`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Sleeper rosters request failed (${res.status})`);
+  return res.json();
+}
+
+function computeFillCounts(league, rosters) {
+  const totalTeams = Number(league?.total_rosters) || (Array.isArray(rosters) ? rosters.length : 0);
+  const filledTeams = Array.isArray(rosters) ? rosters.filter((r) => r && r.owner_id).length : 0;
+  const openTeams = Math.max(0, totalTeams - filledTeams);
+  return { totalTeams, filledTeams, openTeams };
+}
+
 async function fetchAvatarFile(avatarId) {
   const a = String(avatarId || "").trim();
   if (!a) return null;
@@ -168,6 +188,9 @@ export default function RedraftAdminClient() {
 
   const [pageCfg, setPageCfg] = useState(DEFAULT_PAGE);
   const [leagues, setLeagues] = useState([]);
+
+  // Temp order edits so typing doesn't instantly reorder
+  const [orderEdits, setOrderEdits] = useState(() => ({}));
 
   const makeUrl = useObjectUrl();
 
@@ -250,6 +273,25 @@ export default function RedraftAdminClient() {
     });
   }
 
+  function setLeagueOrder(currentOrder, nextOrder) {
+    const desired = Math.trunc(Number(nextOrder));
+    if (!Number.isFinite(desired)) return;
+
+    setLeagues((prev) => {
+      const sorted = sortByOrder(prev);
+      const fromIndex = sorted.findIndex((l) => Number(l.order) === Number(currentOrder));
+      if (fromIndex < 0) return prev;
+
+      const toIndex = Math.max(0, Math.min(sorted.length - 1, desired - 1));
+      if (toIndex === fromIndex) return prev;
+
+      const moved = [...sorted];
+      const [item] = moved.splice(fromIndex, 1);
+      moved.splice(toIndex, 0, item);
+      return normalizeOrders(moved);
+    });
+  }
+
   function addManualLeague() {
     const nextOrder = leagues.length ? Math.max(...leagues.map((l) => Number(l.order) || 0)) + 1 : 1;
     setLeagues((prev) => [...prev, emptyLeague(nextOrder)]);
@@ -316,11 +358,19 @@ export default function RedraftAdminClient() {
 
       for (const l of next) {
         if (!l?.leagueId) continue; // only Sleeper-backed leagues
-        const info = await sleeperLeagueInfo(l.leagueId);
+        const [info, rosters] = await Promise.all([
+          sleeperLeagueInfo(l.leagueId),
+          sleeperLeagueRosters(l.leagueId),
+        ]);
 
         const name = info?.name;
         const status = normalizeSleeperStatus(info?.status);
         const nextAvatarId = String(info?.avatar || "").trim();
+
+        // Fill counts (persisted) — matches checkSleeperOpenSlots.mjs
+        const totalTeams = Number(info?.total_rosters) || (Array.isArray(rosters) ? rosters.length : 0);
+        const filledTeams = Array.isArray(rosters) ? rosters.filter((r) => r && r.owner_id).length : 0;
+        const openTeams = Math.max(0, totalTeams - filledTeams);
 
         // Compare against the *previous* stored avatar id before overwriting.
         const prevAvatarId = String(l.avatarId || "").trim();
@@ -329,6 +379,9 @@ export default function RedraftAdminClient() {
         // If the admin has manually marked this league as "not ready", keep it forced TBD.
         l.status = l.notReady ? "tbd" : status;
         l.avatarId = nextAvatarId;
+        l.totalTeams = totalTeams;
+        l.filledTeams = filledTeams;
+        l.openTeams = openTeams;
         // Desktop-friendly league page
         l.sleeperUrl = `https://sleeper.com/leagues/${l.leagueId}`;
 
@@ -510,9 +563,41 @@ export default function RedraftAdminClient() {
                       >
                         ↓
                       </button>
-                      <div className="rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/70">
-                        {l.order}
-                      </div>
+                      {(() => {
+                        const key = String(l.leagueId || l.sleeperUrl || l.name || l.order);
+                        const val = Object.prototype.hasOwnProperty.call(orderEdits, key)
+                          ? orderEdits[key]
+                          : String(l.order);
+                        return (
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={1}
+                            max={sortedLeagues.length}
+                            value={val}
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              setOrderEdits((prev) => ({ ...prev, [key]: next }));
+                            }}
+                            onBlur={() => {
+                              const raw = Object.prototype.hasOwnProperty.call(orderEdits, key)
+                                ? orderEdits[key]
+                                : String(l.order);
+                              setOrderEdits((prev) => {
+                                const copy = { ...prev };
+                                delete copy[key];
+                                return copy;
+                              });
+
+                              const desired = Math.trunc(Number(raw));
+                              if (!Number.isFinite(desired)) return;
+                              setLeagueOrder(l.order, desired);
+                            }}
+                            className="w-14 rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/70"
+                            title="Set exact order (1..N)"
+                          />
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -540,6 +625,12 @@ export default function RedraftAdminClient() {
                       <div className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-white/80">
                         {statusLabel(effectiveStatus)}
                       </div>
+                      {Number(l?.totalTeams) > 0 ? (
+                        <div className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs text-white/70">
+                          {Number(l.filledTeams)}/{Number(l.totalTeams)}
+                          {Number(l.openTeams) > 0 ? ` · ${Number(l.openTeams)} open` : ""}
+                        </div>
+                      ) : null}
                       {sleeperUrl ? (
                         <a
                           href={sleeperUrl}
