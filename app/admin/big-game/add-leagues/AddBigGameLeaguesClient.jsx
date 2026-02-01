@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { getSupabase } from "@/lib/supabaseClient";
 
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
@@ -18,6 +19,65 @@ async function fetchJson(url, init) {
     throw new Error(`${res.status} ${res.statusText}${t ? ` — ${t}` : ""}`);
   }
   return res.json();
+}
+
+async function getAuthToken() {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  const { data } = await supabase.auth.getSession();
+  return data?.session?.access_token || null;
+}
+
+async function fetchAvatarFile(avatarId) {
+  const id = safeStr(avatarId).trim();
+  if (!id) return null;
+
+  const candidates = [
+    `https://sleepercdn.com/avatars/${id}`,
+    `https://sleepercdn.com/avatars/${id}.png`,
+    `https://sleepercdn.com/avatars/${id}.jpg`,
+    `https://sleepercdn.com/avatars/${id}.jpeg`,
+  ];
+
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const blob = await res.blob();
+      const ct = safeStr(res.headers.get("content-type")).toLowerCase();
+      let ext = "png";
+      if (ct.includes("jpeg") || ct.includes("jpg")) ext = "jpg";
+      if (ct.includes("webp")) ext = "webp";
+      return new File([blob], `avatar.${ext}`, { type: blob.type || ct || "image/png" });
+    } catch {
+      // ignore
+    }
+  }
+  return null;
+}
+
+async function uploadBigGameLeagueAvatar({ token, season, divisionSlug, leagueOrder, file }) {
+  if (!file) return null;
+
+  const qs = new URLSearchParams({
+    section: "biggame-league",
+    season: String(season),
+    divisionSlug: safeStr(divisionSlug),
+    leagueOrder: String(leagueOrder),
+  });
+
+  const fd = new FormData();
+  fd.append("file", file);
+
+  const res = await fetch(`/api/admin/upload?${qs.toString()}`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: fd,
+  });
+
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json?.ok) throw new Error(json?.error || `Upload failed (${res.status})`);
+  return { key: json.key, url: json.url };
 }
 
 function normalizeSleeperStatus(raw) {
@@ -209,6 +269,30 @@ export default function AddBigGameLeaguesClient({ initialSeason }) {
             is_active: true,
           };
         });
+
+      // Upload Sleeper league avatar to R2 immediately so the directory previews work
+      // without requiring a separate "Refresh Status + Counts" run.
+      try {
+        const token = await getAuthToken();
+        for (const row of toAdd) {
+          if (!row?.avatar_id) continue;
+          const file = await fetchAvatarFile(row.avatar_id);
+          if (!file) continue;
+          const uploaded = await uploadBigGameLeagueAvatar({
+            token,
+            season: seasonNum,
+            divisionSlug: targetDivision,
+            leagueOrder: row.display_order,
+            file,
+          });
+          if (uploaded?.key) {
+            row.league_image_key = uploaded.key;
+            row.league_image_path = uploaded.url;
+          }
+        }
+      } catch {
+        // non-fatal — leagues can still be created; admin can refresh later
+      }
 
       div.leagues = [...leagues, ...toAdd];
       divisionsList[divIdx] = div;

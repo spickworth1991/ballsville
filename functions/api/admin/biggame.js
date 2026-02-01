@@ -71,6 +71,10 @@ function normalizeLeague(l, idx = 0) {
     sleeper_status: asStr(l?.sleeper_status || "", "").trim() || null,
     avatar_id: asStr(l?.avatar_id || "", "").trim() || null,
 
+    // League avatar stored in R2 (uploaded by admin tools)
+    league_image_key: asStr(l?.league_image_key || "", "").trim() || null,
+    league_image_path: asStr(l?.league_image_path || "", "").trim() || null,
+
     total_teams: l?.total_teams != null ? asNum(l.total_teams, null) : null,
     filled_teams: l?.filled_teams != null ? asNum(l.filled_teams, null) : null,
     open_teams: l?.open_teams != null ? asNum(l.open_teams, null) : null,
@@ -156,6 +160,8 @@ function rowsToDivisions(rows = []) {
             sleeper_league_id: r?.sleeper_league_id,
             sleeper_status: r?.sleeper_status,
             avatar_id: r?.avatar_id,
+            league_image_key: r?.league_image_key,
+            league_image_path: r?.league_image_path,
             total_teams: r?.total_teams,
             filled_teams: r?.filled_teams,
             open_teams: r?.open_teams,
@@ -200,6 +206,8 @@ function rowsToDivisions(rows = []) {
             sleeper_league_id: r?.sleeper_league_id,
             sleeper_status: r?.sleeper_status,
             avatar_id: r?.avatar_id,
+            league_image_key: r?.league_image_key,
+            league_image_path: r?.league_image_path,
             total_teams: r?.total_teams,
             filled_teams: r?.filled_teams,
             open_teams: r?.open_teams,
@@ -267,6 +275,8 @@ function divisionsToRows(divisions = []) {
         sleeper_league_id: asStr(l?.sleeper_league_id || "", "").trim() || null,
         sleeper_status: asStr(l?.sleeper_status || "", "").trim() || null,
         avatar_id: asStr(l?.avatar_id || "", "").trim() || null,
+        league_image_key: asStr(l?.league_image_key || "", "").trim() || null,
+        league_image_path: asStr(l?.league_image_path || "", "").trim() || null,
         total_teams: l?.total_teams != null ? asNum(l.total_teams, null) : null,
         filled_teams: l?.filled_teams != null ? asNum(l.filled_teams, null) : null,
         open_teams: l?.open_teams != null ? asNum(l.open_teams, null) : null,
