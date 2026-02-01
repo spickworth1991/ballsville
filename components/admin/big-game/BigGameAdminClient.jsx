@@ -1,3 +1,4 @@
+\
 "use client";
 
 import Link from "next/link";
@@ -252,7 +253,7 @@ function LeagueAvatar({ league }) {
   const src = path ? r2Url(path) : key ? r2Url(key) : avatarId ? `https://sleepercdn.com/avatars/${avatarId}` : null;
 
   return (
-    <div className="h-10 w-10 overflow-hidden rounded-2xl border border-subtle bg-black/30">
+    <div className="h-12 w-12 overflow-hidden rounded-2xl border border-subtle bg-black/30">
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={src} alt="" className="h-full w-full object-cover" />
@@ -275,6 +276,7 @@ export default function BigGameAdminClient({ initialSeason }) {
 
   // Divisions
   const [divisions, setDivisions] = useState([]);
+  // Default to collapsed like the other modes
   const [openDivIds, setOpenDivIds] = useState(() => new Set());
 
   // Create Division (simple: title + order)
@@ -314,12 +316,8 @@ export default function BigGameAdminClient({ initialSeason }) {
         intro: safeStr(p.intro || ""),
       });
 
-      // default-open all divisions that actually have leagues
-      const open = new Set();
-      norm.forEach((d) => {
-        if (safeArray(d.leagues).length) open.add(d.id);
-      });
-      setOpenDivIds(open);
+      // Start collapsed (user can expand what they want)
+      setOpenDivIds(new Set());
     } catch (e) {
       setToast({ type: "error", text: safeStr(e?.message || e) });
     } finally {
@@ -402,7 +400,8 @@ export default function BigGameAdminClient({ initialSeason }) {
     const next = [...divisions, { id: `DIV_${Date.now()}`, title, order, leagues: [] }];
     const normalized = normalizeDivisions(next);
     setDivisions(normalized);
-    setOpenDivIds((prev) => new Set(prev).add(normalized[normalized.length - 1]?.id));
+    // Keep the newly created division collapsed by default (consistent with others)
+    setOpenDivIds((prev) => new Set(prev));
 
     setNewDivTitle("");
     setNewDivOrder(Math.max(1, order + 1));
@@ -543,7 +542,7 @@ export default function BigGameAdminClient({ initialSeason }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-5">
+    <div className="mx-auto w-full max-w-7xl space-y-5 px-2 md:px-0">
       {/* Header / actions */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
@@ -654,7 +653,7 @@ export default function BigGameAdminClient({ initialSeason }) {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <input
-              className="input w-48"
+              className="input w-72"
               placeholder="Division title"
               value={newDivTitle}
               onChange={(e) => setNewDivTitle(e.target.value)}
@@ -705,7 +704,7 @@ export default function BigGameAdminClient({ initialSeason }) {
 
                     <div className="flex flex-col gap-1">
                       <input
-                        className="input w-full md:w-72"
+                        className="input w-full md:w-[28rem]"
                         value={d.title}
                         onChange={(e) => updateDivision(d.id, { title: e.target.value })}
                         placeholder="Division title"
@@ -729,7 +728,7 @@ export default function BigGameAdminClient({ initialSeason }) {
                     {leagueCount === 0 ? (
                       <div className="text-sm text-white/60">No leagues in this division yet.</div>
                     ) : (
-                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                         {safeArray(d.leagues).map((l, j) => (
                           <div key={l.id} className="card bg-black/25">
                             <div className="card-content space-y-3">
