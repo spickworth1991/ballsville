@@ -318,7 +318,46 @@ export async function onRequest(context) {
     if (request.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405);
 
     const form = await request.formData();
-    const file = form.get("file");
+    let file = form.get("file");
+
+    // Some sources (e.g. Sleeper avatars) cannot be fetched client-side due to CORS.
+    // Allow the client to send an avatarId instead of a file so the function can fetch
+    // the bytes server-side and upload them to R2.
+    const avatarId = cleanLooseId(form.get("avatarId") || form.get("avatar_id"));
+    if ((!file || typeof file === "string") && avatarId) {
+      const candidates = [
+        `https://sleepercdn.com/avatars/${avatarId}`,
+        `https://sleepercdn.com/avatars/${avatarId}.png`,
+        `https://sleepercdn.com/avatars/${avatarId}.jpg`,
+        `https://sleepercdn.com/avatars/${avatarId}.jpeg`,
+      ];
+
+      let fetched = null;
+      for (const url of candidates) {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) continue;
+          const ab = await res.arrayBuffer();
+          const ct = String(res.headers.get("content-type") || "").toLowerCase();
+          let ext = "png";
+          if (ct.includes("jpeg") || ct.includes("jpg")) ext = "jpg";
+          if (ct.includes("webp")) ext = "webp";
+          fetched = { ab, ct: ct || "image/png", ext };
+          break;
+        } catch {
+          // try next
+        }
+      }
+
+      if (fetched) {
+        file = {
+          name: `avatar.${fetched.ext}`,
+          type: fetched.ct,
+          arrayBuffer: async () => fetched.ab,
+        };
+      }
+    }
+
     if (!file || typeof file === "string") return json({ ok: false, error: "Missing file" }, 400);
 
     const section = String(form.get("section") || "").trim();

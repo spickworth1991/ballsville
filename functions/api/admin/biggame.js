@@ -71,7 +71,7 @@ function normalizeLeague(l, idx = 0) {
     sleeper_status: asStr(l?.sleeper_status || "", "").trim() || null,
     avatar_id: asStr(l?.avatar_id || "", "").trim() || null,
 
-    // League avatar stored in R2 (uploaded by admin tools)
+    // Optional cached league avatar stored in R2 (preferred for public pages)
     league_image_key: asStr(l?.league_image_key || "", "").trim() || null,
     league_image_path: asStr(l?.league_image_path || "", "").trim() || null,
 

@@ -92,9 +92,11 @@ function withBust(url, bust) {
   return `${url}?${bust}`;
 }
 
-function resolveImageSrc({ key, url }) {
+function resolveImageSrc({ key, url, avatarId }) {
   if (key) return r2Url(key, { kind: "biggame" });
-  return url || "";
+  if (url) return url;
+  const a = typeof avatarId === "string" ? avatarId.trim() : "";
+  return a ? `https://sleepercdn.com/avatars/${a}` : "";
 }
 
 function transformForDivision(rows, divisionSlug) {
@@ -122,11 +124,7 @@ function transformForDivision(rows, divisionSlug) {
       league_url: r.league_url,
       league_order: r.league_order,
       league_status: computeLeagueStatus(r),
-      league_image: resolveImageSrc({ key: r.league_image_key, url: r.league_image_path }),
-      not_ready: !!r.not_ready,
-      total_teams: typeof r.total_teams === "number" ? r.total_teams : null,
-      filled_teams: typeof r.filled_teams === "number" ? r.filled_teams : null,
-      open_teams: typeof r.open_teams === "number" ? r.open_teams : null,
+      league_image: resolveImageSrc({ key: r.league_image_key, url: r.league_image_path, avatarId: r.avatar_id }),
     }));
 
   return { header, leagues };
@@ -224,18 +222,6 @@ export default function BigGameDivisionClient({
           const isFilling = st === "FILLING";
           const isClickable = isFilling && Boolean(lg?.league_url);
 
-          const notReady = !!lg?.not_ready;
-          const total = typeof lg?.total_teams === "number" ? lg.total_teams : null;
-          const filled = typeof lg?.filled_teams === "number" ? lg.filled_teams : null;
-          const open = typeof lg?.open_teams === "number" ? lg.open_teams : null;
-
-          let countText = "";
-          if (total != null && total > 0) {
-            const filledFallback = filled != null ? filled : open != null ? Math.max(0, total - open) : null;
-            const left = filledFallback != null ? `${filledFallback}/${total}` : `${total}`;
-            countText = open != null ? `${left} • ${open} open` : left;
-          }
-
           return (
             <MediaTabCard
               key={`${leagueNum}-${idx}`}
@@ -244,16 +230,8 @@ export default function BigGameDivisionClient({
               title={lg.league_name || `League ${leagueNum}`}
               subtitle="Big Game Bestball"
               metaLeft={
-                <span className="inline-flex items-center gap-2">
-                  <span className="inline-flex items-center rounded-full border border-subtle bg-panel px-2 py-1 text-[10px] font-semibold tracking-wide">
-                    {lg?.league_status || "TBD"}
-                  </span>
-                  {notReady ? (
-                    <span className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-200">
-                      NOT READY
-                    </span>
-                  ) : null}
-                  {countText ? <span className="text-[11px] text-muted">{countText}</span> : null}
+                <span className="inline-flex items-center rounded-full border border-subtle bg-panel px-2 py-1 text-[10px] font-semibold tracking-wide">
+                  {lg?.league_status || "TBD"}
                 </span>
               }
               metaRight={<span className="text-[11px] font-mono text-accent">#{leagueNum}</span>}

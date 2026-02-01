@@ -12,15 +12,6 @@ function safeNum(v, fallback = null) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-async function fetchJson(url, init) {
-  const res = await fetch(url, init);
-  if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${res.statusText}${t ? ` — ${t}` : ""}`);
-  }
-  return res.json();
-}
-
 async function getAuthToken() {
   const supabase = getSupabase();
   if (!supabase) return null;
@@ -28,56 +19,33 @@ async function getAuthToken() {
   return data?.session?.access_token || null;
 }
 
-async function fetchAvatarFile(avatarId) {
-  const id = safeStr(avatarId).trim();
-  if (!id) return null;
-
-  const candidates = [
-    `https://sleepercdn.com/avatars/${id}`,
-    `https://sleepercdn.com/avatars/${id}.png`,
-    `https://sleepercdn.com/avatars/${id}.jpg`,
-    `https://sleepercdn.com/avatars/${id}.jpeg`,
-  ];
-
-  for (const url of candidates) {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) continue;
-      const blob = await res.blob();
-      const ct = safeStr(res.headers.get("content-type")).toLowerCase();
-      let ext = "png";
-      if (ct.includes("jpeg") || ct.includes("jpg")) ext = "jpg";
-      if (ct.includes("webp")) ext = "webp";
-      return new File([blob], `avatar.${ext}`, { type: blob.type || ct || "image/png" });
-    } catch {
-      // ignore
-    }
-  }
-  return null;
-}
-
-async function uploadBigGameLeagueAvatar({ token, season, divisionSlug, leagueOrder, file }) {
-  if (!file) return null;
-
+async function uploadBigGameLeagueAvatar({ token, season, divisionSlug, leagueOrder, avatarId }) {
   const qs = new URLSearchParams({
     section: "biggame-league",
     season: String(season),
-    divisionSlug: safeStr(divisionSlug),
+    divisionSlug: String(divisionSlug || "").trim(),
     leagueOrder: String(leagueOrder),
   });
-
   const fd = new FormData();
-  fd.append("file", file);
+  fd.append("avatarId", String(avatarId || "").trim());
 
   const res = await fetch(`/api/admin/upload?${qs.toString()}`, {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     body: fd,
   });
-
   const json = await res.json().catch(() => null);
   if (!res.ok || !json?.ok) throw new Error(json?.error || `Upload failed (${res.status})`);
   return { key: json.key, url: json.url };
+}
+
+async function fetchJson(url, init) {
+  const res = await fetch(url, init);
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(`${res.status} ${res.statusText}${t ? ` — ${t}` : ""}`);
+  }
+  return res.json();
 }
 
 function normalizeSleeperStatus(raw) {
@@ -262,6 +230,8 @@ export default function AddBigGameLeaguesClient({ initialSeason }) {
             sleeper_url: `https://sleeper.com/leagues/${lg.league_id}`,
             sleeper_status: lg.status,
             avatar_id: lg.avatar || null,
+            league_image_key: null,
+            league_image_path: null,
             total_teams: lg.total_teams,
             filled_teams: lg.filled_teams,
             open_teams: lg.open_teams,
@@ -270,28 +240,27 @@ export default function AddBigGameLeaguesClient({ initialSeason }) {
           };
         });
 
-      // Upload Sleeper league avatar to R2 immediately so the directory previews work
-      // without requiring a separate "Refresh Status + Counts" run.
-      try {
-        const token = await getAuthToken();
-        for (const row of toAdd) {
-          if (!row?.avatar_id) continue;
-          const file = await fetchAvatarFile(row.avatar_id);
-          if (!file) continue;
+      // Cache Sleeper avatars into R2 immediately so previews work without needing a separate refresh.
+      // This upload happens server-side inside /api/admin/upload to avoid browser CORS issues.
+      const token = await getAuthToken();
+      for (const row of toAdd) {
+        const avatarId = safeStr(row?.avatar_id).trim();
+        if (!avatarId) continue;
+        try {
           const uploaded = await uploadBigGameLeagueAvatar({
             token,
-            season: seasonNum,
-            divisionSlug: targetDivision,
+            season,
+            divisionSlug: targetDivisionSlug,
             leagueOrder: row.display_order,
-            file,
+            avatarId,
           });
           if (uploaded?.key) {
             row.league_image_key = uploaded.key;
             row.league_image_path = uploaded.url;
           }
+        } catch {
+          // ignore; we'll still fall back to Sleeper CDN on the admin view
         }
-      } catch {
-        // non-fatal — leagues can still be created; admin can refresh later
       }
 
       div.leagues = [...leagues, ...toAdd];
