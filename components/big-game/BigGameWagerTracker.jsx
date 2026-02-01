@@ -346,16 +346,26 @@ function TrackerInner({ season: seasonProp, version }) {
       try {
         const vq = encodeURIComponent(version || "");
         const wagersUrl = adminR2Url(`data/biggame/wagers_${encodeURIComponent(season)}.json?v=${vq}`);
-        const metaUrl = adminR2Url(`data/biggame/leagues_${encodeURIComponent(season)}.json?v=${vq}`);
 
-        const [wagersRes, metaRes] = await Promise.all([
-          fetch(wagersUrl, { cache: "no-store" }),
-          fetch(metaUrl, { cache: "no-store" }).catch(() => null),
-        ]);
+        const metaUrls = [
+          adminR2Url(`data/biggame/leagues_${encodeURIComponent(season)}.json?v=${vq}`),
+          adminR2Url(`data/big-game/leagues_${encodeURIComponent(season)}.json?v=${vq}`),
+          adminR2Url(`data/big_game/leagues_${encodeURIComponent(season)}.json?v=${vq}`),
+        ];
+
+        const wagersRes = await fetch(wagersUrl, { cache: "no-store" });
+        let metaRes = null;
+        for (const u of metaUrls) {
+          const r = await fetch(u, { cache: "no-store" }).catch(() => null);
+          if (r && r.ok) {
+            metaRes = r;
+            break;
+          }
+        }
 
         if (!wagersRes.ok) throw new Error(`Failed to load wager tracker (${wagersRes.status})`);
         const wagersJson = await wagersRes.json();
-        const metaJson = metaRes && metaRes.ok ? await metaRes.json() : null;
+        const metaJson = metaRes ? await metaRes.json() : null;
 
         if (cancelled) return;
         setDoc(wagersJson);

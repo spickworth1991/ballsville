@@ -209,10 +209,25 @@ export default function BigGameDivisionsClient({ year = DEFAULT_SEASON, version 
           // ignore storage errors
         }
 
-        const res = await fetch(`${r2Url(`data/biggame/leagues_${season}.json`, { kind: "biggame" })}?${bust}`, { cache: "default" });
-        if (!res.ok) throw new Error(`Failed to load Big Game data (${res.status})`);
+        const keyCandidates = [
+          `data/biggame/leagues_${season}.json`,
+          `data/big-game/leagues_${season}.json`,
+          `data/big_game/leagues_${season}.json`,
+        ];
 
-        const json = await res.json();
+        let json = null;
+        let lastStatus = null;
+
+        for (const key of keyCandidates) {
+          const res = await fetch(`${r2Url(key, { kind: "biggame" })}?${bust}`, { cache: "default" });
+          if (res.ok) {
+            json = await res.json();
+            break;
+          }
+          lastStatus = res.status;
+        }
+
+        if (!json) throw new Error(`Failed to load Big Game data (${lastStatus ?? "?"})`);
         const rows = Array.isArray(json?.rows) ? json.rows : Array.isArray(json) ? json : [];
         const stamp = safeStr(json?.updatedAt || json?.updated_at || "");
 
