@@ -21,8 +21,7 @@ async function fetchJson(url, init) {
 }
 
 async function apiJson(path, init) {
-  // Single route: keep it consistent with the other gamemodes.
-  // (Do NOT fallback to /api/admin/biggame — it creates double requests and hides real errors.)
+  // Canonical route only. (Stop double-fetching /big-game + /biggame.)
   return fetchJson(path, init);
 }
 
