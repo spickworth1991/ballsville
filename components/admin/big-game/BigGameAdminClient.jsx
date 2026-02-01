@@ -7,6 +7,16 @@ import { getSupabase } from "@/lib/supabaseClient";
 
 const DEFAULT_SEASON = new Date().getFullYear();
 
+function slugifyTitle(s) {
+  return String(s || "")
+    .toLowerCase()
+    .trim()
+    .replace(/['"]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+}
+
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
 }
@@ -205,6 +215,10 @@ export default function BigGameAdminClient() {
   const [msg, setMsg] = useState(null);
   const [divisions, setDivisions] = useState([]);
 
+  // Create Division (simple: title + order)
+  const [newDivTitle, setNewDivTitle] = useState("");
+  const [newDivOrder, setNewDivOrder] = useState(1);
+
   const msgTimer = useRef(null);
   const setToast = (m) => {
     setMsg(m);
@@ -267,21 +281,31 @@ export default function BigGameAdminClient() {
   }, [season]);
 
   function addDivision() {
+    const titleRaw = String(newDivTitle || "").trim();
+    const order = Math.max(1, safeNum(newDivOrder, divisions.length + 1));
+    const title = titleRaw || `Division ${order}`;
+    const slug = slugifyTitle(title) || `division-${order}`;
+    const code = `DIV${order}`;
+
     const next = [...divisions];
-    const n = next.length + 1;
     next.push(
       normalizeDivision(
         {
-          title: `Division ${n}`,
-          code: `DIV${n}`,
-          slug: `DIV${n}`,
-          order: n,
+          id: `DIV_${Date.now()}`,
+          title,
+          code,
+          slug,
+          order,
           leagues: [],
         },
         next.length
       )
     );
+
+    next.sort((a, b) => safeNum(a.order, 999) - safeNum(b.order, 999));
     setDivisions(next);
+    setNewDivTitle("");
+    setNewDivOrder(Math.max(1, order + 1));
   }
 
   function removeDivision(divId) {
@@ -441,7 +465,14 @@ export default function BigGameAdminClient() {
   function LeagueAvatar({ league }) {
     const path = league?.league_image_path;
     const key = league?.league_image_key;
-    const src = path ? r2Url(path) : key ? r2Url(key) : null;
+    const avatarId = league?.avatar_id;
+    const src = path
+      ? r2Url(path)
+      : key
+        ? r2Url(key)
+        : avatarId
+          ? `https://sleepercdn.com/avatars/${avatarId}`
+          : null;
 
     return (
       <div className="h-9 w-9 overflow-hidden rounded-xl border border-subtle bg-black/30">
@@ -504,8 +535,22 @@ export default function BigGameAdminClient() {
         <div className="card-header flex items-center justify-between">
           <div className="font-semibold">Divisions</div>
           <div className="flex items-center gap-2">
+            <input
+              className="input w-44"
+              placeholder="Division title"
+              value={newDivTitle}
+              onChange={(e) => setNewDivTitle(e.target.value)}
+            />
+            <input
+              className="input w-24"
+              type="number"
+              min={1}
+              placeholder="Order"
+              value={newDivOrder}
+              onChange={(e) => setNewDivOrder(safeNum(e.target.value, 1))}
+            />
             <button className="btn" onClick={addDivision}>
-              + Add Division
+              + Create
             </button>
           </div>
         </div>
@@ -621,38 +666,28 @@ export default function BigGameAdminClient() {
                             </td>
 
                             <td className="py-3">
-                              <input
-                                className="input w-full"
-                                value={l.league_name}
-                                onChange={(e) => updateLeague(d.id, l.id, { league_name: e.target.value })}
-                              />
+                              <div className="font-medium leading-snug">
+                                {safeStr(l.league_name) || "—"}
+                              </div>
+                              <div className="text-xs text-white/50">League name is pulled from Sleeper.</div>
                             </td>
 
                             <td className="py-3">
-                              <div className="flex items-center gap-2">
-                                <span className={badgeForStatus(l.league_status)}>{normalizeLeagueStatus(l.league_status)}</span>
-                                <select
-                                  className="select"
-                                  value={normalizeLeagueStatus(l.league_status)}
-                                  onChange={(e) => updateLeague(d.id, l.id, { league_status: e.target.value })}
-                                >
-                                  <option value="TBD">TBD</option>
-                                  <option value="FILLING">FILLING</option>
-                                  <option value="FULL">FULL</option>
-                                  <option value="DRAFTING">DRAFTING</option>
-                                </select>
+                              <div className="flex flex-col gap-1">
+                                <div className="flex items-center gap-2">
+                                  {l.not_ready ? (
+                                    <span className={badgeForStatus("TBD")}>NOT READY</span>
+                                  ) : null}
+                                  <span className={badgeForStatus(l.league_status)}>{normalizeLeagueStatus(l.league_status)}</span>
+                                </div>
+                                <div className="text-xs text-white/50">Status is auto (open slots / Sleeper). Only “Not Ready” is manual.</div>
                               </div>
                             </td>
 
                             <td className="py-3 text-white/80">{computeOpenSlotsLabel(l)}</td>
 
                             <td className="py-3">
-                              <input
-                                className="input w-52"
-                                value={safeStr(l.sleeper_league_id || "")}
-                                onChange={(e) => updateLeague(d.id, l.id, { sleeper_league_id: e.target.value })}
-                                placeholder="Sleeper league id"
-                              />
+                              <div className="font-mono text-xs text-white/80 break-all">{safeStr(l.sleeper_league_id || "—")}</div>
                               {l.sleeper_status ? <div className="mt-1 text-xs text-white/50">sleeper: {l.sleeper_status}</div> : null}
                             </td>
 
