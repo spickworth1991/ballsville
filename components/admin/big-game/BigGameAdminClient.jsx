@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabaseClient";
 import { CURRENT_SEASON } from "@/lib/season";
@@ -16,8 +15,8 @@ const DEFAULT_PAGE_EDITABLE = {
   },
 };
 
-const DIVISION_STATUS_OPTIONS = ["FULL", "FILLING", "TBD", "DRAFTING"];
-const LEAGUE_STATUS_OPTIONS = ["FULL", "FILLING", "TBD", "DRAFTING"];
+const DIVISION_STATUS_OPTIONS = ["AUTO", "FULL", "FILLING", "TBD", "DRAFTING"];
+const LEAGUE_STATUS_OPTIONS = ["AUTO", "FULL", "FILLING", "TBD", "DRAFTING"];
 
 function nowIso() {
   try {
@@ -103,6 +102,16 @@ function normalizeRow(r, idx = 0, season = CURRENT_SEASON) {
 
     display_order,
     spots_available,
+
+    // Sleeper-backed (optional, additive)
+    sleeper_league_id: safeStr(r?.sleeper_league_id || r?.sleeperLeagueId || r?.leagueId || r?.league_id || "").trim(),
+    sleeper_url: safeStr(r?.sleeper_url || r?.sleeperUrl || "").trim(),
+    sleeper_status: safeStr(r?.sleeper_status || r?.sleeperStatus || "").trim(),
+    avatar_id: safeStr(r?.avatar_id || r?.avatarId || "").trim(),
+    total_teams: r?.total_teams != null ? safeNum(r.total_teams, null) : null,
+    filled_teams: r?.filled_teams != null ? safeNum(r.filled_teams, null) : null,
+    open_teams: r?.open_teams != null ? safeNum(r.open_teams, null) : null,
+    not_ready: !!r?.not_ready,
 
     is_active: r?.is_active !== false,
     is_division_header: isHeader,
@@ -690,13 +699,6 @@ export default function BigGameAdminClient() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <Link
-            prefetch={false}
-            className="btn btn-outline text-sm"
-            href={`/admin/big-game/add-leagues?season=${encodeURIComponent(String(season))}`}
-          >
-            + Add leagues (Sleeper)
-          </Link>
           
 
           <button className="btn btn-primary text-sm" type="button" onClick={addDivision} disabled={saving}>

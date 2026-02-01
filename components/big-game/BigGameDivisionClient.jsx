@@ -9,7 +9,6 @@ import { r2Url } from "@/lib/r2Url";
 const DEFAULT_SEASON = CURRENT_SEASON;
 const R2_KEY_FOR = (season) => `data/biggame/leagues_${season}.json`;
 
-
 function safeNum(v, fallback = null) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -24,14 +23,36 @@ function slugify(input) {
     .slice(0, 64);
 }
 
+function normalizeSleeperStatus(raw) {
+  const s = String(raw || "").toLowerCase().trim();
+  if (s === "pre_draft" || s === "predraft" || s === "pre-draft") return "pre_draft";
+  if (s === "drafting") return "drafting";
+  if (s === "in_season" || s === "inseason") return "in_season";
+  if (s === "complete") return "complete";
+  return s || null;
+}
+
+function computeLeagueStatus(row) {
+  const raw = String(row?.league_status || "").trim().toUpperCase();
+  if (raw && raw !== "AUTO") return raw;
+
+  if (row?.not_ready) return "TBD";
+
+  const ss = normalizeSleeperStatus(row?.sleeper_status);
+  if (ss === "drafting") return "DRAFTING";
+
+  if (typeof row?.open_teams === "number" && Number.isFinite(row.open_teams)) {
+    return row.open_teams <= 0 ? "FULL" : "FILLING";
+  }
+
+  return "TBD";
+}
+
 function normalizeRow(r, idx = 0) {
   const year = safeNum(r?.year, DEFAULT_SEASON);
   const division_name = safeStr(r?.division_name || r?.theme_name || "Division").trim();
   const division_slug = safeStr(r?.division_slug || slugify(division_name));
 
-  // R2-admin schema:
-  // - header rows: is_division_header=true, division_* fields
-  // - league rows: is_division_header=false, league_* fields
   const is_division_header = !!r?.is_division_header;
 
   return {
@@ -40,8 +61,7 @@ function normalizeRow(r, idx = 0) {
     division_name,
     division_slug,
     is_division_header,
-    theme: safeStr(r?.theme || ""),
-    // prefer new field names when present
+
     division_status: safeStr(r?.division_status || r?.status || "TBD"),
     division_fill_note: safeStr(r?.division_blurb || r?.division_fill_note || ""),
     division_image_key: safeStr(r?.division_image_key || ""),
@@ -52,8 +72,15 @@ function normalizeRow(r, idx = 0) {
     league_order: safeNum(r?.league_order ?? r?.display_order, idx + 1),
     league_image_key: safeStr(r?.league_image_key || ""),
     league_image_path: safeStr(r?.league_image_path || ""),
-
     league_status: safeStr(r?.league_status || r?.status || "TBD"),
+
+    // Sleeper-backed (optional)
+    sleeper_league_id: safeStr(r?.sleeper_league_id || r?.leagueId || r?.league_id || ""),
+    sleeper_status: safeStr(r?.sleeper_status || ""),
+    total_teams: safeNum(r?.total_teams, null),
+    filled_teams: safeNum(r?.filled_teams, null),
+    open_teams: safeNum(r?.open_teams, null),
+    not_ready: r?.not_ready === true,
 
     is_active: r?.is_active !== false,
   };
@@ -69,9 +96,6 @@ function resolveImageSrc({ key, url }) {
   if (key) return r2Url(key, { kind: "biggame" });
   return url || "";
 }
-
-
-
 
 function transformForDivision(rows, divisionSlug) {
   const filtered = rows.filter((r) => r.division_slug === divisionSlug && r.is_active !== false);
@@ -89,7 +113,6 @@ function transformForDivision(rows, divisionSlug) {
     division_image: resolveImageSrc({ key: headerRow.division_image_key, url: headerRow.division_image_path }),
   };
 
-  // IMPORTANT: exclude the header row from the league list (prevents the "extra league" card)
   const leagues = filtered
     .filter((r) => !r.is_division_header)
     .slice()
@@ -98,16 +121,19 @@ function transformForDivision(rows, divisionSlug) {
       league_name: r.league_name,
       league_url: r.league_url,
       league_order: r.league_order,
-      league_status: r.league_status,
+      league_status: computeLeagueStatus(r),
       league_image: resolveImageSrc({ key: r.league_image_key, url: r.league_image_path }),
     }));
 
   return { header, leagues };
 }
 
-export default function BigGameDivisionClient({year = DEFAULT_SEASON,
+export default function BigGameDivisionClient({
+  year = DEFAULT_SEASON,
   divisionSlug = "",
-  backHref = "/big-game", version = "0"}) {
+  backHref = "/big-game",
+  version = "0",
+}) {
   const [division, setDivision] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -119,23 +145,9 @@ export default function BigGameDivisionClient({year = DEFAULT_SEASON,
       setError(null);
       setLoading(true);
       try {
-        const keyCandidates = [
-          `data/biggame/leagues_${year}.json`,
-          `data/big-game/leagues_${year}.json`,
-          `data/big_game/leagues_${year}.json`,
-        ];
-
-        let data = null;
-        let lastStatus = null;
-        for (const key of keyCandidates) {
-          const res = await fetch(`${r2Url(key, { kind: "biggame" })}?${bust}`, { cache: "no-store" });
-          lastStatus = res.status;
-          if (res.ok) {
-            data = await res.json();
-            break;
-          }
-        }
-        if (!data) throw new Error(`Failed to load Big Game data (${lastStatus ?? "?"})`);
+        const res = await fetch(`${r2Url(R2_KEY_FOR(year), { kind: "biggame" })}?${bust}`, { cache: "no-store" });
+        if (!res.ok) throw new Error(`Failed to load Big Game data (${res.status})`);
+        const data = await res.json();
         const list = Array.isArray(data?.rows) ? data.rows : Array.isArray(data) ? data : [];
         const normalized = list.map(normalizeRow);
         setDivision(transformForDivision(normalized, safeStr(divisionSlug)));
@@ -227,7 +239,6 @@ export default function BigGameDivisionClient({year = DEFAULT_SEASON,
               className={["h-full", !isClickable ? "cursor-not-allowed" : ""].join(" ")}
             />
           );
-
         })}
       </div>
     </div>

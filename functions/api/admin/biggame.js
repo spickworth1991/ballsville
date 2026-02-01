@@ -19,33 +19,6 @@ function r2KeyFor(type, season) {
   return `data/biggame/leagues_${season}.json`;
 }
 
-function leagueKeyCandidates(season) {
-  const s = String(season || "").trim();
-  // Primary (current) + legacy aliases.
-  return [
-    // ✅ current
-    `data/biggame/leagues_${s}.json`,
-    // legacy variants (some seasons were stored under different folders)
-    `data/big-game/leagues_${s}.json`,
-    `data/big_game/leagues_${s}.json`,
-  ];
-}
-
-async function getFirstExistingJson(bucket, keys) {
-  for (const key of keys) {
-    try {
-      const obj = await bucket.get(key);
-      if (obj) {
-        const json = await obj.json();
-        return { key, json };
-      }
-    } catch {
-      // keep trying
-    }
-  }
-  return { key: keys?.[0] || "", json: null };
-}
-
 function sanitizePageInput(data, season) {
   const hero = data?.hero || {};
   return {
@@ -200,6 +173,17 @@ function normalizeRow(r, idx, season) {
     spots_available,
 
     is_division_header,
+
+    // Sleeper-backed (optional, additive)
+    sleeper_league_id: asStr(r?.sleeper_league_id || r?.sleeperLeagueId || r?.leagueId || r?.league_id || "").trim() || null,
+    sleeper_url: asStr(r?.sleeper_url || r?.sleeperUrl || "").trim() || null,
+    sleeper_status: asStr(r?.sleeper_status || r?.sleeperStatus || "").trim() || null,
+    avatar_id: asStr(r?.avatar_id || r?.avatarId || "").trim() || null,
+    total_teams: r?.total_teams != null ? asNum(r.total_teams, null) : null,
+    filled_teams: r?.filled_teams != null ? asNum(r.filled_teams, null) : null,
+    open_teams: r?.open_teams != null ? asNum(r.open_teams, null) : null,
+    not_ready: asBool(r?.not_ready, false),
+
     is_active: asBool(r?.is_active, true),
   };
 }
@@ -209,18 +193,6 @@ async function readR2Json(bucket, key) {
   if (!obj) return null;
   const text = await obj.text();
   return JSON.parse(text);
-}
-
-async function firstExistingKey(bucket, keys) {
-  for (const key of keys) {
-    try {
-      const obj = await bucket.get(key);
-      if (obj) return key;
-    } catch {
-      // ignore
-    }
-  }
-  return null;
 }
 
 export async function onRequest(context) {
@@ -236,15 +208,11 @@ export async function onRequest(context) {
     const url = new URL(request.url);
     const season = Number(url.searchParams.get("season") || DEFAULT_SEASON);
     const type = (url.searchParams.get("type") || "leagues").toLowerCase();
-    const primaryKey = r2KeyFor(type, season);
-    const key =
-      type === "page"
-        ? primaryKey
-        : (await firstExistingKey(r2.bucket, leagueKeyCandidates(season))) || primaryKey;
+    const key = r2KeyFor(type, season);
 
     if (request.method === "GET") {
       const data = await readR2Json(r2.bucket, key);
-      return json({ ok: true, key, primaryKey, type, data: data || null });
+      return json({ ok: true, key, type, data: data || null });
     }
 
     if (request.method === "PUT") {
@@ -296,22 +264,12 @@ export async function onRequest(context) {
         rows,
       };
 
-      const primaryKey = r2KeyFor("leagues", season);
-      await r2.bucket.put(primaryKey, JSON.stringify(payload, null, 2), {
+      await r2.bucket.put(r2KeyFor("leagues", season), JSON.stringify(payload, null, 2), {
         httpMetadata: { contentType: "application/json; charset=utf-8" },
       });
-
-      // If the bucket still contains a legacy path, keep it in sync so older public URLs continue to work.
-      const legacyKeys = leagueKeyCandidates(season).filter((k) => k !== primaryKey);
-      const legacyKey = await firstExistingKey(r2.bucket, legacyKeys);
-      if (legacyKey) {
-        await r2.bucket.put(legacyKey, JSON.stringify(payload, null, 2), {
-          httpMetadata: { contentType: "application/json; charset=utf-8" },
-        });
-      }
         await touchManifest(context.env, season);
 
-      return json({ ok: true, key: primaryKey, legacyKey: legacyKey || null, type: "leagues", count: rows.length });
+      return json({ ok: true, key: r2KeyFor("leagues", season), type: "leagues", count: rows.length });
     }
 
     return json({ ok: false, error: "Method not allowed" }, 405);
