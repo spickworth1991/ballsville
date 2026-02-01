@@ -140,7 +140,7 @@ function deriveDivisionStatusFromLeagues(leagues) {
 
   // Only consider leagues that are active (and optionally notReady excluded)
   // If you want notReady leagues to count toward "all full", remove `!l.notReady`.
-  const eligible = list.filter((l) => l && l.active !== false && !l.notReady);
+  const eligible = list.filter((l) => l && l.active !== false);
 
   if (!eligible.length) return "tbd";
 
