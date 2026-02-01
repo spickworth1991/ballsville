@@ -291,8 +291,8 @@ function defaultPage(season) {
 
 function ensureR2(env) {
   // Match the other admin APIs (dynasty/redraft/etc.)
-  if (!env || !env.admin_bucket || typeof env.admin_bucket.get !== "function") {
-    throw new Error("Missing R2 binding 'admin_bucket'");
+  if (!env || !env.ADMIN_BUCKET || typeof env.ADMIN_BUCKET.get !== "function") {
+    throw new Error("Missing R2 binding 'ADMIN_BUCKET'");
   }
 }
 
@@ -307,14 +307,14 @@ function json(data, status = 200) {
 }
 
 async function readJson(env, key) {
-  const obj = await env.admin_bucket.get(key);
+  const obj = await env.ADMIN_BUCKET.get(key);
   if (!obj) return null;
   const text = await obj.text();
   return JSON.parse(text);
 }
 
 async function writeJson(env, key, data) {
-  await env.admin_bucket.put(key, JSON.stringify(data, null, 2), {
+  await env.ADMIN_BUCKET.put(key, JSON.stringify(data, null, 2), {
     httpMetadata: { contentType: "application/json; charset=utf-8" },
   });
 }
