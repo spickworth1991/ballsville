@@ -728,7 +728,7 @@ export default function BigGameAdminClient({ initialSeason }) {
                     {leagueCount === 0 ? (
                       <div className="text-sm text-white/60">No leagues in this division yet.</div>
                     ) : (
-                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
                         {safeArray(d.leagues).map((l, j) => (
                           <div key={l.id} className="card bg-black/25">
                             <div className="card-content px-4 py-8">
