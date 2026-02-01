@@ -21,15 +21,9 @@ async function fetchJson(url, init) {
 }
 
 async function apiJson(path, init) {
-  // Prefer the consistent route name, but keep backwards compatibility.
-  try {
-    return await fetchJson(path, init);
-  } catch (e) {
-    if (path.includes("/api/admin/big-game")) {
-      return fetchJson(path.replace("/api/admin/big-game", "/api/admin/biggame"), init);
-    }
-    throw e;
-  }
+  // Single route: keep it consistent with the other gamemodes.
+  // (Do NOT fallback to /api/admin/biggame — it creates double requests and hides real errors.)
+  return fetchJson(path, init);
 }
 
 function normalizeSleeperStatus(raw) {
