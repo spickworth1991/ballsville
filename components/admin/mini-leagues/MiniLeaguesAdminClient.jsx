@@ -39,14 +39,42 @@ const DEFAULT_PAGE_EDITABLE = {
 function emptyDivision(code = "100") {
   return {
     divisionCode: String(code),
-    title: `Division ${code}`,
+    // Put the code in the title (preference). We still store divisionCode for stable keys/routing.
+    title: `${code} — Division`,
     status: "tbd",
     order: Number(code) / 100,
     imageKey: "",
     imageUrl: "",
-    // Start clean — leagues are added via the Sleeper import flow.
+    // New divisions should start EMPTY (no placeholder leagues).
     leagues: [],
   };
+}
+
+function safeNum(v, fallback = 0) {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function sortLeagues(leagues) {
+  const list = Array.isArray(leagues) ? leagues.slice() : [];
+  return list.sort((a, b) => {
+    const ao = safeNum(a?.order, 0);
+    const bo = safeNum(b?.order, 0);
+    if (ao !== bo) return ao - bo;
+    return String(a?.name || "").localeCompare(String(b?.name || ""));
+  });
+}
+
+function sortDivisions(divisions) {
+  const list = Array.isArray(divisions) ? divisions.slice() : [];
+  return list
+    .map((d) => ({ ...d, leagues: sortLeagues(d?.leagues) }))
+    .sort((a, b) => {
+      const ao = safeNum(a?.order, 0);
+      const bo = safeNum(b?.order, 0);
+      if (ao !== bo) return ao - bo;
+      return String(a?.title || "").localeCompare(String(b?.title || ""));
+    });
 }
 
 function safeStr(v) {
@@ -243,6 +271,7 @@ export default function MiniLeaguesAdminClient() {
   const [baselineDivisions, setBaselineDivisions] = useState([]);
   const [baselineSeason, setBaselineSeason] = useState(null);
 
+  // Nothing should start expanded by default.
   const [openDivs, setOpenDivs] = useState(() => new Set());
 
   // per-division rollover target year drafts (Big Game style)
@@ -258,7 +287,7 @@ export default function MiniLeaguesAdminClient() {
   const [pendingWinners2File, setPendingWinners2File] = useState(null);
 
   const [pendingDivisionFiles, setPendingDivisionFiles] = useState(() => ({}));
-  const [pendingLeagueFiles, setPendingLeagueFiles] = useState(() => ({}));
+  // Mini-Leagues: leagues do not support optional manual image uploads.
 
   const divisionCount = divisions.length;
   const leagueCount = useMemo(() => {
@@ -296,11 +325,7 @@ export default function MiniLeaguesAdminClient() {
   }
 
   function leaguePreviewSrc(divisionCode, league) {
-    const order = league?.order ?? 0;
-    const k = `lg:${String(divisionCode)}:${String(order)}`;
-    const pending = pendingLeagueFiles[k];
-    if (pending) return makeUrl(pending);
-    return league.imageKey ? `/r2/${league.imageKey}` : league.imageUrl || "";
+    return league?.imageKey ? `/r2/${league.imageKey}` : league?.imageUrl || "";
   }
 
   // ==================================
@@ -315,7 +340,6 @@ export default function MiniLeaguesAdminClient() {
     setPendingWinners1File(null);
     setPendingWinners2File(null);
     setPendingDivisionFiles({});
-    setPendingLeagueFiles({});
 
     try {
       const nextSeason = Number(seasonArg) || DEFAULT_SEASON;
@@ -354,18 +378,13 @@ export default function MiniLeaguesAdminClient() {
       const div = await apiGET("divisions", nextSeason);
       const raw = div?.data;
       const list = Array.isArray(raw?.divisions) ? raw.divisions : Array.isArray(raw) ? raw : [];
-      const next = list.length ? list : [emptyDivision("100"), emptyDivision("200"), emptyDivision("400")];
+      const next = sortDivisions(list.length ? list : [emptyDivision("100"), emptyDivision("200"), emptyDivision("400")]);
       setDivisions(next);
       setBaselineDivisions(next);
       setBaselineSeason(nextSeason);
 
-      setOpenDivs((prev) => {
-        if (prev.size) return prev;
-        const s = new Set();
-        const first = (list.length ? list : [emptyDivision("100")])[0];
-        if (first?.divisionCode) s.add(String(first.divisionCode));
-        return s;
-      });
+      // None expanded by default on initial load.
+      setOpenDivs(new Set());
 
       // seed per-division rollover drafts (default = next season)
       setRollYearByDiv((prev) => {
@@ -393,17 +412,17 @@ export default function MiniLeaguesAdminClient() {
   // MUTATORS
   // ==================================
   function updateDivision(idx, patch) {
-    setDivisions((prev) => prev.map((d, i) => (i === idx ? { ...d, ...patch } : d)));
+    setDivisions((prev) => sortDivisions(prev.map((d, i) => (i === idx ? { ...d, ...patch } : d))));
   }
 
   function updateLeague(divIdx, leagueIdx, patch) {
     setDivisions((prev) =>
-      prev.map((d, i) => {
+      sortDivisions(prev.map((d, i) => {
         if (i !== divIdx) return d;
         const leagues = Array.isArray(d.leagues) ? d.leagues.slice() : [];
         leagues[leagueIdx] = { ...leagues[leagueIdx], ...patch };
-        return { ...d, leagues };
-      })
+        return { ...d, leagues: sortLeagues(leagues) };
+      }))
     );
   }
 
@@ -420,7 +439,7 @@ export default function MiniLeaguesAdminClient() {
   function addDivision() {
     const nextCode = String(divisionCount ? Math.max(...divisions.map((d) => Number(d.divisionCode) || 0)) + 100 : 100);
     const d = emptyDivision(nextCode);
-    setDivisions((prev) => [...prev, d]);
+    setDivisions((prev) => sortDivisions([...prev, d]));
     setOpenDivs((prev) => {
       const next = new Set(prev);
       next.add(String(d.divisionCode));
@@ -440,13 +459,6 @@ export default function MiniLeaguesAdminClient() {
       delete next[`div:${String(code)}`];
       return next;
     });
-    setPendingLeagueFiles((prev) => {
-      const next = { ...prev };
-      for (const k of Object.keys(next)) {
-        if (k.startsWith(`lg:${String(code)}:`)) delete next[k];
-      }
-      return next;
-    });
 
     setDivisions((prev) => prev.filter((_, i) => i !== divIdx));
     setOpenDivs((prev) => {
@@ -464,32 +476,46 @@ export default function MiniLeaguesAdminClient() {
 
   function addLeague(divIdx) {
     setDivisions((prev) =>
-      prev.map((d, i) => {
-        if (i !== divIdx) return d;
-        const leagues = Array.isArray(d.leagues) ? d.leagues.slice() : [];
-        const nextOrder = leagues.length ? Math.max(...leagues.map((l) => Number(l.order) || 0)) + 1 : 1;
-        leagues.push({
-          name: `League ${nextOrder}`,
-          url: "",
-          status: "tbd",
-          active: true,
-          order: nextOrder,
-          imageKey: "",
-          imageUrl: "",
-        });
-        return { ...d, leagues };
-      })
+      sortDivisions(
+        prev.map((d, i) => {
+          if (i !== divIdx) return d;
+          const leagues = Array.isArray(d.leagues) ? d.leagues.slice() : [];
+          const nextOrder = leagues.length ? Math.max(...leagues.map((l) => Number(l.order) || 0)) + 1 : 1;
+          leagues.push({
+            // Sleeper-backed (optional)
+            leagueId: "",
+            sleeperUrl: "",
+            avatarId: "",
+
+            // Stored
+            name: `League ${nextOrder}`,
+            url: "",
+            status: "tbd",
+            notReady: false,
+            active: true,
+            order: nextOrder,
+            imageKey: "",
+            imageUrl: "",
+
+            // counts
+            totalTeams: 0,
+            filledTeams: 0,
+            openTeams: 0,
+          });
+          return { ...d, leagues: sortLeagues(leagues) };
+        })
+      )
     );
   }
 
   function removeLeague(divIdx, leagueIdx) {
     setDivisions((prev) =>
-      prev.map((d, i) => {
+      sortDivisions(prev.map((d, i) => {
         if (i !== divIdx) return d;
         const leagues = Array.isArray(d.leagues) ? d.leagues.slice() : [];
         leagues.splice(leagueIdx, 1);
-        return { ...d, leagues };
-      })
+        return { ...d, leagues: sortLeagues(leagues) };
+      }))
     );
   }
 
@@ -574,7 +600,6 @@ export default function MiniLeaguesAdminClient() {
       setPendingWinners1File(null);
       setPendingWinners2File(null);
       setPendingDivisionFiles({});
-      setPendingLeagueFiles({});
 
       setOk(`Rolled "${safeStr(srcDiv.title) || `Division ${srcCode}`}" to season ${target} (Sleeper URLs cleared). Click "Save Divisions" to publish.`);
       setErr("");
@@ -697,31 +722,7 @@ export default function MiniLeaguesAdminClient() {
       }
 
       // 2) Leagues
-      const leagueEntries = Object.entries(pendingLeagueFiles);
-      for (const [key, file] of leagueEntries) {
-        if (!file) continue;
-        const [, divisionCode, leagueOrder] = key.split(":");
-        const up = await uploadImage(file, {
-          section: "mini-leagues-league",
-          season,
-          divisionCode,
-          leagueOrder,
-        });
-
-        nextDivisions = nextDivisions.map((d) => {
-          if (String(d.divisionCode) !== String(divisionCode)) return d;
-          const leagues = Array.isArray(d.leagues) ? d.leagues.map((l) => ({ ...l })) : [];
-          const lo = Number(leagueOrder);
-          for (let i = 0; i < leagues.length; i++) {
-            const curOrder = Number(leagues[i].order ?? i + 1);
-            if (curOrder === lo) {
-              leagues[i].imageKey = up.key;
-              break;
-            }
-          }
-          return { ...d, leagues };
-        });
-      }
+      // Mini-Leagues leagues do NOT support optional manual image uploads.
 
       const deletedKeys = new Set();
       const deletedBaseKeys = new Set();
@@ -760,16 +761,19 @@ export default function MiniLeaguesAdminClient() {
         }
       }
 
-      // Enforce: Not Ready always forces stored status to TBD.
-      nextDivisions = (Array.isArray(nextDivisions) ? nextDivisions : []).map((d) => {
+
+      // Enforce automatic status behavior:
+      // - If notReady=true → status is always "tbd"
+      // - Otherwise keep whatever last synced status is (default "tbd")
+      nextDivisions = sortDivisions((Array.isArray(nextDivisions) ? nextDivisions : []).map((d) => {
         const leagues = Array.isArray(d?.leagues)
           ? d.leagues.map((l) => ({
               ...l,
-              status: l?.notReady ? "tbd" : l?.status,
+              status: l?.notReady ? "tbd" : (l?.status || "tbd"),
             }))
           : [];
         return { ...d, leagues };
-      });
+      }));
 
       await apiPUT("divisions", { season, divisions: nextDivisions }, season);
 
@@ -788,7 +792,6 @@ export default function MiniLeaguesAdminClient() {
       setBaselineDivisions(nextDivisions);
       setBaselineSeason(Number(season));
       setPendingDivisionFiles({});
-      setPendingLeagueFiles({});
       setOk(
         baselineSeason === Number(season)
           ? "Saved divisions (images uploaded on save). Deleted images for removed divisions/leagues."
@@ -860,6 +863,7 @@ export default function MiniLeaguesAdminClient() {
         }
       }
 
+      nextDivisions = sortDivisions(nextDivisions);
       await apiPUT("divisions", { season, divisions: nextDivisions }, season);
       setDivisions(nextDivisions);
       setBaselineDivisions(nextDivisions);
@@ -912,17 +916,6 @@ export default function MiniLeaguesAdminClient() {
                   View Page
                 </Link>
 
-                <Link
-                  prefetch={false}
-                  href={`/admin/mini-leagues/add-leagues?season=${encodeURIComponent(String(season))}`}
-                  className="btn btn-outline"
-                  title="Add leagues from Sleeper (search username → pick leagues)"
-                >
-                  Add leagues (from Sleeper)
-                </Link>
-                <button className="btn btn-primary" type="button" onClick={loadAll} disabled={!canAct}>
-                  Refresh
-                </button>
               </div>
             </div>
 
@@ -1081,6 +1074,15 @@ export default function MiniLeaguesAdminClient() {
                     </p>
                   </div>
                   <div className="flex gap-2">
+                    <Link
+                      prefetch={false}
+                      href={`/admin/mini-leagues/add-leagues?season=${encodeURIComponent(String(season))}`}
+                      className="btn btn-outline"
+                      title="Add leagues from Sleeper (search username → pick leagues)"
+                    >
+                      Add leagues
+                    </Link>
+
                     <button
                       className="btn btn-outline"
                       type="button"
@@ -1154,31 +1156,11 @@ export default function MiniLeaguesAdminClient() {
                           {/* (rest of your editor unchanged) */}
                           <div className="grid gap-4 md:grid-cols-2">
                             <div className="space-y-2">
-                              <label className="block text-sm text-muted">Division Code</label>
-                              <input
-                                className="input w-full"
-                                value={d.divisionCode}
-                                onChange={(e) => updateDivision(divIdx, { divisionCode: e.target.value })}
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <label className="block text-sm text-muted">Title</label>
+                              <label className="block text-sm text-muted">Title (include code in title)</label>
                               <input className="input w-full" value={d.title} onChange={(e) => updateDivision(divIdx, { title: e.target.value })} />
+                              <p className="text-xs text-muted">Example: <span className="font-mono">{code} — Planet Wars</span></p>
                             </div>
-
-                            <div className="space-y-2">
-                              <label className="block text-sm text-muted">Status</label>
-                              <select className="input w-full" value={d.status} onChange={(e) => updateDivision(divIdx, { status: e.target.value })}>
-                                {STATUS_OPTIONS.map((o) => (
-                                  <option key={o.value} value={o.value}>
-                                    {o.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div className="space-y-2">
+<div className="space-y-2">
                               <label className="block text-sm text-muted">Order</label>
                               <input className="input w-full" type="number" value={d.order} onChange={(e) => updateDivision(divIdx, { order: Number(e.target.value) })} />
                             </div>
@@ -1202,103 +1184,124 @@ export default function MiniLeaguesAdminClient() {
                                 />
                               </div>
 
-                              <div className="relative w-full aspect-[16/9] rounded-2xl overflow-hidden border border-subtle bg-black/20">
+                              <div className="relative w-full h-20 md:h-24 rounded-2xl overflow-hidden border border-subtle bg-black/20">
                                 {divImg ? <Image src={divImg} alt={`Division ${code} preview`} fill className="object-cover" /> : null}
                               </div>
                             </div>
+                            <div className="space-y-2">
+                              <div className="rounded-2xl border border-subtle bg-black/10 p-3 text-xs text-muted">
+                                Division images are upload-only (no URL fallback).
+                              </div>
+                            </div>
+                          </div>
 
+                          <div className="flex items-center justify-between gap-3 pt-2">
+                            <div className="text-sm font-semibold">Leagues</div>
+                            <button className="btn btn-outline text-sm" type="button" onClick={() => addLeague(divIdx)} disabled={!canAct}>
+                              + League
+                            </button>
                           </div>
 
                           <div className="space-y-4">
                             {(Array.isArray(d.leagues) ? d.leagues : []).map((l, leagueIdx) => {
-                              const isSleeper = Boolean(String(l?.leagueId || "").trim());
+                              const lgImg = leaguePreviewSrc(code, l);
 
                               return (
                                 <div key={`${code}-${leagueIdx}`} className="rounded-2xl border border-subtle bg-black/20 p-4 space-y-4">
-                                  <div className="flex flex-wrap items-center justify-between gap-3">
-                                    <div className="flex items-center gap-2">
-                                      <p className="text-sm font-semibold">League #{l.order ?? leagueIdx + 1}</p>
-                                      <StatusPill status={l.status} />
-                                    </div>
-                                    <button className="btn btn-outline text-sm" type="button" onClick={() => removeLeague(divIdx, leagueIdx)} disabled={!canAct}>
-                                      Delete
-                                    </button>
-                                  </div>
+                                  {(() => {
+                                    const computedStatus = l.notReady ? "tbd" : (l.status || "tbd");
+                                    const filled = Math.max(0, Number(l.filledTeams) || 0);
+                                    const total = Math.max(0, Number(l.totalTeams) || 0);
+                                    const open = Math.max(0, Number(l.openTeams) || 0);
+                                    const hasCounts = total > 0;
+                                    return (
+                                      <>
+                                        <div className="flex flex-wrap items-start justify-between gap-3">
+                                          <div className="min-w-0 space-y-1">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                              <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-subtle bg-black/20">
+                                                {lgImg ? <Image src={lgImg} alt="" fill className="object-cover" /> : null}
+                                              </div>
+                                              <p className="text-sm font-semibold truncate">
+                                                {l.name || `League #${l.order ?? leagueIdx + 1}`}
+                                              </p>
+                                              <StatusPill status={computedStatus} />
+                                              {hasCounts ? (
+                                                <span className="text-xs text-white/50">
+                                                  {filled}/{total} teams • {open} open
+                                                </span>
+                                              ) : null}
+                                            </div>
 
-                                  <div className="grid gap-4 md:grid-cols-2">
-                                    <div className="space-y-2">
-                                      <label className="block text-sm text-muted">Name</label>
-                                      <input className="input w-full" value={l.name || ""} disabled readOnly />
-                                      {isSleeper ? <div className="text-[11px] text-muted">Synced from Sleeper</div> : null}
-                                    </div>
+                                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                                              <span className="font-mono">{l.leagueId || "—"}</span>
+                                              {l.sleeperUrl ? (
+                                                <a href={l.sleeperUrl} target="_blank" rel="noreferrer" className="text-accent underline">
+                                                  Open on Sleeper
+                                                </a>
+                                              ) : null}
+                                            </div>
+                                          </div>
 
-                                    <div className="space-y-2">
-                                      <label className="block text-sm text-muted">Invite URL (public link)</label>
-                                      <input className="input w-full" value={l.url} onChange={(e) => updateLeague(divIdx, leagueIdx, { url: e.target.value })} />
-                                    </div>
-
-                                    <div className="space-y-2">
-                                      <label className="block text-sm text-muted">Sleeper League ID</label>
-                                      <input className="input w-full" value={l.leagueId || ""} disabled readOnly />
-                                      {l.sleeperUrl ? (
-                                        <a
-                                          href={l.sleeperUrl}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="text-xs text-accent underline"
-                                        >
-                                          Open league on Sleeper
-                                        </a>
-                                      ) : null}
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-4">
-                                      <label className="flex items-center gap-2 rounded-2xl border border-subtle bg-black/10 px-3 py-2">
-                                        <input
-                                          type="checkbox"
-                                          className="h-4 w-4 accent-[var(--color-accent)]"
-                                          checked={Boolean(l.notReady)}
-                                          onChange={(e) => {
-                                            const checked = e.target.checked;
-                                            updateLeague(divIdx, leagueIdx, {
-                                              notReady: checked,
-                                              // When checked, force the stored status to TBD.
-                                              // When unchecked, leave status as-is (use Refresh to re-sync if needed).
-                                              status: checked ? "tbd" : l.status,
-                                            });
-                                          }}
-                                        />
-                                        <div className="min-w-0">
-                                          <div className="text-xs font-semibold text-fg">Not ready</div>
-                                          <div className="text-[11px] text-muted truncate">Forces status to TBD on public page.</div>
+                                          <div className="flex gap-2">
+                                            <button
+                                              className="btn btn-outline text-sm"
+                                              type="button"
+                                              onClick={() => removeLeague(divIdx, leagueIdx)}
+                                              disabled={!canAct}
+                                            >
+                                              Delete
+                                            </button>
+                                          </div>
                                         </div>
-                                      </label>
 
-                                      <div className="space-y-2">
-                                        <label className="block text-sm text-muted">Order</label>
-                                        <input
-                                          className="input w-full"
-                                          type="number"
-                                          value={l.order ?? leagueIdx + 1}
-                                          onChange={(e) => updateLeague(divIdx, leagueIdx, { order: Number(e.target.value) })}
-                                        />
-                                      </div>
-                                    </div>
+                                        <div className="grid gap-4 md:grid-cols-3">
+                                          <div className="md:col-span-2 space-y-2">
+                                            <label className="block text-sm text-muted">Invite URL (public link)</label>
+                                            <input
+                                              className="input w-full"
+                                              value={l.url}
+                                              onChange={(e) => updateLeague(divIdx, leagueIdx, { url: e.target.value })}
+                                              placeholder="https://sleeper.com/i/…"
+                                            />
+                                          </div>
 
-                                    <div className="rounded-2xl border border-subtle bg-black/10 p-3 text-xs text-muted">
-                                      <span className="font-semibold text-fg">Player count:</span>{" "}
-                                      {Number(l.totalTeams) ? (
-                                        <>
-                                          {Math.max(0, Number(l.filledTeams) || 0)}/{Math.max(0, Number(l.totalTeams) || 0)} teams
-                                          <span className="text-white/45"> • {Math.max(0, Number(l.openTeams) || 0)} open</span>
-                                        </>
-                                      ) : (
-                                        "—"
-                                      )}
-                                    </div>
-                                  </div>
+                                          <div className="space-y-2">
+                                            <label className="block text-sm text-muted">Order</label>
+                                            <input
+                                              className="input w-full"
+                                              type="number"
+                                              value={l.order ?? leagueIdx + 1}
+                                              onChange={(e) => updateLeague(divIdx, leagueIdx, { order: Number(e.target.value) })}
+                                            />
+                                          </div>
+                                        </div>
 
-                                  {/* League image management intentionally removed for Mini-Leagues (Sleeper avatar is used). */}
+                                        <div className="grid gap-4 md:grid-cols-3">
+                                          <div className="space-y-2">
+                                            <label className="block text-sm text-muted">Not Ready (forces TBD)</label>
+                                            <label className="flex items-center gap-2 rounded-2xl border border-subtle bg-black/10 px-3 py-2">
+                                              <input
+                                                type="checkbox"
+                                                className="h-4 w-4 accent-[var(--color-primary)]"
+                                                checked={Boolean(l.notReady)}
+                                                onChange={(e) => {
+                                                  const v = e.target.checked;
+                                                  updateLeague(divIdx, leagueIdx, {
+                                                    notReady: v,
+                                                    status: v ? "tbd" : (l.status || "tbd"),
+                                                  });
+                                                }}
+                                              />
+                                              <span className="text-sm">Mark as Not Ready</span>
+                                            </label>
+                                            <p className="text-xs text-muted">Status is auto-synced from Sleeper. Use this only to hide leagues until ready.</p>
+                                          </div>
+                                          <div className="md:col-span-2" />
+                                        </div>
+                                      </>
+                                    );
+                                  })()}
                                 </div>
                               );
                             })}
