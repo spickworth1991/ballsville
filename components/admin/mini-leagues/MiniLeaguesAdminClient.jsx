@@ -36,17 +36,43 @@ const DEFAULT_PAGE_EDITABLE = {
   },
 };
 
-function emptyDivision(code = "100") {
+
+
+function codeFromOrder(order) {
+  const o = Math.round(safeNum(order, 1));
+  const clamped = Math.max(1, o);
+  return String(clamped * 100);
+}
+
+// Keep title aligned with the derived code.
+// If title looks like "100 — Something", we update the "100" part.
+// Otherwise we leave it alone.
+function syncTitleCodePrefix(title, newCode) {
+  const t = safeStr(title).trim();
+  if (!t) return `${newCode} — Division`;
+
+  // matches "100 — Whatever" OR "100-Whatever" with spaces
+  const m = t.match(/^(\d{3,})\s*[—-]\s*(.*)$/);
+  if (m) {
+    const rest = m[2] || "";
+    return `${newCode} — ${rest || "Division"}`.trim();
+  }
+
+  return t;
+}
+
+function emptyDivision(order = 1) {
+  const divisionCode = codeFromOrder(order);
+
   return {
-    divisionCode: String(code),
-    // Put the code in the title (preference). We still store divisionCode for stable keys/routing.
-    title: `${code} — Division`,
+    divisionCode,
+    // Put the code in the title (preference). Still store divisionCode for stable keys/routing.
+    title: `${divisionCode} — Division`,
     status: "tbd",
-    order: Number(code) / 100,
+    order: Math.round(safeNum(order, 1)),
     imageKey: "",
     imageUrl: "",
-    // New divisions should start EMPTY (no placeholder leagues).
-    leagues: [],
+    leagues: [], // start EMPTY
   };
 }
 
@@ -378,7 +404,7 @@ export default function MiniLeaguesAdminClient() {
       const div = await apiGET("divisions", nextSeason);
       const raw = div?.data;
       const list = Array.isArray(raw?.divisions) ? raw.divisions : Array.isArray(raw) ? raw : [];
-      const next = sortDivisions(list.length ? list : [emptyDivision("100"), emptyDivision("200"), emptyDivision("400")]);
+      const next = sortDivisions(list.length ? list : [emptyDivision(1), emptyDivision(2), emptyDivision(4)]);
       setDivisions(next);
       setBaselineDivisions(next);
       setBaselineSeason(nextSeason);
@@ -412,8 +438,67 @@ export default function MiniLeaguesAdminClient() {
   // MUTATORS
   // ==================================
   function updateDivision(idx, patch) {
-    setDivisions((prev) => sortDivisions(prev.map((d, i) => (i === idx ? { ...d, ...patch } : d))));
+    setDivisions((prev) => {
+      const current = prev[idx];
+      if (!current) return prev;
+
+      const oldCode = String(current.divisionCode || "").trim();
+      const nextOrder =
+        patch && Object.prototype.hasOwnProperty.call(patch, "order")
+          ? Math.round(safeNum(patch.order, current.order ?? 1))
+          : Math.round(safeNum(current.order, 1));
+
+      const newCode = codeFromOrder(nextOrder);
+
+      // Build next division object
+      const nextDiv = {
+        ...current,
+        ...patch,
+        order: nextOrder,
+        divisionCode: newCode,
+        title: syncTitleCodePrefix(patch?.title ?? current.title, newCode),
+      };
+
+      // If code didn't change, simple update
+      if (!oldCode || oldCode === newCode) {
+        return sortDivisions(prev.map((d, i) => (i === idx ? nextDiv : d)));
+      }
+
+      // Code changed -> migrate any state keyed by divisionCode
+      // 1) pendingDivisionFiles: div:OLD -> div:NEW
+      setPendingDivisionFiles((pf) => {
+        const next = { ...pf };
+        const oldKey = `div:${oldCode}`;
+        const newKey = `div:${newCode}`;
+        if (next[oldKey] && !next[newKey]) next[newKey] = next[oldKey];
+        delete next[oldKey];
+        return next;
+      });
+
+      // 2) openDivs set: OLD -> NEW
+      setOpenDivs((od) => {
+        const next = new Set(od);
+        if (next.has(oldCode)) {
+          next.delete(oldCode);
+          next.add(newCode);
+        }
+        return next;
+      });
+
+      // 3) rollover map: OLD -> NEW
+      setRollYearByDiv((ry) => {
+        const next = { ...ry };
+        if (next[oldCode] != null && next[newCode] == null) next[newCode] = next[oldCode];
+        delete next[oldCode];
+        return next;
+      });
+
+      // Update division in list
+      const replaced = prev.map((d, i) => (i === idx ? nextDiv : d));
+      return sortDivisions(replaced);
+    });
   }
+
 
   function updateLeague(divIdx, leagueIdx, patch) {
     setDivisions((prev) =>
@@ -437,16 +522,24 @@ export default function MiniLeaguesAdminClient() {
   }
 
   function addDivision() {
-    const nextCode = String(divisionCount ? Math.max(...divisions.map((d) => Number(d.divisionCode) || 0)) + 100 : 100);
-    const d = emptyDivision(nextCode);
+    const nextOrder = divisions.length
+      ? Math.max(...divisions.map((d) => Math.round(safeNum(d.order, 0)))) + 1
+      : 1;
+
+    const d = emptyDivision(nextOrder);
+
     setDivisions((prev) => sortDivisions([...prev, d]));
+
+    // Open the newly created division
     setOpenDivs((prev) => {
       const next = new Set(prev);
       next.add(String(d.divisionCode));
       return next;
     });
+
     setRollYearByDiv((prev) => ({ ...prev, [String(d.divisionCode)]: String(season + 1) }));
   }
+
 
   // ✅ KEEPING your delete helpers exactly
   function removeDivision(divIdx) {
