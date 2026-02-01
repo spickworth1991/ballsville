@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CURRENT_SEASON } from "@/lib/season";
+import { CURRENT_SEASON } from "@/lib/season2";
 import MediaTabCard from "@/components/ui/MediaTabCard";
 import { safeStr } from "@/lib/safe";
 import { r2Url } from "@/lib/r2Url";
