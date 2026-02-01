@@ -24,7 +24,16 @@
 const DEFAULT_SEASON = new Date().getFullYear();
 
 function ensureR2(env) {
-  if (!env || !env.BALLSVILLE_R2) throw new Error("BALLSVILLE_R2 binding missing");
+  const b = env.admin_bucket || env.ADMIN_BUCKET;
+  if (!b) return { ok: false, status: 500, error: "Missing R2 binding: admin_bucket" };
+  if (typeof b.get !== "function" || typeof b.put !== "function") {
+    return {
+      ok: false,
+      status: 500,
+      error: "admin_bucket binding is not an R2 bucket object (check Pages > Settings > Bindings: admin_bucket).",
+    };
+  }
+  return { ok: true, bucket: b };
 }
 
 function json(body, status = 200) {
