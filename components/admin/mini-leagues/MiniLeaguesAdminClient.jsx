@@ -94,7 +94,14 @@ function sortLeagues(leagues) {
 function sortDivisions(divisions) {
   const list = Array.isArray(divisions) ? divisions.slice() : [];
   return list
-    .map((d) => ({ ...d, leagues: sortLeagues(d?.leagues) }))
+    .map((d) => {
+      const leagues = sortLeagues(d?.leagues);
+      return {
+        ...d,
+        leagues,
+        status: deriveDivisionStatusFromLeagues(leagues),
+      };
+    })
     .sort((a, b) => {
       const ao = safeNum(a?.order, 0);
       const bo = safeNum(b?.order, 0);
@@ -102,6 +109,7 @@ function sortDivisions(divisions) {
       return String(a?.title || "").localeCompare(String(b?.title || ""));
     });
 }
+
 
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
@@ -125,6 +133,26 @@ function miniStatusFromSleeper({ sleeperStatus, openTeams, notReady }) {
   if (Number(openTeams) <= 0) return "full";
   return "filling";
 }
+
+function deriveDivisionStatusFromLeagues(leagues) {
+  const list = Array.isArray(leagues) ? leagues : [];
+
+  // Only consider leagues that are "active" and not forced hidden
+  const eligible = list.filter((l) => l && l.active !== false && !l.notReady);
+
+  if (!eligible.length) return "tbd";
+
+  const statuses = eligible.map((l) => String(l.status || "tbd").toLowerCase());
+
+  if (statuses.includes("drafting")) return "drafting";
+  if (statuses.includes("filling")) return "filling";
+
+  // If every eligible league is full, division is full
+  if (statuses.every((s) => s === "full")) return "full";
+
+  return "tbd";
+}
+
 
 async function sleeperLeagueInfo(leagueId) {
   const id = String(leagueId || "").trim();
