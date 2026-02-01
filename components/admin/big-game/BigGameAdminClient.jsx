@@ -588,7 +588,7 @@ export default function BigGameAdminClient({ initialSeason }) {
       ) : null}
 
       {/* Page settings (Hero) */}
-      <div className="card">
+      <div className="card px-4 py-8">
         <div className="card-header flex items-center justify-between">
           <div>
             <div className="font-semibold">Page Settings</div>
@@ -646,7 +646,7 @@ export default function BigGameAdminClient({ initialSeason }) {
 
       {/* Divisions */}
       <div className="card">
-        <div className="card-header flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div className="card-header px-4 py-8 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
             <div className="font-semibold">Divisions</div>
             <div className="text-xs text-white/50">Divisions are collapsible. Slug + code are auto-derived from title + order.</div>
@@ -672,7 +672,7 @@ export default function BigGameAdminClient({ initialSeason }) {
           </div>
         </div>
 
-        <div className="card-content space-y-4">
+        <div className="card-content space space-y-4">
           {loading ? <div className="text-sm text-white/60">Loading…</div> : null}
           {!loading && divisions.length === 0 ? <div className="text-sm text-white/60">No divisions yet.</div> : null}
 
