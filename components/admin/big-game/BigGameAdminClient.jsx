@@ -649,7 +649,7 @@ export default function BigGameAdminClient({ initialSeason }) {
         <div className="card-header px-4 py-8 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
             <div className="font-semibold">Divisions</div>
-            <div className="text-xs text-white/50">Divisions are collapsible. Slug + code are auto-derived from title + order.</div>
+            <div className="text-xs text-white/50">Manage divisions and their leagues for the BIG Game.</div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -672,7 +672,7 @@ export default function BigGameAdminClient({ initialSeason }) {
           </div>
         </div>
 
-        <div className="card-content space space-y-4">
+        <div className="card-content px-4 py-8 space-y-5">
           {loading ? <div className="text-sm text-white/60">Loading…</div> : null}
           {!loading && divisions.length === 0 ? <div className="text-sm text-white/60">No divisions yet.</div> : null}
 
@@ -731,7 +731,7 @@ export default function BigGameAdminClient({ initialSeason }) {
                       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                         {safeArray(d.leagues).map((l, j) => (
                           <div key={l.id} className="card bg-black/25">
-                            <div className="card-content space-y-3">
+                            <div className="card-content px-4 py-8">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="flex items-start gap-3">
                                   <LeagueAvatar league={l} />
