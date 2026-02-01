@@ -111,6 +111,7 @@ function sortDivisions(divisions) {
 }
 
 
+
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
@@ -137,7 +138,8 @@ function miniStatusFromSleeper({ sleeperStatus, openTeams, notReady }) {
 function deriveDivisionStatusFromLeagues(leagues) {
   const list = Array.isArray(leagues) ? leagues : [];
 
-  // Only consider leagues that are "active" and not forced hidden
+  // Only consider leagues that are active (and optionally notReady excluded)
+  // If you want notReady leagues to count toward "all full", remove `!l.notReady`.
   const eligible = list.filter((l) => l && l.active !== false && !l.notReady);
 
   if (!eligible.length) return "tbd";
@@ -145,13 +147,11 @@ function deriveDivisionStatusFromLeagues(leagues) {
   const statuses = eligible.map((l) => String(l.status || "tbd").toLowerCase());
 
   if (statuses.includes("drafting")) return "drafting";
-  if (statuses.includes("filling")) return "filling";
-
-  // If every eligible league is full, division is full
   if (statuses.every((s) => s === "full")) return "full";
 
   return "tbd";
 }
+
 
 
 async function sleeperLeagueInfo(leagueId) {
