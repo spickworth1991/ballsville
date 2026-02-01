@@ -1,38 +1,33 @@
 // functions/api/admin/biggame.js
+// Admin API for BIG GAME
+// GET  /api/admin/biggame?season=2026
+// PUT  /api/admin/biggame?season=2026  { season, config?, rows[] }
 //
-// Big Game CMS stored in R2 (admin_bucket).
-//
-// GET  /api/admin/biggame?season=2025&type=page|leagues
-// PUT  /api/admin/biggame?season=2025   { type, data }
-//
-// R2 keys:
-// - content/biggame/page_<season>.json
+// Storage (R2):
 // - data/biggame/leagues_<season>.json
+//
+// Compatibility:
+// - Primary persisted shape remains { season, config, rows } (row-based, like original Big Game).
+// - If an older/new-schema { season, divisions } file exists, we convert it to rows on read.
 
-import { CURRENT_SEASON } from "@/lib/season";
+const DEFAULT_SEASON = new Date().getFullYear();
 
-const DEFAULT_SEASON = CURRENT_SEASON;
-
-function r2KeyFor(type, season) {
-  if (type === "page") return `content/biggame/page_${season}.json`;
-  // default
-  return `data/biggame/leagues_${season}.json`;
+function asStr(v, fallback = "") {
+  return typeof v === "string" ? v : v == null ? fallback : String(v);
+}
+function asNum(v, fallback = 0) {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+function asBool(v, fallback = false) {
+  if (typeof v === "boolean") return v;
+  if (v === "true") return true;
+  if (v === "false") return false;
+  return fallback;
 }
 
-function sanitizePageInput(data, season) {
-  const hero = data?.hero || {};
-  return {
-    season: Number(season || DEFAULT_SEASON),
-    hero: {
-      promoImageKey: typeof hero.promoImageKey === "string" ? hero.promoImageKey : "",
-      promoImageUrl: typeof hero.promoImageUrl === "string" ? hero.promoImageUrl : "",
-      updatesHtml: typeof hero.updatesHtml === "string" ? hero.updatesHtml : "",
-    },
-  };
-}
-
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data, null, 2), {
+function json(body, status = 200) {
+  return new Response(JSON.stringify(body, null, 2), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
@@ -42,227 +37,314 @@ function json(data, status = 200) {
 }
 
 function ensureR2(env) {
-  const b = env.admin_bucket || env.ADMIN_BUCKET;
-  if (!b) return { ok: false, status: 500, error: "Missing R2 binding: admin_bucket" };
-  if (typeof b.get !== "function" || typeof b.put !== "function") {
-    return {
-      ok: false,
-      status: 500,
-      error: 'admin_bucket binding is not an R2 bucket object (Pages > Settings > Bindings: "admin_bucket").',
-    };
-  }
-  return { ok: true, bucket: b };
-}
-
-
-async function touchManifest(env, season) {
-  try {
-    const b = ensureR2(env);
-    if (!b.ok) return;
-    const key = season ? `data/manifests/biggame_${season}.json` : `data/manifests/biggame.json`;
-    const body = JSON.stringify({ section: "biggame", season: season || null, updatedAt: Date.now() }, null, 2);
-    await b.bucket.put(key, body, {
-      httpMetadata: { contentType: "application/json; charset=utf-8" },
-    });
-  } catch (e) {
-    // non-fatal
+  // Keep consistent with your other admin endpoints.
+  if (!env || !env.BALLSVILLE_R2) {
+    throw new Error("Missing BALLSVILLE_R2 binding");
   }
 }
-
 
 async function requireAdmin(context) {
+  // Keep consistent with your other admin endpoints.
+  // Uses Supabase JWT cookie via NEXT_PUBLIC_SUPABASE_URL/ANON_KEY in edge, and ADMIN_EMAIL allowlist.
+  // If you already have a shared helper, you can replace this with that implementation.
+
   const { request, env } = context;
-
-  const auth = request.headers.get("authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token) return { ok: false, status: 401, error: "Missing Authorization Bearer token." };
-
-  const supabaseUrl = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnon = env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  const adminsRaw = (env.ADMIN_EMAILS || env.NEXT_PUBLIC_ADMIN_EMAILS || "").trim();
-  const admins = adminsRaw
+  const admins = (env.NEXT_PUBLIC_ADMIN_EMAILS || "")
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
 
-  if (!supabaseUrl || !supabaseAnon) {
-    return { ok: false, status: 500, error: "Missing SUPABASE_URL / SUPABASE_ANON_KEY." };
+  // If no allowlist is configured, deny.
+  if (!admins.length) throw new Error("Admin list not configured");
+
+  const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnon = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseAnon) throw new Error("Supabase env not configured");
+
+  // Grab the access token from cookies. Your AdminGuard logs in via Supabase client, which sets sb-* cookies.
+  const cookie = request.headers.get("cookie") || "";
+  const m = cookie.match(/sb-([^=]+)-auth-token=([^;]+)/);
+  if (!m) throw new Error("Not authenticated");
+
+  // Cookie value is URL encoded JSON array [access_token, refresh_token] for supabase-js v2.
+  let accessToken = null;
+  try {
+    const decoded = decodeURIComponent(m[2]);
+    const arr = JSON.parse(decoded);
+    accessToken = Array.isArray(arr) ? arr[0] : null;
+  } catch {
+    accessToken = null;
   }
-  if (!admins.length) return { ok: false, status: 500, error: "ADMIN_EMAILS is not set." };
+  if (!accessToken) throw new Error("Not authenticated");
 
-  const res = await fetch(`${supabaseUrl.replace(/\/$/, "")}/auth/v1/user`, {
-    headers: { apikey: supabaseAnon, authorization: `Bearer ${token}` },
+  // Validate token and get user.
+  const res = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: {
+      apikey: supabaseAnon,
+      Authorization: `Bearer ${accessToken}`,
+    },
   });
-
-  if (!res.ok) return { ok: false, status: 401, error: "Invalid session token." };
-
+  if (!res.ok) throw new Error("Not authenticated");
   const user = await res.json();
-  const email = String(user?.email || "").toLowerCase();
-  if (!admins.includes(email)) return { ok: false, status: 403, error: "Not an admin." };
+  const email = (user?.email || "").toLowerCase();
+  if (!email || !admins.includes(email)) throw new Error("Not authorized");
 
-  return { ok: true };
+  return user;
 }
 
-function asStr(v) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
+async function readJson(env, key) {
+  const obj = await env.BALLSVILLE_R2.get(key);
+  if (!obj) return null;
+  try {
+    return await obj.json();
+  } catch {
+    return null;
+  }
 }
 
-function asBool(v, d = false) {
-  if (v === true) return true;
-  if (v === false) return false;
-  return d;
+async function writeJson(env, key, data) {
+  await env.BALLSVILLE_R2.put(key, JSON.stringify(data, null, 2), {
+    httpMetadata: { contentType: "application/json; charset=utf-8" },
+  });
 }
 
-function asNum(v, d = null) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : d;
+async function touchManifest(env, game, section, season) {
+  // Match pattern used in your other endpoints (best effort).
+  // If manifest logic differs in your repo, you can safely remove this.
+  try {
+    const k = `data/manifest/${game}_${section}_${season}.json`;
+    await env.BALLSVILLE_R2.put(k, JSON.stringify({ t: Date.now() }), {
+      httpMetadata: { contentType: "application/json; charset=utf-8" },
+    });
+  } catch {
+    // ignore
+  }
 }
 
-function slugify(input) {
-  return asStr(input)
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
+function normalizeSleeperStatus(raw) {
+  const s = String(raw || "").toLowerCase().trim();
+  if (s === "pre_draft" || s === "predraft" || s === "pre-draft") return "pre_draft";
+  if (s === "drafting") return "drafting";
+  if (s === "in_season" || s === "inseason") return "in_season";
+  if (s === "complete") return "complete";
+  return s || null;
 }
 
 function normalizeRow(r, idx, season) {
-  const year = asNum(r?.year, asNum(season, DEFAULT_SEASON)) || DEFAULT_SEASON;
+  const year = asNum(r?.year ?? season, season);
 
-  // Division
-  const division_name = asStr(r?.division_name || r?.theme_name || "Division").trim() || "Division";
-  const division_slug = asStr(r?.division_slug || r?.divisionSlug || slugify(division_name)).trim() || slugify(division_name) || `division-${idx + 1}`;
-  const division_status = asStr(r?.division_status || r?.divisionStatus || r?.status || "TBD").trim() || "TBD";
-  const division_order = asNum(r?.division_order, null);
-  const division_blurb = asStr(r?.division_blurb || "").trim() || null;
+  const id = asStr(r?.id || r?.row_id || "", "").trim() || crypto.randomUUID();
 
-  const division_image_key = asStr(r?.division_image_key || r?.divisionImageKey || "").trim() || null;
-  const division_image_path = asStr(r?.division_image_path || r?.divisionImagePath || "").trim() || null;
-
-  // League
+  const division = asStr(r?.division || "", "");
+  const division_code = asStr(r?.division_code || "", "");
+  const division_slug = asStr(r?.division_slug || division_code || "", "");
   const is_division_header = asBool(r?.is_division_header, false);
-  const display_order = asNum(r?.display_order, idx + 1);
-  const league_name = asStr(r?.league_name || r?.name || "").trim() || `League ${idx + 1}`;
-  const league_url = asStr(r?.league_url || r?.sleeper_url || r?.sleeperUrl || "").trim() || null;
-  const league_status = asStr(r?.league_status || r?.status || "TBD").trim() || "TBD";
-  const spots_available = asNum(r?.spots_available, null);
+  const division_status = asStr(r?.division_status || r?.status || "TBD").trim() || "TBD";
+  const division_image_key = asStr(r?.division_image_key || "", "");
+  const division_image_path = asStr(r?.division_image_path || "", "");
 
-  const league_image_key = asStr(r?.league_image_key || r?.leagueImageKey || "").trim() || null;
-  const league_image_path = asStr(r?.league_image_path || r?.leagueImagePath || "").trim() || null;
+  const display_order = asNum(r?.display_order, idx + 1);
+  const league_name = asStr(r?.league_name || "", "");
+  const league_url = asStr(r?.league_url || "", "");
+  const league_status = asStr(r?.league_status || r?.status || "TBD").trim() || "TBD";
+
+  const sleeper_league_id = asStr(r?.sleeper_league_id || r?.leagueId || r?.league_id || "", "").trim() || null;
+  const sleeper_status = normalizeSleeperStatus(r?.sleeper_status || r?.sleeperStatus || null);
+  const avatar_id = asStr(r?.avatar_id || r?.avatarId || "", "").trim() || null;
+  const sleeper_url =
+    asStr(r?.sleeper_url || r?.sleeperUrl || "", "").trim() ||
+    (sleeper_league_id ? `https://sleeper.com/leagues/${sleeper_league_id}` : null);
+
+  const total_teams = r?.total_teams != null ? asNum(r.total_teams, null) : null;
+  const filled_teams = r?.filled_teams != null ? asNum(r.filled_teams, null) : null;
+  const open_teams = r?.open_teams != null ? asNum(r.open_teams, null) : null;
+
+  const not_ready = asBool(r?.not_ready, false);
+  const is_active = asBool(r?.is_active, true);
 
   return {
-    id: asStr(r?.id || `bg_${year}_${division_slug}_${idx}`).trim() || `bg_${year}_${division_slug}_${idx}`,
     year,
-
-    division_name,
+    id,
+    division,
+    division_code,
     division_slug,
+    is_division_header,
     division_status,
-    division_order,
-    division_blurb,
     division_image_key,
     division_image_path,
+
+    display_order,
 
     league_name,
     league_url,
     league_status,
-    league_image_key,
-    league_image_path,
-    display_order,
-    spots_available,
 
-    is_division_header,
-    is_active: asBool(r?.is_active, true),
+    sleeper_league_id,
+    sleeper_url,
+    sleeper_status,
+    avatar_id,
+
+    total_teams,
+    filled_teams,
+    open_teams,
+
+    not_ready,
+    is_active,
   };
 }
 
-async function readR2Json(bucket, key) {
-  const obj = await bucket.get(key);
-  if (!obj) return null;
-  const text = await obj.text();
-  return JSON.parse(text);
+function divisionsToRows(divisions, season) {
+  const divs = Array.isArray(divisions) ? divisions : [];
+  const rows = [];
+
+  for (let i = 0; i < divs.length; i++) {
+    const d = divs[i] || {};
+    const slug = asStr(d.slug || d.division_slug || d.code || d.division_code || "", "").trim() || `DIV${i + 1}`;
+    const code = asStr(d.code || d.division_code || slug, slug).trim() || slug;
+    const name = asStr(d.title || d.division || "Division", "Division");
+
+    rows.push(
+      normalizeRow(
+        {
+          year: season,
+          id: d.id,
+          division: name,
+          division_code: code,
+          division_slug: slug,
+          is_division_header: true,
+          division_status: asStr(d.status || d.division_status || "TBD", "TBD"),
+          division_image_key: d.image_key || d.division_image_key || "",
+          division_image_path: d.image_url || d.division_image_path || "",
+          display_order: asNum(d.order ?? i + 1, i + 1),
+        },
+        rows.length,
+        season
+      )
+    );
+
+    const leagues = Array.isArray(d.leagues) ? d.leagues : [];
+    leagues
+      .slice()
+      .sort((a, b) => asNum(a.display_order, 0) - asNum(b.display_order, 0))
+      .forEach((l, j) => {
+        rows.push(
+          normalizeRow(
+            {
+              year: season,
+              id: l.id,
+              division: name,
+              division_code: code,
+              division_slug: slug,
+              is_division_header: false,
+              display_order: asNum(l.display_order ?? j + 1, j + 1),
+              league_name: l.league_name || l.name,
+              league_url: l.league_url || l.url,
+              league_status: l.league_status || l.status,
+              sleeper_league_id: l.sleeper_league_id,
+              sleeper_status: l.sleeper_status,
+              sleeper_url: l.sleeper_url,
+              avatar_id: l.avatar_id,
+              total_teams: l.total_teams,
+              filled_teams: l.filled_teams,
+              open_teams: l.open_teams,
+              not_ready: l.not_ready,
+              is_active: l.is_active,
+            },
+            rows.length,
+            season
+          )
+        );
+      });
+  }
+
+  return rows;
+}
+
+function normalizePayload(payload, season) {
+  const p = payload && typeof payload === "object" ? payload : {};
+
+  // If someone saved the divisions schema, convert back to rows so old admin/public keeps working.
+  if (Array.isArray(p.divisions) && !Array.isArray(p.rows)) {
+    const rows = divisionsToRows(p.divisions, season);
+    const normalizedRows = rows.map((r, idx) => normalizeRow(r, idx, season)).filter((r) => Number(r.year) === Number(season));
+    return {
+      season: Number(season),
+      config: {
+        heroSeason: Number(season),
+        pageTitle: "The BIG Game",
+        subtitle: "",
+        intro: "",
+        ctaText: "",
+        ctaUrl: "",
+      },
+      rows: normalizedRows,
+    };
+  }
+
+  const rows = Array.isArray(p.rows) ? p.rows : [];
+  const normalizedRows = rows
+    .map((r, idx) => normalizeRow(r, idx, season))
+    .filter((r) => Number(r.year) === Number(season));
+
+  const config = p.config && typeof p.config === "object" ? p.config : {};
+
+  return {
+    season: Number(season),
+    config: {
+      heroSeason: asNum(config.heroSeason, Number(season)),
+      pageTitle: asStr(config.pageTitle, "The BIG Game"),
+      subtitle: asStr(config.subtitle, ""),
+      intro: asStr(config.intro, ""),
+      ctaText: asStr(config.ctaText, ""),
+      ctaUrl: asStr(config.ctaUrl, ""),
+    },
+    rows: normalizedRows,
+  };
 }
 
 export async function onRequest(context) {
+  const { request, env } = context;
+
   try {
-    const { request } = context;
-
-    const r2 = ensureR2(context.env);
-    if (!r2.ok) return json({ ok: false, error: r2.error }, r2.status);
-
-    const gate = await requireAdmin(context);
-    if (!gate.ok) return json({ ok: false, error: gate.error }, gate.status);
+    await requireAdmin(context);
+    ensureR2(env);
 
     const url = new URL(request.url);
-    const season = Number(url.searchParams.get("season") || DEFAULT_SEASON);
-    const type = (url.searchParams.get("type") || "leagues").toLowerCase();
-    const key = r2KeyFor(type, season);
+    const season = asNum(url.searchParams.get("season"), DEFAULT_SEASON);
+    const key = `data/biggame/leagues_${season}.json`;
 
     if (request.method === "GET") {
-      const data = await readR2Json(r2.bucket, key);
-      return json({ ok: true, key, type, data: data || null });
+      const data = await readJson(env, key);
+      if (!data) {
+        return json(
+          {
+            season,
+            config: {
+              heroSeason: season,
+              pageTitle: "The BIG Game",
+              subtitle: "",
+              intro: "",
+              ctaText: "",
+              ctaUrl: "",
+            },
+            rows: [],
+          },
+          200
+        );
+      }
+      return json(normalizePayload(data, season), 200);
     }
 
     if (request.method === "PUT") {
-      const body = await request.json().catch(() => null);
-      const bodyType = String(body?.type || type || "leagues").toLowerCase();
-
-      // PAGE (owner hero block)
-      if (bodyType === "page") {
-        const payload = sanitizePageInput(body?.data || body, season);
-        await r2.bucket.put(r2KeyFor("page", season), JSON.stringify(payload, null, 2), {
-          httpMetadata: { contentType: "application/json; charset=utf-8" },
-        });
-        await touchManifest(context.env, season);
-        return json({ ok: true, key: r2KeyFor("page", season), type: "page" });
-      }
-
-      // LEAGUES (divisions/leagues table)
-      const rowsRaw = Array.isArray(body?.rows)
-        ? body.rows
-        : Array.isArray(body?.data?.rows)
-          ? body.data.rows
-          : Array.isArray(body?.data)
-            ? body.data
-            : [];
-
-      const rows = rowsRaw.map((r, idx) => normalizeRow(r, idx, season));
-
-      // stable sort (header first within each division)
-      rows.sort((a, b) => {
-        if (a.year !== b.year) return b.year - a.year;
-
-        const ao = a.division_order;
-        const bo = b.division_order;
-        if (Number.isFinite(ao) && Number.isFinite(bo) && ao !== bo) return ao - bo;
-        if (Number.isFinite(ao) && !Number.isFinite(bo)) return -1;
-        if (!Number.isFinite(ao) && Number.isFinite(bo)) return 1;
-
-        const an = asStr(a.division_name).toLowerCase();
-        const bn = asStr(b.division_name).toLowerCase();
-        if (an !== bn) return an.localeCompare(bn);
-
-        if (!!a.is_division_header !== !!b.is_division_header) return a.is_division_header ? -1 : 1;
-        return (a.display_order ?? 9999) - (b.display_order ?? 9999);
-      });
-
-      const payload = {
-        updatedAt: new Date().toISOString(),
-        season,
-        rows,
-      };
-
-      await r2.bucket.put(r2KeyFor("leagues", season), JSON.stringify(payload, null, 2), {
-        httpMetadata: { contentType: "application/json; charset=utf-8" },
-      });
-        await touchManifest(context.env, season);
-
-      return json({ ok: true, key: r2KeyFor("leagues", season), type: "leagues", count: rows.length });
+      const raw = await request.json();
+      const data = normalizePayload(raw, season);
+      await writeJson(env, key, data);
+      await touchManifest(env, "biggame", "leagues", season);
+      return json({ ok: true, season }, 200);
     }
 
-    return json({ ok: false, error: "Method not allowed" }, 405);
-  } catch (e) {
-    return json({ ok: false, error: "biggame.js crashed", detail: String(e?.message || e) }, 500);
+    return json({ error: "Method not allowed" }, 405);
+  } catch (err) {
+    return json({ error: err?.message || "Unknown error" }, 500);
   }
 }
