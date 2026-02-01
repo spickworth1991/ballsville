@@ -901,14 +901,16 @@ export default function MiniLeaguesAdminClient() {
     setErr("");
     setOk("");
     setRefreshing(true);
+
     try {
-      const nextDivisions = divisions.map((d) => ({
+      let nextDivisions = divisions.map((d) => ({
         ...d,
         leagues: Array.isArray(d?.leagues) ? d.leagues.map((l) => ({ ...l })) : [],
       }));
 
       for (const d of nextDivisions) {
         const divCode = String(d?.divisionCode || "").trim();
+
         for (const l of d.leagues) {
           const leagueId = String(l?.leagueId || "").trim();
           if (!leagueId) continue;
@@ -920,7 +922,11 @@ export default function MiniLeaguesAdminClient() {
 
           const { totalTeams, filledTeams, openTeams } = computeFillCounts(info, rosters);
           const sleeperStatus = normalizeSleeperStatus(info?.status);
-          const nextStatus = miniStatusFromSleeper({ sleeperStatus, openTeams, notReady: Boolean(l?.notReady) });
+          const nextStatus = miniStatusFromSleeper({
+            sleeperStatus,
+            openTeams,
+            notReady: Boolean(l?.notReady),
+          });
 
           const nextAvatarId = String(info?.avatar || "").trim();
           const prevAvatarId = String(l?.avatarId || "").trim();
@@ -934,13 +940,18 @@ export default function MiniLeaguesAdminClient() {
           // Only overwrite status/name when not forced TBD.
           if (!l.notReady) {
             if (info?.name) l.name = info.name;
-            l.status = ["tbd", "filling", "drafting", "full"].includes(nextStatus) ? nextStatus : l.status;
+            l.status = ["tbd", "filling", "drafting", "full"].includes(nextStatus) ? nextStatus : (l.status || "tbd");
+          } else {
+            l.status = "tbd";
           }
 
           l.avatarId = nextAvatarId;
 
           // Avatar upload if changed or missing.
-          const shouldUpload = Boolean(nextAvatarId) && (nextAvatarId !== prevAvatarId || !String(l.imageKey || "").trim());
+          const shouldUpload =
+            Boolean(nextAvatarId) &&
+            (nextAvatarId !== prevAvatarId || !String(l.imageKey || "").trim());
+
           if (shouldUpload) {
             const file = await fetchAvatarFile(nextAvatarId);
             if (file) {
@@ -957,6 +968,7 @@ export default function MiniLeaguesAdminClient() {
       }
 
       nextDivisions = sortDivisions(nextDivisions);
+
       await apiPUT("divisions", { season, divisions: nextDivisions }, season);
       setDivisions(nextDivisions);
       setBaselineDivisions(nextDivisions);
@@ -967,6 +979,7 @@ export default function MiniLeaguesAdminClient() {
       setRefreshing(false);
     }
   }
+
 
   return (
     <main className="relative min-h-screen text-fg">
