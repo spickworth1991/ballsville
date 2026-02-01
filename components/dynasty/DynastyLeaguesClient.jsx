@@ -8,17 +8,52 @@ import { adminR2Url } from "@/lib/r2Client";
 
 const R2_ROWS_KEY = "data/dynasty/leagues.json";
 
+function normalizeStatus(raw) {
+  const v = String(raw || "").trim();
+  const lower = v.toLowerCase();
+  if (["pre_draft", "drafting", "in_season", "complete", "tbd", "orphan_open"].includes(lower)) {
+    return lower;
+  }
+  if (lower === "predraft" || lower === "pre-draft") return "pre_draft";
+  if (lower === "inseason" || lower === "in-season") return "in_season";
+  if (lower === "orphan" || lower === "orphans" || lower.includes("orphan")) return "orphan_open";
+  if (lower === "league not ready" || lower === "inactive") return "tbd";
+  // Back-compat for older labels
+  if (v === "CURRENTLY FILLING") return "pre_draft";
+  if (v === "DRAFTING") return "drafting";
+  if (v === "FULL & ACTIVE") return "in_season";
+  if (v === "ORPHAN OPEN") return "orphan_open";
+  if (v === "TBD") return "tbd";
+  return lower || "tbd";
+}
+
+function safeStr(v) {
+  return typeof v === "string" ? v : v == null ? "" : String(v);
+}
+
+function statusLabel(s) {
+  const v = safeStr(s).trim().toLowerCase();
+  if (v === "tbd") return "League Not Ready";
+  if (v === "orphan_open") return "Orphan Open";
+  if (v === "pre_draft") return "Currently Filling";
+  if (v === "drafting") return "Drafting";
+  if (v === "in_season") return "In Season";
+  if (v === "complete") return "Complete";
+  return v || "League Not Ready";
+}
+
+
 function normalize(row) {
   const r = row && typeof row === "object" ? row : {};
   const yearNum = Number(r.year ?? r.season);
 
-  // Normalize status early so orphan detection is reliable even if the admin UI
-  // only changes `status` (and older rows don't have `is_orphan`).
   const statusRaw = r?.status ?? r?.STATUS ?? "";
-  const status = typeof statusRaw === "string" ? statusRaw.trim() : String(statusRaw || "").trim();
-  // Treat any status containing "ORPHAN" as an orphan opening.
-  // This avoids fragile exact-match logic (e.g. casing/spacing differences).
-  const isOrphanByStatus = status.toUpperCase().includes("ORPHAN");
+  const status = normalizeStatus(statusRaw);
+  const orphanOpen = Boolean(r?.orphanOpen ?? r?.is_orphan) || status === "orphan_open";
+  // NOTE:
+  // - `notReady` is an admin override: show status as TBD and disable click-through.
+  // - `is_active === false` means the league is hidden from the public directory (filtered out elsewhere).
+  const notReady = Boolean(r?.notReady) || status === "tbd";
 
   // Backward compatible field names
   return {
@@ -26,11 +61,17 @@ function normalize(row) {
     id: r.id || r.ID || r.Id,
     year: Number.isFinite(yearNum) ? yearNum : r.year,
     name: r.name ?? r.league_name ?? "",
+    league_id: r.league_id ?? r.leagueId ?? r.sleeper_league_id ?? "",
     sleeper_url: r.sleeper_url ?? r.sleeperUrl ?? r.url ?? "",
 
     status,
-    // If `is_orphan` is missing, infer it from status.
-    is_orphan: typeof r?.is_orphan === "boolean" ? r.is_orphan : isOrphanByStatus,
+    orphanOpen,
+    notReady,
+
+    // Fill metrics
+    total_teams: Number.isFinite(Number(r?.total_teams ?? r?.totalTeams)) ? Number(r.total_teams ?? r.totalTeams) : 0,
+    filled_teams: Number.isFinite(Number(r?.filled_teams ?? r?.filledTeams)) ? Number(r.filled_teams ?? r.filledTeams) : 0,
+    open_teams: Number.isFinite(Number(r?.open_teams ?? r?.openTeams)) ? Number(r.open_teams ?? r.openTeams) : 0,
 
     // League image
     imageKey: r.imageKey ?? r.image_key ?? r.league_image_key ?? "",
@@ -57,10 +98,12 @@ function slugify(s) {
  * - byYear: Map<year, Map<themeName, leagues[]>>
  */
 function transformLeagues(rows) {
-  // Only show leagues marked active (or with null/undefined treated as active)
-  const active = (rows || []).filter((r) => r?.is_active !== false);
+  // Public directory should include "not ready" leagues (shown as TBD) instead of hiding them.
+  // Some older rows used `is_active === false` to mean "not ready".
+  // We therefore do NOT filter these out here.
+  const visible = (rows || []).filter((r) => r && typeof r === "object" && r?.deleted !== true);
 
-  const orphans = active.filter((r) => {
+  const orphans = visible.filter((r) => {
     const st = String(r?.status || "").trim().toUpperCase();
     return r?.is_orphan === true || st.includes("ORPHAN");
   });
@@ -68,7 +111,7 @@ function transformLeagues(rows) {
   // IMPORTANT: keep orphans in the main list too, so they still show in their theme
   const byYear = new Map();
 
-  for (const lg of active) {
+  for (const lg of visible) {
     const year = Number(lg?.year) || new Date().getFullYear();
     const themeName =
       (typeof lg?.theme_name === "string" && lg.theme_name.trim()) ||
@@ -323,7 +366,9 @@ const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows])
             {scopedOrphans.map((o, idx) => (
               <Link
                 key={o?.id || `${o?.year}-${o?.theme_name}-${o?.name}-${idx}`}
-                href={o?.sleeper_url || "#"}
+                href={
+                  o?.sleeper_url || (o?.league_id ? `https://sleeper.com/leagues/${o.league_id}` : "#")
+                }
                 className={[
                   "group rounded-2xl border border-accent/60 bg-card-surface p-4",
                   "hover:border-accent hover:-translate-y-0.5 transition",
@@ -399,22 +444,41 @@ const { orphans, years, byYear } = useMemo(() => transformLeagues(rows), [rows])
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {divisionThemeLeagues.map((lg, idx) => {
-                    const img = imageSrcForRow(lg, updatedAt);
-                    const st = String(lg?.status || "").trim().toUpperCase();
-                    const isOrphan = st.includes("ORPHAN");
-                    const isFilling = st === "CURRENTLY FILLING";
-                    const isClickable = (isFilling || isOrphan) && Boolean(lg?.sleeper_url);
+	                  {divisionThemeLeagues.map((lg, idx) => {
+	                    const img = imageSrcForRow(lg, updatedAt);
+
+                    const totalTeams = Number(lg?.total_teams);
+                    const filledTeams = Number(lg?.filled_teams);
+                    const hasCounts = Number.isFinite(totalTeams) && totalTeams > 0 && Number.isFinite(filledTeams) && filledTeams >= 0;
+                    const fillText = hasCounts ? `· ${filledTeams}/${totalTeams} filled` : "";
+	                    // Single source of truth for clickability:
+	                    // - Not Ready => status TBD + NOT clickable
+	                    // - Orphan Open => clickable
+	                    // - Currently Filling (pre_draft) => clickable
+	                    // - All other statuses => NOT clickable
+	                    const baseStatus = normalizeStatus(lg?.status);
+	                    const effectiveStatus = lg?.notReady
+	                      ? "tbd"
+	                      : lg?.orphanOpen
+	                        ? "orphan_open"
+	                        : baseStatus;
+
+	                    const inviteLink = safeStr(lg?.sleeper_url).trim();
+	                    const desktopFallback = lg?.league_id ? `https://sleeper.com/leagues/${lg.league_id}` : "";
+	
+	                    const shouldLink = effectiveStatus === "pre_draft" || effectiveStatus === "orphan_open";
+	                    const href = shouldLink ? (inviteLink || desktopFallback) : "";
+	                    const isClickable = Boolean(href) && shouldLink;
 
                     return (
                       <MediaTabCard
                         key={lg?.id || `${yearNum}-${divisionThemeName}-${lg?.name}-${idx}`}
-                        href={isClickable ? lg?.sleeper_url : undefined}
+                        href={isClickable ? href : undefined}
                         external={isClickable}
                         prefetch={false}
                         title={lg?.name || "League"}
-                        subtitle={`12-team SF · Division ${lg?.display_order ?? "–"}`}
-                        metaRight={lg?.status || "FULL & ACTIVE"}
+                        subtitle={`12-team SF · Division ${lg?.display_order ?? "–"} ${fillText}`}
+                        metaRight={statusLabel(effectiveStatus)}
                         imageSrc={img}
                         imageAlt={lg?.name || "League"}
                         footerText={lg?.note || ""}

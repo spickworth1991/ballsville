@@ -21,16 +21,6 @@ function r2KeyFor(type, season) {
 
 function sanitizePageInput(data, season) {
   const hero = data?.hero || {};
-  // Orphan openings are controlled by status, not a separate boolean.
-  // Keep backward compat by OR-ing any existing boolean-ish values.
-  const is_orphan = statusNorm.includes("ORPHAN") || asBool(r?.is_orphan, false);
-
-  // Fill note is ONLY for orphan openings: store as an integer count of open spots.
-  // (Older data may have stored strings — we coerce safely.)
-  const fillRaw = r?.fill_note;
-  const fillNum = Number.isFinite(Number(fillRaw)) ? Math.trunc(Number(fillRaw)) : 0;
-  const fill_note = is_orphan && fillNum > 0 ? fillNum : null;
-
   return {
     season: Number(season || DEFAULT_SEASON),
     hero: {
@@ -155,17 +145,15 @@ function normalizeRow(r, idx) {
   const theme_imageKey = asStr(r?.theme_imageKey || r?.theme_image_key || "").trim();
   const theme_image_url = asStr(r?.theme_image_url || r?.theme_imageUrl || "").trim();
 
-  // Orphan openings are controlled by status, not a separate boolean.
+  // Orphan openings are controlled by status.
   // Keep backward compat by OR-ing any existing boolean-ish values.
   const is_orphan = statusNorm.includes("ORPHAN") || asBool(r?.is_orphan, false);
 
-  // Fill note is ONLY for orphan openings: store as an integer count of open spots.
-  // (Older data may have stored strings; coerce safely.)
-  let fill_note = null;
-  if (is_orphan) {
-    const n = Number(r?.fill_note);
-    if (Number.isFinite(n) && n > 0) fill_note = Math.trunc(n);
-  }
+  // Preserve Sleeper IDs coming from the automation flow.
+  // Used for public directory fallback links and future tooling.
+  const league_id = asStr(r?.league_id || r?.leagueId || r?.sleeper_league_id || "").trim();
+  const draft_id = asStr(r?.draft_id || r?.draftId || "").trim();
+  const avatar = asStr(r?.avatar || "").trim();
 
   return {
     id,
@@ -175,15 +163,27 @@ function normalizeRow(r, idx) {
     theme_imageKey: theme_imageKey || null,
     theme_image_url: theme_image_url || null,
     name: asStr(r?.name || "").trim() || `League ${idx + 1}`,
+    // Sleeper metadata (persisted from automation)
+    league_id: league_id || null,
+    draft_id: draft_id || null,
+    avatar: avatar || null,
     status,
+    // Admin flags
+    notReady: Boolean(r?.notReady),
+    is_active: typeof r?.is_active === "boolean" ? r.is_active : true,
+    // Fill metrics (computed in admin refresh)
+    total_teams: Number.isFinite(Number(r?.total_teams)) ? Number(r.total_teams) : null,
+    filled_teams: Number.isFinite(Number(r?.filled_teams)) ? Number(r.filled_teams) : null,
+    open_teams: Number.isFinite(Number(r?.open_teams)) ? Number(r.open_teams) : null,
     sleeper_url: asStr(r?.sleeper_url || r?.url || "").trim() || null,
     imageKey: imageKey || null,
     image_url: image_url || null,
-    fill_note,
+    // Fill notes are no longer used in Dynasty (kept as null for older clients).
+    fill_note: null,
     note: asStr(r?.note || "").trim() || null,
     display_order: asNum(r?.display_order, null),
-    is_active: asBool(r?.is_active, true),
     is_orphan,
+
   };
 }
 
