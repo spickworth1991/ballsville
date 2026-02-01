@@ -1,15 +1,14 @@
 import AdminGuard from "@/components/AdminGuard";
 import AddBigGameLeaguesClient from "./AddBigGameLeaguesClient";
+import { CURRENT_SEASON } from "@/lib/season";
+
+// export const runtime = "edge";
 
 export default function Page({ searchParams }) {
-  const season = searchParams?.season || "";
+  const season = searchParams?.season || String(CURRENT_SEASON);
   return (
     <AdminGuard>
-      <section className="section">
-        <div className="container-site">
-          <AddBigGameLeaguesClient initialSeason={season} />
-        </div>
-      </section>
+      <AddBigGameLeaguesClient initialSeason={season} />
     </AdminGuard>
   );
 }
