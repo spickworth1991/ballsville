@@ -44,26 +44,8 @@ function emptyDivision(code = "100") {
     order: Number(code) / 100,
     imageKey: "",
     imageUrl: "",
-    leagues: Array.from({ length: 10 }).map((_, i) => ({
-      // Sleeper-backed (optional)
-      leagueId: "",
-      sleeperUrl: "",
-      avatarId: "",
-
-      name: `League ${i + 1}`,
-      url: "",
-      status: "tbd",
-      notReady: false,
-      active: true,
-      order: i + 1,
-      imageKey: "",
-      imageUrl: "",
-
-      // Sleeper-derived fill counts (persisted)
-      totalTeams: 0,
-      filledTeams: 0,
-      openTeams: 0,
-    })),
+    // Start clean — leagues are added via the Sleeper import flow.
+    leagues: [],
   };
 }
 
@@ -778,15 +760,12 @@ export default function MiniLeaguesAdminClient() {
         }
       }
 
-
-      // Enforce automatic status behavior:
-      // - If notReady=true → status is always "tbd"
-      // - Otherwise keep whatever last synced status is (default "tbd")
+      // Enforce: Not Ready always forces stored status to TBD.
       nextDivisions = (Array.isArray(nextDivisions) ? nextDivisions : []).map((d) => {
         const leagues = Array.isArray(d?.leagues)
           ? d.leagues.map((l) => ({
               ...l,
-              status: l?.notReady ? "tbd" : (l?.status || "tbd"),
+              status: l?.notReady ? "tbd" : l?.status,
             }))
           : [];
         return { ...d, leagues };
@@ -933,6 +912,17 @@ export default function MiniLeaguesAdminClient() {
                   View Page
                 </Link>
 
+                <Link
+                  prefetch={false}
+                  href={`/admin/mini-leagues/add-leagues?season=${encodeURIComponent(String(season))}`}
+                  className="btn btn-outline"
+                  title="Add leagues from Sleeper (search username → pick leagues)"
+                >
+                  Add leagues (from Sleeper)
+                </Link>
+                <button className="btn btn-primary" type="button" onClick={loadAll} disabled={!canAct}>
+                  Refresh
+                </button>
               </div>
             </div>
 
@@ -1091,15 +1081,6 @@ export default function MiniLeaguesAdminClient() {
                     </p>
                   </div>
                   <div className="flex gap-2">
-                    <Link
-                      prefetch={false}
-                      href={`/admin/mini-leagues/add-leagues?season=${encodeURIComponent(String(season))}`}
-                      className="btn btn-outline"
-                      title="Add leagues from Sleeper (search username → pick leagues)"
-                    >
-                      Add leagues
-                    </Link>
-
                     <button
                       className="btn btn-outline"
                       type="button"
@@ -1135,9 +1116,6 @@ export default function MiniLeaguesAdminClient() {
                         </button>
 
                         <div className="flex items-center gap-2">
-                          <button className="btn btn-outline text-sm" type="button" onClick={() => addLeague(divIdx)} disabled={!canAct}>
-                            + League
-                          </button>
                           <button className="btn btn-outline text-sm" type="button" onClick={() => removeDivision(divIdx)} disabled={!canAct}>
                             Delete Division
                           </button>
@@ -1188,7 +1166,19 @@ export default function MiniLeaguesAdminClient() {
                               <label className="block text-sm text-muted">Title</label>
                               <input className="input w-full" value={d.title} onChange={(e) => updateDivision(divIdx, { title: e.target.value })} />
                             </div>
-<div className="space-y-2">
+
+                            <div className="space-y-2">
+                              <label className="block text-sm text-muted">Status</label>
+                              <select className="input w-full" value={d.status} onChange={(e) => updateDivision(divIdx, { status: e.target.value })}>
+                                {STATUS_OPTIONS.map((o) => (
+                                  <option key={o.value} value={o.value}>
+                                    {o.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="space-y-2">
                               <label className="block text-sm text-muted">Order</label>
                               <input className="input w-full" type="number" value={d.order} onChange={(e) => updateDivision(divIdx, { order: Number(e.target.value) })} />
                             </div>
@@ -1217,140 +1207,98 @@ export default function MiniLeaguesAdminClient() {
                               </div>
                             </div>
 
-                            <div className="space-y-2">
-                              <label className="block text-sm text-muted">Division Image URL (fallback)</label>
-                              <input className="input w-full" value={d.imageUrl || ""} onChange={(e) => updateDivision(divIdx, { imageUrl: e.target.value })} />
-                              <p className="text-xs text-muted">If you upload an image, the R2 key takes priority over this URL.</p>
-                            </div>
                           </div>
 
                           <div className="space-y-4">
                             {(Array.isArray(d.leagues) ? d.leagues : []).map((l, leagueIdx) => {
-                              const lgImg = leaguePreviewSrc(code, l);
-                              const pendingKey = `lg:${code}:${String(l.order ?? leagueIdx + 1)}`;
+                              const isSleeper = Boolean(String(l?.leagueId || "").trim());
 
                               return (
                                 <div key={`${code}-${leagueIdx}`} className="rounded-2xl border border-subtle bg-black/20 p-4 space-y-4">
-                                  {(() => {
-                                    const computedStatus = l.notReady ? "tbd" : (l.status || "tbd");
-                                    const filled = Math.max(0, Number(l.filledTeams) || 0);
-                                    const total = Math.max(0, Number(l.totalTeams) || 0);
-                                    const open = Math.max(0, Number(l.openTeams) || 0);
-                                    const hasCounts = total > 0;
-                                    return (
-                                      <>
-                                        <div className="flex flex-wrap items-start justify-between gap-3">
-                                          <div className="min-w-0 space-y-1">
-                                            <div className="flex flex-wrap items-center gap-2">
-                                              <p className="text-sm font-semibold truncate">
-                                                {l.name || `League #${l.order ?? leagueIdx + 1}`}
-                                              </p>
-                                              <StatusPill status={computedStatus} />
-                                              {hasCounts ? (
-                                                <span className="text-xs text-white/50">
-                                                  {filled}/{total} teams • {open} open
-                                                </span>
-                                              ) : null}
-                                            </div>
+                                  <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2">
+                                      <p className="text-sm font-semibold">League #{l.order ?? leagueIdx + 1}</p>
+                                      <StatusPill status={l.status} />
+                                    </div>
+                                    <button className="btn btn-outline text-sm" type="button" onClick={() => removeLeague(divIdx, leagueIdx)} disabled={!canAct}>
+                                      Delete
+                                    </button>
+                                  </div>
 
-                                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-                                              <span className="font-mono">{l.leagueId || "—"}</span>
-                                              {l.sleeperUrl ? (
-                                                <a href={l.sleeperUrl} target="_blank" rel="noreferrer" className="text-accent underline">
-                                                  Open on Sleeper
-                                                </a>
-                                              ) : null}
-                                            </div>
-                                          </div>
+                                  <div className="grid gap-4 md:grid-cols-2">
+                                    <div className="space-y-2">
+                                      <label className="block text-sm text-muted">Name</label>
+                                      <input className="input w-full" value={l.name || ""} disabled readOnly />
+                                      {isSleeper ? <div className="text-[11px] text-muted">Synced from Sleeper</div> : null}
+                                    </div>
 
-                                          <div className="flex gap-2">
-                                            <button
-                                              className="btn btn-outline text-sm"
-                                              type="button"
-                                              onClick={() => removeLeague(divIdx, leagueIdx)}
-                                              disabled={!canAct}
-                                            >
-                                              Delete
-                                            </button>
-                                          </div>
+                                    <div className="space-y-2">
+                                      <label className="block text-sm text-muted">Invite URL (public link)</label>
+                                      <input className="input w-full" value={l.url} onChange={(e) => updateLeague(divIdx, leagueIdx, { url: e.target.value })} />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                      <label className="block text-sm text-muted">Sleeper League ID</label>
+                                      <input className="input w-full" value={l.leagueId || ""} disabled readOnly />
+                                      {l.sleeperUrl ? (
+                                        <a
+                                          href={l.sleeperUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="text-xs text-accent underline"
+                                        >
+                                          Open league on Sleeper
+                                        </a>
+                                      ) : null}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <label className="flex items-center gap-2 rounded-2xl border border-subtle bg-black/10 px-3 py-2">
+                                        <input
+                                          type="checkbox"
+                                          className="h-4 w-4 accent-[var(--color-accent)]"
+                                          checked={Boolean(l.notReady)}
+                                          onChange={(e) => {
+                                            const checked = e.target.checked;
+                                            updateLeague(divIdx, leagueIdx, {
+                                              notReady: checked,
+                                              // When checked, force the stored status to TBD.
+                                              // When unchecked, leave status as-is (use Refresh to re-sync if needed).
+                                              status: checked ? "tbd" : l.status,
+                                            });
+                                          }}
+                                        />
+                                        <div className="min-w-0">
+                                          <div className="text-xs font-semibold text-fg">Not ready</div>
+                                          <div className="text-[11px] text-muted truncate">Forces status to TBD on public page.</div>
                                         </div>
+                                      </label>
 
-                                        <div className="grid gap-4 md:grid-cols-3">
-                                          <div className="md:col-span-2 space-y-2">
-                                            <label className="block text-sm text-muted">Invite URL (public link)</label>
-                                            <input
-                                              className="input w-full"
-                                              value={l.url}
-                                              onChange={(e) => updateLeague(divIdx, leagueIdx, { url: e.target.value })}
-                                              placeholder="https://sleeper.com/i/…"
-                                            />
-                                          </div>
+                                      <div className="space-y-2">
+                                        <label className="block text-sm text-muted">Order</label>
+                                        <input
+                                          className="input w-full"
+                                          type="number"
+                                          value={l.order ?? leagueIdx + 1}
+                                          onChange={(e) => updateLeague(divIdx, leagueIdx, { order: Number(e.target.value) })}
+                                        />
+                                      </div>
+                                    </div>
 
-                                          <div className="space-y-2">
-                                            <label className="block text-sm text-muted">Order</label>
-                                            <input
-                                              className="input w-full"
-                                              type="number"
-                                              value={l.order ?? leagueIdx + 1}
-                                              onChange={(e) => updateLeague(divIdx, leagueIdx, { order: Number(e.target.value) })}
-                                            />
-                                          </div>
-                                        </div>
+                                    <div className="rounded-2xl border border-subtle bg-black/10 p-3 text-xs text-muted">
+                                      <span className="font-semibold text-fg">Player count:</span>{" "}
+                                      {Number(l.totalTeams) ? (
+                                        <>
+                                          {Math.max(0, Number(l.filledTeams) || 0)}/{Math.max(0, Number(l.totalTeams) || 0)} teams
+                                          <span className="text-white/45"> • {Math.max(0, Number(l.openTeams) || 0)} open</span>
+                                        </>
+                                      ) : (
+                                        "—"
+                                      )}
+                                    </div>
+                                  </div>
 
-                                        <div className="grid gap-4 md:grid-cols-3">
-                                          <div className="space-y-2">
-                                            <label className="block text-sm text-muted">Not Ready (forces TBD)</label>
-                                            <select
-                                              className="input w-full"
-                                              value={l.notReady ? "yes" : "no"}
-                                              onChange={(e) => {
-                                                const v = e.target.value === "yes";
-                                                updateLeague(divIdx, leagueIdx, {
-                                                  notReady: v,
-                                                  status: v ? "tbd" : (l.status || "tbd"),
-                                                });
-                                              }}
-                                            >
-                                              <option value="no">No</option>
-                                              <option value="yes">Yes</option>
-                                            </select>
-                                            <p className="text-xs text-muted">Status is auto-synced from Sleeper. Use this only to hide leagues until ready.</p>
-                                          </div>
-
-                                          <div className="md:col-span-2">
-                                            <details className="rounded-2xl border border-subtle bg-black/10 p-3">
-                                              <summary className="cursor-pointer select-none text-sm font-semibold text-fg">
-                                                League image (optional)
-                                                {pendingLeagueFiles[pendingKey] ? (
-                                                  <span className="ml-2 text-xs text-amber-200 align-middle">(pending)</span>
-                                                ) : null}
-                                              </summary>
-
-                                              <div className="mt-3 space-y-3">
-                                                <div className="flex flex-wrap items-center justify-between gap-3">
-                                                  <p className="text-xs text-muted">Upload replaces current image on save.</p>
-                                                  <input
-                                                    type="file"
-                                                    accept="image/*"
-                                                    onChange={(e) => {
-                                                      const f = e.target.files?.[0];
-                                                      if (!f) return;
-                                                      setPendingLeagueFiles((prev) => ({ ...prev, [pendingKey]: f }));
-                                                      e.target.value = "";
-                                                    }}
-                                                  />
-                                                </div>
-
-                                                <div className="relative w-full aspect-[16/9] rounded-2xl overflow-hidden border border-subtle bg-black/20">
-                                                  {lgImg ? <Image src={lgImg} alt={`${l.name} preview`} fill className="object-cover" /> : null}
-                                                </div>
-                                              </div>
-                                            </details>
-                                          </div>
-                                        </div>
-                                      </>
-                                    );
-                                  })()}
+                                  {/* League image management intentionally removed for Mini-Leagues (Sleeper avatar is used). */}
                                 </div>
                               );
                             })}
