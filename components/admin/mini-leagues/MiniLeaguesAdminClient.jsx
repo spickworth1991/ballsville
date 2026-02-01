@@ -45,19 +45,83 @@ function emptyDivision(code = "100") {
     imageKey: "",
     imageUrl: "",
     leagues: Array.from({ length: 10 }).map((_, i) => ({
+      // Sleeper-backed (optional)
+      leagueId: "",
+      sleeperUrl: "",
+      avatarId: "",
+
       name: `League ${i + 1}`,
       url: "",
       status: "tbd",
+      notReady: false,
       active: true,
       order: i + 1,
       imageKey: "",
       imageUrl: "",
+
+      // Sleeper-derived fill counts (persisted)
+      totalTeams: 0,
+      filledTeams: 0,
+      openTeams: 0,
     })),
   };
 }
 
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
+}
+
+function normalizeSleeperStatus(raw) {
+  const s = String(raw || "").toLowerCase().trim();
+  if (s === "pre_draft" || s === "predraft" || s === "pre-draft") return "predraft";
+  if (s === "drafting") return "drafting";
+  if (s === "in_season" || s === "inseason" || s === "in-season") return "inseason";
+  if (s === "complete") return "complete";
+  return s || "predraft";
+}
+
+// Mini-leagues public-facing statuses are: tbd|filling|drafting|full
+// We derive them from Sleeper status + open slots so the public page can stay simple.
+function miniStatusFromSleeper({ sleeperStatus, openTeams, notReady }) {
+  if (notReady) return "tbd";
+  const s = String(sleeperStatus || "").toLowerCase().trim();
+  if (s === "drafting") return "drafting";
+  if (Number(openTeams) <= 0) return "full";
+  return "filling";
+}
+
+async function sleeperLeagueInfo(leagueId) {
+  const id = String(leagueId || "").trim();
+  if (!id) throw new Error("Missing league id.");
+  const res = await fetch(`https://api.sleeper.app/v1/league/${encodeURIComponent(id)}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Sleeper league request failed (${res.status})`);
+  return res.json();
+}
+
+async function sleeperLeagueRosters(leagueId) {
+  const id = String(leagueId || "").trim();
+  if (!id) throw new Error("Missing league id.");
+  const res = await fetch(`https://api.sleeper.app/v1/league/${encodeURIComponent(id)}/rosters`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Sleeper rosters request failed (${res.status})`);
+  return res.json();
+}
+
+function computeFillCounts(league, rosters) {
+  const totalTeams = Number(league?.total_rosters) || (Array.isArray(rosters) ? rosters.length : 0);
+  const filledTeams = Array.isArray(rosters) ? rosters.filter((r) => r && r.owner_id).length : 0;
+  const openTeams = Math.max(0, totalTeams - filledTeams);
+  return { totalTeams, filledTeams, openTeams };
+}
+
+async function fetchAvatarFile(avatarId) {
+  const a = String(avatarId || "").trim();
+  if (!a) return null;
+  const url = `https://sleepercdn.com/avatars/${encodeURIComponent(a)}`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) return null;
+  const blob = await res.blob();
+  const type = blob.type || "image/png";
+  return new File([blob], `${a}.png`, { type });
 }
 
 async function getAccessToken() {
@@ -188,6 +252,7 @@ export default function MiniLeaguesAdminClient() {
   const [tab, setTab] = useState("updates"); // "updates" | "divisions"
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [ok, setOk] = useState("");
   const [err, setErr] = useState("");
 
@@ -743,6 +808,76 @@ export default function MiniLeaguesAdminClient() {
     }
   }
 
+  async function refreshStatusesAndCounts() {
+    setErr("");
+    setOk("");
+    setRefreshing(true);
+    try {
+      const nextDivisions = divisions.map((d) => ({
+        ...d,
+        leagues: Array.isArray(d?.leagues) ? d.leagues.map((l) => ({ ...l })) : [],
+      }));
+
+      for (const d of nextDivisions) {
+        const divCode = String(d?.divisionCode || "").trim();
+        for (const l of d.leagues) {
+          const leagueId = String(l?.leagueId || "").trim();
+          if (!leagueId) continue;
+
+          const [info, rosters] = await Promise.all([
+            sleeperLeagueInfo(leagueId),
+            sleeperLeagueRosters(leagueId),
+          ]);
+
+          const { totalTeams, filledTeams, openTeams } = computeFillCounts(info, rosters);
+          const sleeperStatus = normalizeSleeperStatus(info?.status);
+          const nextStatus = miniStatusFromSleeper({ sleeperStatus, openTeams, notReady: Boolean(l?.notReady) });
+
+          const nextAvatarId = String(info?.avatar || "").trim();
+          const prevAvatarId = String(l?.avatarId || "").trim();
+
+          // Always update counts (persisted)
+          l.totalTeams = totalTeams;
+          l.filledTeams = filledTeams;
+          l.openTeams = openTeams;
+          l.sleeperUrl = `https://sleeper.com/leagues/${leagueId}`;
+
+          // Only overwrite status/name when not forced TBD.
+          if (!l.notReady) {
+            if (info?.name) l.name = info.name;
+            l.status = ["tbd", "filling", "drafting", "full"].includes(nextStatus) ? nextStatus : l.status;
+          }
+
+          l.avatarId = nextAvatarId;
+
+          // Avatar upload if changed or missing.
+          const shouldUpload = Boolean(nextAvatarId) && (nextAvatarId !== prevAvatarId || !String(l.imageKey || "").trim());
+          if (shouldUpload) {
+            const file = await fetchAvatarFile(nextAvatarId);
+            if (file) {
+              const up = await uploadImage(file, {
+                section: "mini-leagues-league",
+                season,
+                divisionCode: divCode,
+                leagueOrder: l.order,
+              });
+              if (up?.key) l.imageKey = up.key;
+            }
+          }
+        }
+      }
+
+      await apiPUT("divisions", { season, divisions: nextDivisions }, season);
+      setDivisions(nextDivisions);
+      setBaselineDivisions(nextDivisions);
+      setOk("Statuses + player counts refreshed from Sleeper and saved to R2.");
+    } catch (e) {
+      setErr(e?.message || "Failed to refresh from Sleeper.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   return (
     <main className="relative min-h-screen text-fg">
       <div className="pointer-events-none absolute inset-0 -z-10">
@@ -782,6 +917,15 @@ export default function MiniLeaguesAdminClient() {
                 </Link>
                 <Link prefetch={false} className="btn btn-primary" href="/mini-leagues">
                   View Page
+                </Link>
+
+                <Link
+                  prefetch={false}
+                  href={`/admin/mini-leagues/add-leagues?season=${encodeURIComponent(String(season))}`}
+                  className="btn btn-outline"
+                  title="Add leagues from Sleeper (search username → pick leagues)"
+                >
+                  Add leagues (from Sleeper)
                 </Link>
                 <button className="btn btn-primary" type="button" onClick={loadAll} disabled={!canAct}>
                   Refresh
@@ -944,6 +1088,15 @@ export default function MiniLeaguesAdminClient() {
                     </p>
                   </div>
                   <div className="flex gap-2">
+                    <button
+                      className="btn btn-outline"
+                      type="button"
+                      onClick={refreshStatusesAndCounts}
+                      disabled={!canAct || refreshing}
+                      title="Pull status + player counts from Sleeper for any league that has a leagueId"
+                    >
+                      {refreshing ? "Refreshing…" : "Refresh statuses + counts"}
+                    </button>
                     <button className="btn btn-outline" type="button" onClick={addDivision} disabled={!canAct}>
                       + Add Division
                     </button>
@@ -1095,8 +1248,32 @@ export default function MiniLeaguesAdminClient() {
                                     </div>
 
                                     <div className="space-y-2">
-                                      <label className="block text-sm text-muted">Sleeper URL</label>
+                                      <label className="block text-sm text-muted">Invite URL (public link)</label>
                                       <input className="input w-full" value={l.url} onChange={(e) => updateLeague(divIdx, leagueIdx, { url: e.target.value })} />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                      <label className="block text-sm text-muted">Sleeper League ID (for auto-fill)</label>
+                                      <input
+                                        className="input w-full"
+                                        value={l.leagueId || ""}
+                                        onChange={(e) =>
+                                          updateLeague(divIdx, leagueIdx, {
+                                            leagueId: e.target.value,
+                                            sleeperUrl: e.target.value ? `https://sleeper.com/leagues/${e.target.value}` : "",
+                                          })
+                                        }
+                                      />
+                                      {l.sleeperUrl ? (
+                                        <a
+                                          href={l.sleeperUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="text-xs text-accent underline"
+                                        >
+                                          Open league on Sleeper
+                                        </a>
+                                      ) : null}
                                     </div>
 
                                     <div className="space-y-2">
@@ -1124,6 +1301,24 @@ export default function MiniLeaguesAdminClient() {
                                       </div>
 
                                       <div className="space-y-2">
+                                        <label className="block text-sm text-muted">Not Ready</label>
+                                        <select
+                                          className="input w-full"
+                                          value={l.notReady ? "yes" : "no"}
+                                          onChange={(e) => {
+                                            const v = e.target.value === "yes";
+                                            updateLeague(divIdx, leagueIdx, {
+                                              notReady: v,
+                                              status: v ? "tbd" : l.status,
+                                            });
+                                          }}
+                                        >
+                                          <option value="no">No</option>
+                                          <option value="yes">Yes</option>
+                                        </select>
+                                      </div>
+
+                                      <div className="space-y-2">
                                         <label className="block text-sm text-muted">Order</label>
                                         <input
                                           className="input w-full"
@@ -1132,6 +1327,18 @@ export default function MiniLeaguesAdminClient() {
                                           onChange={(e) => updateLeague(divIdx, leagueIdx, { order: Number(e.target.value) })}
                                         />
                                       </div>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-subtle bg-black/10 p-3 text-xs text-muted">
+                                      <span className="font-semibold text-fg">Player count:</span>{" "}
+                                      {Number(l.totalTeams) ? (
+                                        <>
+                                          {Math.max(0, Number(l.filledTeams) || 0)}/{Math.max(0, Number(l.totalTeams) || 0)} teams
+                                          <span className="text-white/45"> • {Math.max(0, Number(l.openTeams) || 0)} open</span>
+                                        </>
+                                      ) : (
+                                        "—"
+                                      )}
                                     </div>
                                   </div>
 
@@ -1163,7 +1370,33 @@ export default function MiniLeaguesAdminClient() {
                                       <input className="input w-full" value={l.imageUrl || ""} onChange={(e) => updateLeague(divIdx, leagueIdx, { imageUrl: e.target.value })} />
                                       <p className="text-xs text-muted">If you upload an image, the R2 key takes priority over this URL.</p>
                                     </div>
+
+                                      <div className="space-y-2">
+                                        <label className="block text-sm text-muted">Not Ready (forces TBD)</label>
+                                        <select
+                                          className="input w-full"
+                                          value={l.notReady ? "yes" : "no"}
+                                          onChange={(e) => updateLeague(divIdx, leagueIdx, { notReady: e.target.value === "yes" })}
+                                        >
+                                          <option value="no">No</option>
+                                          <option value="yes">Yes</option>
+                                        </select>
+                                      </div>
                                   </div>
+
+                                    <div className="space-y-2">
+                                      <label className="block text-sm text-muted">Player count (saved)</label>
+                                      <div className="rounded-2xl border border-subtle bg-black/20 px-3 py-2 text-sm">
+                                        {Number(l.totalTeams) > 0 ? (
+                                          <span>
+                                            {Math.max(0, Number(l.filledTeams) || 0)}/{Math.max(0, Number(l.totalTeams) || 0)} teams
+                                            <span className="text-white/45"> • {Math.max(0, Number(l.openTeams) || 0)} open</span>
+                                          </span>
+                                        ) : (
+                                          <span className="text-muted">—</span>
+                                        )}
+                                      </div>
+                                    </div>
                                 </div>
                               );
                             })}

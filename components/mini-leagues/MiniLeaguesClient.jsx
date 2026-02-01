@@ -63,6 +63,11 @@ function normLeague(l, idx) {
     order: Number.isFinite(Number(l?.order)) ? Number(l.order) : idx + 1,
     imageKey: String(l?.imageKey || ""),
     imageUrl: String(l?.imageUrl || ""),
+
+    // Sleeper-derived counts (persisted by admin tooling)
+    totalTeams: Number.isFinite(Number(l?.totalTeams ?? l?.total_teams)) ? Number(l?.totalTeams ?? l?.total_teams) : 0,
+    filledTeams: Number.isFinite(Number(l?.filledTeams ?? l?.filled_teams)) ? Number(l?.filledTeams ?? l?.filled_teams) : 0,
+    openTeams: Number.isFinite(Number(l?.openTeams ?? l?.open_teams)) ? Number(l?.openTeams ?? l?.open_teams) : 0,
   };
 }
 
@@ -403,6 +408,7 @@ export default function MiniLeaguesClient({ season = CURRENT_SEASON, version = "
                           const img = l.imageKey ? adminR2Url(l.imageKey) : l.imageUrl || "";
                           const isFilling = String(l?.status || "").toLowerCase() === "filling";
                           const isClickable = isFilling && Boolean(l?.url);
+                          const hasCounts = Number(l?.totalTeams) > 0;
 
                           return (
                             <a
@@ -427,6 +433,15 @@ export default function MiniLeaguesClient({ season = CURRENT_SEASON, version = "
                                   >
                                     {label}
                                   </span>
+
+                                  {hasCounts ? (
+                                    <div className="text-[11px] text-muted">
+                                      {Math.max(0, Number(l.filledTeams) || 0)}/{Math.max(0, Number(l.totalTeams) || 0)} teams
+                                      {Number.isFinite(Number(l.openTeams)) ? (
+                                        <span className="text-white/45"> • {Math.max(0, Number(l.openTeams) || 0)} open</span>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
                                 </div>
 
                                 {img ? (

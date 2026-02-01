@@ -131,13 +131,30 @@ function sanitizeDivisionsInput(data) {
   const divisions = divisionsRaw.map((d) => {
     const leaguesRaw = Array.isArray(d?.leagues) ? d.leagues : [];
     const leagues = leaguesRaw.map((l, idx) => ({
+      // Sleeper-backed (optional)
+      leagueId: typeof l?.leagueId === "string" ? l.leagueId : typeof l?.league_id === "string" ? l.league_id : "",
+      sleeperUrl:
+        typeof l?.sleeperUrl === "string" ? l.sleeperUrl : typeof l?.sleeper_url === "string" ? l.sleeper_url : "",
+      avatarId: typeof l?.avatarId === "string" ? l.avatarId : typeof l?.avatar_id === "string" ? l.avatar_id : "",
+
+      // Editable
       name: typeof l?.name === "string" ? l.name : `League ${idx + 1}`,
       url: typeof l?.url === "string" ? l.url : "",
+
+      // Public-facing mini-leagues status
       status: ["tbd", "filling", "drafting", "full"].includes(l?.status) ? l.status : "tbd",
+      notReady: Boolean(l?.notReady ?? l?.not_ready),
       active: l?.active !== false,
       order: Number.isFinite(Number(l?.order)) ? Number(l.order) : idx + 1,
+
+      // Images (R2 key is preferred)
       imageKey: typeof l?.imageKey === "string" ? l.imageKey : "",
       imageUrl: typeof l?.imageUrl === "string" ? l.imageUrl : "",
+
+      // Sleeper-derived fill counts (persisted)
+      totalTeams: Number.isFinite(Number(l?.totalTeams ?? l?.total_teams)) ? Number(l?.totalTeams ?? l?.total_teams) : 0,
+      filledTeams: Number.isFinite(Number(l?.filledTeams ?? l?.filled_teams)) ? Number(l?.filledTeams ?? l?.filled_teams) : 0,
+      openTeams: Number.isFinite(Number(l?.openTeams ?? l?.open_teams)) ? Number(l?.openTeams ?? l?.open_teams) : 0,
     }));
 
     return {
