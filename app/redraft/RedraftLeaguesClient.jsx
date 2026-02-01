@@ -176,6 +176,11 @@ export default function RedraftLeaguesClient({
           const badge = statusBadge(effectiveStatus);
           const isPreDraft = normalizeStatus(effectiveStatus) === "predraft";
 
+          const totalTeams = Number(l?.totalTeams) || 0;
+          const filledTeams = Number(l?.filledTeams) || 0;
+          const openTeams = Number(l?.openTeams) || Math.max(0, totalTeams - filledTeams);
+          const fillLabel = totalTeams > 0 ? `${filledTeams}/${totalTeams}` : "";
+
           // Whole card clickable ONLY when predraft.
           // In predraft: prefer invite link; otherwise fall back to desktop-safe Sleeper URL.
           const cardHref = isPreDraft ? (inviteHref || sleeperDesktopUrl) : "";
@@ -222,9 +227,21 @@ export default function RedraftLeaguesClient({
                     <h3 className="text-sm font-semibold text-foreground truncate">
                       {safeStr(l?.name || "League")}
                     </h3>
-                    <span className="rounded-full border border-subtle bg-panel px-2 py-0.5 text-[11px] text-muted">
-                      {badge}
-                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="rounded-full border border-subtle bg-panel px-2 py-0.5 text-[11px] text-muted">
+                        {badge}
+                      </span>
+                      {totalTeams > 0 ? (
+                        <span className="rounded-full border border-subtle bg-panel px-2 py-0.5 text-[11px] text-muted">
+                          {filledTeams}/{totalTeams}
+                        </span>
+                      ) : null}
+                      {totalTeams > 0 && openTeams > 0 ? (
+                        <span className="rounded-full border border-subtle bg-panel px-2 py-0.5 text-[11px] text-muted">
+                          {openTeams} open
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
 
                   {safeStr(l?.note).trim() ? (

@@ -139,6 +139,11 @@ function sanitizeLeaguesInput(data, season) {
     order: Number.isFinite(Number(l?.order)) ? Number(l.order) : idx + 1,
     imageKey: typeof l?.imageKey === "string" ? l.imageKey : "",
     imageUrl: typeof l?.imageUrl === "string" ? l.imageUrl : "",
+
+    // Sleeper-derived fill counts (persisted to JSON)
+    totalTeams: Number.isFinite(Number(l?.totalTeams)) ? Number(l.totalTeams) : 0,
+    filledTeams: Number.isFinite(Number(l?.filledTeams)) ? Number(l.filledTeams) : 0,
+    openTeams: Number.isFinite(Number(l?.openTeams)) ? Number(l.openTeams) : 0,
   }));
 
   // keep order stable
