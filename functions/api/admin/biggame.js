@@ -1,26 +1,30 @@
 // functions/api/admin/biggame.js
-// BIG GAME admin API (Cloudflare Pages Function)
+// Admin API for BIG GAME (Cloudflare Pages Functions)
 //
-// IMPORTANT (per your request):
-// - No extra admin authentication happens here.
-//   The /admin/* UI is already gated by <AdminGuard />.
-//   (Uploads keep their existing auth path.)
+// NOTE: This endpoint is intentionally *not* auth-gated.
+// Your AdminGuard already gates the UI; uploads still use their own auth.
 //
-// Routes:
-//   GET  /api/admin/biggame?season=2026&type=divisions|page
-//   PUT  /api/admin/biggame?season=2026  { type, data }
+// GET  /api/admin/biggame?season=2026
+//   -> legacy payload shape: { season, config, rows }
 //
-// R2 keys (kept legacy-compatible):
-// - Divisions (primary):            data/biggame/leagues_<season>.json
-// - Divisions (fallback/compat):    data/biggame/divisions_<season>.json
-// - Page config:                    data/biggame/page_<season>.json
+// GET  /api/admin/biggame?season=2026&type=page
+//   -> { ok:true, type:"page", data:{ season,title,subtitle,intro } }
+//
+// GET  /api/admin/biggame?season=2026&type=divisions
+//   -> { ok:true, type:"divisions", data:{ season, divisions:[...] } }
+//
+// PUT  /api/admin/biggame?season=2026
+//   -> accepts either legacy ({season,config,rows}) or typed payload ({type,data})
+//
+// Storage (R2):
+// - Legacy rows payload: data/biggame/leagues_<season>.json   (this is the canonical key)
+// - Page content:        data/biggame/page_<season>.json
+// - Optional divisions:  data/biggame/divisions_<season>.json (write-through for newer UIs)
 
 const DEFAULT_SEASON = new Date().getFullYear();
 
 function ensureR2(env) {
-  if (!env || !env.BALLSVILLE_R2) {
-    throw new Error("Missing R2 binding: BALLSVILLE_R2");
-  }
+  if (!env || !env.BALLSVILLE_R2) throw new Error("BALLSVILLE_R2 binding missing");
 }
 
 function json(body, status = 200) {
@@ -31,41 +35,6 @@ function json(body, status = 200) {
       "cache-control": "no-store",
     },
   });
-}
-
-async function readJson(env, key) {
-  const obj = await env.BALLSVILLE_R2.get(key);
-  if (!obj) return null;
-  try {
-    return await obj.json();
-  } catch {
-    return null;
-  }
-}
-
-async function writeJson(env, key, data) {
-  await env.BALLSVILLE_R2.put(key, JSON.stringify(data, null, 2), {
-    httpMetadata: { contentType: "application/json; charset=utf-8" },
-  });
-}
-
-// Touch the manifest used by SectionManifestGate (same concept as other modes).
-// This keeps cache-busting consistent.
-async function touchManifest(env, mode, section, season) {
-  // If you already have a different manifest layout in this repo,
-  // this is intentionally defensive and won't break anything.
-  const key = `data/_manifest/${mode}.json`;
-  const current = (await readJson(env, key)) || {};
-  const now = Date.now();
-  const s = String(season);
-  const next = {
-    ...current,
-    [section]: {
-      ...(current[section] || {}),
-      [s]: now,
-    },
-  };
-  await writeJson(env, key, next);
 }
 
 function asStr(v, fallback = "") {
@@ -103,10 +72,10 @@ function normalizeDivisionStatus(s) {
   return "TBD";
 }
 
-// Auto status rule (your exact request):
-// - TBD whenever there isn't a league drafting
-// - If even ONE league is drafting => DRAFTING
-// - If ALL leagues are FULL => FULL
+// Division auto-status rule (your spec):
+// - If there is even one league drafting -> DRAFTING
+// - If ALL active+ready leagues are FULL -> FULL
+// - Else -> TBD
 function computeDivisionAutoStatus(division) {
   const leagues = Array.isArray(division?.leagues) ? division.leagues : [];
   const active = leagues.filter((l) => asBool(l?.is_active, true) && !asBool(l?.not_ready, false));
@@ -134,8 +103,7 @@ function normalizeDivision(d, idx) {
 
     const sleeper_league_id = asStr(l?.sleeper_league_id || l?.sleeperLeagueId || l?.leagueId || l?.league_id || "", "").trim() || null;
     const sleeper_status = asStr(l?.sleeper_status || l?.sleeperStatus || "", "").trim() || null;
-    const sleeper_url =
-      asStr(l?.sleeper_url || l?.sleeperUrl || "", "").trim() || (sleeper_league_id ? `https://sleeper.com/leagues/${sleeper_league_id}` : null);
+    const sleeper_url = asStr(l?.sleeper_url || l?.sleeperUrl || "", "").trim() || (sleeper_league_id ? `https://sleeper.com/leagues/${sleeper_league_id}` : null);
     const avatar_id = asStr(l?.avatar_id || l?.avatarId || "", "").trim() || null;
 
     const total_teams = l?.total_teams != null ? asNum(l.total_teams, null) : null;
@@ -193,20 +161,19 @@ function rowsToDivisions(rows = []) {
     const order = asNum(h?.display_order ?? i + 1, i + 1);
     const image_key = asStr(h?.division_image_key || "", "").trim() || null;
     const image_url = asStr(h?.division_image_path || "", "").trim() || null;
-    const auto_status = true;
 
     const leagues = list
       .filter((r) => !asBool(r?.is_division_header, false))
       .filter((r) => asStr(r?.division_slug || r?.division_code || "", "").trim() === slug)
       .sort((a, b) => asNum(a?.display_order, 0) - asNum(b?.display_order, 0))
       .map((r, j) => {
-        const sleeperId = asStr(r?.sleeper_league_id || "", "").trim() || null;
+        const sleeperId = asStr(r?.sleeper_league_id || r?.leagueId || r?.league_id || "", "").trim() || null;
         return {
           id: asStr(r?.id || r?.row_id || "", "").trim() || crypto.randomUUID(),
           display_order: asNum(r?.display_order ?? j + 1, j + 1),
           league_name: asStr(r?.league_name || "League", "League"),
           league_url: asStr(r?.league_url || "", ""),
-          league_status: normalizeLeagueStatus(r?.league_status || "TBD"),
+          league_status: normalizeLeagueStatus(r?.league_status || r?.status || "TBD"),
           sleeper_league_id: sleeperId,
           sleeper_url: sleeperId ? `https://sleeper.com/leagues/${sleeperId}` : null,
           sleeper_status: asStr(r?.sleeper_status || "", "").trim() || null,
@@ -229,7 +196,7 @@ function rowsToDivisions(rows = []) {
           order,
           image_key,
           image_url,
-          auto_status,
+          auto_status: true,
           leagues,
         },
         i
@@ -237,19 +204,18 @@ function rowsToDivisions(rows = []) {
     );
   }
 
-  // If no headers exist, infer a single division from all league rows.
   if (!out.length) {
     const leagues = list
       .filter((r) => !asBool(r?.is_division_header, false))
       .sort((a, b) => asNum(a?.display_order, 0) - asNum(b?.display_order, 0))
       .map((r, j) => {
-        const sleeperId = asStr(r?.sleeper_league_id || "", "").trim() || null;
+        const sleeperId = asStr(r?.sleeper_league_id || r?.leagueId || r?.league_id || "", "").trim() || null;
         return {
           id: asStr(r?.id || r?.row_id || "", "").trim() || crypto.randomUUID(),
           display_order: asNum(r?.display_order ?? j + 1, j + 1),
           league_name: asStr(r?.league_name || "League", "League"),
           league_url: asStr(r?.league_url || "", ""),
-          league_status: normalizeLeagueStatus(r?.league_status || "TBD"),
+          league_status: normalizeLeagueStatus(r?.league_status || r?.status || "TBD"),
           sleeper_league_id: sleeperId,
           sleeper_url: sleeperId ? `https://sleeper.com/leagues/${sleeperId}` : null,
           sleeper_status: asStr(r?.sleeper_status || "", "").trim() || null,
@@ -282,84 +248,221 @@ function rowsToDivisions(rows = []) {
 
 function normalizeDivisionsPayload(raw, season) {
   const p = raw && typeof raw === "object" ? raw : {};
-  // New format
+
+  // New divisions format
   if (Array.isArray(p.divisions)) {
-    const divisions = p.divisions.map((d, i) => normalizeDivision(d, i));
-    return { season, divisions };
+    return { season, divisions: p.divisions.map((d, i) => normalizeDivision(d, i)) };
   }
-  // Old row-based format (existing Big Game admin/public)
+  // Old row-based format
   if (Array.isArray(p.rows)) {
-    const divisions = rowsToDivisions(p.rows);
-    return { season, divisions };
+    return { season, divisions: rowsToDivisions(p.rows) };
   }
+  // Some older content stored the divisions array directly
+  if (Array.isArray(p)) {
+    return { season, divisions: p.map((d, i) => normalizeDivision(d, i)) };
+  }
+
   return { season, divisions: [] };
 }
 
-function defaultPage(season) {
+function divisionsToRows(divisions = [], season) {
+  const divs = Array.isArray(divisions) ? divisions : [];
+  const rows = [];
+
+  // Build header rows first
+  for (let i = 0; i < divs.length; i++) {
+    const d = normalizeDivision(divs[i], i);
+    rows.push({
+      year: season,
+      id: d.id,
+      division: d.title,
+      division_code: d.code,
+      division_slug: d.slug,
+      is_division_header: true,
+      division_status: d.status,
+      division_image_key: d.image_key,
+      division_image_path: d.image_url,
+      display_order: d.order,
+    });
+
+    const leagues = Array.isArray(d.leagues) ? d.leagues : [];
+    for (let j = 0; j < leagues.length; j++) {
+      const l = leagues[j];
+      rows.push({
+        year: season,
+        id: l.id,
+        division: d.title,
+        division_code: d.code,
+        division_slug: d.slug,
+        is_division_header: false,
+        display_order: asNum(l.display_order ?? j + 1, j + 1),
+        league_name: asStr(l.league_name || "League", "League"),
+        league_url: asStr(l.league_url || "", ""),
+        league_status: normalizeLeagueStatus(l.league_status || "TBD"),
+        sleeper_league_id: l.sleeper_league_id || null,
+        sleeper_url: l.sleeper_url || (l.sleeper_league_id ? `https://sleeper.com/leagues/${l.sleeper_league_id}` : null),
+        sleeper_status: l.sleeper_status || null,
+        avatar_id: l.avatar_id || null,
+        total_teams: l.total_teams ?? null,
+        filled_teams: l.filled_teams ?? null,
+        open_teams: l.open_teams ?? null,
+        not_ready: asBool(l.not_ready, false),
+        is_active: asBool(l.is_active, true),
+      });
+    }
+  }
+
+  return rows;
+}
+
+function defaultLegacyPayload(season) {
   return {
     season,
-    title: "The BIG Game",
-    subtitle: "",
-    intro: "",
+    config: {
+      heroSeason: season,
+      pageTitle: "The BIG Game",
+      subtitle: "",
+      intro: "",
+      ctaText: "",
+      ctaUrl: "",
+    },
+    rows: [],
   };
+}
+
+function defaultPage(season) {
+  return { season, title: "The BIG Game", subtitle: "", intro: "" };
+}
+
+async function readJson(env, key) {
+  const obj = await env.BALLSVILLE_R2.get(key);
+  if (!obj) return null;
+  try {
+    return await obj.json();
+  } catch {
+    return null;
+  }
+}
+
+async function writeJson(env, key, data) {
+  await env.BALLSVILLE_R2.put(key, JSON.stringify(data, null, 2), {
+    httpMetadata: { contentType: "application/json; charset=utf-8" },
+  });
+}
+
+// Keep the manifest fresh (same convention as other gamemodes).
+// We intentionally keep this no-op if the helper doesn't exist yet.
+async function touchManifest(env, section, key, season) {
+  // If your project has a manifest system, it typically lives at:
+  // data/manifest/<section>_<season>.json or similar.
+  // BIG GAME is currently using direct R2 reads in the admin UI,
+  // so we don't hard-require a manifest here.
+  void env;
+  void section;
+  void key;
+  void season;
 }
 
 export async function onRequest(context) {
   const { request, env } = context;
-  ensureR2(env);
+  try {
+    ensureR2(env);
+    const url = new URL(request.url);
+    const season = asNum(url.searchParams.get("season"), DEFAULT_SEASON);
+    const type = asStr(url.searchParams.get("type"), "").toLowerCase();
 
-  const url = new URL(request.url);
-  const season = asNum(url.searchParams.get("season"), DEFAULT_SEASON);
-  const type = asStr(url.searchParams.get("type"), "divisions").toLowerCase();
+    const leaguesKey = `data/biggame/leagues_${season}.json`;
+    const divisionsKey = `data/biggame/divisions_${season}.json`;
+    const pageKey = `data/biggame/page_${season}.json`;
 
-  const divisionsKeyPrimary = `data/biggame/leagues_${season}.json`;
-  const divisionsKeyFallback = `data/biggame/divisions_${season}.json`;
-  const pageKey = `data/biggame/page_${season}.json`;
+    if (request.method === "GET") {
+      if (type === "page") {
+        const data = (await readJson(env, pageKey)) || defaultPage(season);
+        return json({ ok: true, type: "page", data }, 200);
+      }
 
-  if (request.method === "GET") {
-    if (type === "page") {
-      const data = (await readJson(env, pageKey)) || defaultPage(season);
-      return json({ ok: true, type: "page", data }, 200);
+      if (type === "divisions") {
+        const rawLegacy = await readJson(env, leaguesKey);
+        const rawDivisions = rawLegacy ? null : await readJson(env, divisionsKey);
+        const normalized = normalizeDivisionsPayload(rawLegacy || rawDivisions || {}, season);
+
+        // write-through so both keys exist
+        if (!rawDivisions) {
+          await writeJson(env, divisionsKey, normalized);
+          await touchManifest(env, "biggame", "divisions", season);
+        }
+        return json({ ok: true, type: "divisions", data: normalized }, 200);
+      }
+
+      // Legacy default
+      const raw = await readJson(env, leaguesKey);
+      if (!raw) return json(defaultLegacyPayload(season), 200);
+
+      // If stored in divisions format, convert to legacy rows
+      if (Array.isArray(raw?.divisions) || Array.isArray(raw)) {
+        const norm = normalizeDivisionsPayload(raw, season);
+        const legacy = defaultLegacyPayload(season);
+        legacy.rows = divisionsToRows(norm.divisions, season);
+        await writeJson(env, leaguesKey, legacy); // heal the canonical key
+        await writeJson(env, divisionsKey, norm);
+        return json(legacy, 200);
+      }
+
+      // Otherwise assume legacy already
+      const seasonNum = asNum(raw?.season, season);
+      return json({ ...defaultLegacyPayload(season), ...(raw || {}), season: seasonNum }, 200);
     }
 
-    // Divisions
-    const rawPrimary = await readJson(env, divisionsKeyPrimary);
-    const rawFallback = rawPrimary ? null : await readJson(env, divisionsKeyFallback);
-    const normalized = normalizeDivisionsPayload(rawPrimary || rawFallback || {}, season);
+    if (request.method === "PUT") {
+      const body = await request.json().catch(() => ({}));
+      const bodyType = asStr(body?.type || type, "").toLowerCase();
 
-    // If we had to read fallback, write-through to primary so public + admin stay in sync.
-    if (!rawPrimary && rawFallback) {
-      await writeJson(env, divisionsKeyPrimary, normalized);
-      await touchManifest(env, "biggame", "divisions", season);
-    }
+      if (bodyType === "page") {
+        const p = body?.data && typeof body.data === "object" ? body.data : {};
+        const data = {
+          season,
+          title: asStr(p.title, "The BIG Game"),
+          subtitle: asStr(p.subtitle, ""),
+          intro: asStr(p.intro, ""),
+        };
+        await writeJson(env, pageKey, data);
+        await touchManifest(env, "biggame", "page", season);
+        return json({ ok: true }, 200);
+      }
 
-    return json({ ok: true, type: "divisions", data: normalized }, 200);
-  }
+      if (bodyType === "divisions") {
+        const normalized = normalizeDivisionsPayload(body?.data || body || {}, season);
+        // persist divisions key
+        await writeJson(env, divisionsKey, normalized);
+        // also persist canonical legacy key in row format so existing pages keep working
+        const legacy = defaultLegacyPayload(season);
+        legacy.rows = divisionsToRows(normalized.divisions, season);
+        await writeJson(env, leaguesKey, legacy);
+        await touchManifest(env, "biggame", "divisions", season);
+        return json({ ok: true }, 200);
+      }
 
-  if (request.method === "PUT") {
-    const body = await request.json().catch(() => ({}));
-    const bodyType = asStr(body?.type, type).toLowerCase();
-
-    if (bodyType === "page") {
-      const p = body?.data && typeof body.data === "object" ? body.data : {};
-      const data = {
+      // Legacy PUT (your existing admin UI)
+      const legacy = body && typeof body === "object" ? body : {};
+      const payload = {
+        ...defaultLegacyPayload(season),
         season,
-        title: asStr(p.title, "The BIG Game"),
-        subtitle: asStr(p.subtitle, ""),
-        intro: asStr(p.intro, ""),
+        config: { ...(defaultLegacyPayload(season).config || {}), ...(legacy.config || {}) },
+        rows: Array.isArray(legacy.rows) ? legacy.rows : [],
       };
-      await writeJson(env, pageKey, data);
-      await touchManifest(env, "biggame", "page", season);
+
+      await writeJson(env, leaguesKey, payload);
+
+      // keep a divisions mirror around for any newer pages
+      const divMirror = normalizeDivisionsPayload(payload, season);
+      await writeJson(env, divisionsKey, divMirror);
+      await touchManifest(env, "biggame", "leagues", season);
+
       return json({ ok: true }, 200);
     }
 
-    const normalized = normalizeDivisionsPayload(body?.data || body || {}, season);
-    await writeJson(env, divisionsKeyPrimary, normalized);
-    // Also maintain the fallback key for any older code paths.
-    await writeJson(env, divisionsKeyFallback, normalized);
-    await touchManifest(env, "biggame", "divisions", season);
-    return json({ ok: true }, 200);
+    return json({ ok: false, error: "Method not allowed" }, 405);
+  } catch (err) {
+    return json({ ok: false, error: err?.message || "Unknown error" }, 500);
   }
-
-  return json({ ok: false, error: "Method not allowed" }, 405);
 }
