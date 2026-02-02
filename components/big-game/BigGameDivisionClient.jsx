@@ -122,7 +122,6 @@ function transformForDivision(rows, divisionSlug) {
     .map((r) => ({
       league_name: r.league_name,
       league_url: r.league_url,
-      sleeper_league_id: r.sleeper_league_id,
       league_order: r.league_order,
       league_status: computeLeagueStatus(r),
       league_image: resolveImageSrc({ key: r.league_image_key, url: r.league_image_path, avatarId: r.avatar_id }),
@@ -221,13 +220,9 @@ export default function BigGameDivisionClient({
 
           const st = String(lg?.league_status || "").trim().toUpperCase();
           const isFilling = st === "FILLING";
-          const inviteLink = safeStr(lg?.league_url || "").trim();
-          const sleeperId = safeStr(lg?.sleeper_league_id || "").trim();
-          const desktopFallback = sleeperId ? `https://sleeper.com/leagues/${sleeperId}` : "";
-
-          // Rule: if a league is FILLING, it should link.
-          // Prefer invite link; fall back to desktop-safe Sleeper URL.
-          const href = isFilling ? (inviteLink || desktopFallback) : "";
+          const invite = String(lg?.league_url || "").trim();
+          const desktop = lg?.league_id ? `https://sleeper.com/leagues/${encodeURIComponent(String(lg.league_id))}` : "";
+          const href = isFilling ? (invite || desktop) : "";
           const isClickable = Boolean(href);
 
           return (

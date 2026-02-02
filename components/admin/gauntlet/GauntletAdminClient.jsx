@@ -1,35 +1,86 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import Image from "next/image";
-import { FiUpload, FiTrash2, FiPlus, FiSave, FiRefreshCw } from "react-icons/fi";
-import { CURRENT_SEASON } from "@/lib/season";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getSupabase } from "@/lib/supabaseClient";
-
-// GAUNTLET admin (R2-backed) — modeled after BigGameAdminClient.
-// Stores to /api/admin/gauntlet (R2 JSON) and uploads images via /api/admin/upload.
+import { CURRENT_SEASON } from "@/lib/season";
+import { safeStr } from "@/lib/safe";
+import { r2Url } from "@/lib/r2Url";
 
 const DEFAULT_SEASON = CURRENT_SEASON;
 
-const DEFAULT_PAGE_EDITABLE = {
-  hero: {
-    promoImageKey: "",
-    promoImageUrl: "",
-    updatesHtml: "<p>Updates will show here.</p>",
-  },
-};
+// ==============================
+// GAUNTLET ADMIN RULES (match other gamemodes)
+// - League name: NOT editable (comes from Sleeper)
+// - League status/counts: derived from Sleeper on refresh, stored in JSON
+// - Admin-only overrides:
+//    - notReady => forces status to TBD + disables click-through
+//    - is_active=false => hides from public pages
+// - Legion name + image are still editable (not from Sleeper)
+// ==============================
 
-function slugify(s) {
-  return String(s || "")
-    .trim()
-    .toLowerCase()
-    .replace(/['"]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+function safeNum(v, fallback = 0) {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : fallback;
 }
 
-function uid() {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+function nowIso() {
+  try {
+    return new Date().toISOString();
+  } catch {
+    return "";
+  }
+}
+
+function slugify(input) {
+  return safeStr(input)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+function newId(prefix = "g") {
+  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+}
+
+function normalizeSleeperStatus(raw) {
+  const s = safeStr(raw).trim().toLowerCase();
+  if (s === "pre_draft" || s === "predraft" || s === "pre-draft") return "predraft";
+  if (s === "drafting") return "drafting";
+  if (s === "in_season" || s === "inseason" || s === "in-season") return "inseason";
+  if (s === "complete") return "complete";
+  return s || "predraft";
+}
+
+// Public-facing labels (keep legacy): TBD / DRAFTING / FULL / FILLING
+function gauntletStatusFromSleeper({ sleeperStatus, openTeams, notReady }) {
+  if (notReady) return "TBD";
+  const s = normalizeSleeperStatus(sleeperStatus);
+  if (s === "drafting") return "DRAFTING";
+  if (safeNum(openTeams, 0) <= 0) return "FULL";
+  return "FILLING";
+}
+
+function statusPillClasses(label) {
+  const v = safeStr(label).trim().toUpperCase();
+  if (v === "FULL") return "bg-emerald-500/15 text-emerald-300 border-emerald-500/30";
+  if (v === "FILLING") return "bg-primary/15 text-primary border-primary/30";
+  if (v === "DRAFTING") return "bg-accent/15 text-accent border-accent/30";
+  return "bg-white/10 text-muted border-white/10";
+}
+
+function resolveImageSrc(pathOrKey) {
+  const raw = safeStr(pathOrKey).trim();
+  if (!raw) return "";
+
+  // If stored as /r2/<key>, route through r2Url() so localhost works.
+  if (raw.startsWith("/r2/")) return r2Url(raw.replace(/^\/r2\//, ""));
+  // If stored as a raw key (media/...), also route through r2Url.
+  if (!raw.startsWith("http") && !raw.startsWith("/")) return r2Url(raw);
+  return raw;
 }
 
 async function getAccessToken() {
@@ -39,217 +90,244 @@ async function getAccessToken() {
   return data?.session?.access_token || "";
 }
 
-function statusBadge(status) {
-  const s = (status || "TBD").toUpperCase();
-  const base = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold border";
-  if (s === "FULL") return `${base} border-emerald-500/30 bg-emerald-500/10 text-emerald-300`;
-  if (s === "FILLING") return `${base} border-amber-500/30 bg-amber-500/10 text-amber-300`;
-  if (s === "DRAFTING") return `${base} border-sky-500/30 bg-sky-500/10 text-sky-300`;
-  return `${base} border-subtle bg-subtle-surface text-muted`;
+async function readApiError(res) {
+  const ct = (res.headers.get("content-type") || "").toLowerCase();
+  try {
+    if (ct.includes("application/json")) {
+      const j = await res.json();
+      return j?.error || j?.message || JSON.stringify(j);
+    }
+  } catch {
+    // ignore
+  }
+  return res.text();
 }
 
-async function safeJson(res) {
-  const text = await res.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { ok: false, error: text?.slice(0, 300) || "Non-JSON response" };
+async function apiGET(season, type = "leagues") {
+  const token = await getAccessToken();
+  const res = await fetch(`/api/admin/gauntlet?season=${encodeURIComponent(String(season))}&type=${encodeURIComponent(type)}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
+  const j = await res.json();
+  return j;
+}
+
+async function apiPUT(season, payload, type = "leagues") {
+  const token = await getAccessToken();
+  const res = await fetch(`/api/admin/gauntlet?season=${encodeURIComponent(String(season))}&type=${encodeURIComponent(type)}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
+  const j = await res.json();
+  if (j?.ok === false) throw new Error(j?.error || "Request failed");
+  return j;
+}
+
+async function uploadImage(file, { section, season, legionCode, leagueOrder }) {
+  const token = await getAccessToken();
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("section", section);
+  fd.append("season", String(season));
+  if (legionCode) fd.append("legionCode", String(legionCode));
+  if (leagueOrder != null) fd.append("leagueOrder", String(leagueOrder));
+
+  const res = await fetch("/api/admin/upload", {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: fd,
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
+  const j = await res.json();
+  if (!j?.ok) throw new Error(j?.error || "Upload failed");
+  return j; // { ok, key, url }
+}
+
+async function sleeperLeagueInfo(leagueId) {
+  const id = safeStr(leagueId).trim();
+  if (!id) throw new Error("Missing league id");
+  const res = await fetch(`https://api.sleeper.app/v1/league/${encodeURIComponent(id)}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Sleeper league request failed (${res.status})`);
+  return res.json();
+}
+
+async function sleeperLeagueRosters(leagueId) {
+  const id = safeStr(leagueId).trim();
+  if (!id) throw new Error("Missing league id");
+  const res = await fetch(`https://api.sleeper.app/v1/league/${encodeURIComponent(id)}/rosters`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Sleeper rosters request failed (${res.status})`);
+  return res.json();
+}
+
+function computeFillCounts(league, rosters) {
+  const totalTeams = Number(league?.total_rosters) || (Array.isArray(rosters) ? rosters.length : 0);
+  const filledTeams = Array.isArray(rosters) ? rosters.filter((r) => r && r.owner_id).length : 0;
+  const openTeams = Math.max(0, totalTeams - filledTeams);
+  return { totalTeams, filledTeams, openTeams };
+}
+
+function normalizeRow(r, idx = 0, season = DEFAULT_SEASON) {
+  const isHeader = Boolean(r?.is_legion_header);
+
+  if (isHeader) {
+    const legion_name = safeStr(r?.legion_name || "New Legion").trim();
+    const legion_slug = safeStr(r?.legion_slug || slugify(legion_name) || newId("leg")).trim();
+    return {
+      __key: safeStr(r?.__key) || newId("leg"),
+      season: safeNum(r?.season, season),
+      is_legion_header: true,
+
+      legion_name,
+      legion_slug,
+      legion_blurb: safeStr(r?.legion_blurb || "").trim(),
+      legion_order: safeNum(r?.legion_order, idx + 1),
+      legion_image_key: safeStr(r?.legion_image_key || "").trim(),
+      legion_image_path: safeStr(r?.legion_image_path || "").trim(),
+      is_active: typeof r?.is_active === "boolean" ? r.is_active : true,
+    };
   }
+
+  const league_id = safeStr(r?.league_id || r?.leagueId || "").trim();
+  const league_name = safeStr(r?.league_name || r?.name || "").trim();
+  const sleeper_status = normalizeSleeperStatus(r?.sleeper_status || r?.sleeperStatus || r?.league_sleeper_status);
+  const total_teams = safeNum(r?.total_teams ?? r?.totalTeams, null);
+  const filled_teams = safeNum(r?.filled_teams ?? r?.filledTeams, null);
+  const open_teams = safeNum(r?.open_teams ?? r?.openTeams, null);
+  const notReady = Boolean(r?.notReady);
+
+  const league_status = safeStr(r?.league_status).trim() || gauntletStatusFromSleeper({
+    sleeperStatus: sleeper_status,
+    openTeams: open_teams,
+    notReady,
+  });
+
+  return {
+    __key: safeStr(r?.__key) || newId("l"),
+    season: safeNum(r?.season, season),
+    is_legion_header: false,
+
+    legion_slug: safeStr(r?.legion_slug || "").trim(),
+    league_order: safeNum(r?.league_order ?? r?.order, idx + 1),
+
+    league_id,
+    league_name,
+    league_url: safeStr(r?.league_url || r?.sleeper_url || "").trim(),
+
+    sleeper_status,
+    league_status,
+    total_teams,
+    filled_teams,
+    open_teams,
+
+    avatar: safeStr(r?.avatar || "").trim(),
+    league_image_key: safeStr(r?.league_image_key || r?.imageKey || "").trim(),
+    league_image_path: safeStr(r?.league_image_path || r?.image_url || "").trim(),
+
+    notReady,
+    is_active: typeof r?.is_active === "boolean" ? r.is_active : true,
+  };
+}
+
+function groupLegions(rows) {
+  const headers = rows
+    .filter((r) => r?.is_legion_header)
+    .slice()
+    .sort((a, b) => safeNum(a.legion_order, 9999) - safeNum(b.legion_order, 9999));
+
+  const bySlug = new Map();
+  for (const r of rows) {
+    if (r?.is_legion_header) continue;
+    const slug = safeStr(r?.legion_slug).trim();
+    if (!slug) continue;
+    if (!bySlug.has(slug)) bySlug.set(slug, []);
+    bySlug.get(slug).push(r);
+  }
+
+  for (const [slug, list] of bySlug.entries()) {
+    list.sort((a, b) => safeNum(a.league_order, 9999) - safeNum(b.league_order, 9999));
+    bySlug.set(slug, list);
+  }
+
+  return { headers, bySlug };
+}
+
+function deriveLegionStatus(leagues) {
+  const eligible = (Array.isArray(leagues) ? leagues : []).filter((l) => l && l.is_active !== false);
+  if (!eligible.length) return "TBD";
+  const labels = eligible.map((l) => safeStr(l.league_status).toUpperCase() || "TBD");
+  if (labels.includes("DRAFTING")) return "DRAFTING";
+  if (labels.every((x) => x === "FULL")) return "FULL";
+  if (labels.includes("FILLING")) return "FILLING";
+  return "TBD";
 }
 
 export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) {
   const [season, setSeason] = useState(defaultSeason);
-  const skipReloadRef = useRef(false); // used for local rollover without reloading from server
   const [rows, setRows] = useState([]);
+  const [updatedAt, setUpdatedAt] = useState("");
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [info, setInfo] = useState("");
 
-  const [pageCfg, setPageCfg] = useState(DEFAULT_PAGE_EDITABLE);
-  const [pageLoading, setPageLoading] = useState(true);
-  const [pageSaving, setPageSaving] = useState(false);
-  const fileInputRef = useRef(null);
-  const [uploadCtx, setUploadCtx] = useState(null); // { type: 'legion'|'league', legionSlug, leagueOrder }
-
-  // ✅ Per-legion rollover target year drafts (Big Game style)
-  const [rollYearByLegion, setRollYearByLegion] = useState({});
-
-  // Start collapsed like the other gamemode admin screens
   const [openLegions, setOpenLegions] = useState(() => new Set());
+
+  const fileRef = useRef(null);
+  const [uploadCtx, setUploadCtx] = useState(null);
+
+  const { headers, bySlug } = useMemo(() => groupLegions(rows), [rows]);
 
   async function load() {
     setError("");
-    setNotice("");
+    setInfo("");
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/gauntlet?season=${encodeURIComponent(season)}`, {
-        cache: "no-store",
-      });
-      const data = await safeJson(res);
-      if (!res.ok || data?.ok === false) throw new Error(data?.error || "Failed to load");
-      // IMPORTANT: assign a stable per-row key ONCE so editing doesn't remount inputs
-      // (never key by legion_slug / league_order, because those can change while typing).
-      const list = Array.isArray(data.rows) ? data.rows : [];
-      const withKeys = list.map((r) => ({
-        ...r,
-        __key: r?.__key || uid(),
-      }));
-      setRows(withKeys);
+      const j = await apiGET(season, "leagues");
+      const list = Array.isArray(j?.rows) ? j.rows : [];
+      const normalized = list.map((r, idx) => normalizeRow(r, idx, season));
+      setRows(normalized);
+      setUpdatedAt(safeStr(j?.updated_at || j?.updatedAt || ""));
 
-      // Default to collapsed every time we (re)load from server
-      setOpenLegions(new Set());
-
-      // Start collapsed every time we load (consistent UX)
-      setOpenLegions(new Set());
-
-      // ✅ seed rollover targets (default = next season) for any legions present
-      const legionSlugs = withKeys
-        .filter((r) => r?.is_legion_header && r?.legion_slug)
-        .map((r) => String(r.legion_slug));
-      setRollYearByLegion((prev) => {
-        const next = { ...prev };
-        for (const slug of legionSlugs) {
-          if (next[slug] == null) next[slug] = String(Number(season) + 1);
-        }
-        return next;
-      });
+      // Start collapsed by default. Preserve any user toggles already in state.
+      setOpenLegions((prev) => (prev && prev.size ? prev : new Set()));
     } catch (e) {
-      setError(e?.message || String(e));
       setRows([]);
+      setError(e?.message || "Failed to load gauntlet data.");
     } finally {
       setLoading(false);
     }
   }
 
-  async function loadPageConfig(nextSeason = season) {
-    setPageLoading(true);
-    try {
-      const res = await fetch(`/api/admin/gauntlet?season=${encodeURIComponent(String(nextSeason))}&type=page`, {
-        cache: "no-store",
-      });
-      const data = await safeJson(res);
-      if (!res.ok || data?.ok === false) {
-        setPageCfg(DEFAULT_PAGE_EDITABLE);
-        return;
-      }
-      const hero = data?.data?.hero || {};
-      setPageCfg({
-        hero: {
-          promoImageKey: String(hero.promoImageKey || ""),
-          promoImageUrl: String(hero.promoImageUrl || ""),
-          updatesHtml: hero.updatesHtml ?? DEFAULT_PAGE_EDITABLE.hero.updatesHtml,
-        },
-      });
-    } catch {
-      setPageCfg(DEFAULT_PAGE_EDITABLE);
-    } finally {
-      setPageLoading(false);
-    }
-  }
-
-  async function savePageConfig(nextSeason = season) {
-    setError("");
-    setNotice("");
-    setPageSaving(true);
-    try {
-      const res = await fetch(`/api/admin/gauntlet?season=${encodeURIComponent(String(nextSeason))}&type=page`, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type: "page", data: pageCfg }),
-      });
-      const out = await safeJson(res);
-      if (!res.ok || out?.ok === false) throw new Error(out?.error || `Save failed (${res.status})`);
-      setNotice("Owner Updates saved.");
-    } catch (e) {
-      setError(e?.message || "Failed to save Owner Updates.");
-    } finally {
-      setPageSaving(false);
-    }
-  }
-
-  async function uploadOwnerUpdatesImage(file) {
-    const token = await getAccessToken();
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("section", "gauntlet-updates");
-    fd.append("season", String(season));
-    const res = await fetch(`/api/admin/upload`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}` },
-      body: fd,
-    });
-    const out = await safeJson(res);
-    if (!res.ok || out?.ok === false) throw new Error(out?.error || "Upload failed");
-
-    setPageCfg((p) => ({
-      ...p,
-      // upload.js returns { key, url }
-      hero: { ...p.hero, promoImageKey: String(out.key || ""), promoImageUrl: String(out.url || "") },
-    }));
-    setNotice("Image uploaded. Click Save Owner Updates to publish.");
-  }
-
   useEffect(() => {
-    if (skipReloadRef.current) {
-      // rollover changed season locally; keep current in-memory data so user can publish into the new season
-      skipReloadRef.current = false;
-      return;
-    }
     load();
-    loadPageConfig(season);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [season]);
 
-  const legions = useMemo(() => {
-    const headers = rows
-      .filter((r) => r?.is_legion_header)
-      .map((r) => ({
-        ...r,
-        __key: r.__key,
-      }))
-      .sort(
-        (a, b) =>
-          Number(a.legion_order || 0) - Number(b.legion_order || 0) ||
-          String(a.legion_name || "").localeCompare(String(b.legion_name || ""))
-      );
-
-    const bySlug = new Map();
-    for (const r of rows) {
-      if (r?.is_legion_header) continue;
-      const slug = r.legion_slug;
-      if (!slug) continue;
-      if (!bySlug.has(slug)) bySlug.set(slug, []);
-      bySlug.get(slug).push({ ...r, __key: r.__key });
-    }
-    for (const [slug, list] of bySlug.entries()) {
-      list.sort((a, b) => Number(a.league_order || 0) - Number(b.league_order || 0));
-      bySlug.set(slug, list);
-    }
-
-    return { headers, bySlug };
-  }, [rows]);
-
-  function setRow(patchFn) {
-    setRows((prev) => patchFn([...prev]));
+  function patchRows(mutator) {
+    setRows((prev) => mutator(prev.slice()));
   }
 
-  function updateLegion(slug, patch) {
-    setRow((next) =>
-      next.map((r) => {
-        if (!r?.is_legion_header) return r;
-        if (r.legion_slug !== slug) return r;
-        return { ...r, ...patch };
-      })
+  function updateLegion(legionSlug, patch) {
+    patchRows((next) =>
+      next.map((r) => (r.is_legion_header && r.legion_slug === legionSlug ? { ...r, ...patch } : r))
     );
   }
 
-  function updateLeague(legionSlug, leagueOrder, patch) {
-    setRow((next) =>
+  function updateLeague(legionSlug, leagueKey, patch) {
+    patchRows((next) =>
       next.map((r) => {
-        if (r?.is_legion_header) return r;
+        if (r.is_legion_header) return r;
         if (r.legion_slug !== legionSlug) return r;
-        if (Number(r.league_order || 0) !== Number(leagueOrder || 0)) return r;
+        if (r.__key !== leagueKey) return r;
         return { ...r, ...patch };
       })
     );
@@ -257,594 +335,493 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
 
   function addLegion() {
     const name = "New Legion";
-    const slug = slugify(name) || uid();
-    const maxOrder = Math.max(0, ...legions.headers.map((h) => Number(h.legion_order || 0)));
-    setRows((prev) => [
-      ...prev,
-      {
-        __key: uid(),
-        season,
-        is_legion_header: true,
-        legion_name: name,
-        legion_slug: slug,
-        legion_status: "TBD",
-        legion_spots: 0,
-        legion_order: maxOrder + 1,
-        legion_image_path: "",
-        is_active: true,
-      },
-    ]);
-    setRollYearByLegion((prev) => ({ ...prev, [slug]: String(Number(season) + 1) }));
+    const slug = slugify(name) || newId("leg");
+    const maxOrder = Math.max(0, ...headers.map((h) => safeNum(h.legion_order, 0)));
+    patchRows((next) => {
+      next.push(
+        normalizeRow(
+          {
+            is_legion_header: true,
+            season,
+            legion_name: name,
+            legion_slug: slug,
+            legion_order: maxOrder + 1,
+            is_active: true,
+          },
+          next.length,
+          season
+        )
+      );
+      return next;
+    });
+    setOpenLegions((prev) => new Set([...prev, slug]));
   }
 
   function deleteLegion(legionSlug) {
-    if (!confirm("Delete this legion AND all of its leagues?")) return;
-    setRows((prev) => prev.filter((r) => r.legion_slug !== legionSlug));
-    setRollYearByLegion((prev) => {
-      const next = { ...prev };
-      delete next[String(legionSlug)];
-      return next;
+    patchRows((next) => next.filter((r) => !(r.legion_slug === legionSlug)));
+    setOpenLegions((prev) => {
+      const n = new Set(prev);
+      n.delete(legionSlug);
+      return n;
     });
   }
 
-  function addLeague(legionSlug) {
-    const list = legions.bySlug.get(legionSlug) || [];
-    const nextOrder = Math.max(0, ...list.map((l) => Number(l.league_order || 0))) + 1;
-    setRows((prev) => [
-      ...prev,
-      {
-        __key: uid(),
-        season,
-        is_legion_header: false,
-        legion_slug: legionSlug,
-        league_order: nextOrder,
-        league_name: "",
-        league_url: "",
-        league_status: "FULL",
-        is_active: true,
-        league_image_path: "",
-      },
-    ]);
+  function deleteLeague(legionSlug, leagueKey) {
+    patchRows((next) => next.filter((r) => !(r.legion_slug === legionSlug && !r.is_legion_header && r.__key === leagueKey)));
   }
 
-  function deleteLeague(legionSlug, leagueOrder) {
-    if (!confirm("Delete this league?")) return;
-    setRows((prev) =>
-      prev.filter((r) => {
-        if (r?.is_legion_header) return true;
-        if (r.legion_slug !== legionSlug) return true;
-        return Number(r.league_order || 0) !== Number(leagueOrder || 0);
-      })
-    );
-  }
-
-  // ✅ Per-legion rollover (Big Game style)
-  async function rolloverLegionToYear(legionSlug, targetYearRaw) {
-    const y = Number(String(targetYearRaw || "").trim());
-    if (!Number.isFinite(y)) return;
-    if (Number(y) === Number(season)) return;
-
-    const header = legions.headers.find((h) => String(h.legion_slug) === String(legionSlug));
-    const legionName = header?.legion_name || legionSlug;
-
-    const ok = window.confirm(
-      `Rollover legion "${legionName}" from ${season} → ${y}?\n\nThis will move ONLY this legion (header + leagues) into season ${y} and clear its Sleeper URLs.\n\nThen click “Publish” to write /data/gauntlet/leagues_${y}.json`
-    );
-    if (!ok) return;
-
+  async function saveAll() {
     setError("");
-    setNotice("");
+    setInfo("");
     setSaving(true);
-
     try {
-      // 1) Load target season rows (if missing, we treat as empty and you publish new)
-      let targetRows = [];
-      try {
-        const res = await fetch(`/api/admin/gauntlet?season=${encodeURIComponent(String(y))}`, { cache: "no-store" });
-        const data = await safeJson(res);
-        if (res.ok && data?.ok !== false) {
-          const list = Array.isArray(data.rows) ? data.rows : [];
-          targetRows = list.map((r) => ({ ...r, __key: r?.__key || uid() }));
-        }
-      } catch {
-        targetRows = [];
+      const payloadRows = rows.map((r) => ({ ...r }));
+      // Strip transient / internal fields
+      for (const r of payloadRows) {
+        delete r.__key;
       }
-
-      // 2) Build the moved rows from CURRENT in-memory rows
-      const moved = (Array.isArray(rows) ? rows : [])
-        .filter((r) => String(r?.legion_slug || "") === String(legionSlug))
-        .map((r) => {
-          const isHeader = !!r?.is_legion_header;
-          if (!isHeader) {
-            // clear only this legion’s URLs
-            return { ...r, season: y, league_url: "" };
-          }
-          return { ...r, season: y };
-        });
-
-      // 3) Remove any existing legion in target (same slug), then append moved
-      const cleanedTarget = targetRows.filter((r) => String(r?.legion_slug || "") !== String(legionSlug));
-      const nextTarget = [...cleanedTarget, ...moved].map((r) => ({
-        ...r,
-        __key: r?.__key || uid(),
-      }));
-
-      // 4) Switch editor to target season WITHOUT reload, keep pageCfg in memory
-      skipReloadRef.current = true;
-      setSeason(y);
-      setRows(nextTarget);
-
-      // 5) seed rollover input for this legion in the new season view
-      setRollYearByLegion((prev) => ({ ...prev, [String(legionSlug)]: String(y + 1) }));
-
-      setNotice(`Rolled "${legionName}" to season ${y} locally (URLs cleared). Click “Publish” to write leagues_${y}.json`);
+      await apiPUT(season, { season, rows: payloadRows, updated_at: nowIso() }, "leagues");
+      setInfo("Saved.");
+      await load();
     } catch (e) {
-      setError(e?.message || String(e));
+      setError(e?.message || "Save failed.");
     } finally {
       setSaving(false);
     }
   }
 
-  // (You still have your season-wide function — leaving it untouched)
-  function rolloverSeasonToYear(targetYearRaw) {
-    const y = Number(String(targetYearRaw || "").trim());
-    if (!Number.isFinite(y)) return;
-    if (Number(y) === Number(season)) return;
-
-    const ok = window.confirm(
-      `Rollover Gauntlet season from ${season} to ${y}?\n\nThis will copy the current season's legions/leagues into ${y} and clear ALL league URLs.\n\nReview, then click “Publish” to write the new season JSON.`
-    );
-    if (!ok) return;
-
-    // Update the in-memory rows for the new season.
-    setRows((prev) =>
-      (Array.isArray(prev) ? prev : []).map((r) => {
-        const isHeader = !!r?.is_legion_header;
-        if (!isHeader) {
-          return { ...r, season: y, league_url: "" };
-        }
-        return { ...r, season: y };
-      })
-    );
-
-    setNotice(`Rolled Gauntlet season to ${y} locally (league URLs cleared). Click “Publish” to write /data/gauntlet/leagues_${y}.json`);
-
-    // Switch the season input WITHOUT reloading from server.
-    skipReloadRef.current = true;
-    setSeason(y);
-  }
-
-  async function save() {
-    setSaving(true);
+  async function refreshSleeperForAll() {
     setError("");
-    setNotice("");
+    setInfo("");
+    setRefreshing(true);
     try {
-      // sanitize rows: ensure season set and stable keys removed
-      const cleaned = rows.map((r) => {
-        const out = { ...r };
-        delete out.__key;
-        out.season = season;
-        return out;
-      });
+      // Refresh ONLY league rows with a league_id.
+      const leagueRows = rows.filter((r) => !r.is_legion_header && safeStr(r.league_id).trim());
+      if (!leagueRows.length) {
+        setInfo("No leagues with Sleeper IDs yet.");
+        return;
+      }
 
-      const res = await fetch("/api/admin/gauntlet", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ season, rows: cleaned }),
-      });
-      const data = await safeJson(res);
-      if (!res.ok || data?.ok === false) throw new Error(data?.error || "Save failed");
-      setNotice("Published ✓");
+      const updated = [];
+      for (const r of leagueRows) {
+        const league = await sleeperLeagueInfo(r.league_id);
+        const rosters = await sleeperLeagueRosters(r.league_id);
+        const { totalTeams, filledTeams, openTeams } = computeFillCounts(league, rosters);
+        const sleeper_status = normalizeSleeperStatus(league?.status);
+        const league_status = gauntletStatusFromSleeper({ sleeperStatus: sleeper_status, openTeams, notReady: r.notReady });
+
+        updated.push({
+          __key: r.__key,
+          league_name: safeStr(league?.name || r.league_name),
+          avatar: safeStr(league?.avatar || r.avatar),
+          sleeper_status,
+          total_teams: totalTeams,
+          filled_teams: filledTeams,
+          open_teams: openTeams,
+          league_status,
+        });
+      }
+
+      patchRows((next) =>
+        next.map((r) => {
+          if (r.is_legion_header) return r;
+          const patch = updated.find((x) => x.__key === r.__key);
+          return patch ? { ...r, ...patch } : r;
+        })
+      );
+
+      // Persist immediately (matches redraft/dynasty behavior so refresh isn't just visual)
+      const payloadRows = rows
+        .map((r) => {
+          const patch = updated.find((x) => x.__key === r.__key);
+          const merged = patch ? { ...r, ...patch } : r;
+          return { ...merged };
+        })
+        .map((r) => {
+          const c = { ...r };
+          delete c.__key;
+          return c;
+        });
+
+      await apiPUT(season, { season, rows: payloadRows, updated_at: nowIso() }, "leagues");
+      setInfo("Refreshed Sleeper status + counts and saved.");
       await load();
     } catch (e) {
-      setError(e?.message || String(e));
+      setError(e?.message || "Refresh failed.");
     } finally {
-      setSaving(false);
+      setRefreshing(false);
     }
   }
 
   function openUpload(ctx) {
     setUploadCtx(ctx);
-    if (fileInputRef.current) fileInputRef.current.click();
+    if (fileRef.current) fileRef.current.click();
   }
 
-  async function onPickFile(e) {
-    const file = e.target.files?.[0];
+  async function onFilePicked(e) {
+    const file = e?.target?.files?.[0];
     e.target.value = "";
     if (!file || !uploadCtx) return;
     setError("");
-    setNotice("");
+    setInfo("");
     try {
-      const token = await getAccessToken();
-      const form = new FormData();
-
-      if (uploadCtx.type === "legion") {
-        form.set("section", "gauntlet-legion");
-        form.set("season", String(season));
-        form.set("legionCode", uploadCtx.legionSlug);
-      } else {
-        form.set("section", "gauntlet-league");
-        form.set("season", String(season));
-        form.set("legionCode", uploadCtx.legionSlug);
-        form.set("leagueOrder", String(uploadCtx.leagueOrder));
+      if (uploadCtx.kind === "legion") {
+        const out = await uploadImage(file, {
+          section: "gauntlet-legion",
+          season,
+          legionCode: uploadCtx.legionSlug,
+        });
+        updateLegion(uploadCtx.legionSlug, { legion_image_key: safeStr(out.key), legion_image_path: safeStr(out.url) });
+        setInfo("Image uploaded. Click Save All to publish.");
       }
 
-      form.set("file", file);
-
-      const res = await fetch("/api/admin/upload", {
-        method: "POST",
-        headers: { authorization: `Bearer ${token}` },
-        body: form,
-      });
-      const data = await safeJson(res);
-      if (!res.ok || data?.ok === false) throw new Error(data?.error || "Upload failed");
-
-      // upload.js returns { key, url }
-      const key = String(data?.key || "");
-      const url = String(data?.url || "");
-
-      if (uploadCtx.type === "legion") {
-        updateLegion(uploadCtx.legionSlug, {
-          legion_image_key: key,
-          legion_image_path: url, // store full /r2/... URL for rendering
+      if (uploadCtx.kind === "league") {
+        const out = await uploadImage(file, {
+          section: "gauntlet-league",
+          season,
+          legionCode: uploadCtx.legionSlug,
+          leagueOrder: uploadCtx.leagueOrder,
         });
-      } else {
-        updateLeague(uploadCtx.legionSlug, uploadCtx.leagueOrder, {
-          league_image_key: key,
-          league_image_path: url,
+        updateLeague(uploadCtx.legionSlug, uploadCtx.leagueKey, {
+          league_image_key: safeStr(out.key),
+          league_image_path: safeStr(out.url),
         });
+        setInfo("Image uploaded. Click Save All to publish.");
       }
-      setNotice("Image uploaded ✓ (remember to Publish)");
-    } catch (e2) {
-      setError(e2?.message || String(e2));
+    } catch (err) {
+      setError(err?.message || "Upload failed.");
     } finally {
       setUploadCtx(null);
     }
   }
 
+  const toolbar = (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <button className="btn btn-outline" onClick={addLegion}>
+          + Add Legion
+        </button>
+
+        <Link
+          prefetch={false}
+          href={`/admin/gauntlet/add-leagues?season=${encodeURIComponent(String(season))}`}
+          className="btn btn-outline"
+        >
+          + Add leagues from Sleeper
+        </Link>
+
+        <button className="btn btn-outline" onClick={refreshSleeperForAll} disabled={refreshing || loading}>
+          {refreshing ? "Refreshing…" : "Refresh Status + Counts"}
+        </button>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-muted">Season</label>
+        <input
+          className="input w-[110px]"
+          value={String(season)}
+          onChange={(e) => setSeason(safeNum(e.target.value, DEFAULT_SEASON))}
+        />
+        <button className="btn btn-primary" onClick={saveAll} disabled={saving || loading}>
+          {saving ? "Saving…" : "Save All"}
+        </button>
+      </div>
+    </div>
+  );
+
+  if (loading) {
+    return (
+      <div className="card bg-card-surface border border-subtle p-5">
+        <p className="text-muted">Loading…</p>
+      </div>
+    );
+  }
+
   return (
-    <main className="section">
-      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onPickFile} />
+    <div className="space-y-5">
+      {toolbar}
 
-      <div className="container-site w-full max-w-none px-3 sm:px-6 lg:px-10 space-y-5 sm:space-y-6">
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-          <div>
-            <h1 className="h1">Gauntlet Admin</h1>
-            <p className="text-muted mt-1">Manage legions + their leagues. Upload images to R2 and publish to the public site.</p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-muted">Season</label>
-            <input
-              className="input w-28"
-              value={season}
-              onChange={(e) => setSeason(Number(e.target.value || DEFAULT_SEASON))}
-              inputMode="numeric"
-            />
-            <button className="btn btn-subtle" onClick={load} disabled={loading || saving}>
-              <FiRefreshCw />
-              Refresh
-            </button>
-            <button className="btn btn-primary" onClick={save} disabled={loading || saving}>
-              <FiSave />
-              {saving ? "Publishing…" : "Publish"}
-            </button>
-          </div>
+      {error ? (
+        <div className="card bg-card-surface border border-danger/30 p-4">
+          <p className="text-danger">{error}</p>
         </div>
+      ) : null}
+      {info ? (
+        <div className="card bg-card-surface border border-emerald-500/30 p-4">
+          <p className="text-emerald-300">{info}</p>
+        </div>
+      ) : null}
 
-        {error ? (
-          <div className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-rose-200">{error}</div>
-        ) : null}
-        {notice ? (
-          <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-emerald-200">{notice}</div>
-        ) : null}
+      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFilePicked} />
 
-        <div className="mt-6 rounded-2xl border border-subtle bg-card-surface p-6 space-y-4">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <p className="text-sm font-semibold">Owner Updates (Hero)</p>
-              <p className="text-xs text-muted">This image + text renders in the hero section on the public Gauntlet page.</p>
-            </div>
-            <button
-              className="btn btn-primary"
-              type="button"
-              onClick={() => savePageConfig(season)}
-              disabled={pageSaving || pageLoading}
-            >
-              {pageSaving ? "Saving…" : "Save Owner Updates"}
-            </button>
-          </div>
+      <div className="space-y-4">
+        {headers.map((h) => {
+          const legionSlug = h.legion_slug;
+          const leagues = bySlug.get(legionSlug) || [];
+          const legionOpenTeams = leagues
+            .filter((l) => l && l.is_active !== false && !l.notReady)
+            .reduce((sum, l) => sum + safeNum(l.open_teams, 0), 0);
+          const legionStatus = deriveLegionStatus(leagues);
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <p className="text-xs text-muted">Promo image</p>
-              <div className="rounded-xl border border-subtle bg-black/20 overflow-hidden">
-                {pageCfg.hero.promoImageKey ? (
-                  <img src={`/r2/${pageCfg.hero.promoImageKey}`} alt="Owner promo" className="w-full h-auto block" loading="lazy" />
-                ) : (
-                  <div className="p-6 text-sm text-muted">No image uploaded.</div>
-                )}
-              </div>
-              <input
-                type="file"
-                accept="image/*"
-                className="input"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  try {
-                    await uploadOwnerUpdatesImage(file);
-                  } catch (err) {
-                    setError(err?.message || "Upload failed.");
-                  } finally {
-                    e.target.value = "";
-                  }
+          const isOpen = openLegions.has(legionSlug);
+
+          return (
+            <div key={legionSlug} className="card bg-card-surface border border-subtle p-4 sm:p-5">
+              {/* Legion header */}
+              <button
+                type="button"
+                className="w-full flex items-start justify-between gap-4 text-left"
+                onClick={() => {
+                  setOpenLegions((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(legionSlug)) next.delete(legionSlug);
+                    else next.add(legionSlug);
+                    return next;
+                  });
                 }}
-              />
-            </div>
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h3 className="text-lg font-semibold text-fg truncate">{h.legion_name}</h3>
+                    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${statusPillClasses(legionStatus)}`}>
+                      {legionStatus}
+                    </span>
+                    <span className="inline-flex items-center rounded-full border border-subtle bg-card-subtle px-2.5 py-1 text-xs font-semibold text-fg">
+                      Open spots: {legionOpenTeams}
+                    </span>
+                    {h.is_active === false ? (
+                      <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold text-muted">
+                        Hidden
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 text-sm text-muted line-clamp-2">{h.legion_blurb || ""}</p>
+                </div>
 
-            <div className="space-y-2">
-              <p className="text-xs text-muted">Updates HTML</p>
-              <textarea
-                className="input min-h-[180px]"
-                value={pageCfg.hero.updatesHtml}
-                onChange={(e) => setPageCfg((p) => ({ ...p, hero: { ...p.hero, updatesHtml: e.target.value } }))}
-                placeholder="<p>Type your updates here…</p>"
-              />
-              <p className="text-xs text-muted">Tip: keep it short (1–4 lines) so the hero stays clean.</p>
-            </div>
-          </div>
-        </div>
+                <div className="shrink-0 flex items-center gap-2">
+                  {h.legion_image_key || h.legion_image_path ? (
+                    <div className="relative h-12 w-12 overflow-hidden rounded-xl border border-subtle bg-black/20">
+                      <Image
+                        src={resolveImageSrc(h.legion_image_path || h.legion_image_key) || "/photos/ballsville_logo.png"}
+                        alt={h.legion_name || "Legion"}
+                        fill
+                        className="object-cover"
+                        sizes="48px"
+                      />
+                    </div>
+                  ) : null}
+                  <span className="text-xs text-muted">{isOpen ? "Hide" : "Edit"}</span>
+                </div>
+              </button>
 
-        <div className="mt-6 flex items-center justify-between">
-          <h2 className="h2">Legions</h2>
-          <button className="btn btn-subtle" onClick={addLegion} disabled={loading || saving}>
-            <FiPlus />
-            Add Legion
-          </button>
-        </div>
-
-        {loading ? <p className="text-muted mt-4">Loading…</p> : null}
-
-        <div className="mt-4 grid grid-cols-1 gap-4">
-          {legions.headers.map((h) => {
-            const list = legions.bySlug.get(h.legion_slug) || [];
-            const slug = String(h.legion_slug || "");
-            const rollVal = rollYearByLegion[slug] ?? String(Number(season) + 1);
-            const isOpen = openLegions.has(slug);
-
-            return (
-              <section key={h.__key} className="card bg-card-surface border border-subtle p-5 md:p-6">
-                <div className="flex flex-col lg:flex-row gap-4 lg:items-start lg:justify-between">
-                  <div className="flex gap-4 items-start">
-                    <div className="relative h-20 w-20 rounded-xl overflow-hidden border border-subtle bg-subtle-surface flex-shrink-0">
-                      {h.legion_image_path ? (
-                        <Image src={h.legion_image_path} alt={h.legion_name || "Legion"} fill sizes="80px" className="object-cover" />
-                      ) : (
-                        <div className="h-full w-full grid place-items-center text-xs text-muted">No Image</div>
-                      )}
+              {/* Legion editor */}
+              {isOpen ? (
+                <div className="mt-4 border-t border-subtle pt-4 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                    <div className="md:col-span-5">
+                      <label className="block text-xs text-muted mb-1">Legion Name</label>
+                      <input
+                        className="input w-full"
+                        value={h.legion_name}
+                        onChange={(e) => {
+                          const nextName = e.target.value;
+                          updateLegion(legionSlug, {
+                            legion_name: nextName,
+                            // keep slug stable once set
+                          });
+                        }}
+                      />
+                      <p className="mt-1 text-[11px] text-muted">Slug: <span className="text-fg font-semibold">{legionSlug}</span></p>
                     </div>
 
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <input
-                          className="input w-[min(420px,80vw)]"
-                          value={h.legion_name || ""}
-                          onChange={(e) => {
-                            const nextName = e.target.value;
-                            const nextSlug = slugify(nextName) || h.legion_slug;
-                            // update header
-                            updateLegion(h.legion_slug, { legion_name: nextName, legion_slug: nextSlug });
-                            // also migrate league rows to new slug
-                            if (nextSlug !== h.legion_slug) {
-                              setRows((prev) =>
-                                prev.map((r) => {
-                                  if (r.legion_slug !== h.legion_slug) return r;
-                                  return { ...r, legion_slug: nextSlug };
-                                })
-                              );
-                              // keep rollover input mapping in sync
-                              setRollYearByLegion((prev) => {
-                                const next = { ...prev };
-                                if (next[h.legion_slug] != null && next[nextSlug] == null) next[nextSlug] = next[h.legion_slug];
-                                delete next[h.legion_slug];
-                                return next;
-                              });
-                            }
-                          }}
-                        />
-                        <span className={statusBadge(h.legion_status)}>{(h.legion_status || "TBD").toUpperCase()}</span>
-                        <span className="text-xs text-muted">slug: {h.legion_slug}</span>
-                      </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-xs text-muted mb-1">Order</label>
+                      <input
+                        className="input w-full"
+                        value={String(h.legion_order ?? "")}
+                        onChange={(e) => updateLegion(legionSlug, { legion_order: safeNum(e.target.value, 1) })}
+                      />
+                    </div>
 
-                      <div className="mt-2 flex items-center gap-3 flex-wrap">
-                        <label className="text-sm text-muted">Order</label>
-                        <input
-                          className="input w-24"
-                          value={h.legion_order ?? 0}
-                          onChange={(e) => updateLegion(h.legion_slug, { legion_order: Number(e.target.value || 0) })}
-                          inputMode="numeric"
-                        />
-                        <label className="text-sm text-muted">Status</label>
-                        <select
-                          className="input"
-                          value={h.legion_status || "TBD"}
-                          onChange={(e) => updateLegion(h.legion_slug, { legion_status: e.target.value })}
-                        >
-                          <option value="TBD">TBD</option>
-                          <option value="FILLING">FILLING</option>
-                          <option value="DRAFTING">DRAFTING</option>
-                          <option value="FULL">FULL</option>
-                        </select>
-                        <label className="text-sm text-muted">Spots</label>
-                        <input
-                          className="input w-24"
-                          value={h.legion_spots ?? 0}
-                          onChange={(e) => updateLegion(h.legion_slug, { legion_spots: Number(e.target.value || 0) })}
-                          inputMode="numeric"
-                        />
-                        <label className="inline-flex items-center gap-2 text-sm">
+                    <div className="md:col-span-3">
+                      <label className="block text-xs text-muted mb-1">Visibility</label>
+                      <div className="flex items-center gap-3 h-[42px]">
+                        <label className="inline-flex items-center gap-2 text-sm text-fg">
                           <input
                             type="checkbox"
-                            checked={!!h.is_active}
-                            onChange={(e) => updateLegion(h.legion_slug, { is_active: e.target.checked })}
+                            checked={h.is_active !== false}
+                            onChange={(e) => updateLegion(legionSlug, { is_active: e.target.checked })}
                           />
                           Active
                         </label>
-                      </div>
-
-                      {/* ✅ Per-legion rollover control */}
-                      <div className="mt-3 flex items-center gap-2 flex-wrap">
-                        <span className="text-xs text-muted">Rollover this legion to</span>
-                        <input
-                          className="input w-28"
-                          value={rollVal}
-                          onChange={(e) => setRollYearByLegion((prev) => ({ ...prev, [String(h.legion_slug)]: e.target.value }))}
-                          inputMode="numeric"
-                        />
                         <button
-                          className="btn btn-primary"
+                          className="btn btn-outline btn-sm"
                           type="button"
-                          onClick={() => rolloverLegionToYear(h.legion_slug, rollVal)}
-                          disabled={loading || saving}
+                          onClick={() => openUpload({ kind: "legion", legionSlug })}
                         >
-                          Rollover
+                          Upload Image
                         </button>
-                        <span className="text-xs text-muted">clears Sleeper URLs for this legion only</span>
                       </div>
+                    </div>
+
+                    <div className="md:col-span-2 flex items-end justify-end">
+                      <button className="btn btn-outline btn-sm" onClick={() => deleteLegion(legionSlug)}>
+                        Delete
+                      </button>
+                    </div>
+
+                    <div className="md:col-span-12">
+                      <label className="block text-xs text-muted mb-1">Legion Blurb</label>
+                      <textarea
+                        className="textarea w-full min-h-[84px]"
+                        value={h.legion_blurb}
+                        onChange={(e) => updateLegion(legionSlug, { legion_blurb: e.target.value })}
+                      />
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      className="btn btn-subtle"
-                      type="button"
-                      onClick={() => {
-                        setOpenLegions((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(slug)) next.delete(slug);
-                          else next.add(slug);
-                          return next;
-                        });
-                      }}
-                    >
-                      {isOpen ? "Collapse" : "Expand"}
-                    </button>
-                    <button className="btn btn-subtle" onClick={() => openUpload({ type: "legion", legionSlug: h.legion_slug })}>
-                      <FiUpload />
-                      Upload Image
-                    </button>
-                    <button className="btn btn-subtle" onClick={() => addLeague(h.legion_slug)}>
-                      <FiPlus />
-                      Add League
-                    </button>
-                    <button className="btn btn-danger" onClick={() => deleteLegion(h.legion_slug)}>
-                      <FiTrash2 />
-                      Delete Legion
-                    </button>
+                  {/* Leagues */}
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                      <h4 className="text-sm font-semibold text-fg">Leagues</h4>
+                      <p className="text-xs text-muted">3 cards per row on desktop, 1 on mobile.</p>
+                    </div>
                   </div>
-                </div>
 
-                {isOpen ? (
-                  <div className="mt-5">
-                    {list.length === 0 ? (
-                      <p className="text-sm text-muted">No leagues yet. Add a league.</p>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="text-muted">
-                              <th className="text-left py-2 pr-3">#</th>
-                              <th className="text-left py-2 pr-3">League</th>
-                              <th className="text-left py-2 pr-3">Sleeper URL</th>
-                              <th className="text-left py-2 pr-3">Status</th>
-                              <th className="text-left py-2 pr-3">Active</th>
-                              <th className="text-left py-2 pr-3">Image</th>
-                              <th className="text-right py-2">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {list.map((l) => (
-                              <tr key={l.__key} className="border-t border-subtle">
-                                <td className="py-2 pr-3 align-top">
-                                  <input
-                                    className="input w-20"
-                                    value={l.league_order ?? 0}
-                                    onChange={(e) => updateLeague(h.legion_slug, l.league_order, { league_order: Number(e.target.value || 0) })}
-                                    inputMode="numeric"
-                                  />
-                                </td>
-                                <td className="py-2 pr-3 align-top">
-                                  <input
-                                    className="input w-[260px]"
-                                    value={l.league_name || ""}
-                                    onChange={(e) => updateLeague(h.legion_slug, l.league_order, { league_name: e.target.value })}
-                                    placeholder="League name"
-                                  />
-                                </td>
-                                <td className="py-2 pr-3 align-top">
-                                  <input
-                                    className="input w-[420px]"
-                                    value={l.league_url || ""}
-                                    onChange={(e) => updateLeague(h.legion_slug, l.league_order, { league_url: e.target.value })}
-                                    placeholder="https://sleeper.com/leagues/..."
-                                  />
-                                </td>
-                                <td className="py-2 pr-3 align-top">
-                                  <select
-                                    className="input"
-                                    value={l.league_status || "FULL"}
-                                    onChange={(e) => updateLeague(h.legion_slug, l.league_order, { league_status: e.target.value })}
-                                  >
-                                    <option value="FULL">FULL</option>
-                                    <option value="FILLING">FILLING</option>
-                                    <option value="DRAFTING">DRAFTING</option>
-                                    <option value="TBD">TBD</option>
-                                  </select>
-                                </td>
-                                <td className="py-2 pr-3 align-top">
-                                  <input
-                                    type="checkbox"
-                                    checked={!!l.is_active}
-                                    onChange={(e) => updateLeague(h.legion_slug, l.league_order, { is_active: e.target.checked })}
-                                  />
-                                </td>
-                                <td className="py-2 pr-3 align-top">
-                                  <div className="flex items-center gap-2">
-                                    <div className="relative h-10 w-10 rounded-lg overflow-hidden border border-subtle bg-subtle-surface">
-                                      {l.league_image_path ? (
-                                        <Image src={l.league_image_path} alt={l.league_name || "League"} fill sizes="40px" className="object-cover" />
-                                      ) : (
-                                        <div className="h-full w-full grid place-items-center text-[10px] text-muted">—</div>
-                                      )}
+                  {leagues.length ? (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                      {leagues
+                        .slice()
+                        .sort((a, b) => safeNum(a.league_order, 9999) - safeNum(b.league_order, 9999))
+                        .map((l) => {
+                          const status = safeStr(l.league_status).toUpperCase() || "TBD";
+                          const pill = statusPillClasses(status);
+                          const total = l.total_teams;
+                          const filled = l.filled_teams;
+                          const open = l.open_teams;
+                          const countLabel = total != null && filled != null ? `${filled}/${total}` : "—";
+
+                          return (
+                            <div key={l.__key} className="rounded-2xl border border-subtle bg-subtle-surface p-4">
+                              <div className="flex items-start gap-3">
+                                <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-subtle bg-black/20">
+                                  {l.league_image_path || l.league_image_key ? (
+                                    <Image
+                                      src={resolveImageSrc(l.league_image_path || l.league_image_key) || "/photos/ballsville_logo.png"}
+                                      alt={l.league_name || "League"}
+                                      fill
+                                      className="object-cover"
+                                      sizes="56px"
+                                    />
+                                  ) : (
+                                    <Image
+                                      src="/photos/ballsville_logo.png"
+                                      alt="League"
+                                      fill
+                                      className="object-cover opacity-70"
+                                      sizes="56px"
+                                    />
+                                  )}
+                                </div>
+
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <div className="text-sm font-semibold text-fg truncate">{l.league_name || "League"}</div>
+                                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                                        <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${pill}`}>
+                                          {status}
+                                        </span>
+                                        <span className="inline-flex items-center rounded-full border border-subtle bg-card-surface px-2.5 py-1 text-[11px] font-semibold text-fg">
+                                          {countLabel}
+                                        </span>
+                                        {open != null ? (
+                                          <span className="inline-flex items-center rounded-full border border-subtle bg-card-surface px-2.5 py-1 text-[11px] font-semibold text-fg">
+                                            Open: {open}
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    </div>
+
+                                    </div>
+
+                                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                      <label className="block text-[11px] text-muted mb-1">Order</label>
+                                      <input
+                                        className="input w-full"
+                                        value={String(l.league_order ?? "")}
+                                        onChange={(e) => updateLeague(legionSlug, l.__key, { league_order: safeNum(e.target.value, 1) })}
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-[11px] text-muted mb-1">Invite URL</label>
+                                      <input
+                                        className="input w-full"
+                                        value={l.league_url}
+                                        onChange={(e) => updateLeague(legionSlug, l.__key, { league_url: e.target.value })}
+                                        placeholder="https://sleeper.com/i/..."
+                                      />
                                     </div>
                                   </div>
-                                </td>
-                                <td className="py-2 text-right align-top">
-                                  <button className="btn btn-danger" onClick={() => deleteLeague(h.legion_slug, l.league_order)}>
-                                    <FiTrash2 />
-                                    Delete
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="mt-5">
-                    <p className="text-sm text-muted">Collapsed.</p>
-                  </div>
-                )}
 
-                <p className="mt-4 text-xs text-muted">Legion image uploads replace the current legion image. Publish to push changes live.</p>
-              </section>
-            );
-          })}
-        </div>
+                                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                                    <div className="flex flex-wrap items-center gap-4">
+                                      <label className="inline-flex items-center gap-2 text-sm text-fg">
+                                        <input
+                                          type="checkbox"
+                                          checked={l.is_active !== false}
+                                          onChange={(e) => updateLeague(legionSlug, l.__key, { is_active: e.target.checked })}
+                                        />
+                                        Active
+                                      </label>
+                                      <label className="inline-flex items-center gap-2 text-sm text-fg">
+                                        <input
+                                          type="checkbox"
+                                          checked={Boolean(l.notReady)}
+                                          onChange={(e) => {
+                                            const notReady = e.target.checked;
+                                            const league_status = gauntletStatusFromSleeper({
+                                              sleeperStatus: l.sleeper_status,
+                                              openTeams: l.open_teams,
+                                              notReady,
+                                            });
+                                            updateLeague(legionSlug, l.__key, { notReady, league_status });
+                                          }}
+                                        />
+                                        Not Ready
+                                      </label>
+                                    </div>
+
+                                    <button className="btn btn-outline btn-sm" onClick={() => deleteLeague(legionSlug, l.__key)}>
+                                      Delete
+                                    </button>
+                                  </div>
+
+                                  <div className="mt-2 text-[11px] text-muted">
+                                    Sleeper ID: <span className="text-fg font-semibold">{l.league_id || "—"}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-subtle bg-subtle-surface p-4">
+                      <p className="text-sm text-muted">No leagues in this legion yet. Use “Add leagues from Sleeper”.</p>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
-    </main>
+
+      <div className="text-xs text-muted">
+        Last updated: <span className="text-fg font-semibold">{updatedAt || "—"}</span>
+      </div>
+    </div>
   );
 }
