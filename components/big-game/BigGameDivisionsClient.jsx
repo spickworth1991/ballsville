@@ -15,6 +15,35 @@ function safeNum(v, fallback = null) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function normalizeSleeperStatus(raw) {
+  const s = String(raw || "").toLowerCase().trim();
+  if (s === "pre_draft" || s === "predraft" || s === "pre-draft") return "pre_draft";
+  if (s === "drafting") return "drafting";
+  if (s === "in_season" || s === "inseason") return "in_season";
+  if (s === "complete") return "complete";
+  return s || null;
+}
+
+function computeAutoLeagueStatus(row) {
+  if (row?.not_ready) return "TBD";
+  const st = normalizeSleeperStatus(row?.sleeper_status);
+  if (st === "drafting") return "DRAFTING";
+  const open = safeNum(row?.open_teams, null);
+  if (open != null) return open <= 0 ? "FULL" : "FILLING";
+  return "TBD";
+}
+
+
+function computeAutoDivisionStatus(leagues) {
+  const active = (Array.isArray(leagues) ? leagues : []).filter((l) => l && l.is_active !== false);
+  if (!active.length) return "TBD";
+  const statuses = active.map((l) => safeStr(l?.status).toUpperCase());
+  if (statuses.some((s) => s === "DRAFTING")) return "DRAFTING";
+  if (statuses.every((s) => s === "FULL")) return "FULL";
+  return "TBD";
+}
+
+
 function slugify(s) {
   return String(s || "")
     .trim()
@@ -146,6 +175,12 @@ function buildDivisionsFromRows(rows) {
 
     return safeStr(a.division_name).localeCompare(safeStr(b.division_name));
   });
+
+  for (const d of divisions) {
+    if (String(d.status || "").toUpperCase() === "AUTO") {
+      d.status = computeAutoDivisionStatus(d.leagues);
+    }
+  }
 
   return divisions;
 }

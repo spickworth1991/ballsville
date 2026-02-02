@@ -265,7 +265,7 @@ export default function BigGameWagersAdminClient({ season }) {
     async function run() {
       try {
         const token = await adminToken();
-        const res = await fetch(`/api/admin/biggame?season=${encodeURIComponent(season)}&type=page`, {
+        const res = await fetch(`/api/admin/big-game?season=${encodeURIComponent(season)}&type=page`, {
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
           cache: "no-store",
         });

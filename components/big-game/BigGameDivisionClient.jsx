@@ -9,7 +9,6 @@ import { r2Url } from "@/lib/r2Url";
 const DEFAULT_SEASON = CURRENT_SEASON;
 const R2_KEY_FOR = (season) => `data/biggame/leagues_${season}.json`;
 
-
 function safeNum(v, fallback = null) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -24,14 +23,36 @@ function slugify(input) {
     .slice(0, 64);
 }
 
+function normalizeSleeperStatus(raw) {
+  const s = String(raw || "").toLowerCase().trim();
+  if (s === "pre_draft" || s === "predraft" || s === "pre-draft") return "pre_draft";
+  if (s === "drafting") return "drafting";
+  if (s === "in_season" || s === "inseason") return "in_season";
+  if (s === "complete") return "complete";
+  return s || null;
+}
+
+function computeLeagueStatus(row) {
+  const raw = String(row?.league_status || "").trim().toUpperCase();
+  if (raw && raw !== "AUTO") return raw;
+
+  if (row?.not_ready) return "TBD";
+
+  const ss = normalizeSleeperStatus(row?.sleeper_status);
+  if (ss === "drafting") return "DRAFTING";
+
+  if (typeof row?.open_teams === "number" && Number.isFinite(row.open_teams)) {
+    return row.open_teams <= 0 ? "FULL" : "FILLING";
+  }
+
+  return "TBD";
+}
+
 function normalizeRow(r, idx = 0) {
   const year = safeNum(r?.year, DEFAULT_SEASON);
   const division_name = safeStr(r?.division_name || r?.theme_name || "Division").trim();
   const division_slug = safeStr(r?.division_slug || slugify(division_name));
 
-  // R2-admin schema:
-  // - header rows: is_division_header=true, division_* fields
-  // - league rows: is_division_header=false, league_* fields
   const is_division_header = !!r?.is_division_header;
 
   return {
@@ -40,8 +61,7 @@ function normalizeRow(r, idx = 0) {
     division_name,
     division_slug,
     is_division_header,
-    theme: safeStr(r?.theme || ""),
-    // prefer new field names when present
+
     division_status: safeStr(r?.division_status || r?.status || "TBD"),
     division_fill_note: safeStr(r?.division_blurb || r?.division_fill_note || ""),
     division_image_key: safeStr(r?.division_image_key || ""),
@@ -52,8 +72,15 @@ function normalizeRow(r, idx = 0) {
     league_order: safeNum(r?.league_order ?? r?.display_order, idx + 1),
     league_image_key: safeStr(r?.league_image_key || ""),
     league_image_path: safeStr(r?.league_image_path || ""),
-
     league_status: safeStr(r?.league_status || r?.status || "TBD"),
+
+    // Sleeper-backed (optional)
+    sleeper_league_id: safeStr(r?.sleeper_league_id || r?.leagueId || r?.league_id || ""),
+    sleeper_status: safeStr(r?.sleeper_status || ""),
+    total_teams: safeNum(r?.total_teams, null),
+    filled_teams: safeNum(r?.filled_teams, null),
+    open_teams: safeNum(r?.open_teams, null),
+    not_ready: r?.not_ready === true,
 
     is_active: r?.is_active !== false,
   };
@@ -65,13 +92,12 @@ function withBust(url, bust) {
   return `${url}?${bust}`;
 }
 
-function resolveImageSrc({ key, url }) {
+function resolveImageSrc({ key, url, avatarId }) {
   if (key) return r2Url(key, { kind: "biggame" });
-  return url || "";
+  if (url) return url;
+  const a = typeof avatarId === "string" ? avatarId.trim() : "";
+  return a ? `https://sleepercdn.com/avatars/${a}` : "";
 }
-
-
-
 
 function transformForDivision(rows, divisionSlug) {
   const filtered = rows.filter((r) => r.division_slug === divisionSlug && r.is_active !== false);
@@ -89,7 +115,6 @@ function transformForDivision(rows, divisionSlug) {
     division_image: resolveImageSrc({ key: headerRow.division_image_key, url: headerRow.division_image_path }),
   };
 
-  // IMPORTANT: exclude the header row from the league list (prevents the "extra league" card)
   const leagues = filtered
     .filter((r) => !r.is_division_header)
     .slice()
@@ -98,16 +123,19 @@ function transformForDivision(rows, divisionSlug) {
       league_name: r.league_name,
       league_url: r.league_url,
       league_order: r.league_order,
-      league_status: r.league_status,
-      league_image: resolveImageSrc({ key: r.league_image_key, url: r.league_image_path }),
+      league_status: computeLeagueStatus(r),
+      league_image: resolveImageSrc({ key: r.league_image_key, url: r.league_image_path, avatarId: r.avatar_id }),
     }));
 
   return { header, leagues };
 }
 
-export default function BigGameDivisionClient({year = DEFAULT_SEASON,
+export default function BigGameDivisionClient({
+  year = DEFAULT_SEASON,
   divisionSlug = "",
-  backHref = "/big-game", version = "0"}) {
+  backHref = "/big-game",
+  version = "0",
+}) {
   const [division, setDivision] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -192,12 +220,15 @@ export default function BigGameDivisionClient({year = DEFAULT_SEASON,
 
           const st = String(lg?.league_status || "").trim().toUpperCase();
           const isFilling = st === "FILLING";
-          const isClickable = isFilling && Boolean(lg?.league_url);
+          const invite = String(lg?.league_url || "").trim();
+          const desktop = lg?.league_id ? `https://sleeper.com/leagues/${encodeURIComponent(String(lg.league_id))}` : "";
+          const href = isFilling ? (invite || desktop) : "";
+          const isClickable = Boolean(href);
 
           return (
             <MediaTabCard
               key={`${leagueNum}-${idx}`}
-              href={isClickable ? lg.league_url : undefined}
+              href={isClickable ? href : undefined}
               external={isClickable}
               title={lg.league_name || `League ${leagueNum}`}
               subtitle="Big Game Bestball"
@@ -213,7 +244,6 @@ export default function BigGameDivisionClient({year = DEFAULT_SEASON,
               className={["h-full", !isClickable ? "cursor-not-allowed" : ""].join(" ")}
             />
           );
-
         })}
       </div>
     </div>

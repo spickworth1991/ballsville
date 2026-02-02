@@ -2,7 +2,7 @@
 import Link from "next/link";
 import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import BigGameDynamicBlocks from "@/components/big-game/BigGameDynamicBlocks";
-import { CURRENT_SEASON } from "@/lib/season";
+import { CURRENT_SEASON } from "@/lib/season2";
 
 export const metadata = {
   title: "The BIG Game | Ballsville",
