@@ -252,7 +252,14 @@ function LeagueAvatar({ league }) {
   const path = league?.league_image_path;
   const key = league?.league_image_key;
   const avatarId = league?.avatar_id;
-  const src = path ? r2Url(path) : key ? r2Url(key) : avatarId ? `https://sleepercdn.com/avatars/${avatarId}` : null;
+  const src = path
+  ? path // already includes /r2
+  : key
+    ? r2Url(key)
+    : avatarId
+      ? `https://sleepercdn.com/avatars/${avatarId}`
+      : null;
+
 
   return (
     <div className="h-12 w-12 overflow-hidden rounded-2xl border border-subtle bg-black/30">
