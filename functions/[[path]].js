@@ -1,12 +1,11 @@
 // functions/[[path]].js
 
-// Ballsville runs as a static export on Cloudflare Pages.
-// We "mount" The Fantasy Arsenal under /tools/app by proxying requests to its standalone origin.
-// Key rules:
-// - NEVER break Ballsville's own assets/routes.
-// - Only proxy what Ballsville doesn't have (404), plus the explicit /tools/app mount.
-
 const ARSENAL_ORIGIN = "https://thefantasyarsenal.com";
+
+// File extensions that should always be treated as "asset/data" requests
+// when they originate from inside the embedded Arsenal context.
+const ASSET_EXT_RE =
+  /\.(?:png|jpg|jpeg|gif|webp|svg|ico|css|js|mjs|map|txt|xml|json|csv|tsv|woff|woff2|ttf|eot|mp4|mov|webm)$/i;
 
 function isHtmlResponse(res) {
   const ct = res.headers.get("content-type") || "";
@@ -18,19 +17,16 @@ function wantsHtml(request) {
   return accept.includes("text/html");
 }
 
-function isArsenalReferrer(request) {
+function isArsenalContext(request) {
   const ref = request.headers.get("referer") || "";
-  return ref.includes("/tools") || ref.includes("/tools/app");
+  return ref.includes("/tools/app");
 }
 
 function rewriteArsenalHtml(html) {
-  // 1) Rewrite hardcoded Next script/link paths ONLY when they start at root "/_next/".
-  // Avoid double-rewriting anything already under "/tools/app/_next/".
+  // Rewrite root /_next/ to /tools/app/_next/
   html = html.replace(/(["'(])\/_next\//g, '$1/tools/app/_next/');
 
-  // 2) Critical: fix Next's runtime publicPath for dynamic chunks.
-  // If assetPrefix is empty, Next will request chunks from /_next/... (Ballsville root) and 404.
-  // Setting assetPrefix to /tools/app makes chunk loading request /tools/app/_next/... instead.
+  // Critical: make dynamic chunk loader use /tools/app as its assetPrefix
   html = html.replace(/"assetPrefix"\s*:\s*""/g, '"assetPrefix":"/tools/app"');
 
   return html;
@@ -39,7 +35,6 @@ function rewriteArsenalHtml(html) {
 async function proxyToArsenal(request, pathAndQuery) {
   const upstreamUrl = new URL(pathAndQuery, ARSENAL_ORIGIN);
 
-  // Clone headers but DO NOT set restricted headers like Host.
   const headers = new Headers(request.headers);
   headers.delete("cookie"); // don't leak Ballsville cookies
 
@@ -76,8 +71,7 @@ export async function onRequest(context) {
     return proxyToArsenal(request, pathAfter + (url.search || ""));
   }
 
-  // 2) Special case: Next chunk requests often do NOT include Referer.
-  // Serve Ballsville's own /_next assets if present, otherwise fall back to Arsenal.
+  // 2) Next chunks often come without referer. Serve Ballsville if present, else fallback to Arsenal.
   if (url.pathname.startsWith("/_next/")) {
     const res = await context.next();
     if (res && res.status !== 404) return res;
@@ -88,23 +82,35 @@ export async function onRequest(context) {
   const res = await context.next();
   if (res && res.status !== 404) return res;
 
-  // 4) Ballsville returned 404. Decide if this should be handled by Arsenal.
-  // - RSC requests (?_rsc=...) must be proxied (redirect would break streaming).
-  // - Document navigations from the embedded Arsenal context should redirect into /tools/app/...
-  // - Static assets/data requested from the embedded Arsenal context should be proxied.
+  // 4) Ballsville returned 404.
+  // If the request originates from inside the embedded Arsenal context,
+  // route it to Arsenal appropriately so Arsenal assets/JSON/avatar routes load from Arsenal.
+  const inArsenal = isArsenalContext(request);
+  if (inArsenal) {
+    const isRsc = url.searchParams.has("_rsc");
+    const looksLikeAsset =
+      ASSET_EXT_RE.test(url.pathname) ||
+      url.pathname.startsWith("/icons/") ||
+      url.pathname.startsWith("/images/") ||
+      url.pathname.startsWith("/img/") ||
+      url.pathname.startsWith("/assets/") ||
+      url.pathname.startsWith("/data/") ||
+      url.pathname.startsWith("/api/");
 
-  const isRsc = url.searchParams.has("_rsc");
-  if (isRsc) {
-    return proxyToArsenal(request, url.pathname + (url.search || ""));
-  }
+    // RSC requests must be proxied (redirect breaks streaming)
+    if (isRsc) {
+      return proxyToArsenal(request, url.pathname + (url.search || ""));
+    }
 
-  if (isArsenalReferrer(request)) {
-    if (wantsHtml(request)) {
+    // Document navigation (clicking links in Arsenal) → redirect to mounted path
+    if (wantsHtml(request) && !looksLikeAsset) {
       return Response.redirect(`/tools/app${url.pathname}${url.search || ""}`, 302);
     }
+
+    // Assets/data/api/json/images → proxy
     return proxyToArsenal(request, url.pathname + (url.search || ""));
   }
 
-  // 5) Otherwise, keep the 404 from Ballsville.
+  // 5) Otherwise keep Ballsville 404.
   return res;
 }
