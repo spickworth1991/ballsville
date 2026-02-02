@@ -1,26 +1,31 @@
 // app/tools/page.jsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
-const DEFAULT_SPLASH_START = 25; // <-- set your preferred default start time here (seconds)
+const DEFAULT_SPLASH_START = 25; // default start time (seconds)
 const SPLASH_DURATION_MS = 3600;
 
 export default function ToolsPage() {
   const [showSplash, setShowSplash] = useState(true);
+  const [startTime, setStartTime] = useState(DEFAULT_SPLASH_START);
   const videoRef = useRef(null);
-  const searchParams = useSearchParams();
 
-  const startTime = useMemo(() => {
-    const t = searchParams?.get("t");
-    const n = t == null ? NaN : Number(t);
-    return Number.isFinite(n) && n >= 0 ? n : DEFAULT_SPLASH_START;
-  }, [searchParams]);
+  // Read ?t= from the URL on the client (no useSearchParams -> no Suspense build error)
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const t = sp.get("t");
+      const n = t == null ? NaN : Number(t);
+      if (Number.isFinite(n) && n >= 0) setStartTime(n);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   useEffect(() => {
-    const t = setTimeout(() => setShowSplash(false), SPLASH_DURATION_MS);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setShowSplash(false), SPLASH_DURATION_MS);
+    return () => clearTimeout(timer);
   }, []);
 
   return (
@@ -46,9 +51,17 @@ export default function ToolsPage() {
             onLoadedMetadata={() => {
               const v = videoRef.current;
               if (!v) return;
-              // Clamp start time to video duration if known
+
+              // clamp start time to duration if known
               const dur = Number.isFinite(v.duration) ? v.duration : Infinity;
-              v.currentTime = Math.min(startTime, Math.max(0, dur - 0.25));
+              const t = Math.min(startTime, Math.max(0, dur - 0.25));
+
+              // Some browsers are picky—set then play
+              try {
+                v.currentTime = t;
+              } catch {
+                // ignore
+              }
             }}
             className="absolute inset-0 w-full h-full object-cover opacity-70"
           >
