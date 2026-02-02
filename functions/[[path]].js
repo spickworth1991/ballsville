@@ -1,137 +1,110 @@
 // functions/[[path]].js
-//
-// Ballsville <-> The Fantasy Arsenal integration (no changes needed in Arsenal):
-// - Proxy Arsenal under /tools/app/*
-// - If the Arsenal app triggers a root navigation (e.g. /trade, /player-stock),
-//   rewrite it into /tools/app/... so Arsenal works while embedded.
-//
-// NOTE: In Cloudflare Pages/Workers you must NOT set the "Host" header.
 
-const ARSENAL_ORIGIN = "https://thefantasyarsenal.com"; // keep Arsenal standalone
-const MOUNT_PREFIX = "/tools/app";
+// Ballsville runs as a static export on Cloudflare Pages.
+// We "mount" The Fantasy Arsenal under /tools/app by proxying requests to its standalone origin.
+// Key rules:
+// - NEVER break Ballsville's own assets/routes.
+// - Only proxy what Ballsville doesn't have (404), plus the explicit /tools/app mount.
+
+const ARSENAL_ORIGIN = "https://thefantasyarsenal.com";
 
 function isHtmlResponse(res) {
   const ct = res.headers.get("content-type") || "";
   return ct.includes("text/html");
 }
 
-function shouldTreatAsArsenalContext(request) {
+function wantsHtml(request) {
+  const accept = request.headers.get("accept") || "";
+  return accept.includes("text/html");
+}
+
+function isArsenalReferrer(request) {
   const ref = request.headers.get("referer") || "";
-  return ref.includes(`${MOUNT_PREFIX}/`);
+  return ref.includes("/tools") || ref.includes("/tools/app");
 }
 
-function isArsenalRouteRequest(request, url) {
-  // Only rewrite *app route* requests coming from inside the embedded Arsenal.
-  // We intentionally avoid rewriting asset requests (images, css, etc.) that
-  // Ballsville might load while the iframe is visible.
-  const accept = (request.headers.get("accept") || "").toLowerCase();
-  const secFetchDest = (request.headers.get("sec-fetch-dest") || "").toLowerCase();
+function rewriteArsenalHtml(html) {
+  // 1) Rewrite hardcoded Next script/link paths ONLY when they start at root "/_next/".
+  // Avoid double-rewriting anything already under "/tools/app/_next/".
+  html = html.replace(/(["'(])\/_next\//g, '$1/tools/app/_next/');
 
-  // Next/React Server Components fetches commonly include _rsc.
-  if (url.searchParams.has("_rsc")) return true;
-  // Document navigations.
-  if (secFetchDest === "document") return true;
-  if (accept.includes("text/html")) return true;
-  // RSC payloads.
-  if (accept.includes("text/x-component")) return true;
-
-  return false;
-}
-
-function rewriteHtmlToMount(html) {
-  // 1) /_next assets
-  html = html.replace(/"\/_next\//g, `"${MOUNT_PREFIX}/_next/`);
-  html = html.replace(/'\/_next\//g, `'${MOUNT_PREFIX}/_next/`);
-
-  // 2) Absolute URLs in common attributes
-  html = html.replace(/(href|src|action)="\/(?!tools\/app)([^"]*)"/g, `$1="${MOUNT_PREFIX}/$2"`);
-  html = html.replace(/(href|src|action)='\/(?!tools\/app)([^']*)'/g, `$1='${MOUNT_PREFIX}/$2'`);
-
-  // 3) fetch("/..." ) style
-  html = html.replace(/fetch\("\/(?!tools\/app)([^"]*)"/g, `fetch("${MOUNT_PREFIX}/$1"`);
-  html = html.replace(/fetch\('\/(?!tools\/app)([^']*)'/g, `fetch('${MOUNT_PREFIX}/$1'`);
+  // 2) Critical: fix Next's runtime publicPath for dynamic chunks.
+  // If assetPrefix is empty, Next will request chunks from /_next/... (Ballsville root) and 404.
+  // Setting assetPrefix to /tools/app makes chunk loading request /tools/app/_next/... instead.
+  html = html.replace(/"assetPrefix"\s*:\s*""/g, '"assetPrefix":"/tools/app"');
 
   return html;
 }
 
-async function proxyToArsenal(request, pathAfterMount) {
-  const url = new URL(request.url);
-  const upstreamUrl = new URL(pathAfterMount + url.search, ARSENAL_ORIGIN);
+async function proxyToArsenal(request, pathAndQuery) {
+  const upstreamUrl = new URL(pathAndQuery, ARSENAL_ORIGIN);
 
-  // Clone headers, but DO NOT set reserved headers like Host.
+  // Clone headers but DO NOT set restricted headers like Host.
   const headers = new Headers(request.headers);
+  headers.delete("cookie"); // don't leak Ballsville cookies
 
-  // Prevent cookie leakage between properties.
-  headers.delete("cookie");
-
-  const init = {
+  const upstream = await fetch(upstreamUrl.toString(), {
     method: request.method,
     headers,
+    body:
+      request.method === "GET" || request.method === "HEAD"
+        ? undefined
+        : await request.arrayBuffer(),
     redirect: "manual",
-  };
-
-  if (request.method !== "GET" && request.method !== "HEAD") {
-    init.body = request.body;
-  }
-
-  const upstreamRes = await fetch(upstreamUrl.toString(), init);
-
-  if (isHtmlResponse(upstreamRes)) {
-    const text = await upstreamRes.text();
-    const rewritten = rewriteHtmlToMount(text);
-
-    const outHeaders = new Headers(upstreamRes.headers);
-    outHeaders.delete("content-length");
-
-    return new Response(rewritten, {
-      status: upstreamRes.status,
-      statusText: upstreamRes.statusText,
-      headers: outHeaders,
-    });
-  }
-
-  return new Response(upstreamRes.body, {
-    status: upstreamRes.status,
-    statusText: upstreamRes.statusText,
-    headers: upstreamRes.headers,
   });
+
+  const outHeaders = new Headers(upstream.headers);
+
+  if (isHtmlResponse(upstream)) {
+    const html = await upstream.text();
+    const rewritten = rewriteArsenalHtml(html);
+    outHeaders.delete("content-encoding");
+    outHeaders.delete("content-length");
+    return new Response(rewritten, { status: upstream.status, headers: outHeaders });
+  }
+
+  return new Response(upstream.body, { status: upstream.status, headers: outHeaders });
 }
 
 export async function onRequest(context) {
   const { request } = context;
+  const url = new URL(request.url);
 
-  try {
-    const url = new URL(request.url);
-    const path = url.pathname;
-
-    // 1) Arsenal mounted path
-    if (path === MOUNT_PREFIX || path.startsWith(MOUNT_PREFIX + "/")) {
-      const after = path.slice(MOUNT_PREFIX.length) || "/";
-      return await proxyToArsenal(request, after);
-    }
-
-    // 2) Root-ish requests triggered by Arsenal context
-    if (
-      shouldTreatAsArsenalContext(request) &&
-      isArsenalRouteRequest(request, url) &&
-      !path.startsWith("/_next/") &&
-      !path.startsWith("/api/") &&
-      !path.startsWith("/r2/") &&
-      !path.startsWith("/admin") &&
-      !path.startsWith("/tools")
-    ) {
-      const redirectTo = `${MOUNT_PREFIX}${path}${url.search}`;
-      return Response.redirect(redirectTo, 302);
-    }
-
-    // 3) Everything else: normal Ballsville
-    return context.next();
-  } catch (err) {
-    // Fail open to Ballsville if the proxy breaks.
-    try {
-      return context.next();
-    } catch {
-      return new Response("Tools proxy error", { status: 502 });
-    }
+  // 1) Hard mount: EVERYTHING under /tools/app/* is Arsenal.
+  if (url.pathname === "/tools/app" || url.pathname.startsWith("/tools/app/")) {
+    const pathAfter = url.pathname.replace(/^\/tools\/app/, "") || "/";
+    return proxyToArsenal(request, pathAfter + (url.search || ""));
   }
+
+  // 2) Special case: Next chunk requests often do NOT include Referer.
+  // Serve Ballsville's own /_next assets if present, otherwise fall back to Arsenal.
+  if (url.pathname.startsWith("/_next/")) {
+    const res = await context.next();
+    if (res && res.status !== 404) return res;
+    return proxyToArsenal(request, url.pathname + (url.search || ""));
+  }
+
+  // 3) Normal: try Ballsville first.
+  const res = await context.next();
+  if (res && res.status !== 404) return res;
+
+  // 4) Ballsville returned 404. Decide if this should be handled by Arsenal.
+  // - RSC requests (?_rsc=...) must be proxied (redirect would break streaming).
+  // - Document navigations from the embedded Arsenal context should redirect into /tools/app/...
+  // - Static assets/data requested from the embedded Arsenal context should be proxied.
+
+  const isRsc = url.searchParams.has("_rsc");
+  if (isRsc) {
+    return proxyToArsenal(request, url.pathname + (url.search || ""));
+  }
+
+  if (isArsenalReferrer(request)) {
+    if (wantsHtml(request)) {
+      return Response.redirect(`/tools/app${url.pathname}${url.search || ""}`, 302);
+    }
+    return proxyToArsenal(request, url.pathname + (url.search || ""));
+  }
+
+  // 5) Otherwise, keep the 404 from Ballsville.
+  return res;
 }
