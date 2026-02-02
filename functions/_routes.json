@@ -1,5 +1,5 @@
 {
   "version": 1,
-  "include": ["/tools/*"],
+  "include": ["/tools*", "/tools/*", "/_next/*"],
   "exclude": []
 }
