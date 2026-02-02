@@ -141,8 +141,23 @@ export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedde
           .sort((a, b) => Number(a?.league_order ?? 0) - Number(b?.league_order ?? 0));
 
         const activeCount = legionLeagues.filter((x) => x?.is_active !== false).length;
-        // Gauntlet schema uses legion_spots (not open_spots)
-        const openSpots = fmtSpots(r?.legion_spots);
+
+        const openSpotsFromRows = legionLeagues
+          .filter((x) => x?.is_active !== false && !x?.notReady)
+          .reduce((sum, x) => sum + (Number(x?.open_teams ?? x?.openTeams ?? x?.spots_available) || 0), 0);
+
+        const openSpots = fmtSpots(r?.legion_spots) ?? fmtSpots(openSpotsFromRows);
+
+        const derivedStatus = (() => {
+          const labels = legionLeagues
+            .filter((x) => x?.is_active !== false && !x?.notReady)
+            .map((x) => String(x?.league_status || "").toUpperCase());
+          if (!labels.length) return String(r?.legion_status || "TBD").toUpperCase();
+          if (labels.includes("DRAFTING")) return "DRAFTING";
+          if (labels.every((x) => x === "FULL")) return "FULL";
+          if (labels.includes("FILLING")) return "FILLING";
+          return "TBD";
+        })();
 
         return {
           ...r,
@@ -150,6 +165,7 @@ export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedde
           leagues: legionLeagues,
           activeCount,
           openSpots,
+          legion_status: derivedStatus,
         };
       })
       .sort((a, b) => Number(a?.legion_order ?? 0) - Number(b?.legion_order ?? 0));
@@ -185,11 +201,18 @@ export default function GauntletLegionsClient({ season = CURRENT_SEASON, embedde
               </span>
             }
             metaRight={
-              l.activeCount ? (
-                <span className="inline-flex items-center rounded-full border border-subtle bg-card-subtle px-2.5 py-1 text-xs font-semibold text-fg">
-                  {l.activeCount} leagues
-                </span>
-              ) : null
+              <span className="inline-flex items-center gap-2">
+                {l.openSpots != null ? (
+                  <span className="inline-flex items-center rounded-full border border-subtle bg-card-subtle px-2.5 py-1 text-xs font-semibold text-fg">
+                    Open: {l.openSpots}
+                  </span>
+                ) : null}
+                {l.activeCount ? (
+                  <span className="inline-flex items-center rounded-full border border-subtle bg-card-subtle px-2.5 py-1 text-xs font-semibold text-fg">
+                    {l.activeCount} leagues
+                  </span>
+                ) : null}
+              </span>
             }
             footerText="View Legion"
           />

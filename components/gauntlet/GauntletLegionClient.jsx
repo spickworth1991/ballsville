@@ -44,6 +44,24 @@ function resolveImageSrc({ imagePath, imageKey, updatedAt, version }) {
 function buildIndex(rows) {
   const active = Array.isArray(rows) ? rows.filter((r) => r && r.is_active !== false) : [];
 
+  const normalizeSleeperStatus = (raw) => {
+    const s = safeStr(raw).trim().toLowerCase();
+    if (s === "pre_draft" || s === "predraft" || s === "pre-draft") return "predraft";
+    if (s === "drafting") return "drafting";
+    if (s === "in_season" || s === "inseason" || s === "in-season") return "inseason";
+    if (s === "complete") return "complete";
+    return s || "predraft";
+  };
+
+  const derivedStatus = (r) => {
+    if (r?.notReady) return "TBD";
+    const open = Number(r?.open_teams ?? r?.openTeams ?? r?.spots_available);
+    const s = normalizeSleeperStatus(r?.sleeper_status || r?.sleeperStatus || "");
+    if (s === "drafting") return "DRAFTING";
+    if (Number.isFinite(open) && open <= 0) return "FULL";
+    return "FILLING";
+  };
+
   const headers = active
     .filter((r) => r.is_legion_header)
     .map((r, i) => ({
@@ -64,13 +82,23 @@ function buildIndex(rows) {
     .forEach((r, i) => {
       const slug = slugify(r.legion_slug);
       const arr = leaguesByLegion.get(slug) || [];
+      const totalTeams = Number(r.total_teams ?? r.totalTeams);
+      const filledTeams = Number(r.filled_teams ?? r.filledTeams);
+      const openTeams = Number(r.open_teams ?? r.openTeams);
+      const hasCounts = Number.isFinite(totalTeams) && totalTeams > 0 && Number.isFinite(filledTeams);
+      const status = safeStr(r.league_status).trim() || derivedStatus(r);
       arr.push({
         idx: i,
         legion_slug: slug,
         league_order: Number.isFinite(Number(r.league_order)) ? Number(r.league_order) : 999,
         league_name: safeStr(r.league_name).trim(),
         league_url: safeStr(r.league_url || ""),
-        league_status: safeStr(r.league_status || "TBD"),
+        league_status: status,
+        sleeper_status: normalizeSleeperStatus(r.sleeper_status || r.sleeperStatus || ""),
+        notReady: Boolean(r.notReady),
+        totalTeams: Number.isFinite(totalTeams) ? totalTeams : null,
+        filledTeams: hasCounts ? filledTeams : null,
+        openTeams: Number.isFinite(openTeams) ? openTeams : (hasCounts ? Math.max(0, totalTeams - filledTeams) : null),
         league_image_key: safeStr(r.league_image_key || ""),
         league_image_path: safeStr(r.league_image_path || ""),
       });
@@ -163,6 +191,23 @@ export default function GauntletLegionClient({
   }
 
   const title = titleOverride || header.legion_name || "Legion";
+  const computedLegionSpots =
+    header.legion_spots != null
+      ? header.legion_spots
+      : leagues
+          .filter((l) => l && !l.notReady)
+          .reduce((sum, l) => sum + (Number.isFinite(Number(l.openTeams)) ? Number(l.openTeams) : 0), 0);
+
+  const computedLegionStatus = (() => {
+    const labels = (Array.isArray(leagues) ? leagues : [])
+      .filter((l) => l && !l.notReady)
+      .map((l) => safeStr(l.league_status).trim().toUpperCase() || "TBD");
+    if (!labels.length) return safeStr(header.legion_status || "TBD");
+    if (labels.includes("DRAFTING")) return "DRAFTING";
+    if (labels.every((x) => x === "FULL")) return "FULL";
+    if (labels.includes("FILLING")) return "FILLING";
+    return "TBD";
+  })();
   const legionHeaderImg = resolveImageSrc({
     imagePath: header.legion_image_path,
     imageKey: header.legion_image_key,
@@ -178,13 +223,13 @@ export default function GauntletLegionClient({
             <div className="flex flex-wrap items-center gap-3">
               <h2 className="text-xl font-semibold text-white">{title}</h2>
               <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/80">
-                {header.legion_status}
+                {computedLegionStatus}
               </span>
-              {header.legion_spots != null && (
+              {computedLegionSpots != null ? (
                 <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/80">
-                  Spots: {header.legion_spots}
+                  Open spots: {computedLegionSpots}
                 </span>
-              )}
+              ) : null}
             </div>
           </div>
 

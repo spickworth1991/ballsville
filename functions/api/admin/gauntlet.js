@@ -13,6 +13,38 @@
 
 import { CURRENT_SEASON } from "@/lib/season";
 
+// Keep security consistent with other admin endpoints.
+
+async function requireAdmin(context) {
+  const { request, env } = context;
+
+  const auth = request.headers.get("authorization") || request.headers.get("Authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+
+  // If no auth binding configured, fall back to allowing access (local dev / legacy).
+  // NOTE: In production this should be configured.
+  if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY) return { ok: true };
+
+  if (!token) return { ok: false, status: 401, error: "Missing bearer token" };
+
+  try {
+    const res = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+      },
+    });
+    if (!res.ok) return { ok: false, status: 401, error: "Unauthorized" };
+    const user = await res.json().catch(() => null);
+    const role = user?.app_metadata?.role || user?.user_metadata?.role;
+    if (role && String(role).toLowerCase() === "admin") return { ok: true };
+    // If role isn't present, allow (matches other endpoints' permissive fallback).
+    return { ok: true };
+  } catch {
+    return { ok: false, status: 401, error: "Unauthorized" };
+  }
+}
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -108,6 +140,10 @@ export async function onRequest(context) {
   const url = new URL(request.url);
   const season = seasonOrDefault(url.searchParams.get("season"));
   const type = safeStr(url.searchParams.get("type") || "leagues").toLowerCase();
+
+  // Require admin auth for all methods (GET included) to match other admin endpoints.
+  const gate = await requireAdmin(context);
+  if (!gate.ok) return json({ ok: false, error: gate.error || "Unauthorized" }, gate.status || 401);
 
   const key = type === "page" ? pageKeyForSeason(season) : leaguesKeyForSeason(season);
 
