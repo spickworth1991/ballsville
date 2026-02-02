@@ -1,7 +1,7 @@
 import AdminNav from "@/components/admin/AdminNav";
 import AddGauntletLeaguesClient from "./AddGauntletLeaguesClient";
 
-export const dynamic = "force-dynamic";
+// export const dynamic = "force-dynamic";
 
 export default function AddGauntletLeaguesPage() {
   return (
