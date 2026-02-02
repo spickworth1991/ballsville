@@ -65,9 +65,9 @@ export default function ToolsPage() {
             }}
             className="absolute inset-0 w-full h-full object-cover opacity-70"
           >
-            <source src="/media/arsenal-partnership.mp4" type="video/mp4" />
+            <source src="space.mp4" type="video/mp4" />
           </video>
-
+{/* src="/media/arsenal-partnership.mp4"  */}
           <div className="relative z-10 text-center px-6">
             <div className="text-sm tracking-widest opacity-80 mb-3">
               IN PARTNERSHIP WITH

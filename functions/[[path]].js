@@ -18,8 +18,19 @@ function wantsHtml(request) {
 }
 
 function isArsenalContext(request) {
+  // Prefer referer when available (most subresource loads inside the iframe)
   const ref = request.headers.get("referer") || "";
-  return ref.includes("/tools/app");
+  if (ref.includes("/tools/app")) return true;
+
+  // Next.js App Router often fetches server components/RSC with very little context.
+  // In practice, these calls include an _rsc query param and/or special headers.
+  // Treat those as Arsenal-context so in-app navigation doesn't fall through to Ballsville 404.
+  const rscHeader = request.headers.get("rsc");
+  const nextRouterState = request.headers.get("next-router-state-tree");
+  const nextUrl = request.headers.get("next-url");
+  if (rscHeader === "1" || !!nextRouterState || !!nextUrl) return true;
+
+  return false;
 }
 
 function rewriteArsenalHtml(html) {
@@ -78,24 +89,68 @@ export async function onRequest(context) {
     return proxyToArsenal(request, url.pathname + (url.search || ""));
   }
 
-  // 3) Normal: try Ballsville first.
-  const res = await context.next();
-  if (res && res.status !== 404) return res;
+  // 3) Determine whether this request is *likely* for the embedded Arsenal app.
+  // We must do this BEFORE checking the Ballsville response status because Cloudflare
+  // static exports are commonly configured with an SPA fallback that returns **200 HTML**
+  // for missing files (which would otherwise be 404). When Arsenal asks for JSON/assets
+  // and Ballsville serves an HTML shell, the client sees "Unexpected token '<'".
+  //
+  // NOTE: RSC / router fetches sometimes omit the Referer header (depending on the app's
+  // referrer policy), so we also treat certain known tool routes as "Arsenal".
+  const ARSENAL_TOOL_ROUTES = [
+    "/trade",
+    "/player-stock",
+    "/player-availability",
+    "/power-rankings",
+    "/sos",
+    "/lineup",
+    "/adp",
+    "/draft-compare",
+  ];
 
-  // 4) Ballsville returned 404.
-  // If the request originates from inside the embedded Arsenal context,
-  // route it to Arsenal appropriately so Arsenal assets/JSON/avatar routes load from Arsenal.
-  const inArsenal = isArsenalContext(request);
-  if (inArsenal) {
-    const isRsc = url.searchParams.has("_rsc");
-    const looksLikeAsset =
-      ASSET_EXT_RE.test(url.pathname) ||
-      url.pathname.startsWith("/icons/") ||
-      url.pathname.startsWith("/images/") ||
-      url.pathname.startsWith("/img/") ||
-      url.pathname.startsWith("/assets/") ||
-      url.pathname.startsWith("/data/") ||
-      url.pathname.startsWith("/api/");
+  const inArsenalCandidate =
+    isArsenalContext(request) ||
+    url.searchParams.has("_rsc") ||
+    ARSENAL_TOOL_ROUTES.some((p) => url.pathname === p || url.pathname.startsWith(`${p}/`));
+
+  // These paths are known to be Arsenal-only in your integration and are safe to proxy
+  // even when referer is missing.
+  const ARSENAL_ONLY_PREFIXES = [
+    "/icons/",
+    "/images/",
+    "/img/",
+    "/assets/",
+    "/data/",
+    "/api/",
+  ];
+  const ARSENAL_ONLY_FILES = new Set([
+    "/fantasycalc_cache.json",
+    "/projections.json",
+    "/values.json",
+  ]);
+
+  const looksLikeAsset =
+    ASSET_EXT_RE.test(url.pathname) ||
+    ARSENAL_ONLY_PREFIXES.some((p) => url.pathname.startsWith(p)) ||
+    ARSENAL_ONLY_FILES.has(url.pathname);
+
+  // 4) Normal: try Ballsville first.
+  const res = await context.next();
+
+  // If Ballsville served something real (non-404), we can usually return it.
+  // BUT if this request looks like an Arsenal JSON/asset navigation and Ballsville
+  // responded with HTML (common with SPA fallbacks), treat it as missing and proxy.
+  const ct = (res?.headers?.get("content-type") || "").toLowerCase();
+  const servedHtmlShell = res && res.status === 200 && ct.includes("text/html");
+  const shouldTreatAsMissing = servedHtmlShell && (looksLikeAsset || url.searchParams.has("_rsc"));
+
+  if (res && res.status !== 404 && !shouldTreatAsMissing) return res;
+
+  // 5) Ballsville missing (404) or returned an HTML shell for an Arsenal JSON/asset.
+  const inArsenal = inArsenalCandidate;
+
+  if (inArsenal || looksLikeAsset) {
+    const isRsc = url.searchParams.has("_rsc") || request.headers.get("rsc") === "1";
 
     // RSC requests must be proxied (redirect breaks streaming)
     if (isRsc) {
