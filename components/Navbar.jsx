@@ -81,7 +81,29 @@ const NAV_ITEMS = [
     ],
   },
 
-  { id: "adp", name: "ADP", to: "/draft-compare", icon: FiLayers, isNew: true },
+
+
+  {
+    id: "tools",
+    name: "Tools",
+    icon: FiBarChart2,
+    isNew: true,
+    children: [
+      {
+        id: "The-Fantasy-Arsenal",
+        name: "The Fantasy Arsenal",
+        to: "/tools",
+      },
+
+      {
+        id: "adp",
+        name: "ADP",
+        to: "/draft-compare",
+      },
+
+    ],
+  },
+
 
   {
     id: "joe-street-journal",
