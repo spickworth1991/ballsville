@@ -4,6 +4,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { siteConfig } from "@/app/config/siteConfig";
 import BackgroundVideo from "@/components/BackgroundVideo";
+import ErudaDebug from "@/components/ErudaDebug";
 
 
 export const metadata = {
@@ -124,7 +125,7 @@ export default function RootLayout({ children }) {
 
       {/* Body uses theme tokens only; cosmic bg now handled by video */}
       <body className="bg-bg text-fg overflow-x-hidden">
-        {/* 🔥 Full-screen video background */}
+        <ErudaDebug />
         <BackgroundVideo src="/space.mp4" start={2} end={43} />
         <Navbar />
         <div className="page-bg">{children}</div>
