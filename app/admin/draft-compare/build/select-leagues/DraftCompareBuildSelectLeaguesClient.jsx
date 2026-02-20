@@ -79,6 +79,10 @@ export default function DraftCompareBuildSelectLeaguesClient() {
   const [err, setErr] = useState("");
   const [leagues, setLeagues] = useState([]);
 
+  // Drafts are fetched lazily per-league to avoid Cloudflare subrequest caps
+  // (some users have 50+ leagues in a season).
+  const [draftsByLeague, setDraftsByLeague] = useState(() => ({})); // leagueId -> { loading, drafts, error }
+
   const [selected, setSelected] = useState(() => new Set()); // key leagueId::draftId
   const [building, setBuilding] = useState(false);
   const [buildMsg, setBuildMsg] = useState("");
@@ -102,10 +106,11 @@ export default function DraftCompareBuildSelectLeaguesClient() {
       try {
         const url = `/api/sleeper/leagues?username=${encodeURIComponent(username)}&season=${encodeURIComponent(
           String(sleeperSeason)
-        )}`;
+        )}&includeDrafts=0`;
         const data = await apiGet(url);
         if (cancelled) return;
         const list = Array.isArray(data?.leagues) ? data.leagues : [];
+
         // Sort: most rosters first, then name
         list.sort((a, b) => {
           const ta =
@@ -119,7 +124,48 @@ export default function DraftCompareBuildSelectLeaguesClient() {
           if (tb !== ta) return tb - ta;
           return safeStr(a?.name).localeCompare(safeStr(b?.name));
         });
+
         setLeagues(list);
+
+        // Prime draft placeholders so UI can show a loading state per league.
+        setDraftsByLeague(() => {
+          const next = {};
+          for (const l of list) {
+            const leagueId = safeStr(l?.league_id).trim();
+            if (!leagueId) continue;
+            next[leagueId] = { loading: true, drafts: [], error: "" };
+          }
+          return next;
+        });
+
+        // Fetch drafts per-league in a controlled concurrency pool (client-side).
+        // This avoids Cloudflare subrequest limits and also avoids spiking Sleeper.
+        const ids = list.map((l) => safeStr(l?.league_id).trim()).filter(Boolean);
+        const CONCURRENCY = 6;
+        let idx = 0;
+        async function worker() {
+          while (!cancelled && idx < ids.length) {
+            const leagueId = ids[idx++];
+            try {
+              const d = await apiGet(`/api/sleeper/drafts?leagueId=${encodeURIComponent(leagueId)}`);
+              if (cancelled) return;
+              const drafts = Array.isArray(d?.drafts) ? d.drafts : [];
+              setDraftsByLeague((prev) => ({
+                ...prev,
+                [leagueId]: { loading: false, drafts, error: "" },
+              }));
+            } catch (e) {
+              if (cancelled) return;
+              setDraftsByLeague((prev) => ({
+                ...prev,
+                [leagueId]: { loading: false, drafts: [], error: String(e?.message || e) },
+              }));
+            }
+          }
+        }
+
+        // Fire-and-forget; we don't want to block the page on draft fetching.
+        void Promise.all(Array.from({ length: Math.min(CONCURRENCY, ids.length) }, () => worker()));
       } catch (e) {
         if (cancelled) return;
         setErr(String(e?.message || e));
@@ -147,7 +193,8 @@ export default function DraftCompareBuildSelectLeaguesClient() {
     for (const l of leagues) {
       const leagueId = safeStr(l?.league_id).trim();
       const leagueName = safeStr(l?.name).trim();
-      const drafts = Array.isArray(l?.drafts) ? l.drafts : [];
+      const drafts = Array.isArray(draftsByLeague?.[leagueId]?.drafts) ? draftsByLeague[leagueId].drafts : [];
+
       for (const d of drafts) {
         const draftId = safeStr(d?.draft_id).trim();
         if (!leagueId || !draftId) continue;
@@ -162,6 +209,7 @@ export default function DraftCompareBuildSelectLeaguesClient() {
           status: safeStr(d?.status).trim(),
         });
       }
+
       // If Sleeper returned no drafts (rare), still let user select "primary" via leagueId only.
       if (leagueId && (!drafts || drafts.length === 0)) {
         const key = leagueId;
@@ -303,8 +351,9 @@ export default function DraftCompareBuildSelectLeaguesClient() {
               ? leagues.map((l) => {
                   const leagueId = safeStr(l?.league_id).trim();
                   const leagueName = safeStr(l?.name).trim() || leagueId;
-                  const drafts = Array.isArray(l?.drafts) ? l.drafts : [];
 
+                  const draftsState = draftsByLeague?.[leagueId] || { loading: true, drafts: [], error: "" };
+                  const drafts = Array.isArray(draftsState?.drafts) ? draftsState.drafts : [];
                   const hasDrafts = drafts.length > 0;
 
                   return (
@@ -321,6 +370,18 @@ export default function DraftCompareBuildSelectLeaguesClient() {
                       </div>
 
                       <div className="mt-4 grid gap-2">
+                        {draftsState.loading ? (
+                          <div className="rounded-xl border border-border bg-background/10 p-3 text-xs text-muted">
+                            Loading drafts…
+                          </div>
+                        ) : null}
+
+                        {!draftsState.loading && draftsState.error ? (
+                          <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
+                            Failed to load drafts for this league. You can still select “primary draft (auto)”.
+                          </div>
+                        ) : null}
+
                         {hasDrafts
                           ? drafts
                               .slice()
@@ -375,7 +436,13 @@ export default function DraftCompareBuildSelectLeaguesClient() {
                                   <input type="checkbox" checked={selected.has(leagueId)} onChange={() => toggleKey(leagueId)} />
                                   <div>
                                     <div className="text-sm font-semibold text-primary">Use primary draft (auto)</div>
-                                    <div className="mt-1 text-xs text-muted">No drafts list returned by Sleeper for this league.</div>
+                                    <div className="mt-1 text-xs text-muted">
+                                      {draftsState.loading
+                                        ? "Drafts are still loading…"
+                                        : draftsState.error
+                                          ? "Drafts failed to load. Primary draft selection still works."
+                                          : "No drafts list returned by Sleeper for this league."}
+                                    </div>
                                   </div>
                                 </div>
                                 <div className="text-xs text-muted">{leagueId}</div>
