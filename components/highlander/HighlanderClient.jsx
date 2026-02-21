@@ -241,13 +241,16 @@ export default function HighlanderClient({ season }) {
   return (
     <div className="space-y-1 sm:space-y-1">
       {/* HERO */}
+      
       <section className="section pt-0">
         <div className="container-site">
-          <div className="relative overflow-hidden rounded-3xl border border-border/60 bg-card-trans backdrop-blur-sm shadow-xl shadow-black/40">
-            <div className="pointer-events-none absolute inset-0">
-              <div className="absolute -top-24 -left-24 h-64 w-64 rounded-full bg-cyan-400/10 blur-3xl" />
-              <div className="absolute -bottom-24 -right-24 h-64 w-64 rounded-full bg-amber-400/10 blur-3xl" />
-              <div className="absolute inset-0 bg-gradient-to-b from-white/5 via-transparent to-black/25" />
+          <div className="relative overflow-hidden rounded-3xl border border-border/70 bg-card-surface shadow-2xl shadow-black/40 px-6 py-8 sm:px-10 sm:py-10">
+            <div className="pointer-events-none absolute inset-0 mix-blend-screen">
+              <div className="opacity-50 absolute -top-24 -left-5 h-56 w-56 rounded-full bg-green-500/50 blur-3xl" />
+              <div className="opacity-50 absolute -top-24 -right-5 h-56 w-56 rounded-full bg-purple-500/50 blur-3xl" />
+              <div className="opacity-65 absolute -bottom-24 -right-5 h-56 w-64 rounded-full bg-orange-400/40 blur-3xl" />
+              <div className="opacity-55 absolute -bottom-24 -left-7 h-56 w-56 rounded-full bg-red-500/50 blur-3xl" />
+              <div className="opacity-30 absolute left-1/2 top-1/2 h-56 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-500/50 blur-3xl" />
             </div>
 
             <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-6 p-6 sm:p-9">
