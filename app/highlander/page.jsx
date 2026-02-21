@@ -9,13 +9,13 @@ const pageUrl = `${siteConfig.domain}/highlander`;
 export const metadata = {
   title: pageTitle,
   description:
-    "18-team survival Best Ball: lowest score each week is eliminated. Survive the blade — there can only be one.",
+    "10x Guillotine leagues for 2026. Survive Weeks 1–14, then wager in Weeks 15–17 for the $500 Highlander crown.",
   alternates: { canonical: pageUrl },
   openGraph: {
     url: pageUrl,
     title: pageTitle,
     description:
-      "18-team survival Best Ball: lowest score each week is eliminated. Survive the blade — there can only be one.",
+      "10x Guillotine leagues for 2026. Survive Weeks 1–14, then wager in Weeks 15–17 for the $500 Highlander crown.",
     images: [{ url: siteConfig.ogImage, width: 1200, height: 630 }],
   },
 };

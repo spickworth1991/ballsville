@@ -20,6 +20,7 @@ body {
   overflow-x: visible;
 }
 
+html { scroll-behavior: smooth; }
 :root {
   --bg-video-dim-top: 0.05;
   --bg-video-dim-bot: 0.15;
