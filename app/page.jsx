@@ -248,7 +248,7 @@ export default function Page() {
                   Highlander
                 </h3>
                 <p className="mt-2 text-sm text-muted">
-                  10x Guillotine leagues. Survive Weeks 1–14, then wager in Weeks 15–17 for $500.
+                  10x Guillotine leagues. Survive Weeks 1–14, then wager in Weeks 15–17 for BIG payouts.
                 </p>
               </div>
             </Link>
