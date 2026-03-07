@@ -1,5 +1,5 @@
 // functions/api/leaderboards/rebuild.js
-
+// https://ballsville.pages.dev/api/leaderboards/rebuild?force=1 
 /**
  * Cloudflare Pages Function that triggers the GitHub Actions workflow
  * to rebuild/upload leaderboards JSONs.
