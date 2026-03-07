@@ -173,6 +173,40 @@ function computeFillCounts(league, rosters) {
   return { totalTeams, filledTeams, openTeams };
 }
 
+
+function keyToBase(key) {
+  return String(key || "").trim().replace(/^\/+/, "").replace(/\.[a-z0-9]{2,5}$/i, "");
+}
+
+function extFromKey(key) {
+  const m = String(key || "").trim().replace(/^\/+/, "").match(/\.([a-z0-9]{2,5})$/i);
+  return (m?.[1] || "").toLowerCase();
+}
+
+function gauntletLegionBaseKey(season, legionCode) {
+  return `media/gauntlet/legions/${season}/${legionCode}`;
+}
+
+function gauntletLeagueBaseKey(season, legionCode, leagueOrder) {
+  return `media/gauntlet/leagues/${season}/${legionCode}/${leagueOrder}`;
+}
+
+async function moveMedia(moves, season) {
+  if (!Array.isArray(moves) || !moves.length) return;
+  const token = await getAccessToken();
+  const res = await fetch("/api/admin/upload", {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ moves, season, manifestSection: "gauntlet" }),
+  });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok || out?.ok === false) throw new Error(out?.error || `Media move failed (${res.status})`);
+  return out;
+}
+
 function normalizeRow(r, idx = 0, season = DEFAULT_SEASON) {
   const isHeader = Boolean(r?.is_legion_header);
 
@@ -376,9 +410,35 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
     setSaving(true);
     try {
       const payloadRows = rows.map((r) => ({ ...r }));
-      // Strip transient / internal fields
+      const mediaMoves = [];
       for (const r of payloadRows) {
+        if (r.is_legion_header) {
+          const currentKey = safeStr(r.legion_image_key).trim().replace(/^\//, "");
+          const expectedBase = gauntletLegionBaseKey(season, r.legion_slug);
+          if (currentKey && expectedBase) {
+            const currentBase = keyToBase(currentKey);
+            const ext = extFromKey(currentKey);
+            if (ext && currentBase && currentBase !== expectedBase) {
+              mediaMoves.push({ fromKey: currentKey, toBaseKey: expectedBase });
+              r.legion_image_key = `${expectedBase}.${ext}`;
+            }
+          }
+        } else {
+          const currentKey = safeStr(r.league_image_key).trim().replace(/^\//, "");
+          const expectedBase = gauntletLeagueBaseKey(season, r.legion_slug, safeNum(r.league_order, 1));
+          if (currentKey && expectedBase) {
+            const currentBase = keyToBase(currentKey);
+            const ext = extFromKey(currentKey);
+            if (ext && currentBase && currentBase !== expectedBase) {
+              mediaMoves.push({ fromKey: currentKey, toBaseKey: expectedBase });
+              r.league_image_key = `${expectedBase}.${ext}`;
+            }
+          }
+        }
         delete r.__key;
+      }
+      if (mediaMoves.length) {
+        await moveMedia(mediaMoves, season);
       }
       await apiPUT(season, { season, rows: payloadRows, updated_at: nowIso() }, "leagues");
       setInfo("Saved.");

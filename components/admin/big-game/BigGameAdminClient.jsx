@@ -39,6 +39,40 @@ function slugifyTitle(s) {
     .slice(0, 60);
 }
 
+
+function keyToBase(key) {
+  return String(key || "").trim().replace(/^\/+/, "").replace(/\.[a-z0-9]{2,5}$/i, "");
+}
+
+function extFromKey(key) {
+  const m = String(key || "").trim().replace(/^\/+/, "").match(/\.([a-z0-9]{2,5})$/i);
+  return (m?.[1] || "").toLowerCase();
+}
+
+function bigGameDivisionBaseKey(season, divisionSlug) {
+  return `media/biggame/divisions/${season}/${divisionSlug}`;
+}
+
+function bigGameLeagueBaseKey(season, divisionSlug, leagueOrder) {
+  return `media/biggame/leagues/${season}/${divisionSlug}/${leagueOrder}`;
+}
+
+async function moveMedia(moves, season) {
+  if (!Array.isArray(moves) || !moves.length) return;
+  const token = await getAuthToken();
+  const res = await fetch("/api/admin/upload", {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ moves, season, manifestSection: "big-game" }),
+  });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok || out?.ok === false) throw new Error(out?.error || `Media move failed (${res.status})`);
+  return out;
+}
+
 function normalizeLeagueStatus(s) {
   const raw = safeStr(s).trim();
   if (!raw) return "TBD";
@@ -356,11 +390,49 @@ export default function BigGameAdminClient({ initialSeason }) {
   }
 
   async function saveDivisions(nextDivisions) {
+    const normalized = normalizeDivisions(nextDivisions).map((d) => ({
+      ...d,
+      leagues: safeArray(d.leagues).map((l) => ({ ...l })),
+    }));
+
+    const mediaMoves = [];
+    for (const div of normalized) {
+      const divKey = safeStr(div.image_key).trim().replace(/^\//, "");
+      const expectedDivBase = bigGameDivisionBaseKey(season, div.slug);
+      if (divKey && expectedDivBase) {
+        const currentDivBase = keyToBase(divKey);
+        const divExt = extFromKey(divKey);
+        if (divExt && currentDivBase && currentDivBase !== expectedDivBase) {
+          mediaMoves.push({ fromKey: divKey, toBaseKey: expectedDivBase });
+          div.image_key = `${expectedDivBase}.${divExt}`;
+        }
+      }
+
+      div.leagues = safeArray(div.leagues).map((l, idx) => {
+        const nextLeague = { ...l, display_order: safeNum(l.display_order, idx + 1) };
+        const leagueKey = safeStr(nextLeague.league_image_key).trim().replace(/^\//, "");
+        const expectedLeagueBase = bigGameLeagueBaseKey(season, div.slug, nextLeague.display_order);
+        if (leagueKey && expectedLeagueBase) {
+          const currentLeagueBase = keyToBase(leagueKey);
+          const leagueExt = extFromKey(leagueKey);
+          if (leagueExt && currentLeagueBase && currentLeagueBase !== expectedLeagueBase) {
+            mediaMoves.push({ fromKey: leagueKey, toBaseKey: expectedLeagueBase });
+            nextLeague.league_image_key = `${expectedLeagueBase}.${leagueExt}`;
+          }
+        }
+        return nextLeague;
+      });
+    }
+
+    if (mediaMoves.length) {
+      await moveMedia(mediaMoves, season);
+    }
+
     const payload = {
       type: "divisions",
       data: {
         season,
-        divisions: normalizeDivisions(nextDivisions),
+        divisions: normalized,
       },
     };
 

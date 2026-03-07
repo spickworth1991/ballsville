@@ -270,6 +270,33 @@ async function deleteMedia({ keys = [], baseKeys = [] }) {
   return res.json();
 }
 
+async function moveMedia({ moves = [], season, manifestSection = "mini-leagues" }) {
+  const token = await getAccessToken();
+  const res = await fetch("/api/admin/upload", {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ moves, season, manifestSection }),
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
+  return res.json();
+}
+
+function miniDivisionBaseKey(season, divisionCode) {
+  return `media/mini-leagues/divisions/${season}/${divisionCode}`;
+}
+
+function miniLeagueBaseKey(season, divisionCode, leagueOrder) {
+  return `media/mini-leagues/leagues/${season}/${divisionCode}/${leagueOrder}`;
+}
+
+function extFromKey(key) {
+  const m = String(key || "").trim().replace(/^\//, "").match(/\.([a-z0-9]{2,5})$/i);
+  return (m?.[1] || "").toLowerCase();
+}
+
 function keyToBase(key) {
   const k = String(key || "").trim().replace(/^\//, "");
   return k.replace(/\.[a-z0-9]{2,5}$/i, "");
@@ -845,14 +872,60 @@ export default function MiniLeaguesAdminClient() {
       // 2) Leagues
       // Mini-Leagues leagues do NOT support optional manual image uploads.
 
+      // 2b) Move existing division/league images when deterministic paths change due to reordering.
+      const mediaMoves = [];
+      const movedFromBases = new Set();
+
+      nextDivisions = nextDivisions.map((d) => {
+        const nextDiv = { ...d };
+        const divKey = String(nextDiv.imageKey || "").trim().replace(/^\//, "");
+        const expectedDivBase = nextDiv.divisionCode ? miniDivisionBaseKey(season, nextDiv.divisionCode) : "";
+        if (divKey && expectedDivBase) {
+          const currentDivBase = keyToBase(divKey);
+          const divExt = extFromKey(divKey);
+          if (divExt && currentDivBase && currentDivBase !== expectedDivBase) {
+            mediaMoves.push({ fromKey: divKey, toBaseKey: expectedDivBase });
+            movedFromBases.add(currentDivBase);
+            nextDiv.imageKey = `${expectedDivBase}.${divExt}`;
+          }
+        }
+
+        nextDiv.leagues = (Array.isArray(nextDiv.leagues) ? nextDiv.leagues : []).map((l, idx) => {
+          const nextLeague = { ...l };
+          const leagueOrder = Number(nextLeague?.order ?? idx + 1);
+          const leagueKey = String(nextLeague.imageKey || "").trim().replace(/^\//, "");
+          const expectedLeagueBase = nextDiv.divisionCode && Number.isFinite(leagueOrder)
+            ? miniLeagueBaseKey(season, nextDiv.divisionCode, leagueOrder)
+            : "";
+          if (leagueKey && expectedLeagueBase) {
+            const currentLeagueBase = keyToBase(leagueKey);
+            const leagueExt = extFromKey(leagueKey);
+            if (leagueExt && currentLeagueBase && currentLeagueBase !== expectedLeagueBase) {
+              mediaMoves.push({ fromKey: leagueKey, toBaseKey: expectedLeagueBase });
+              movedFromBases.add(currentLeagueBase);
+              nextLeague.imageKey = `${expectedLeagueBase}.${leagueExt}`;
+            }
+          }
+          return nextLeague;
+        });
+
+        return nextDiv;
+      });
+
+      if (mediaMoves.length) {
+        await moveMedia({ moves: mediaMoves, season, manifestSection: "mini-leagues" });
+      }
+
       const deletedKeys = new Set();
       const deletedBaseKeys = new Set();
 
       const addDelete = (k) => {
         const key = String(k || "").trim().replace(/^\//, "");
         if (!key) return;
+        const base = keyToBase(key);
+        if (movedFromBases.has(base)) return;
         deletedKeys.add(key);
-        deletedBaseKeys.add(keyToBase(key));
+        deletedBaseKeys.add(base);
       };
 
       if (baselineSeason === Number(season)) {
