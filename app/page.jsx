@@ -230,16 +230,16 @@ export default function Page() {
               </div>
             </Link>
 
-            {/* <Link
+            <Link
               prefetch={false}
               href="/highlander"
               className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
             >
               <div className="relative w-full aspect-square overflow-hidden bg-card-trans backdrop-blur-sm">
                 <img
-                  src="/photos/biggame-v2.webp"
+                  src="/photos/highlander.png"
                   alt="Highlander elimination best ball"
-                  className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-300"
+                  className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
                   loading="lazy"
                 />
               </div>
@@ -248,12 +248,12 @@ export default function Page() {
                   Highlander
                 </h3>
                 <p className="mt-2 text-sm text-muted">
-                  18-team survival Best Ball — lowest score each week is eliminated.
+                  10x Guillotine leagues. Survive Weeks 1–14, then wager in Weeks 15–17 for BIG payouts.
                 </p>
               </div>
-            </Link> */}
+            </Link>
 
-            <Link
+            {/* <Link
               prefetch={false}
               href="/news"
               className="group rounded-2xl overflow-hidden border border-subtle shadow-sm hover:shadow-lg transition flex flex-col text-left bg-transparent"
@@ -275,7 +275,7 @@ export default function Page() {
                   a chance to win free entries!
                 </p>
               </div>
-            </Link>
+            </Link> */}
           </div>
         </div>
       </ReadableSection>

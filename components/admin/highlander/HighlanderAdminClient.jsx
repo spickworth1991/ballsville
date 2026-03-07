@@ -75,11 +75,18 @@ function normalizeLeagueRow(l, idx) {
   const active = l?.active !== false;
   return {
     id: safeStr(l?.id || uid()),
+    leagueId: safeStr(l?.leagueId || l?.league_id || ""),
+    sleeperUrl: safeStr(l?.sleeperUrl || l?.sleeper_url || ""),
+    avatarId: safeStr(l?.avatarId || l?.avatar_id || ""),
     name: safeStr(l?.name || `League ${idx + 1}`),
     url: safeStr(l?.url || ""),
     status: safeStr(l?.status || "tbd").toLowerCase(),
     active,
-        imageKey: safeStr(l?.imageKey || l?.image_key || ""),
+    imageKey: safeStr(l?.imageKey || l?.image_key || ""),
+    imageUrl: safeStr(l?.imageUrl || l?.image_url || ""),
+    totalTeams: Number.isFinite(Number(l?.totalTeams ?? l?.total_teams)) ? Number(l?.totalTeams ?? l?.total_teams) : 0,
+    filledTeams: Number.isFinite(Number(l?.filledTeams ?? l?.filled_teams)) ? Number(l?.filledTeams ?? l?.filled_teams) : 0,
+    openTeams: Number.isFinite(Number(l?.openTeams ?? l?.open_teams)) ? Number(l?.openTeams ?? l?.open_teams) : 0,
     order: Number.isFinite(order) ? order : idx + 1,
   };
 }
@@ -380,10 +387,6 @@ export default function HighlanderAdminClient() {
                 Refresh
               </button>
             </div>
-            <div className="mt-2 text-xs text-muted">
-              Saves to R2: <span className="font-mono">content/highlander/page_{season}.json</span> and{" "}
-              <span className="font-mono">data/highlander/leagues_{season}.json</span>
-            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -459,7 +462,7 @@ export default function HighlanderAdminClient() {
             <label className="block">
               <div className="text-sm text-muted mb-1">Updates HTML</div>
               <textarea
-                className="textarea w-full min-h-[180px]"
+                className="textarea w-full bg-card-trans min-h-[180px]"
                 value={safeStr(page?.hero?.updatesHtml)}
                 onChange={(e) => setPage((p) => ({ ...p, hero: { ...p.hero, updatesHtml: safeStr(e.target.value) } }))}
               />
@@ -476,10 +479,16 @@ export default function HighlanderAdminClient() {
             <p className="mt-1 text-sm text-muted">Add leagues as you create them in Sleeper.</p>
           </div>
 
-          <button className="btn btn-subtle" onClick={addLeague} disabled={loading || saving}>
-            <FiPlus />
-            Add League
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <a className="btn btn-primary" href={`/admin/highlander/add-leagues?season=${encodeURIComponent(String(season))}`}>
+              <FiPlus />
+              Add from Sleeper
+            </a>
+            <button className="btn btn-subtle" onClick={addLeague} disabled={loading || saving}>
+              <FiPlus />
+              Add Manual
+            </button>
+          </div>
         </div>
 
         {sortedLeagues.length === 0 ? (
@@ -501,13 +510,21 @@ export default function HighlanderAdminClient() {
                       />
                     </div>
                     <div className="md:col-span-5">
-                      <div className="text-xs text-muted mb-1">Sleeper URL</div>
+                      <div className="text-xs text-muted mb-1">Sleeper Invite URL</div>
                       <input
                         className="input w-full"
                         value={l.url}
                         onChange={(e) => updateLeague(l.id, { url: safeStr(e.target.value) })}
                         placeholder="https://sleeper.com/i/..."
                       />
+                      {l.sleeperUrl ? (
+                        <div className="mt-1 text-[11px] text-muted break-all">
+                          Sleeper league: <a href={l.sleeperUrl} target="_blank" rel="noreferrer" className="text-accent underline">{l.sleeperUrl}</a>
+                        </div>
+                      ) : null}
+                      {l.leagueId ? (
+                        <div className="mt-1 text-[11px] text-muted">League ID: <span className="font-mono text-white/70">{l.leagueId}</span></div>
+                      ) : null}
                     </div>
                     <div className="md:col-span-12">
                       <div className="text-xs text-muted mb-1">League Image</div>
@@ -540,6 +557,15 @@ export default function HighlanderAdminClient() {
                           </div>
                         </div>
                       </div>
+                    </div>
+                    <div className="md:col-span-12">
+                      {(Number(l.totalTeams) > 0 || Number(l.filledTeams) > 0 || Number(l.openTeams) >= 0) ? (
+                        <div className="rounded-xl border border-subtle bg-black/20 px-3 py-2 text-xs text-muted">
+                          Fill counts: <span className="text-white/80">{Math.max(0, Number(l.filledTeams) || 0)}/{Math.max(0, Number(l.totalTeams) || 0)}</span>
+                          {Number.isFinite(Number(l.openTeams)) ? <span className="text-white/45"> • {Math.max(0, Number(l.openTeams) || 0)} open</span> : null}
+                          {l.avatarId ? <span className="text-white/45"> • Avatar ID: {l.avatarId}</span> : null}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="md:col-span-2">
                       <div className="text-xs text-muted mb-1">Status</div>
@@ -588,15 +614,6 @@ export default function HighlanderAdminClient() {
             ))}
           </div>
         )}
-      </div>
-
-      <div className="rounded-2xl border border-subtle bg-card-trans backdrop-blur-sm p-5 sm:p-6">
-        <div className="text-xs tracking-widest text-muted uppercase">Reminder</div>
-        <div className="mt-2 text-sm text-muted leading-relaxed">
-          Highlander is <span className="text-text font-semibold">18 teams</span>, <span className="text-text font-semibold">Best Ball</span>, and
-          eliminates the lowest score weekly. Post leagues early with status <span className="text-text font-semibold">FILLING</span>, then flip to{" "}
-          <span className="text-text font-semibold">DRAFTING</span> / <span className="text-text font-semibold">FULL</span>.
-        </div>
       </div>
     </div>
   );

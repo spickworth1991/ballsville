@@ -54,12 +54,12 @@ const NAV_ITEMS = [
         to: "/mini-leagues",
         children: [{ name: "Wagers", to: "/mini-leagues/wagers" }],
       },
-      // {
-      //   id: "highlander",
-      //   name: "Highlander",
-      //   to: "/highlander",
-      //   isNew: true,
-      // },
+      {
+        id: "highlander",
+        name: "Highlander",
+        to: "/highlander",
+        isNew: true,
+      },
       {
         id: "redraft",
         name: "Redraft",

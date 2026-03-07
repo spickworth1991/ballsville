@@ -4,8 +4,8 @@ import { CURRENT_SEASON } from "@/lib/season";
 
 // export const runtime = "edge";
 
-export default function Page({ searchParams }) {
-  const season = searchParams?.season || String(CURRENT_SEASON);
+export default function Page() {
+  const season = String(CURRENT_SEASON);
   return (
     <AdminGuard>
       <BigGameAdminClient initialSeason={season} />

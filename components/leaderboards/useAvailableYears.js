@@ -16,7 +16,7 @@ function getNflSeasonYear(d = new Date()) {
  */
 export default function useAvailableYears({
   startYear = getNflSeasonYear(),
-  maxYearsBack = 1,
+  maxYearsBack = 2,
   pollMs = null,
   basePath = '/r2/data/leaderboards',
 } = {}) {
