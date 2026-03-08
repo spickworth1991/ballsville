@@ -872,85 +872,39 @@ export default function MiniLeaguesAdminClient() {
       // 2) Leagues
       // Mini-Leagues leagues do NOT support optional manual image uploads.
 
-      // 2b) Move existing division/league images when deterministic paths change due to reordering.
-      const mediaMoves = [];
-      const movedFromBases = new Set();
-
-      nextDivisions = nextDivisions.map((d) => {
-        const nextDiv = { ...d };
-        const divKey = String(nextDiv.imageKey || "").trim().replace(/^\//, "");
-        const expectedDivBase = nextDiv.divisionCode ? miniDivisionBaseKey(season, nextDiv.divisionCode) : "";
-        if (divKey && expectedDivBase) {
-          const currentDivBase = keyToBase(divKey);
-          const divExt = extFromKey(divKey);
-          if (divExt && currentDivBase && currentDivBase !== expectedDivBase) {
-            mediaMoves.push({ fromKey: divKey, toBaseKey: expectedDivBase });
-            movedFromBases.add(currentDivBase);
-            nextDiv.imageKey = `${expectedDivBase}.${divExt}`;
-          }
-        }
-
-        nextDiv.leagues = (Array.isArray(nextDiv.leagues) ? nextDiv.leagues : []).map((l, idx) => {
-          const nextLeague = { ...l };
-          const leagueOrder = Number(nextLeague?.order ?? idx + 1);
-          const leagueKey = String(nextLeague.imageKey || "").trim().replace(/^\//, "");
-          const expectedLeagueBase = nextDiv.divisionCode && Number.isFinite(leagueOrder)
-            ? miniLeagueBaseKey(season, nextDiv.divisionCode, leagueOrder)
-            : "";
-          if (leagueKey && expectedLeagueBase) {
-            const currentLeagueBase = keyToBase(leagueKey);
-            const leagueExt = extFromKey(leagueKey);
-            if (leagueExt && currentLeagueBase && currentLeagueBase !== expectedLeagueBase) {
-              mediaMoves.push({ fromKey: leagueKey, toBaseKey: expectedLeagueBase });
-              movedFromBases.add(currentLeagueBase);
-              nextLeague.imageKey = `${expectedLeagueBase}.${leagueExt}`;
-            }
-          }
-          return nextLeague;
-        });
-
-        return nextDiv;
-      });
-
-      if (mediaMoves.length) {
-        await moveMedia({ moves: mediaMoves, season, manifestSection: "mini-leagues" });
-      }
-
+      // Keep existing imageKey associations attached to each division/league object.
+      // Reordering should NOT force deterministic-path moves or delete old keys based on slot/order.
+      // We only delete media that is no longer referenced anywhere after save.
       const deletedKeys = new Set();
       const deletedBaseKeys = new Set();
 
       const addDelete = (k) => {
         const key = String(k || "").trim().replace(/^\//, "");
         if (!key) return;
-        const base = keyToBase(key);
-        if (movedFromBases.has(base)) return;
         deletedKeys.add(key);
-        deletedBaseKeys.add(base);
+        deletedBaseKeys.add(keyToBase(key));
       };
 
       if (baselineSeason === Number(season)) {
-        const nextByCode = new Map(nextDivisions.map((d) => [String(d.divisionCode), d]));
-        for (const oldDiv of baselineDivisions) {
-          const code = String(oldDiv?.divisionCode);
-          const nextDiv = nextByCode.get(code);
+        const nextImageKeys = new Set();
 
-          if (!nextDiv) {
-            addDelete(oldDiv?.imageKey);
-            const olds = Array.isArray(oldDiv?.leagues) ? oldDiv.leagues : [];
-            for (const l of olds) addDelete(l?.imageKey);
-            continue;
+        for (const d of Array.isArray(nextDivisions) ? nextDivisions : []) {
+          const divKey = String(d?.imageKey || "").trim().replace(/^\//, "");
+          if (divKey) nextImageKeys.add(divKey);
+
+          for (const l of Array.isArray(d?.leagues) ? d.leagues : []) {
+            const leagueKey = String(l?.imageKey || "").trim().replace(/^\//, "");
+            if (leagueKey) nextImageKeys.add(leagueKey);
           }
+        }
 
-          const nextOrders = new Set(
-            (Array.isArray(nextDiv?.leagues) ? nextDiv.leagues : [])
-              .map((l, idx) => Number(l?.order ?? idx + 1))
-              .filter((n) => Number.isFinite(n))
-          );
+        for (const oldDiv of Array.isArray(baselineDivisions) ? baselineDivisions : []) {
+          const oldDivKey = String(oldDiv?.imageKey || "").trim().replace(/^\//, "");
+          if (oldDivKey && !nextImageKeys.has(oldDivKey)) addDelete(oldDivKey);
+
           for (const l of Array.isArray(oldDiv?.leagues) ? oldDiv.leagues : []) {
-            const ord = Number(l?.order);
-            if (Number.isFinite(ord) && !nextOrders.has(ord)) {
-              addDelete(l?.imageKey);
-            }
+            const oldLeagueKey = String(l?.imageKey || "").trim().replace(/^\//, "");
+            if (oldLeagueKey && !nextImageKeys.has(oldLeagueKey)) addDelete(oldLeagueKey);
           }
         }
       }
@@ -988,7 +942,7 @@ export default function MiniLeaguesAdminClient() {
       setPendingDivisionFiles({});
       setOk(
         baselineSeason === Number(season)
-          ? "Saved divisions (images uploaded on save). Deleted images for removed divisions/leagues."
+          ? "Saved divisions (kept image associations on reorder and deleted images only for removed items)."
           : "Saved divisions (images uploaded on save)."
       );
     } catch (e) {
