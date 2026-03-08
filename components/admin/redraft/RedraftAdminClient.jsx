@@ -365,25 +365,12 @@ export default function RedraftAdminClient() {
         l.imageKey = up?.key || "";
       }
 
-      // 1b) Move existing deterministic media when order changes.
-      const mediaMoves = [];
-      nextLeagues = nextLeagues.map((l, idx) => {
-        const next = { ...l, order: Number(l.order) || idx + 1 };
-        const currentKey = String(next.imageKey || "").trim().replace(/^\//, "");
-        const expectedBase = redraftLeagueBaseKey(SEASON, next.order);
-        if (currentKey && expectedBase) {
-          const currentBase = keyToBase(currentKey);
-          const ext = extFromKey(currentKey);
-          if (ext && currentBase && currentBase !== expectedBase) {
-            mediaMoves.push({ fromKey: currentKey, toBaseKey: expectedBase });
-            next.imageKey = `${expectedBase}.${ext}`;
-          }
-        }
-        return next;
-      });
-      if (mediaMoves.length) {
-        await moveMedia(mediaMoves, SEASON);
-      }
+      // Keep existing imageKey associations attached to each league object.
+      // Reordering should NOT force deterministic-path media moves.
+      nextLeagues = nextLeagues.map((l, idx) => ({
+        ...l,
+        order: Number(l.order) || idx + 1,
+      }));
 
       // 2) write JSON
       await apiPUT("page", nextPage);

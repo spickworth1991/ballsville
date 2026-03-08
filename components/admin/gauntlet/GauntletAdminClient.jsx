@@ -410,35 +410,10 @@ export default function GauntletAdminClient({ defaultSeason = DEFAULT_SEASON }) 
     setSaving(true);
     try {
       const payloadRows = rows.map((r) => ({ ...r }));
-      const mediaMoves = [];
+      // Keep existing legion_image_key / league_image_key associations attached
+      // to each row. Reordering should NOT force deterministic-path media moves.
       for (const r of payloadRows) {
-        if (r.is_legion_header) {
-          const currentKey = safeStr(r.legion_image_key).trim().replace(/^\//, "");
-          const expectedBase = gauntletLegionBaseKey(season, r.legion_slug);
-          if (currentKey && expectedBase) {
-            const currentBase = keyToBase(currentKey);
-            const ext = extFromKey(currentKey);
-            if (ext && currentBase && currentBase !== expectedBase) {
-              mediaMoves.push({ fromKey: currentKey, toBaseKey: expectedBase });
-              r.legion_image_key = `${expectedBase}.${ext}`;
-            }
-          }
-        } else {
-          const currentKey = safeStr(r.league_image_key).trim().replace(/^\//, "");
-          const expectedBase = gauntletLeagueBaseKey(season, r.legion_slug, safeNum(r.league_order, 1));
-          if (currentKey && expectedBase) {
-            const currentBase = keyToBase(currentKey);
-            const ext = extFromKey(currentKey);
-            if (ext && currentBase && currentBase !== expectedBase) {
-              mediaMoves.push({ fromKey: currentKey, toBaseKey: expectedBase });
-              r.league_image_key = `${expectedBase}.${ext}`;
-            }
-          }
-        }
         delete r.__key;
-      }
-      if (mediaMoves.length) {
-        await moveMedia(mediaMoves, season);
       }
       await apiPUT(season, { season, rows: payloadRows, updated_at: nowIso() }, "leagues");
       setInfo("Saved.");

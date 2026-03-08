@@ -395,37 +395,14 @@ export default function BigGameAdminClient({ initialSeason }) {
       leagues: safeArray(d.leagues).map((l) => ({ ...l })),
     }));
 
-    const mediaMoves = [];
+    // Keep existing image_key / league_image_key associations attached to each
+    // division / league object. Reordering should NOT force media moves based on
+    // slot/order/slug-derived paths, or images can appear to disappear.
     for (const div of normalized) {
-      const divKey = safeStr(div.image_key).trim().replace(/^\//, "");
-      const expectedDivBase = bigGameDivisionBaseKey(season, div.slug);
-      if (divKey && expectedDivBase) {
-        const currentDivBase = keyToBase(divKey);
-        const divExt = extFromKey(divKey);
-        if (divExt && currentDivBase && currentDivBase !== expectedDivBase) {
-          mediaMoves.push({ fromKey: divKey, toBaseKey: expectedDivBase });
-          div.image_key = `${expectedDivBase}.${divExt}`;
-        }
-      }
-
-      div.leagues = safeArray(div.leagues).map((l, idx) => {
-        const nextLeague = { ...l, display_order: safeNum(l.display_order, idx + 1) };
-        const leagueKey = safeStr(nextLeague.league_image_key).trim().replace(/^\//, "");
-        const expectedLeagueBase = bigGameLeagueBaseKey(season, div.slug, nextLeague.display_order);
-        if (leagueKey && expectedLeagueBase) {
-          const currentLeagueBase = keyToBase(leagueKey);
-          const leagueExt = extFromKey(leagueKey);
-          if (leagueExt && currentLeagueBase && currentLeagueBase !== expectedLeagueBase) {
-            mediaMoves.push({ fromKey: leagueKey, toBaseKey: expectedLeagueBase });
-            nextLeague.league_image_key = `${expectedLeagueBase}.${leagueExt}`;
-          }
-        }
-        return nextLeague;
-      });
-    }
-
-    if (mediaMoves.length) {
-      await moveMedia(mediaMoves, season);
+      div.leagues = safeArray(div.leagues).map((l, idx) => ({
+        ...l,
+        display_order: safeNum(l.display_order, idx + 1),
+      }));
     }
 
     const payload = {
