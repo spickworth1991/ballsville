@@ -118,7 +118,7 @@ export default function Page() {
             >
               <div className="relative w-full aspect-square overflow-hidden bg-card-trans backdrop-blur-sm">
                 <img
-                  src="/photos/biggame-v2.webp"
+                  src="/photos/biggame-v3.gif"
                   alt="Bestball tournaments"
                   className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-300"
                   loading="lazy"
@@ -166,7 +166,7 @@ export default function Page() {
             >
               <div className="relative w-full aspect-square overflow-hidden bg-card-trans backdrop-blur-sm">
                 <img
-                  src="/photos/dynasty-v2.webp"
+                  src="/photos/dynasty-v3.png"
                   alt="Dynasty / Empire leagues"
                   className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-300"
                   loading="lazy"
@@ -214,7 +214,7 @@ export default function Page() {
             >
               <div className="relative w-full aspect-square overflow-hidden bg-card-trans backdrop-blur-sm">
                 <img
-                  src="/photos/minileagues-v2.webp"
+                  src="/photos/minileagues-v3.gif"
                   alt="Mini bestball leagues"
                   className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-300"
                   loading="lazy"
@@ -314,12 +314,11 @@ export default function Page() {
                 <div className="relative w-full h-full aspect-[16/9] bg-black/80 overflow-hidden">
                   <picture>
                     <source
-                      type="image/webp"
-                      srcSet="/photos/gauntlet-640.webp 640w, /photos/gauntlet-1280.webp 1280w"
+                  
                     />
                     <img
-                      src="/photos/gauntlet-640.webp"
-                      alt="The Gauntlet Recap artwork"
+                      src="/photos/RookieVille.png"
+                      alt="RookieVille show artwork"
                       className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-300"
                       loading="lazy"
                     />
@@ -329,12 +328,12 @@ export default function Page() {
 
               <div className="md:w-1/2 p-5 flex flex-col justify-center text-left">
                 <h4 className="text-lg font-semibold text-primary">
-                  The Gauntlet Recap
+                  RookieVille!!
                 </h4>
                 <ul className="mt-2 space-y-1 text-sm text-fg">
-                  <li>• Tuesday Nights</li>
-                  <li>• Weekly Gauntlet breakdowns &amp; storylines</li>
-                  <li>• @8:30 PM EST (subject to change)</li>
+                  <li>• Check discord for updates on showtimes</li>
+                  <li>• Rookie rankings and breakdowns</li>
+                  <li>• Hosted by TennesseeNick and Joe_Joe</li>
                 </ul>
                 <p className="mt-3 text-xs text-muted">Click to watch on YouTube →</p>
               </div>
@@ -351,11 +350,10 @@ export default function Page() {
                 <div className="relative w-full h-full aspect-[16/9] bg-black/80 overflow-hidden">
                   <picture>
                     <source
-                      type="image/webp"
-                      srcSet="/photos/soundboard-640.webp 640w, /photos/soundboard-1280.webp 1280w"
+                     
                     />
                     <img
-                      src="/photos/soundboard-640.webp"
+                      src="/photos/bvupdate.png"
                       alt="FF SoundBoard artwork"
                       className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-300"
                       loading="lazy"
@@ -366,12 +364,12 @@ export default function Page() {
 
               <div className="md:w-1/2 p-5 flex flex-col justify-center text-left">
                 <h4 className="text-lg font-semibold text-primary">
-                  The FF SoundBoard
+                  The Ballsville Podcast
                 </h4>
                 <ul className="mt-2 space-y-1 text-sm text-fg">
-                  <li>• Wednesday Nights</li>
-                  <li>• Clips, reactions, and league sound drops</li>
-                  <li>• @8:30 PM EST (subject to change)</li>
+                  <li>• Check discord for updates on showtimes</li>
+                  <li>• Clips, reactions, and league drops</li>
+                  <li>• Come support the team!</li>
                 </ul>
                 <p className="mt-3 text-xs text-muted">Click to watch on YouTube →</p>
               </div>

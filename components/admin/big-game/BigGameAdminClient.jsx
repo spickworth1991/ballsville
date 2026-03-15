@@ -39,6 +39,40 @@ function slugifyTitle(s) {
     .slice(0, 60);
 }
 
+
+function keyToBase(key) {
+  return String(key || "").trim().replace(/^\/+/, "").replace(/\.[a-z0-9]{2,5}$/i, "");
+}
+
+function extFromKey(key) {
+  const m = String(key || "").trim().replace(/^\/+/, "").match(/\.([a-z0-9]{2,5})$/i);
+  return (m?.[1] || "").toLowerCase();
+}
+
+function bigGameDivisionBaseKey(season, divisionSlug) {
+  return `media/biggame/divisions/${season}/${divisionSlug}`;
+}
+
+function bigGameLeagueBaseKey(season, divisionSlug, leagueOrder) {
+  return `media/biggame/leagues/${season}/${divisionSlug}/${leagueOrder}`;
+}
+
+async function moveMedia(moves, season) {
+  if (!Array.isArray(moves) || !moves.length) return;
+  const token = await getAuthToken();
+  const res = await fetch("/api/admin/upload", {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ moves, season, manifestSection: "big-game" }),
+  });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok || out?.ok === false) throw new Error(out?.error || `Media move failed (${res.status})`);
+  return out;
+}
+
 function normalizeLeagueStatus(s) {
   const raw = safeStr(s).trim();
   if (!raw) return "TBD";
@@ -356,11 +390,26 @@ export default function BigGameAdminClient({ initialSeason }) {
   }
 
   async function saveDivisions(nextDivisions) {
+    const normalized = normalizeDivisions(nextDivisions).map((d) => ({
+      ...d,
+      leagues: safeArray(d.leagues).map((l) => ({ ...l })),
+    }));
+
+    // Keep existing image_key / league_image_key associations attached to each
+    // division / league object. Reordering should NOT force media moves based on
+    // slot/order/slug-derived paths, or images can appear to disappear.
+    for (const div of normalized) {
+      div.leagues = safeArray(div.leagues).map((l, idx) => ({
+        ...l,
+        display_order: safeNum(l.display_order, idx + 1),
+      }));
+    }
+
     const payload = {
       type: "divisions",
       data: {
         season,
-        divisions: normalizeDivisions(nextDivisions),
+        divisions: normalized,
       },
     };
 

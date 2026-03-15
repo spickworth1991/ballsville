@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { FiPlus, FiSave, FiRefreshCw, FiTrash2, FiArrowUp, FiArrowDown } from "react-icons/fi";
 import { getSupabase } from "@/lib/supabaseClient";
 import { CURRENT_SEASON } from "@/lib/season";
@@ -70,6 +71,36 @@ async function uploadHighlanderImage({ file, section, season, leagueOrder, token
   return out;
 }
 
+
+function keyToBase(key) {
+  return String(key || "").trim().replace(/^\/+/, "").replace(/\.[a-z0-9]{2,5}$/i, "");
+}
+
+function extFromKey(key) {
+  const m = String(key || "").trim().replace(/^\/+/, "").match(/\.([a-z0-9]{2,5})$/i);
+  return (m?.[1] || "").toLowerCase();
+}
+
+function highlanderLeagueBaseKey(season, leagueOrder) {
+  return `media/highlander/leagues/${season}/${leagueOrder}`;
+}
+
+async function moveMedia(moves, season) {
+  if (!Array.isArray(moves) || !moves.length) return;
+  const token = await getAccessToken();
+  const res = await fetch(`/api/admin/upload`, {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ moves, season, manifestSection: "highlander" }),
+  });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok || out?.ok === false) throw new Error(out?.error || `Media move failed (${res.status})`);
+  return out;
+}
+
 function normalizeLeagueRow(l, idx) {
   const order = Number(l?.order);
   const active = l?.active !== false;
@@ -104,6 +135,8 @@ export default function HighlanderAdminClient() {
   });
 
   const [leagues, setLeagues] = useState([]);
+
+  const [tab, setTab] = useState("updates");
 
   const [pendingPromoFile, setPendingPromoFile] = useState(null);
   const [promoPreviewUrl, setPromoPreviewUrl] = useState("");
@@ -145,6 +178,15 @@ export default function HighlanderAdminClient() {
       return { ...prev, [leagueId]: file ? URL.createObjectURL(file) : "" };
     });
   }
+
+  const leagueSummary = useMemo(() => {
+    const list = safeArray(leagues);
+    return {
+      total: list.length,
+      active: list.filter((l) => l?.active !== false).length,
+      inactive: list.filter((l) => l?.active === false).length,
+    };
+  }, [leagues]);
 
   const sortedLeagues = useMemo(() => {
     const list = safeArray(leagues).map(normalizeLeagueRow);
@@ -211,6 +253,64 @@ export default function HighlanderAdminClient() {
       setErr(e?.message || "Failed to load Highlander admin data.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function refreshStatusesFromSleeper() {
+    setErr("");
+    setOkMsg("");
+    setSaving(true);
+    try {
+      const nextLeagues = await Promise.all(
+        sortedLeagues.map(async (l) => {
+          const leagueId = safeStr(l.leagueId).trim();
+          if (!leagueId) return l;
+
+          try {
+            const [leagueRes, rostersRes] = await Promise.all([
+              fetch(`https://api.sleeper.app/v1/league/${encodeURIComponent(leagueId)}`, { cache: "no-store" }),
+              fetch(`https://api.sleeper.app/v1/league/${encodeURIComponent(leagueId)}/rosters`, { cache: "no-store" }),
+            ]);
+            if (!leagueRes.ok) return l;
+            const lg = await leagueRes.json().catch(() => null);
+            const rosters = rostersRes.ok ? await rostersRes.json().catch(() => []) : [];
+
+            const totalTeams = Number(lg?.total_rosters) || (Array.isArray(rosters) ? rosters.length : 0);
+            const filledTeams = Array.isArray(rosters) ? rosters.filter((x) => x && x.owner_id).length : 0;
+            const openTeams = Math.max(0, totalTeams - filledTeams);
+
+            let status = safeStr(lg?.status).toLowerCase();
+            if (status === "pre_draft") status = openTeams <= 0 && totalTeams > 0 ? "full" : "filling";
+            else if (status !== "drafting") status = openTeams <= 0 && totalTeams > 0 ? "full" : "filling";
+
+            return {
+              ...l,
+              name: safeStr(lg?.name || l.name),
+              avatarId: safeStr(lg?.avatar || l.avatarId),
+              totalTeams,
+              filledTeams,
+              openTeams,
+              status,
+            };
+          } catch {
+            return l;
+          }
+        })
+      );
+
+      const payload = { season, leagues: nextLeagues };
+      const res = await apiFetch(`/api/admin/highlander?season=${encodeURIComponent(season)}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "leagues", data: payload }),
+      });
+      if (!res.ok) throw new Error(await readApiError(res));
+      setLeagues(nextLeagues);
+      flashOk("Statuses + counts refreshed.");
+    } catch (e) {
+      setErr(e?.message || "Failed to refresh statuses.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -306,6 +406,9 @@ export default function HighlanderAdminClient() {
           return next;
         });
       }
+
+      // Keep existing imageKey associations attached to each league object.
+      // Reordering should NOT force deterministic-path media moves.
 
       const payload = { season, leagues: nextLeagues };
 
@@ -413,6 +516,26 @@ export default function HighlanderAdminClient() {
         ) : null}
       </div>
 
+      <div className="rounded-2xl border border-subtle bg-card-surface shadow-sm p-3 sm:p-4">
+        <div className="flex flex-wrap gap-2">
+          <button
+            className={`btn ${tab === "updates" ? "btn-primary" : "btn-subtle"}`}
+            onClick={() => setTab("updates")}
+            type="button"
+          >
+            Updates
+          </button>
+          <button
+            className={`btn ${tab === "leagues" ? "btn-primary" : "btn-subtle"}`}
+            onClick={() => setTab("leagues")}
+            type="button"
+          >
+            Leagues
+          </button>
+        </div>
+      </div>
+
+      {tab === "updates" ? (
       <div className="rounded-2xl border border-subtle bg-card-surface shadow-sm p-5 sm:p-6 space-y-4">
         <div className="flex items-end justify-between gap-4">
           <div>
@@ -470,20 +593,32 @@ export default function HighlanderAdminClient() {
           </div>
         </div>
       </div>
+      ) : null}
 
+      {tab === "leagues" ? (
       <div className="rounded-2xl border border-subtle bg-card-surface shadow-sm p-5 sm:p-6 space-y-4">
         <div className="flex items-end justify-between gap-4">
           <div>
             <div className="text-xs tracking-widest text-muted uppercase">Leagues</div>
             <h3 className="mt-2 text-xl font-semibold text-primary">League List</h3>
-            <p className="mt-1 text-sm text-muted">Add leagues as you create them in Sleeper.</p>
+            <p className="mt-1 text-sm text-muted">Add leagues from Sleeper, reorder them as needed, and refresh statuses/counts without leaving the page.</p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="rounded-full border border-subtle bg-black/20 px-3 py-1 text-white/75">Total: {leagueSummary.total}</span>
+            <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-emerald-200">Active: {leagueSummary.active}</span>
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-white/60">Inactive: {leagueSummary.inactive}</span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <a className="btn btn-primary" href={`/admin/highlander/add-leagues?season=${encodeURIComponent(String(season))}`}>
+            <button className="btn btn-subtle" onClick={refreshStatusesFromSleeper} disabled={loading || saving}>
+              <FiRefreshCw />
+              Refresh statuses + counts
+            </button>
+            <Link className="btn btn-primary" href={`/admin/highlander/add-leagues?season=${encodeURIComponent(String(season))}`}>
               <FiPlus />
               Add from Sleeper
-            </a>
+            </Link>
             <button className="btn btn-subtle" onClick={addLeague} disabled={loading || saving}>
               <FiPlus />
               Add Manual
@@ -498,7 +633,7 @@ export default function HighlanderAdminClient() {
         ) : (
           <div className="space-y-3">
             {sortedLeagues.map((l, idx) => (
-              <div key={l.id} className="rounded-2xl border border-subtle bg-subtle-surface p-4">
+              <div key={l.id} className="rounded-2xl border border-subtle bg-subtle-surface p-4 shadow-sm">
                 <div className="flex flex-col lg:flex-row lg:items-center gap-3">
                   <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-3">
                     <div className="md:col-span-4">
@@ -615,6 +750,7 @@ export default function HighlanderAdminClient() {
           </div>
         )}
       </div>
+      ) : null}
     </div>
   );
 }

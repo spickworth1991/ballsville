@@ -272,6 +272,20 @@ async function deleteOtherExtVariants(bucket, baseKey) {
   await Promise.all(deletions);
 }
 
+function cleanKey(x) {
+  return String(x || "").trim().replace(/^\//, "");
+}
+
+function keyToBase(key) {
+  const k = cleanKey(key);
+  return k.replace(/\.[a-z0-9]{2,5}$/i, "");
+}
+
+function extFromKey(key) {
+  const m = cleanKey(key).match(/\.([a-z0-9]{2,5})$/i);
+  return (m?.[1] || "").toLowerCase();
+}
+
 export async function onRequest(context) {
   try {
     const { request } = context;
@@ -313,6 +327,74 @@ export async function onRequest(context) {
       await Promise.all(deletions);
 
       return json({ ok: true, deleted: cleanedKeys.length, deletedBases: cleanedBaseKeys.length });
+    }
+
+    if (request.method === "PUT") {
+      const body = await request.json().catch(() => null);
+      const moves = Array.isArray(body?.moves) ? body.moves : [];
+      const seasonNum = cleanNum(body?.season);
+      const season = Number.isFinite(seasonNum) ? String(seasonNum) : "";
+      const manifestSection = String(body?.manifestSection || "").trim();
+
+      const cleanedMoves = moves
+        .map((m) => ({
+          fromKey: cleanKey(m?.fromKey),
+          toBaseKey: cleanKey(m?.toBaseKey),
+        }))
+        .filter((m) => m.fromKey && m.toBaseKey)
+        .slice(0, 500);
+
+      if (!cleanedMoves.length) {
+        return json({ ok: false, error: "Missing moves" }, 400);
+      }
+
+      const sources = [];
+      for (const move of cleanedMoves) {
+        const obj = await r2.bucket.get(move.fromKey);
+        if (!obj) {
+          return json({ ok: false, error: `Source key not found: ${move.fromKey}` }, 404);
+        }
+        const buf = await obj.arrayBuffer();
+        const ext = extFromKey(move.fromKey) || "png";
+        const contentType = obj.httpMetadata?.contentType || "application/octet-stream";
+        sources.push({
+          fromKey: move.fromKey,
+          fromBaseKey: keyToBase(move.fromKey),
+          toBaseKey: move.toBaseKey,
+          toKey: `${move.toBaseKey}.${ext}`,
+          buf,
+          contentType,
+        });
+      }
+
+      for (const src of sources) {
+        await deleteOtherExtVariants(r2.bucket, src.toBaseKey);
+      }
+
+      for (const src of sources) {
+        await r2.bucket.put(src.toKey, src.buf, {
+          httpMetadata: { contentType: src.contentType },
+        });
+      }
+
+      const deleteBases = new Set();
+      for (const src of sources) {
+        if (src.fromBaseKey !== src.toBaseKey) deleteBases.add(src.fromBaseKey);
+      }
+      await Promise.all([...deleteBases].map((base) => deleteOtherExtVariants(r2.bucket, base)));
+
+      if (manifestSection && season) {
+        try {
+          await touchManifest(context.env, manifestSection, season);
+        } catch {
+          // ignore
+        }
+      }
+
+      return json({
+        ok: true,
+        moved: sources.map((s) => ({ fromKey: s.fromKey, toKey: s.toKey })),
+      });
     }
 
     if (request.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405);

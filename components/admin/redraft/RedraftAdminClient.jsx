@@ -85,6 +85,36 @@ async function apiPUT(type, data) {
   return res.json();
 }
 
+
+function keyToBase(key) {
+  return String(key || "").trim().replace(/^\/+/, "").replace(/\.[a-z0-9]{2,5}$/i, "");
+}
+
+function extFromKey(key) {
+  const m = String(key || "").trim().replace(/^\/+/, "").match(/\.([a-z0-9]{2,5})$/i);
+  return (m?.[1] || "").toLowerCase();
+}
+
+function redraftLeagueBaseKey(season, leagueOrder) {
+  return `media/redraft/leagues/${season}/${leagueOrder}`;
+}
+
+async function moveMedia(moves, season) {
+  if (!Array.isArray(moves) || !moves.length) return;
+  const token = await getAccessToken();
+  const res = await fetch("/api/admin/upload", {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ moves, season, manifestSection: "redraft" }),
+  });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok || out?.ok === false) throw new Error(out?.error || `Media move failed (${res.status})`);
+  return out;
+}
+
 async function uploadImage(file, payload) {
   const token = await getAccessToken();
   const form = new FormData();
@@ -334,6 +364,13 @@ export default function RedraftAdminClient() {
         const up = await uploadImage(f, { section: "redraft-league", season: SEASON, leagueOrder: l.order });
         l.imageKey = up?.key || "";
       }
+
+      // Keep existing imageKey associations attached to each league object.
+      // Reordering should NOT force deterministic-path media moves.
+      nextLeagues = nextLeagues.map((l, idx) => ({
+        ...l,
+        order: Number(l.order) || idx + 1,
+      }));
 
       // 2) write JSON
       await apiPUT("page", nextPage);

@@ -675,7 +675,7 @@ export default function DynastyAdminClient() {
           <div>
             <h2 className="text-lg font-semibold text-primary">New season theme</h2>
             <p className="text-xs text-muted max-w-prose">
-              Create a theme (year + theme name). After you create it, you’ll pick leagues from Sleeper to populate the theme.
+              Create a theme first, then go straight into the Sleeper picker to add leagues the same way as the other admin tools.
             </p>
           </div>
           <button className="btn btn-primary" type="button" onClick={() => setQuickOpen(true)}>
@@ -703,7 +703,7 @@ export default function DynastyAdminClient() {
 
             <div className="flex gap-2">
               <button className="btn btn-primary" type="submit" disabled={String(quick.theme_name || "").trim().length < 2}>
-                Create & Pick Leagues
+                Create & Add from Sleeper
               </button>
               <button className="btn btn-outline" type="button" onClick={() => setQuickOpen(false)}>
                 Close

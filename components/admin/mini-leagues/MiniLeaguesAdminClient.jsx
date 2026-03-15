@@ -270,6 +270,33 @@ async function deleteMedia({ keys = [], baseKeys = [] }) {
   return res.json();
 }
 
+async function moveMedia({ moves = [], season, manifestSection = "mini-leagues" }) {
+  const token = await getAccessToken();
+  const res = await fetch("/api/admin/upload", {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ moves, season, manifestSection }),
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
+  return res.json();
+}
+
+function miniDivisionBaseKey(season, divisionCode) {
+  return `media/mini-leagues/divisions/${season}/${divisionCode}`;
+}
+
+function miniLeagueBaseKey(season, divisionCode, leagueOrder) {
+  return `media/mini-leagues/leagues/${season}/${divisionCode}/${leagueOrder}`;
+}
+
+function extFromKey(key) {
+  const m = String(key || "").trim().replace(/^\//, "").match(/\.([a-z0-9]{2,5})$/i);
+  return (m?.[1] || "").toLowerCase();
+}
+
 function keyToBase(key) {
   const k = String(key || "").trim().replace(/^\//, "");
   return k.replace(/\.[a-z0-9]{2,5}$/i, "");
@@ -845,6 +872,9 @@ export default function MiniLeaguesAdminClient() {
       // 2) Leagues
       // Mini-Leagues leagues do NOT support optional manual image uploads.
 
+      // Keep existing imageKey associations attached to each division/league object.
+      // Reordering should NOT force deterministic-path moves or delete old keys based on slot/order.
+      // We only delete media that is no longer referenced anywhere after save.
       const deletedKeys = new Set();
       const deletedBaseKeys = new Set();
 
@@ -856,28 +886,25 @@ export default function MiniLeaguesAdminClient() {
       };
 
       if (baselineSeason === Number(season)) {
-        const nextByCode = new Map(nextDivisions.map((d) => [String(d.divisionCode), d]));
-        for (const oldDiv of baselineDivisions) {
-          const code = String(oldDiv?.divisionCode);
-          const nextDiv = nextByCode.get(code);
+        const nextImageKeys = new Set();
 
-          if (!nextDiv) {
-            addDelete(oldDiv?.imageKey);
-            const olds = Array.isArray(oldDiv?.leagues) ? oldDiv.leagues : [];
-            for (const l of olds) addDelete(l?.imageKey);
-            continue;
+        for (const d of Array.isArray(nextDivisions) ? nextDivisions : []) {
+          const divKey = String(d?.imageKey || "").trim().replace(/^\//, "");
+          if (divKey) nextImageKeys.add(divKey);
+
+          for (const l of Array.isArray(d?.leagues) ? d.leagues : []) {
+            const leagueKey = String(l?.imageKey || "").trim().replace(/^\//, "");
+            if (leagueKey) nextImageKeys.add(leagueKey);
           }
+        }
 
-          const nextOrders = new Set(
-            (Array.isArray(nextDiv?.leagues) ? nextDiv.leagues : [])
-              .map((l, idx) => Number(l?.order ?? idx + 1))
-              .filter((n) => Number.isFinite(n))
-          );
+        for (const oldDiv of Array.isArray(baselineDivisions) ? baselineDivisions : []) {
+          const oldDivKey = String(oldDiv?.imageKey || "").trim().replace(/^\//, "");
+          if (oldDivKey && !nextImageKeys.has(oldDivKey)) addDelete(oldDivKey);
+
           for (const l of Array.isArray(oldDiv?.leagues) ? oldDiv.leagues : []) {
-            const ord = Number(l?.order);
-            if (Number.isFinite(ord) && !nextOrders.has(ord)) {
-              addDelete(l?.imageKey);
-            }
+            const oldLeagueKey = String(l?.imageKey || "").trim().replace(/^\//, "");
+            if (oldLeagueKey && !nextImageKeys.has(oldLeagueKey)) addDelete(oldLeagueKey);
           }
         }
       }
@@ -915,7 +942,7 @@ export default function MiniLeaguesAdminClient() {
       setPendingDivisionFiles({});
       setOk(
         baselineSeason === Number(season)
-          ? "Saved divisions (images uploaded on save). Deleted images for removed divisions/leagues."
+          ? "Saved divisions (kept image associations on reorder and deleted images only for removed items)."
           : "Saved divisions (images uploaded on save)."
       );
     } catch (e) {
