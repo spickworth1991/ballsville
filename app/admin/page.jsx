@@ -92,6 +92,17 @@ export default function AdminHomePage() {
                 Create and edit news posts, feature updates, and mini games. Controls what appears on the News page.
               </p>
             </Link>
+
+            <Link
+              prefetch={false}
+              href="/admin/announcements"
+              className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
+            >
+              <h2 className="text-lg font-semibold text-primary">Sitewide Announcements</h2>
+              <p className="mt-1 text-sm text-muted">
+                Manage the scrolling announcement bar below the navbar. Save ticker copy and links to R2 without editing code.
+              </p>
+            </Link>
           </div>
         </div>
       </section>
