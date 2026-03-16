@@ -124,15 +124,27 @@ function TagPill({ active, onClick, children }) {
 function CornerRibbon({ label, variant = "mini" }) {
   const base =
     "pointer-events-none absolute z-30 flex items-center justify-center px-12 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] shadow-md";
-  const pos = variant === "expired" ? "top-6 -right-10 rotate-45" : variant === "mini" ? "top-10 -left-10 -rotate-45" : "top-10 -right-6 rotate-45";
+  const pos = variant === "expired" ? "top-5 -right-11 rotate-45" : variant === "mini" ? "top-10 -left-10 -rotate-45" : "top-5 -right-11 rotate-45";
   const cls =
     variant === "expired"
       ? `${base} ${pos} border border-rose-300/40 bg-rose-600 text-white`
       : variant === "pinned"
-        ? `${base} ${pos} border border-primary/30 bg-primary/80 text-white`
+        ? `${base} ${pos} border text-white`
         : `${base} ${pos} border border-emerald-300/30 bg-emerald-500/80 text-white`;
 
-  return <div className={cls}>{label}</div>;
+  const style =
+    variant === "pinned"
+      ? {
+          background: "linear-gradient(135deg, #46c6d1, #1d7d92)",
+          borderColor: "rgba(255, 255, 255, 0.22)",
+        }
+      : undefined;
+
+  return (
+    <div className={cls} style={style}>
+      {label}
+    </div>
+  );
 }
 
 function msToCountdown(ms) {
@@ -547,11 +559,11 @@ function PostCard({ post, updatedAt, onOpen }) {
   const dimCls = isExpiredMini ? "opacity-60 grayscale" : "";
 
   return (
-    <article className={cardCls}>
-      <div className="relative overflow-hidden">
-        {isExpiredMini ? <CornerRibbon label="Expired" variant="expired" /> : null}
-        {post.pinned ? <CornerRibbon label="Pinned" variant="pinned" /> : null}
+    <article className={`${cardCls} relative overflow-hidden`}>
+      {isExpiredMini ? <CornerRibbon label="Expired" variant="expired" /> : null}
+      {post.pinned ? <CornerRibbon label="Pinned" variant="pinned" /> : null}
 
+      <div className="relative overflow-hidden rounded-t-2xl">
         {post.mediaSrc ? (
           <div className={`overflow-hidden rounded-2xl ${dimCls}`}>
             {post.is_coupon ? <CornerRibbon label="Mini Game" variant="mini" /> : null}

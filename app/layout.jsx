@@ -5,7 +5,7 @@ import Footer from "@/components/Footer";
 import { siteConfig } from "@/app/config/siteConfig";
 import BackgroundVideo from "@/components/BackgroundVideo";
 import GlobalAnnouncementBar from "@/components/GlobalAnnouncementBar";
-import { globalAnnouncementBar } from "@/app/config/globalAnnouncementBar";
+import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 
 
 export const metadata = {
@@ -129,8 +129,10 @@ export default function RootLayout({ children }) {
         {/* 🔥 Full-screen video background */}
         <BackgroundVideo src="/space.mp4" start={2} end={43} />
         <Navbar />
-        <GlobalAnnouncementBar />
-        <div className={`page-bg${globalAnnouncementBar?.enabled ? " page-bg-with-announcement" : ""}`}>{children}</div>
+        <SectionManifestGate section="announcement-bar">
+          <GlobalAnnouncementBar />
+        </SectionManifestGate>
+        <div className="page-bg">{children}</div>
         <Footer />
       </body>
     </html>
