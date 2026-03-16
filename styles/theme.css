@@ -406,6 +406,115 @@ html { scroll-behavior: smooth; }
     color-mix(in oklab, var(--color-fg) 10%, transparent);
 }
 
+/* ========== GLOBAL ANNOUNCEMENT BAR ========== */
+
+.announcement-shell {
+  position: relative;
+  z-index: 40;
+  margin-top: 4rem;
+  padding: 0.5rem 0.25rem 0;
+}
+
+.announcement-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 9999px;
+  padding: 0.55rem 0.75rem;
+  background:
+    radial-gradient(circle at top left, rgb(60 173 186 / 0.22), transparent 36%),
+    linear-gradient(135deg, rgb(7 15 22 / 0.92), rgb(16 29 40 / 0.82) 55%, rgb(10 53 62 / 0.76));
+  box-shadow:
+    0 12px 30px rgb(0 0 0 / 0.22),
+    inset 0 1px 0 rgb(255 255 255 / 0.08);
+  backdrop-filter: blur(18px);
+}
+
+.announcement-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 9999px;
+  padding: 0.45rem 0.75rem;
+  background: linear-gradient(135deg, rgb(250 204 21 / 0.18), rgb(255 255 255 / 0.06));
+  color: rgb(255 247 214);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.announcement-badge-pulse {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgb(255 232 140) 0%, rgb(250 204 21) 55%, rgb(250 204 21 / 0.2) 100%);
+  box-shadow: 0 0 0 0.35rem rgb(250 204 21 / 0.12);
+}
+
+.announcement-marquee {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  mask-image: linear-gradient(to right, transparent, black 6%, black 94%, transparent);
+}
+
+.announcement-track {
+  display: flex;
+  width: max-content;
+  align-items: center;
+  gap: 0;
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
+}
+
+.announcement-group {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding-right: 0.75rem;
+}
+
+.announcement-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  white-space: nowrap;
+  border-radius: 9999px;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  background: linear-gradient(135deg, rgb(255 255 255 / 0.05), rgb(255 255 255 / 0.02));
+  padding: 0.5rem 0.85rem;
+  color: rgb(237 246 249);
+  font-size: 0.84rem;
+  line-height: 1;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+.announcement-chip:hover {
+  transform: translateY(-1px);
+  border-color: rgb(60 173 186 / 0.5);
+  color: white;
+}
+
+.announcement-chip-dot {
+  width: 0.42rem;
+  height: 0.42rem;
+  flex: 0 0 auto;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, rgb(60 173 186), rgb(132 230 241));
+  box-shadow: 0 0 16px rgb(60 173 186 / 0.42);
+}
+
   /* Ensure the Home logo never collapses on real mobile browsers */
 .nav-home-logo {
   display: block;
@@ -525,6 +634,10 @@ html { scroll-behavior: smooth; }
 
   /* ✅ leave x-clipping to html/body instead (you already do that) */
   overflow-x: visible;
+}
+
+.page-bg-with-announcement {
+  padding-top: 0px;
 }
 
 
@@ -675,6 +788,48 @@ html { scroll-behavior: smooth; }
   width: 100%;
   }
 }
+
+@media (max-width: 640px) {
+  .announcement-shell {
+    margin-top: 4rem;
+    padding-top: 0.35rem;
+  }
+
+  .announcement-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.65rem;
+    border-radius: 1.4rem;
+    padding: 0.7rem;
+  }
+
+  .announcement-badge {
+    justify-content: center;
+    padding-inline: 0.8rem;
+    font-size: 0.62rem;
+    letter-spacing: 0.24em;
+  }
+
+  .announcement-marquee {
+    mask-image: linear-gradient(to right, transparent, black 4%, black 96%, transparent);
+  }
+
+  .announcement-track {
+    gap: 0.55rem;
+  }
+
+  .announcement-chip {
+    padding: 0.55rem 0.75rem;
+    font-size: 0.78rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .page-bg-with-announcement {
+    padding-top: 0px;
+  }
+}
+
 
 #mobile-menu {
   z-index: 1100;
