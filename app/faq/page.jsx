@@ -1,4 +1,3 @@
-// app/faq/page.jsx
 import FAQItem from "@/components/FAQItem";
 import { siteConfig } from "@/app/config/siteConfig";
 
@@ -22,12 +21,12 @@ const faqs = [
   {
     question: "What is The Ballsville Game?",
     answer:
-      "The Ballsville Game is a fantasy football ecosystem built around bestball tournaments, mini leagues, dynasty empires, and redraft tiers — all tied together by a formula that combines big payouts with great odds.",
+      "The Ballsville Game is a fantasy football ecosystem built around bestball tournaments, mini leagues, dynasty empires, and redraft tiers - all tied together by a formula that combines big payouts with great odds.",
   },
   {
     question: "What platform do you use for leagues?",
     answer:
-      "All core Ballsville leagues are hosted on Sleeper. You’ll draft, set lineups (where applicable), and view scores directly in the Sleeper app. This site handles the bigger game structure, leaderboards, and mini games.",
+      "All core Ballsville leagues are hosted on Sleeper. You'll draft, set lineups (where applicable), and view scores directly in the Sleeper app. This site handles the bigger game structure, leaderboards, and mini games.",
   },
   {
     question: "Who can join Ballsville leagues?",
@@ -47,7 +46,7 @@ const faqs = [
   {
     question: "Where can I see standings and results?",
     answer:
-      "Live standings and tournament results are powered by our automated leaderboard engine. You can view them anytime on the Leaderboards page, which pulls data from Sleeper and applies Ballsville’s scoring and tie-break rules. *live is a timed update, roughly every 10 minutes during gametimes.",
+      "Live standings and tournament results are powered by our automated leaderboard engine. You can view them anytime on the Leaderboards page, which pulls data from Sleeper and applies Ballsville's scoring and tie-break rules. Live updates are timed, roughly every 10 minutes during game windows.",
   },
   {
     question: "What are Mini Games on the News page?",
@@ -57,7 +56,7 @@ const faqs = [
   {
     question: "How does the Code of Conduct work?",
     answer:
-      "All leagues use the same Code of Conduct and League Constitution. It covers fair play, trading standards, collusion, tanking, and behavior in league chat. If you join any Ballsville league, you’re agreeing to those rules.",
+      "All leagues use the same Code of Conduct and League Constitution. It covers fair play, trading standards, collusion, tanking, and behavior in league chat. If you join any Ballsville league, you're agreeing to those rules.",
   },
   {
     question: "How do I ask a rules question or report an issue?",
@@ -67,7 +66,7 @@ const faqs = [
   {
     question: "Are Ballsville rules the same for every league?",
     answer:
-      "The Constitution is the baseline, but each league can have its own bylaws, buy-ins, and scoring tweaks. When there’s a conflict, the specific league’s posted settings and bylaws take priority, as long as they don’t violate the spirit of the Constitution.",
+      "The Constitution is the baseline, but each league can have its own bylaws, buy-ins, and scoring tweaks. When there's a conflict, the specific league's posted settings and bylaws take priority, as long as they do not violate the spirit of the Constitution.",
   },
 ];
 
@@ -94,16 +93,14 @@ export default function Page() {
 
       <section className="section">
         <div className="container-site space-y-6">
-          {/* HERO CARD (readable + premium) */}
-          <header className="relative overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-xl p-6 md:p-10">
-            {/* subtle glows */}
+          <header className="relative overflow-hidden rounded-3xl border border-subtle bg-card-surface p-6 shadow-xl md:p-10">
             <div className="pointer-events-none absolute inset-0 opacity-55 mix-blend-screen">
-              <div className="absolute -top-24 -left-20 h-64 w-64 rounded-full bg-[color:var(--color-accent)]/18 blur-3xl" />
+              <div className="absolute -left-20 -top-24 h-64 w-64 rounded-full bg-[color:var(--color-accent)]/18 blur-3xl" />
               <div className="absolute -bottom-24 -right-20 h-64 w-64 rounded-full bg-[color:var(--color-primary)]/14 blur-3xl" />
-              <div className="absolute top-10 right-16 h-44 w-44 rounded-full bg-purple-500/10 blur-3xl" />
+              <div className="absolute right-16 top-10 h-44 w-44 rounded-full bg-[color:var(--color-accent)]/10 blur-3xl" />
             </div>
 
-            <div className="relative text-center max-w-3xl mx-auto">
+            <div className="relative mx-auto max-w-3xl text-center">
               <span className="badge">Answers you can trust</span>
               <h1 className="h1 mt-3">Frequently Asked Questions</h1>
               <p className="lead mt-3 text-muted">
@@ -112,11 +109,12 @@ export default function Page() {
             </div>
           </header>
 
-          {/* Layout: left info card, right accordion */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left: contact/help card */}
-            <aside className="bg-card-surface border border-subtle rounded-2xl p-6 lg:sticky lg:top-20 self-start shadow-sm">
-              <h2 className="h3 mb-2">Still have a question?</h2>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <aside className="self-start rounded-2xl border border-subtle bg-card-surface p-6 shadow-sm lg:sticky lg:top-20">
+              <span className="text-xs uppercase tracking-[0.28em] text-accent">
+                Need a hand?
+              </span>
+              <h2 className="h3 mb-2 mt-3">Still have a question?</h2>
               <p className="text-muted">
                 Reach out if you need help with a league rule, mini game, or Sleeper setup.
               </p>
@@ -143,7 +141,7 @@ export default function Page() {
                   For detailed rules and governance (trades, conduct, tiebreakers, and more), see the{" "}
                   <a
                     href="/constitution"
-                    className="underline underline-offset-4 decoration-accent hover:text-accent"
+                    className="underline decoration-accent underline-offset-4 hover:text-accent"
                   >
                     League Constitution &amp; Code of Conduct
                   </a>
@@ -152,9 +150,8 @@ export default function Page() {
               </div>
             </aside>
 
-            {/* Right: FAQ list */}
             <div className="lg:col-span-2">
-              <div className="bg-card-surface border border-subtle rounded-2xl p-2 shadow-sm">
+              <div className="rounded-2xl border border-subtle bg-card-surface p-2 shadow-sm">
                 {faqs.map((f, idx) => (
                   <FAQItem key={f.question} {...f} defaultOpen={idx === 0} />
                 ))}
