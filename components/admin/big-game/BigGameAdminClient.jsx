@@ -282,6 +282,29 @@ async function uploadBigGameLeagueAvatar({ token, season, divisionSlug, leagueOr
   return { key: json.key, url: json.url };
 }
 
+async function uploadBigGameDivisionImage({ token, season, divisionSlug, file }) {
+  if (!file) return null;
+
+  const qs = new URLSearchParams({
+    section: "biggame-division",
+    season: String(season),
+    divisionSlug: safeStr(divisionSlug),
+  });
+
+  const fd = new FormData();
+  fd.append("file", file);
+
+  const res = await fetch(`/api/admin/upload?${qs.toString()}`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: fd,
+  });
+
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json?.ok) throw new Error(json?.error || `Upload failed (${res.status})`);
+  return { key: json.key, url: json.url };
+}
+
 function LeagueAvatar({ league }) {
   const path = league?.league_image_path;
   const key = league?.league_image_key;
@@ -302,6 +325,25 @@ function LeagueAvatar({ league }) {
         <img src={src} alt="" className="h-full w-full object-cover" />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-xs text-white/40">—</div>
+      )}
+    </div>
+  );
+}
+
+function DivisionImagePreview({ division }) {
+  const src = safeStr(division?.image_url).trim()
+    ? safeStr(division.image_url).trim()
+    : safeStr(division?.image_key).trim()
+      ? r2Url(safeStr(division.image_key).trim())
+      : null;
+
+  return (
+    <div className="h-20 w-32 overflow-hidden rounded-2xl border border-subtle bg-black/30">
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt="" className="h-full w-full object-cover" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-xs text-white/40">No image</div>
       )}
     </div>
   );
@@ -611,6 +653,37 @@ export default function BigGameAdminClient({ initialSeason }) {
     }
   }
 
+  async function handleDivisionImageUpload(divId, file) {
+    if (!file) return;
+    setLoading(true);
+
+    try {
+      const division = divisions.find((d) => d.id === divId);
+      if (!division) throw new Error("Division not found.");
+
+      const token = await getAuthToken();
+      const uploaded = await uploadBigGameDivisionImage({
+        token,
+        season,
+        divisionSlug: division.slug,
+        file,
+      });
+
+      const next = divisions.map((d) =>
+        d.id === divId
+          ? { ...d, image_key: uploaded?.key || d.image_key, image_url: uploaded?.url || d.image_url }
+          : d
+      );
+
+      setDivisions(normalizeDivisions(next));
+      setToast({ type: "ok", text: "Division image uploaded. Save to publish it." });
+    } catch (e) {
+      setToast({ type: "error", text: safeStr(e?.message || e) });
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="mx-auto w-full max-w-7xl space-y-5 px-2 md:px-0">
       {/* Header / actions */}
@@ -806,6 +879,47 @@ export default function BigGameAdminClient({ initialSeason }) {
 
                 {isOpen ? (
                   <div className="p-4">
+                    <div className="mb-4 rounded-2xl border border-subtle bg-black/20 p-4">
+                      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                        <div className="flex items-center gap-4">
+                          <DivisionImagePreview division={d} />
+                          <div>
+                            <div className="text-sm font-semibold">Division image</div>
+                            <div className="mt-1 text-xs text-white/50">
+                              Used on the main BIG Game page for this division card.
+                            </div>
+                            {d.image_key ? (
+                              <div className="mt-1 text-[11px] text-white/40 break-all">{d.image_key}</div>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <label className="btn cursor-pointer">
+                            Upload Image
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0] || null;
+                                e.target.value = "";
+                                if (file) handleDivisionImageUpload(d.id, file);
+                              }}
+                            />
+                          </label>
+                          {(d.image_key || d.image_url) ? (
+                            <button
+                              className="btn btn-danger"
+                              onClick={() => updateDivision(d.id, { image_key: "", image_url: "" })}
+                            >
+                              Clear Image
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+
                     {leagueCount === 0 ? (
                       <div className="text-sm text-white/60">No leagues in this division yet.</div>
                     ) : (
