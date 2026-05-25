@@ -34,10 +34,12 @@ export default function Leaderboard({
   // Available modes for selected year
   const availableModes = useMemo(() => {
     const yearBlock = data?.[current.year] || {};
-    const order = { big_game: 1, mini_game: 2, redraft_2025: 3, redraft: 3, gauntlet: 4, dynasty: 5 };
-    return Object.keys(yearBlock).sort(
+    const order = { big_game: 1, mini_game: 2, highlander: 3, redraft_2025: 4, redraft: 4, gauntlet: 5, dynasty: 6 };
+    return Object.keys(yearBlock)
+      .filter((key) => !String(key).startsWith("__"))
+      .sort(
       (a, b) => (order[a] ?? 99) - (order[b] ?? 99) || a.localeCompare(b)
-    );
+      );
   }, [data, current.year]);
 
   // Keep mode valid
@@ -196,8 +198,8 @@ function LeaderboardControls({
 
           {/* Modes + Weekly */}
           <div className="flex flex-wrap items-center gap-2 justify-start md:justify-end">
-            {Object.keys(data?.[current.year] || {}).length > 0 &&
-              Object.keys(data[current.year] || {}).map((modeKey) => {
+            {Object.keys(data?.[current.year] || {}).filter((modeKey) => !String(modeKey).startsWith("__")).length > 0 &&
+              Object.keys(data[current.year] || {}).filter((modeKey) => !String(modeKey).startsWith("__")).map((modeKey) => {
                 const val = data?.[current.year]?.[modeKey];
                 const label = shortModeName(val, modeKey);
                 const order = { big_game: 1, mini_game: 2, redraft_2025: 3, redraft: 3, gauntlet: 4, dynasty: 5 };
@@ -449,11 +451,191 @@ function EmptyState({ msg }) {
   return <div className="text-center text-muted py-10 text-sm">{msg}</div>;
 }
 
+function formatStatValue(value) {
+  if (value == null || value === "") return "-";
+  const num = Number(value);
+  if (Number.isFinite(num)) return num.toLocaleString();
+  return String(value);
+}
+
+function SummaryChip({ label, value }) {
+  return (
+    <div className="rounded-2xl border border-subtle bg-panel/35 px-4 py-3">
+      <div className="text-[11px] uppercase tracking-[0.24em] text-muted">{label}</div>
+      <div className="mt-1 text-xl font-semibold text-foreground">{formatStatValue(value)}</div>
+    </div>
+  );
+}
+
+function getModeOwnerLabel(card) {
+  const rawName = String(card?.name || card?.key || "mode").trim();
+  const cleaned = rawName.replace(/^\d{4}\s+/, "").trim() || "Mode";
+  return `Unique ${cleaned} owners`;
+}
+
+function ModeMiniCard({ card }) {
+  const draftedTeamsOutOf = `${formatStatValue(card?.draftedTeams)}/${formatStatValue(card?.totalRosterSlots)}`;
+  const leaguesDraftedOutOf = `${formatStatValue(card?.draftedLeagues)}/${formatStatValue(card?.totalLeagues)}`;
+  const draftingLeaguesOutOf = `${formatStatValue(card?.draftingLeagues)}/${formatStatValue(card?.totalLeagues)}`;
+  const veteran = card?.draftTypeBreakdown?.veteran || null;
+  const rookie = card?.draftTypeBreakdown?.rookie || null;
+
+  return (
+    <div className="rounded-2xl border border-subtle bg-panel/30 p-4">
+      <div className="text-[11px] uppercase tracking-[0.24em] text-accent">{card?.name || card?.key || "Mode"}</div>
+      <div className="mt-3 space-y-2 text-sm text-muted">
+        {veteran || rookie ? (
+          <>
+            <div className="flex items-center justify-between gap-3">
+              <span>Veteran leagues drafted</span>
+              <span className="font-semibold text-foreground">
+                {formatStatValue(veteran?.draftedLeagues)}/{formatStatValue(veteran?.totalLeagues)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span>Veteran teams drafted</span>
+              <span className="font-semibold text-foreground">
+                {formatStatValue(veteran?.draftedTeams)}/{formatStatValue(veteran?.totalRosterSlots)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span>Rookie leagues drafted</span>
+              <span className="font-semibold text-foreground">
+                {formatStatValue(rookie?.draftedLeagues)}/{formatStatValue(rookie?.totalLeagues)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span>Rookie teams drafted</span>
+              <span className="font-semibold text-foreground">
+                {formatStatValue(rookie?.draftedTeams)}/{formatStatValue(rookie?.totalRosterSlots)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span>Drafting leagues</span>
+              <span className="font-semibold text-foreground">{draftingLeaguesOutOf}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span>{getModeOwnerLabel(card)}</span>
+              <span className="font-semibold text-foreground">{formatStatValue(card?.uniqueOwnersOnceDrafted)}</span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-3">
+              <span>Drafted teams</span>
+              <span className="font-semibold text-foreground">{draftedTeamsOutOf}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span>Leagues drafted</span>
+              <span className="font-semibold text-foreground">{leaguesDraftedOutOf}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span>Drafting leagues</span>
+              <span className="font-semibold text-foreground">{draftingLeaguesOutOf}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span>{getModeOwnerLabel(card)}</span>
+              <span className="font-semibold text-foreground">{formatStatValue(card?.uniqueOwnersOnceDrafted)}</span>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OwnerYearComparisonCard({ item }) {
+  if (!item || !Array.isArray(item.comparisons) || item.comparisons.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl border border-subtle bg-panel/30 p-4">
+      <div className="text-[11px] uppercase tracking-[0.24em] text-accent">{item.year} owner movement</div>
+      <div className="mt-3 space-y-3 text-sm text-muted">
+        {item.comparisons.map((comparison) => (
+          <div
+            key={`${item.year}-${comparison.compareYear}`}
+            className="rounded-2xl border border-subtle bg-panel/35 px-3 py-3"
+          >
+            <div className="text-[11px] uppercase tracking-[0.22em] text-muted">vs {comparison.compareYear}</div>
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <span>Returned</span>
+              <span className="font-semibold text-foreground">{formatStatValue(comparison.returned)}</span>
+            </div>
+            <div className="mt-1 flex items-center justify-between gap-3">
+              <span>New</span>
+              <span className="font-semibold text-foreground">{formatStatValue(comparison.newOwners)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TopOwnersMiniBoard({ item, expanded, onToggle }) {
+  const sourceRows = Array.isArray(item?.rows) ? item.rows : [];
+  const rows = expanded ? sourceRows.slice(0, 10) : sourceRows.slice(0, 3);
+
+  return (
+    <div className="rounded-2xl border border-subtle bg-panel/30 p-4">
+      <div className="text-[11px] uppercase tracking-[0.24em] text-accent">{item?.name || item?.key || "Mode leaders"}</div>
+      {rows.length === 0 ? (
+        <div className="mt-3 text-sm text-muted">No owner leaderboard yet.</div>
+      ) : (
+        <div className="mt-3 space-y-3">
+          {rows.map((row, index) => (
+            <div key={`${item?.key || "mode"}-${row.ownerName}-${index}`} className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs uppercase tracking-[0.22em] text-muted">#{index + 1}</div>
+                <div className="truncate text-sm font-semibold text-foreground">{row.ownerName}</div>
+              </div>
+              <div className="text-right text-xs text-muted">
+                <div>{formatStatValue(row.teamCount)} teams</div>
+                <div>{formatStatValue(row.draftedTeamCount)} drafted</div>
+                {Number(row.draftingTeamCount || 0) > 0 ? <div>{formatStatValue(row.draftingTeamCount)} drafting</div> : null}
+                {Number(row.preDraftTeamCount || 0) > 0 ? <div>{formatStatValue(row.preDraftTeamCount)} pre-draft</div> : null}
+                {row.averageTotal != null && row.hasPointData !== false ? (
+                  <div>{formatStatValue(row.averageTotal)} avg points</div>
+                ) : (
+                  <div>No scored teams yet</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {sourceRows.length > 3 ? (
+        <button
+          type="button"
+          onClick={onToggle}
+          className="mt-4 text-xs font-medium uppercase tracking-[0.22em] text-accent transition hover:text-accent/80"
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 /* ---------------- Table (existing leaderboard UI) ---------------- */
 
 function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWeeks, filterType, filterValue }) {
   const { statsByYear } = useLeaderboard();
-  const { totalTeams = 0, uniqueOwners = 0 } = statsByYear?.[year] || {};
+  const yearSummary = statsByYear?.[year] || {};
+  const {
+    draftedTeams = 0,
+    draftedUniqueOwners = 0,
+    draftingTeams = null,
+    uniqueOwnersOnceDrafted = null,
+    openDraftSlots = null,
+    totalRosterSlots = null,
+    totalLeagues = null,
+    draftedLeagues = null,
+    modeCards = [],
+    topOwnersByMode = {},
+    ownerYearComparisons = [],
+  } = yearSummary;
 
   const norm = (s) => String(s || "").toLowerCase().trim();
 
@@ -496,6 +678,8 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
   // -------- Owner Search ----------
   const [query, setQuery] = useState("");
   const [focusSuggest, setFocusSuggest] = useState(false);
+  const [showMoreStats, setShowMoreStats] = useState(false);
+  const [expandedBoards, setExpandedBoards] = useState({});
   const inputRef = useRef(null);
 
   const q = norm(query);
@@ -529,7 +713,38 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
     return [...starts, ...includes].slice(0, 8);
   }, [q, scopedOwners]);
 
+  const orderedModeCards = useMemo(() => {
+    const cards = Array.isArray(modeCards)
+      ? modeCards.filter((card) => card && !String(card?.key || "").startsWith("__"))
+      : [];
+    return [...cards].sort((a, b) => {
+      if (a?.key === category) return -1;
+      if (b?.key === category) return 1;
+      return String(a?.name || a?.key || "").localeCompare(String(b?.name || b?.key || ""));
+    });
+  }, [category, modeCards]);
+
+  const topOwnerBoards = useMemo(() => {
+    return Object.values(topOwnersByMode || {})
+      .filter((item) => item && !String(item?.key || "").startsWith("__"))
+      .sort((a, b) => {
+        if (a?.key === category) return -1;
+        if (b?.key === category) return 1;
+        return String(a?.name || a?.key || "").localeCompare(String(b?.name || b?.key || ""));
+      });
+  }, [category, topOwnersByMode]);
+
   const clearQuery = () => setQuery("");
+  const draftingTeamsOutOf =
+    totalRosterSlots == null ? draftingTeams : `${Number(draftingTeams || 0)}/${Number(totalRosterSlots || 0)}`;
+  const leaguesDraftedOutOf =
+    totalLeagues == null ? draftedLeagues : `${Number(draftedLeagues || 0)}/${Number(totalLeagues || 0)}`;
+  const orderedOwnerYearComparisons = useMemo(() => {
+    return Array.isArray(ownerYearComparisons) ? [...ownerYearComparisons] : [];
+  }, [ownerYearComparisons]);
+  const currentOwnerYearComparison = useMemo(() => {
+    return orderedOwnerYearComparisons.find((item) => String(item?.year) === String(year)) || null;
+  }, [orderedOwnerYearComparisons, year]);
 
   // -------- Pagination ----------
   const [page, setPage] = useState(1);
@@ -538,6 +753,10 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
   useEffect(() => {
     setPage(1); // reset to page 1 whenever filter changes
   }, [q, year, category, filterType, filterValue]);
+
+  useEffect(() => {
+    setExpandedBoards({});
+  }, [year, category]);
 
   // -------- Weekly data (per-year) ----------
   const [selectedOwner, setSelectedOwner] = useState(null);
@@ -720,54 +939,120 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
   return (
     <div className="rounded-3xl border border-subtle bg-card-surface shadow-md p-4">
       {/* Stats */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-4">
-        <div className="text-sm text-muted">
-          <div>
-            Total Teams: <span className="text-foreground font-semibold">{totalTeams}</span>
+      <div className="mb-4 space-y-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <SummaryChip label="Drafted Teams" value={draftedTeams} />
+            <SummaryChip label="Drafted Unique Owners" value={draftedUniqueOwners} />
           </div>
-          <div>
-            Unique Owners: <span className="text-foreground font-semibold">{uniqueOwners}</span>
-          </div>
-        </div>
 
-        {/* Owner search */}
-        <div className="relative w-full sm:max-w-sm">
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onFocus={() => setFocusSuggest(true)}
-            onBlur={() => setTimeout(() => setFocusSuggest(false), 120)}
-            className="w-full rounded-xl border border-subtle bg-panel/40 px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/40"
-            placeholder="Search owner…"
-          />
-          {!!query && (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
             <button
               type="button"
-              onClick={clearQuery}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-foreground text-xs"
-              aria-label="Clear"
+              onClick={() => setShowMoreStats((prev) => !prev)}
+              className="rounded-xl border border-accent/30 bg-accent/10 px-4 py-2 text-sm font-medium text-accent transition hover:border-accent/50 hover:bg-accent/15"
             >
-              Clear
+              {showMoreStats ? "Hide more stats" : "More stats"}
             </button>
-          )}
 
-          {focusSuggest && ownerSuggestions.length > 0 && (
-            <div className="absolute mt-2 w-full rounded-2xl border border-subtle bg-card-surface shadow-xl overflow-hidden z-10">
-              {ownerSuggestions.map((name) => (
+            <div className="relative w-full sm:min-w-[320px] sm:max-w-sm">
+              <input
+                ref={inputRef}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onFocus={() => setFocusSuggest(true)}
+                onBlur={() => setTimeout(() => setFocusSuggest(false), 120)}
+                className="w-full rounded-xl border border-subtle bg-panel/40 px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/40"
+                placeholder="Search owner..."
+              />
+              {!!query && (
                 <button
                   type="button"
-                  key={name}
-                  className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-panel/60 transition"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => setQuery(name)}
+                  onClick={clearQuery}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-foreground text-xs"
+                  aria-label="Clear"
                 >
-                  {name}
+                  Clear
                 </button>
-              ))}
+              )}
+
+              {focusSuggest && ownerSuggestions.length > 0 && (
+                <div className="absolute mt-2 w-full rounded-2xl border border-subtle bg-card-surface shadow-xl overflow-hidden z-10">
+                  {ownerSuggestions.map((name) => (
+                    <button
+                      type="button"
+                      key={name}
+                      className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-panel/60 transition"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => setQuery(name)}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
+
+        {showMoreStats && (
+          <div className="rounded-3xl border border-subtle bg-subtle-surface/35 p-4 shadow-sm">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <SummaryChip label="Drafting Teams" value={draftingTeamsOutOf} />
+              <SummaryChip label="Unique Owners Once Drafted" value={uniqueOwnersOnceDrafted} />
+              <SummaryChip label="Open Draft Slots" value={openDraftSlots} />
+              <SummaryChip label="Tracked Leagues" value={totalLeagues} />
+              <SummaryChip label="Leagues Drafted" value={leaguesDraftedOutOf} />
+            </div>
+
+            {currentOwnerYearComparison && Array.isArray(currentOwnerYearComparison.comparisons) && currentOwnerYearComparison.comparisons.length > 0 && (
+              <div className="mt-5">
+                <div className="text-[11px] uppercase tracking-[0.28em] text-accent">Owner movement by year</div>
+                <div className="mt-2 text-xs text-muted">
+                  Returned counts are drafted owners shared by both years. New counts are owners in that year who were not in the compared earlier year.
+                </div>
+                <div className="mt-3">
+                  <OwnerYearComparisonCard item={currentOwnerYearComparison} />
+                </div>
+              </div>
+            )}
+
+            {orderedModeCards.length > 0 && (
+              <div className="mt-5">
+                <div className="text-[11px] uppercase tracking-[0.28em] text-accent">Mode snapshots</div>
+                <div className="mt-3 grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+                  {orderedModeCards.map((card) => (
+                    <ModeMiniCard key={card.key || card.name} card={card} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {topOwnerBoards.length > 0 && (
+              <div className="mt-5">
+                <div className="text-[11px] uppercase tracking-[0.28em] text-accent">Top owners by mode</div>
+                <div className="mt-2 text-xs text-muted">
+                  Includes drafted, drafting, and pre-draft leagues. Expand any board to see more owners.
+                </div>
+                <div className="mt-3 grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+                  {topOwnerBoards.map((item) => (
+                    <TopOwnersMiniBoard
+                      key={item.key || item.name}
+                      item={item}
+                      expanded={Boolean(expandedBoards[item.key || item.name])}
+                      onToggle={() =>
+                        setExpandedBoards((prev) => ({
+                          ...prev,
+                          [item.key || item.name]: !prev[item.key || item.name],
+                        }))
+                      }
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Weekly navigation */}
@@ -779,11 +1064,11 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
             disabled={visibleWeeksStart === 0}
             className="px-3 py-2 rounded-xl border border-subtle bg-panel/40 text-foreground hover:border-accent/30 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            ◀ Prev Weeks
+            Prev Weeks
           </button>
 
           <div className="text-xs text-muted">
-            Showing weeks {currentWeeks[0]}–{currentWeeks[currentWeeks.length - 1]}
+            Showing weeks {currentWeeks[0]}-{currentWeeks[currentWeeks.length - 1]}
           </div>
 
           <button
@@ -794,7 +1079,7 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
             disabled={visibleWeeksStart + WEEKS_WINDOW >= weeks.length}
             className="px-3 py-2 rounded-xl border border-subtle bg-panel/40 text-foreground hover:border-accent/30 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Next Weeks ▶
+            Next Weeks
           </button>
         </div>
       )}
@@ -893,7 +1178,7 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
             disabled={page === 1}
             className="px-4 py-2 rounded-xl border border-subtle bg-panel/40 hover:border-accent/30 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            ◀ Prev
+            Prev
           </button>
           <div className="px-3 py-2 text-sm text-muted">Page {page} of {totalPages}</div>
           <button
@@ -902,7 +1187,7 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
             disabled={page === totalPages}
             className="px-4 py-2 rounded-xl border border-subtle bg-panel/40 hover:border-accent/30 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Next ▶
+            Next
           </button>
         </div>
       )}

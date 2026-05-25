@@ -662,6 +662,18 @@ const LEAGUE_MAP = {
         "1334935559205838848",
         "1334935827444150272",
         "1334935993945460736"
+      ],
+      "Legends": [
+        "1337523031785889792",
+        "1337523329870880768",
+        "1337523469478268928",
+        "1337523552991080448",
+        "1337523645689372672",
+        "1337523732272390144",
+        "1337523808470335488",
+        "1337523882424291328",
+        "1337523948765593600",
+        "1337524117611483136"
       ]
     }
     },
@@ -739,6 +751,122 @@ const LEAGUE_MAP = {
         "1331454535507386368",
         "1331454727736541184",
         "1331454891209560064"
+      ]
+    }
+    },
+
+    big_game: {
+      name: "2026 Big Game",
+      divisions: {
+      "Game of Thrones": [
+        "1350298869736407040",
+        "1350299115740749824",
+        "1350299691270557696",
+        "1350299981277302784",
+        "1350300203197935616",
+        "1350300392579137536",
+        "1350300646472966144",
+        "1350301002535796736"
+      ],
+      "Star Wars": [
+        "1352357019310395392",
+        "1352356823507693568",
+        "1352356749092327424",
+        "1352356635393134592",
+        "1352356476185751552",
+        "1352356379897126912",
+        "1352356071745785856",
+        "1352355968557535232"
+      ],
+      "The Avengers": [
+        "1353769839096762368",
+        "1353769775506944000",
+        "1353769664802488320",
+        "1353769555637317632",
+        "1353769448267329536",
+        "1353769380747444224",
+        "1353769259280392192",
+        "1353769165785157632"
+      ],
+      "Gamer Realms": [
+        "1354682140888924160",
+        "1354682003559022592",
+        "1354681531783729152",
+        "1354681390351810560",
+        "1354681279047544832",
+        "1354681185208389632",
+        "1354681066576711680",
+        "1354680909260926976"
+      ],
+      "Villains": [
+        "1356815291178291200",
+        "1356815161863708672",
+        "1356815029785092097",
+        "1356814919818817536",
+        "1356814781159321600",
+        "1356814650037010433",
+        "1356814528058249216",
+        "1356814297052758016"
+      ],
+      "Character Unlocks": [
+        "1364044273669926912",
+        "1364044063598215168",
+        "1364043691265658880",
+        "1364043495941083136",
+        "1364043279460503552",
+        "1364043174292496384",
+        "1364043038858416128",
+        "1364042928212697088"
+      ],
+      "Transformers": [
+        "1363694365750353920",
+        "1363694183746916352",
+        "1363694063823380480",
+        "1363693992067231744",
+        "1363693894184734720",
+        "1363693818691457024",
+        "1363693705315250176",
+        "1363693534951006209"
+      ],
+      "Pokemon": [
+        "1363325954117627904",
+        "1363325884542521344",
+        "1363325803990904832",
+        "1363325673556426752",
+        "1363325610415386624",
+        "1363325531541471232",
+        "1363325446623608832",
+        "1363325340247670784"
+      ],
+      "Heroes": [
+        "1357932254621335552",
+        "1357932172731748353",
+        "1357932103659962368",
+        "1357931968372678656",
+        "1357931889821757440",
+        "1357931774641979392",
+        "1357931630521491456",
+        "1357931480134746112"
+      ],
+      "Wizards and Witches": [
+        "1360758091947196416",
+        "1360757997101383680",
+        "1360757927077507072",
+        "1360757845926121472",
+        "1360757711804846080",
+        "1360757594855071744",
+        "1360757492434358272",
+        "1360757359789486080"
+      ],
+      "The All-Stars": [
+        "1361846235660582912",
+        "1361846046828810240",
+        "1361845863252520960",
+        "1361845662798352384",
+        "1361845477041012736",
+        "1361845101202010112",
+        "1361844861845643264",
+        "1361844641548214272"
       ]
     }
     }
@@ -1084,6 +1212,342 @@ async function getSleeperPlayers(useCached) {
   return data;
 }
 
+function safeOwnerName(name) {
+  return String(name || "").trim();
+}
+
+function uniqueNames(values) {
+  return Array.from(
+    new Set((Array.isArray(values) ? values : []).map(safeOwnerName).filter(Boolean))
+  );
+}
+
+function inferDynastyDraftType(category, draftDetails) {
+  if (category !== "dynasty") return null;
+
+  const rounds = Number(draftDetails?.settings?.rounds || draftDetails?.rounds || 0);
+  if (rounds > 0 && rounds <= 10) {
+    return "rookie";
+  }
+
+  return "veteran";
+}
+
+function getDraftStatusRank(status) {
+  const normalized = safeOwnerName(status).toLowerCase();
+  if (normalized === "drafting" || normalized === "paused") return 4;
+  if (normalized === "pre_draft") return 3;
+  if (normalized === "complete") return 2;
+  return 1;
+}
+
+function getDraftSortTimestamp(draft) {
+  const candidates = [
+    draft?.start_time,
+    draft?.created,
+    draft?.created_at,
+    draft?.scheduled_start_time,
+    draft?.last_picked,
+  ];
+
+  for (const value of candidates) {
+    const num = Number(value || 0);
+    if (Number.isFinite(num) && num > 0) return num;
+  }
+
+  return 0;
+}
+
+function selectPrimaryDraftDetails(category, draftDetailsList, preferredDynastyType = null) {
+  const candidates = (Array.isArray(draftDetailsList) ? draftDetailsList : [])
+    .filter((draft) => draft && typeof draft === "object")
+    .filter((draft) =>
+      !preferredDynastyType || category !== "dynasty" || inferDynastyDraftType(category, draft) === preferredDynastyType
+    );
+  if (!candidates.length) return null;
+
+  return [...candidates].sort((a, b) => {
+    const statusDiff = getDraftStatusRank(b?.status) - getDraftStatusRank(a?.status);
+    if (statusDiff !== 0) return statusDiff;
+
+    const timeDiff = getDraftSortTimestamp(b) - getDraftSortTimestamp(a);
+    if (timeDiff !== 0) return timeDiff;
+
+    if (category === "dynasty") {
+      const typeA = inferDynastyDraftType(category, a);
+      const typeB = inferDynastyDraftType(category, b);
+      if (typeA !== typeB) return String(typeA || "").localeCompare(String(typeB || ""));
+    }
+
+    return safeOwnerName(b?.draft_id).localeCompare(safeOwnerName(a?.draft_id));
+  })[0];
+}
+
+function buildDynastyDraftTypeBreakdown(leagueSummaries) {
+  const buckets = {
+    veteran: {
+      key: "veteran",
+      name: "Veteran",
+      draftedTeams: 0,
+      totalLeagues: 0,
+      draftedLeagues: 0,
+      draftedOwnerNames: new Set(),
+      filledOwnerNames: new Set(),
+      totalRosterSlots: 0,
+    },
+    rookie: {
+      key: "rookie",
+      name: "Rookie",
+      draftedTeams: 0,
+      totalLeagues: 0,
+      draftedLeagues: 0,
+      draftedOwnerNames: new Set(),
+      filledOwnerNames: new Set(),
+      totalRosterSlots: 0,
+    },
+  };
+
+  for (const league of Array.isArray(leagueSummaries) ? leagueSummaries : []) {
+    const veteranCycle = league?.dynastyVeteran;
+    const rookieCycle = league?.dynastyRookie;
+
+    if (veteranCycle?.exists) {
+      const bucket = buckets.veteran;
+      bucket.totalLeagues += 1;
+      bucket.totalRosterSlots += Number(veteranCycle?.totalTeams || 0);
+      bucket.draftedTeams += Number(veteranCycle?.draftedTeams || 0);
+      if (Number(veteranCycle?.draftedTeams || 0) > 0) bucket.draftedLeagues += 1;
+      uniqueNames(veteranCycle?.draftedOwnerNames).forEach((name) => bucket.draftedOwnerNames.add(name));
+      uniqueNames(veteranCycle?.filledOwnerNames).forEach((name) => bucket.filledOwnerNames.add(name));
+    }
+
+    if (rookieCycle?.exists) {
+      const bucket = buckets.rookie;
+      bucket.totalLeagues += 1;
+      bucket.totalRosterSlots += Number(rookieCycle?.totalTeams || 0);
+      bucket.draftedTeams += Number(rookieCycle?.draftedTeams || 0);
+      if (Number(rookieCycle?.draftedTeams || 0) > 0) bucket.draftedLeagues += 1;
+      uniqueNames(rookieCycle?.draftedOwnerNames).forEach((name) => bucket.draftedOwnerNames.add(name));
+      uniqueNames(rookieCycle?.filledOwnerNames).forEach((name) => bucket.filledOwnerNames.add(name));
+    }
+  }
+
+  return Object.fromEntries(
+    Object.entries(buckets).map(([key, bucket]) => [
+      key,
+      {
+        key,
+        name: bucket.name,
+        draftedTeams: bucket.draftedTeams,
+        draftedUniqueOwners: bucket.draftedOwnerNames.size,
+        uniqueOwnersOnceDrafted: bucket.filledOwnerNames.size,
+        totalLeagues: bucket.totalLeagues,
+        draftedLeagues: bucket.draftedLeagues,
+        totalRosterSlots: bucket.totalRosterSlots,
+      },
+    ])
+  );
+}
+
+function countLeaguesInDivisions(divisions) {
+  return Object.values(divisions || {}).reduce(
+    (sum, leagues) => sum + (Array.isArray(leagues) ? leagues.length : 0),
+    0
+  );
+}
+
+function buildTopOwners(rows, limit = 5) {
+  const map = new Map();
+
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const ownerName = safeOwnerName(row?.ownerName);
+    if (!ownerName) continue;
+
+    const current = map.get(ownerName) || {
+      ownerName,
+      teamCount: 0,
+      combinedTotal: 0,
+      bestTeamTotal: 0,
+      leagues: new Set(),
+    };
+
+    const total = Number(row?.total || 0);
+    current.teamCount += 1;
+    current.combinedTotal += total;
+    current.bestTeamTotal = Math.max(current.bestTeamTotal, total);
+
+    const leagueName = safeOwnerName(row?.leagueName);
+    if (leagueName) current.leagues.add(leagueName);
+
+    map.set(ownerName, current);
+  }
+
+  return Array.from(map.values())
+    .map((entry) => ({
+      ownerName: entry.ownerName,
+      teamCount: entry.teamCount,
+      leagueCount: entry.leagues.size,
+      combinedTotal: Number(entry.combinedTotal.toFixed(2)),
+      averageTotal: Number((entry.combinedTotal / Math.max(1, entry.teamCount)).toFixed(2)),
+      bestTeamTotal: Number(entry.bestTeamTotal.toFixed(2)),
+    }))
+    .sort(
+      (a, b) =>
+        Number(b.averageTotal || 0) - Number(a.averageTotal || 0) ||
+        Number(b.teamCount || 0) - Number(a.teamCount || 0) ||
+        Number(b.combinedTotal || 0) - Number(a.combinedTotal || 0) ||
+        a.ownerName.localeCompare(b.ownerName)
+    )
+    .slice(0, limit);
+}
+
+function buildTopOwnersFromEntries(entries, draftedRows, limit = 10) {
+  const draftedMap = new Map();
+
+  for (const row of Array.isArray(draftedRows) ? draftedRows : []) {
+    const ownerName = safeOwnerName(row?.ownerName);
+    if (!ownerName) continue;
+
+    const current = draftedMap.get(ownerName) || {
+      draftedTeamCount: 0,
+      combinedTotal: 0,
+      bestTeamTotal: 0,
+    };
+
+    const total = Number(row?.total || 0);
+    current.draftedTeamCount += 1;
+    current.combinedTotal += total;
+    current.bestTeamTotal = Math.max(current.bestTeamTotal, total);
+    draftedMap.set(ownerName, current);
+  }
+
+  const map = new Map();
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    const ownerName = safeOwnerName(entry?.ownerName);
+    if (!ownerName) continue;
+
+    const current = map.get(ownerName) || {
+      ownerName,
+      teamCount: 0,
+      leagueCountSet: new Set(),
+      preDraftTeamCount: 0,
+      draftingTeamCount: 0,
+      draftedTeamCount: 0,
+      combinedTotal: 0,
+      bestTeamTotal: 0,
+    };
+
+    current.teamCount += 1;
+    const leagueName = safeOwnerName(entry?.leagueName);
+    if (leagueName) current.leagueCountSet.add(leagueName);
+
+    const stage = safeOwnerName(entry?.stage).toLowerCase();
+    if (stage === "pre_draft") current.preDraftTeamCount += 1;
+    else if (stage === "drafting") current.draftingTeamCount += 1;
+    else current.draftedTeamCount += 1;
+
+    map.set(ownerName, current);
+  }
+
+  return Array.from(map.values())
+    .map((entry) => {
+      const drafted = draftedMap.get(entry.ownerName) || {
+        draftedTeamCount: entry.draftedTeamCount,
+        combinedTotal: 0,
+        bestTeamTotal: 0,
+      };
+      const draftedTeams = Number(drafted.draftedTeamCount || 0);
+      const averageTotal =
+        draftedTeams > 0 ? Number((Number(drafted.combinedTotal || 0) / draftedTeams).toFixed(2)) : null;
+
+      return {
+        ownerName: entry.ownerName,
+        teamCount: entry.teamCount,
+        leagueCount: entry.leagueCountSet.size,
+        preDraftTeamCount: entry.preDraftTeamCount,
+        draftingTeamCount: entry.draftingTeamCount,
+        draftedTeamCount: draftedTeams,
+        hasPointData: draftedTeams > 0,
+        combinedTotal: Number(Number(drafted.combinedTotal || 0).toFixed(2)),
+        averageTotal,
+        bestTeamTotal: Number(Number(drafted.bestTeamTotal || 0).toFixed(2)),
+      };
+    })
+    .sort(
+      (a, b) =>
+        Number(b.teamCount || 0) - Number(a.teamCount || 0) ||
+        Number(b.draftedTeamCount || 0) - Number(a.draftedTeamCount || 0) ||
+        Number(b.averageTotal || 0) - Number(a.averageTotal || 0) ||
+        a.ownerName.localeCompare(b.ownerName)
+    )
+    .slice(0, limit);
+}
+
+function buildCategorySummary({ category, details, owners, leagueSummaries }) {
+  const draftedOwnerNames = uniqueNames((owners || []).map((owner) => owner?.ownerName));
+  const filledOwnerNames = uniqueNames(
+    (leagueSummaries || []).flatMap((league) => league?.filledOwnerNames || [])
+  );
+  const ownerEntries = (leagueSummaries || []).flatMap((league) => league?.ownerEntries || []);
+
+  const draftedTeams = Array.isArray(owners) ? owners.length : 0;
+  const filledTeams = (leagueSummaries || []).reduce(
+    (sum, league) => sum + Number(league?.filledTeams || 0),
+    0
+  );
+  const preDraftTeams = (leagueSummaries || []).reduce(
+    (sum, league) => sum + Number(league?.preDraftTeams || 0),
+    0
+  );
+  const draftingTeams = (leagueSummaries || []).reduce(
+    (sum, league) => sum + Number(league?.draftingTeams || 0),
+    0
+  );
+  const openDraftSlots = (leagueSummaries || []).reduce(
+    (sum, league) => sum + Number(league?.openDraftSlots || 0),
+    0
+  );
+  const totalRosterSlots = (leagueSummaries || []).reduce(
+    (sum, league) => sum + Number(league?.totalRosterSlots || 0),
+    0
+  );
+  const leaguesTracked = Array.isArray(leagueSummaries)
+    ? leagueSummaries.length
+    : countLeaguesInDivisions(details?.divisions);
+  const draftedLeagues = (leagueSummaries || []).filter(
+    (league) => Number(league?.draftedTeams || 0) > 0
+  ).length;
+  const preDraftLeagues = (leagueSummaries || []).filter(
+    (league) => Number(league?.preDraftTeams || 0) > 0
+  ).length;
+  const draftingLeagues = (leagueSummaries || []).filter(
+    (league) => Number(league?.draftingTeams || 0) > 0
+  ).length;
+  const activeDraftLeagues = (leagueSummaries || []).filter(
+    (league) => Number(league?.preDraftTeams || 0) > 0 || Number(league?.draftingTeams || 0) > 0
+  ).length;
+
+  return {
+    key: category,
+    name: details?.name || category,
+    draftedTeams,
+    draftedUniqueOwners: draftedOwnerNames.length,
+    filledTeams,
+    uniqueOwnersOnceDrafted: filledOwnerNames.length,
+    preDraftTeams,
+    draftingTeams,
+    openDraftSlots,
+    totalRosterSlots,
+    totalLeagues: leaguesTracked,
+    draftedLeagues,
+    preDraftLeagues,
+    draftingLeagues,
+    activeDraftLeagues,
+    topOwners: buildTopOwnersFromEntries(ownerEntries, owners, 10),
+    draftTypeBreakdown: category === "dynasty" ? buildDynastyDraftTypeBreakdown(leagueSummaries) : null,
+  };
+}
+
 /** ============== Per-league processing ============== */
 let completed = 0;
 function logProgress(totalLeagues, msg) {
@@ -1091,7 +1555,7 @@ function logProgress(totalLeagues, msg) {
   console.log(`[${completed}/${totalLeagues}] ${msg}`);
 }
 
-async function processLeague(leagueId, division, playersDB, totalLeagues, isBestBall) {
+async function processLeague(leagueId, division, playersDB, totalLeagues, isBestBall, category) {
   const baseUrl = `https://api.sleeper.app/v1/league/${leagueId}`;
   const leagueInfo = await fetchWithRetry(baseUrl);
   const leagueName = leagueInfo.name;
@@ -1105,8 +1569,16 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, isBest
   rosters.forEach(r => (rosterMap[r.roster_id] = r.owner_id));
 
   const drafts = await fetchWithRetry(`${baseUrl}/drafts`);
-  const draftId = drafts?.[0]?.draft_id;
-  const draftDetails = draftId ? await fetchWithRetry(`https://api.sleeper.app/v1/draft/${draftId}`) : [];
+  const draftDetailsList = await Promise.all(
+    (Array.isArray(drafts) ? drafts : []).map((draft) =>
+      draft?.draft_id ? fetchWithRetry(`https://api.sleeper.app/v1/draft/${draft.draft_id}`) : null
+    )
+  );
+  const draftDetails = selectPrimaryDraftDetails(category, draftDetailsList) || drafts?.[0] || null;
+  const veteranDraftDetails =
+    category === "dynasty" ? selectPrimaryDraftDetails(category, draftDetailsList, "veteran") : null;
+  const rookieDraftDetails =
+    category === "dynasty" ? selectPrimaryDraftDetails(category, draftDetailsList, "rookie") : null;
   const draftSlotMap = {};
   draftDetails?.draft_order &&
     Object.entries(draftDetails.draft_order).forEach(([userId, slot]) => (draftSlotMap[userId] = slot));
@@ -1251,7 +1723,88 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, isBest
     owner.latestRoster = { week: targetWeek, starters, bench };
   });
 
-  return { leagueId, leagueName, owners, weeklyRosters };
+  const totalRosterSlots = Number(leagueInfo?.total_rosters) || rosters.length || 0;
+  const filledOwnerIds = Array.from(
+    new Set(
+      (Array.isArray(rosters) ? rosters : [])
+        .map((roster) => safeOwnerName(roster?.owner_id))
+        .filter(Boolean)
+    )
+  );
+  const filledOwnerNames = uniqueNames(
+    filledOwnerIds.map((ownerId) => userMap[ownerId] || ownerId)
+  );
+  const draftedTeams = owners.length;
+  const draftedOwnerNames = uniqueNames(owners.map((owner) => owner?.ownerName));
+  const filledTeams = filledOwnerIds.length;
+  const openDraftSlots = Math.max(0, totalRosterSlots - filledTeams);
+  const draftStatus = safeOwnerName(draftDetails?.status || drafts?.[0]?.status).toLowerCase();
+  const draftType = inferDynastyDraftType(category, draftDetails);
+  const draftRounds = Number(draftDetails?.settings?.rounds || draftDetails?.rounds || 0);
+  const draftOrderType = safeOwnerName(
+    draftDetails?.type || draftDetails?.metadata?.type || draftDetails?.settings?.type
+  ).toLowerCase();
+  const isPreDraft = draftStatus === "pre_draft";
+  const isDrafting = draftStatus === "drafting" || draftStatus === "paused";
+  const preDraftTeams = isPreDraft ? totalRosterSlots : 0;
+  const draftingTeams = isDrafting ? totalRosterSlots : 0;
+  const veteranDraftStatus = safeOwnerName(veteranDraftDetails?.status).toLowerCase();
+  const rookieDraftStatus = safeOwnerName(rookieDraftDetails?.status || "pre_draft").toLowerCase();
+  const veteranDraftedTeams = veteranDraftStatus === "complete" ? totalRosterSlots : 0;
+  const rookieDraftedTeams = rookieDraftStatus === "complete" ? totalRosterSlots : 0;
+  const ownerEntries = filledOwnerNames.map((ownerName) => ({
+    ownerName,
+    leagueName,
+    stage: isPreDraft ? "pre_draft" : isDrafting ? "drafting" : "drafted",
+    draftType,
+  }));
+
+  return {
+    leagueId,
+    leagueName,
+    owners,
+    weeklyRosters,
+    summary: {
+      leagueId,
+      leagueName,
+      division,
+      totalRosterSlots,
+      filledTeams,
+      draftedTeams,
+      openDraftSlots,
+      preDraftTeams,
+      draftingTeams,
+      draftStatus,
+      draftType,
+      draftRounds,
+      draftOrderType,
+      dynastyVeteran:
+        category === "dynasty" && veteranDraftDetails
+          ? {
+              exists: true,
+              status: veteranDraftStatus || "pre_draft",
+              totalTeams: totalRosterSlots,
+              draftedTeams: veteranDraftedTeams,
+              draftedOwnerNames: veteranDraftedTeams > 0 ? filledOwnerNames : [],
+              filledOwnerNames,
+            }
+          : null,
+      dynastyRookie:
+        category === "dynasty"
+          ? {
+              exists: true,
+              status: rookieDraftStatus || "pre_draft",
+              totalTeams: totalRosterSlots,
+              draftedTeams: rookieDraftedTeams,
+              draftedOwnerNames: rookieDraftedTeams > 0 ? filledOwnerNames : [],
+              filledOwnerNames,
+            }
+          : null,
+      draftedOwnerNames,
+      filledOwnerNames,
+      ownerEntries,
+    },
+  };
 }
 
 
@@ -1346,9 +1899,7 @@ async function main() {
     const yearChoices = yearsForPrompt
       .slice()
       .sort()
-      .map((y) => ({ title: y, value: y }));
-
-    const initialYears = yearChoices.map((_, i) => i);
+      .map((y) => ({ title: y, value: y, selected: true }));
 
     const ans = await prompts(
       [
@@ -1358,7 +1909,6 @@ async function main() {
           message: "Select year(s) to update",
           hint: "Space = toggle, Enter = confirm",
           choices: yearChoices,
-          initial: initialYears,
           validate: (v) => (v.length ? true : "Pick at least one year"),
         },
         {
@@ -1386,7 +1936,7 @@ async function main() {
       }
     );
 
-    SELECTED_YEARS = ans.years;
+    SELECTED_YEARS = Array.isArray(ans.years) && ans.years.length ? ans.years : yearsForPrompt;
     USE_CACHED_PLAYERS = ans.useCachedPlayers;
 
     UPLOAD_TO_R2 = !!ans.uploadToR2;
@@ -1405,6 +1955,24 @@ async function main() {
 
     const weeklyData = {}; // { [category]: { [leagueName]: weeklyRosters } }
     const fullYear = {}; // { [category]: {...} }
+    const yearSummaryAccumulator = {
+      draftedTeams: 0,
+      filledTeams: 0,
+      preDraftTeams: 0,
+      draftingTeams: 0,
+      openDraftSlots: 0,
+      totalRosterSlots: 0,
+      totalLeagues: 0,
+      draftedLeagues: 0,
+      preDraftLeagues: 0,
+      draftingLeagues: 0,
+      activeDraftLeagues: 0,
+      draftedOwnerNames: new Set(),
+      filledOwnerNames: new Set(),
+      activeModes: [],
+      topOwnersByMode: {},
+      modeCards: [],
+    };
 
     const categories = LEAGUE_MAP[year] || {};
     for (const [category, details] of Object.entries(categories)) {
@@ -1414,6 +1982,7 @@ async function main() {
       const weeklyCategoryData = {};
       const leagueNamesByDivision = {};
       const leagueIdsByName = {}; // leagueName -> leagueId (best-effort; assumes unique names per category)
+      const leagueSummaries = [];
 
       for (const [division, leagues] of Object.entries(details.divisions)) {
         leagueNamesByDivision[division] = [];
@@ -1425,12 +1994,14 @@ async function main() {
                 division,
                 playersDB,
                 totalLeagues,
-                isBestBall
+                isBestBall,
+                category
               );
               leagueNamesByDivision[division].push(result.leagueName);
               leagueIdsByName[result.leagueName] = result.leagueId; // <-- add this
               allResults.push(...result.owners);
               weeklyCategoryData[result.leagueName] = result.weeklyRosters;
+              if (result.summary) leagueSummaries.push(result.summary);
             })
           )
         );
@@ -1539,6 +2110,14 @@ async function main() {
         leagueMeta,
       };
 
+      const categorySummary = buildCategorySummary({
+        category,
+        details,
+        owners: allResults,
+        leagueSummaries,
+      });
+      catPayload.summary = categorySummary;
+
 
       if (String(year) === CURRENT_YEAR) {
         catPayload.updatedAt = new Date().toISOString();
@@ -1546,7 +2125,65 @@ async function main() {
 
       fullYear[category] = catPayload;
       weeklyData[category] = weeklyCategoryData;
+
+      yearSummaryAccumulator.draftedTeams += Number(categorySummary.draftedTeams || 0);
+      yearSummaryAccumulator.filledTeams += Number(categorySummary.filledTeams || 0);
+      yearSummaryAccumulator.preDraftTeams += Number(categorySummary.preDraftTeams || 0);
+      yearSummaryAccumulator.draftingTeams += Number(categorySummary.draftingTeams || 0);
+      yearSummaryAccumulator.openDraftSlots += Number(categorySummary.openDraftSlots || 0);
+      yearSummaryAccumulator.totalRosterSlots += Number(categorySummary.totalRosterSlots || 0);
+      yearSummaryAccumulator.totalLeagues += Number(categorySummary.totalLeagues || 0);
+      yearSummaryAccumulator.draftedLeagues += Number(categorySummary.draftedLeagues || 0);
+      yearSummaryAccumulator.preDraftLeagues += Number(categorySummary.preDraftLeagues || 0);
+      yearSummaryAccumulator.draftingLeagues += Number(categorySummary.draftingLeagues || 0);
+      yearSummaryAccumulator.activeDraftLeagues += Number(categorySummary.activeDraftLeagues || 0);
+
+      leagueSummaries.forEach((league) => {
+        uniqueNames(league?.draftedOwnerNames).forEach((name) => yearSummaryAccumulator.draftedOwnerNames.add(name));
+        uniqueNames(league?.filledOwnerNames).forEach((name) => yearSummaryAccumulator.filledOwnerNames.add(name));
+      });
+
+      yearSummaryAccumulator.activeModes.push(category);
+      yearSummaryAccumulator.topOwnersByMode[category] = {
+        key: category,
+        name: categorySummary.name,
+        rows: categorySummary.topOwners,
+      };
+      yearSummaryAccumulator.modeCards.push({
+        key: category,
+        name: categorySummary.name,
+        draftedTeams: categorySummary.draftedTeams,
+        draftedUniqueOwners: categorySummary.draftedUniqueOwners,
+        uniqueOwnersOnceDrafted: categorySummary.uniqueOwnersOnceDrafted,
+        preDraftTeams: categorySummary.preDraftTeams,
+        draftingTeams: categorySummary.draftingTeams,
+        totalLeagues: categorySummary.totalLeagues,
+        draftedLeagues: categorySummary.draftedLeagues,
+        draftingLeagues: categorySummary.draftingLeagues,
+        activeDraftLeagues: categorySummary.activeDraftLeagues,
+        draftTypeBreakdown: categorySummary.draftTypeBreakdown,
+        totalRosterSlots: categorySummary.totalRosterSlots,
+      });
     }
+
+    fullYear.__summary = {
+      draftedTeams: yearSummaryAccumulator.draftedTeams,
+      draftedUniqueOwners: yearSummaryAccumulator.draftedOwnerNames.size,
+      filledTeams: yearSummaryAccumulator.filledTeams,
+      uniqueOwnersOnceDrafted: yearSummaryAccumulator.filledOwnerNames.size,
+      preDraftTeams: yearSummaryAccumulator.preDraftTeams,
+      draftingTeams: yearSummaryAccumulator.draftingTeams,
+      openDraftSlots: yearSummaryAccumulator.openDraftSlots,
+      totalRosterSlots: yearSummaryAccumulator.totalRosterSlots,
+      totalLeagues: yearSummaryAccumulator.totalLeagues,
+      draftedLeagues: yearSummaryAccumulator.draftedLeagues,
+      preDraftLeagues: yearSummaryAccumulator.preDraftLeagues,
+      draftingLeagues: yearSummaryAccumulator.draftingLeagues,
+      activeDraftLeagues: yearSummaryAccumulator.activeDraftLeagues,
+      activeModes: yearSummaryAccumulator.activeModes,
+      topOwnersByMode: yearSummaryAccumulator.topOwnersByMode,
+      modeCards: yearSummaryAccumulator.modeCards,
+    };
 
     // Per-year leaderboards file: { "2025": { big_game: {...}, ... } }
     writeJSONMin(perYearLeaderboards(year), { [year]: fullYear });

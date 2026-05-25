@@ -35,6 +35,15 @@ function safeArray(v) {
   return Array.isArray(v) ? v : [];
 }
 
+function extractYearBlock(payload, year) {
+  if (!payload || typeof payload !== "object") return null;
+  const y = String(year);
+  const maybeWrapped =
+    (payload?.[y] && typeof payload[y] === "object" ? payload[y] : null) ||
+    (payload?.[Number(y)] && typeof payload[Number(y)] === "object" ? payload[Number(y)] : null);
+  return maybeWrapped || payload;
+}
+
 function stripUpdatedAt(obj) {
   if (!obj || typeof obj !== "object") return obj;
   // Avoid mutating the original object (hooks/cache)
@@ -59,6 +68,7 @@ export default function LeaderboardsClient() {
   // Start with "/r2" (server-safe) and then swap after mount.
   const [r2Base, setR2Base] = useState("/r2");
   const [mounted, setMounted] = useState(false);
+  const [historicalYearBlocks, setHistoricalYearBlocks] = useState({});
 
   useEffect(() => {
     setMounted(true);
@@ -113,12 +123,7 @@ export default function LeaderboardsClient() {
   // 2) { big_game: {...}, ... }  (some generators strip the year wrapper)
   // Normalize so the UI always reads the per-year object.
   const rawYearBlock = useMemo(() => {
-    if (!liveData) return null;
-    const y = String(yearStr);
-    const maybeWrapped =
-      (liveData?.[y] && typeof liveData[y] === "object" ? liveData[y] : null) ||
-      (liveData?.[Number(y)] && typeof liveData[Number(y)] === "object" ? liveData[Number(y)] : null);
-    return maybeWrapped || (typeof liveData === "object" ? liveData : null);
+    return extractYearBlock(liveData, yearStr);
   }, [liveData, yearStr]);
 
   // Keep updatedAt separate so it doesn't show up as a selectable "mode".
@@ -130,15 +135,58 @@ export default function LeaderboardsClient() {
 
   const yearBlock = useMemo(() => stripUpdatedAt(rawYearBlock), [rawYearBlock]);
 
+  useEffect(() => {
+    let ignore = false;
+
+    const loadHistoricalYearBlocks = async () => {
+      const yearList = safeArray(years).map(String).filter(Boolean);
+      if (!mounted || !DATA_BASE || yearList.length === 0) {
+        if (!ignore) setHistoricalYearBlocks({});
+        return;
+      }
+
+      const results = await Promise.all(
+        yearList.map(async (year) => {
+          try {
+            const res = await fetch(`${DATA_BASE}/leaderboards_${year}.json`, { cache: "no-store" });
+            if (!res.ok) return [year, null];
+            const payload = await res.json();
+            const block = stripUpdatedAt(extractYearBlock(payload, year));
+            return [year, block];
+          } catch {
+            return [year, null];
+          }
+        })
+      );
+
+      if (ignore) return;
+
+      const next = {};
+      results.forEach(([year, block]) => {
+        if (block && typeof block === "object") next[String(year)] = block;
+      });
+      setHistoricalYearBlocks(next);
+    };
+
+    loadHistoricalYearBlocks();
+
+    return () => {
+      ignore = true;
+    };
+  }, [DATA_BASE, mounted, years]);
+
   // Build a stable object for Navbar/Provider: { [year]: {modeA:..., modeB:...} }
   const lbData = useMemo(() => {
-    if (!yearBlock) return {};
-    return { [yearStr]: yearBlock };
-  }, [yearBlock, yearStr]);
+    const merged = { ...historicalYearBlocks };
+    if (yearBlock) merged[yearStr] = yearBlock;
+    return merged;
+  }, [historicalYearBlocks, yearBlock, yearStr]);
 
   // Ensure current.mode stays valid as data loads/changes.
   useEffect(() => {
-    const modes = Object.keys(yearBlock || {}).filter((k) => yearBlock?.[k] && typeof yearBlock[k] === "object");
+    const modes = Object.keys(yearBlock || {}).filter(
+      (k) => !String(k).startsWith("__") && yearBlock?.[k] && typeof yearBlock[k] === "object"
+    );
     if (!modes.length) return;
     if (current.mode && modes.includes(current.mode)) return;
     setCurrent((c) => ({ ...c, mode: modes[0] }));

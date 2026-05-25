@@ -10,6 +10,10 @@ import { r2Url } from "@/lib/r2Url";
 const DEFAULT_SEASON = CURRENT_SEASON;
 const R2_KEY_FOR = (season) => `data/biggame/leagues_${season}.json`;
 
+function safeArray(v) {
+  return Array.isArray(v) ? v : [];
+}
+
 function safeNum(v, fallback = null) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -63,51 +67,52 @@ function slugify(s) {
  */
 function buildDivisionsFromRows(rows) {
   const map = new Map(); // divisionSlug -> division object
-
-  for (const r of rows || []) {
-    // Prefer new schema division name first, fallback to old schema theme_name
-    const divisionName = safeStr(r?.division_name || r?.theme_name || r?.division || "").trim();
-    if (!divisionName) continue;
-
-    const divisionSlug = safeStr(r?.division_slug).trim() || slugify(divisionName);
-    if (!divisionSlug) continue;
-
-    const isHeader = !!r?.is_division_header;
-
+  const ensureDivision = (divisionSlug, divisionName = "") => {
+    if (!divisionSlug) return null;
     if (!map.has(divisionSlug)) {
       map.set(divisionSlug, {
         id: divisionSlug,
         division_slug: divisionSlug,
-        division_name: divisionName,
-
-        // these will get finalized below (header wins)
+        division_name: divisionName || divisionSlug,
         division_order: null,
         division_image: "",
         division_image_key: "",
         status: "",
-
+        open_teams: 0,
+        total_teams: 0,
+        has_drafting_league: false,
         leagues: [],
       });
     }
-
     const div = map.get(divisionSlug);
+    if (divisionName && (!safeStr(div.division_name).trim() || div.division_name === div.division_slug)) {
+      div.division_name = divisionName;
+    }
+    return div;
+  };
 
-    // Keep division name updated if header provides it
-    if (isHeader && divisionName) div.division_name = divisionName;
+  for (const r of rows || []) {
+    const divisionName = safeStr(r?.division_name || r?.theme_name || r?.division || "").trim();
+    const divisionSlug =
+      safeStr(r?.division_slug || r?.division_code || "").trim() ||
+      (divisionName ? slugify(divisionName) : "");
+    const isHeader = !!r?.is_division_header;
 
-    // --- Division fields (HEADER SHOULD WIN) ---
-    // Order
+    if (!divisionSlug) continue;
+
+    const div = ensureDivision(divisionSlug, divisionName);
+    if (!div) continue;
+
     const candidateOrder = safeNum(
-      // new schema first
       r?.division_order ??
-        // fallback old schema
         r?.theme_order ??
+        r?.display_order ??
         null,
       null
     );
 
     if (isHeader) {
-      // header always wins
+      if (divisionName) div.division_name = divisionName;
       if (Number.isFinite(candidateOrder)) div.division_order = candidateOrder;
 
       const st = safeStr(r?.division_status || r?.theme_status || "").trim();
@@ -118,30 +123,18 @@ function buildDivisionsFromRows(rows) {
 
       const url = safeStr(r?.division_image_path || r?.division_image_url || r?.theme_image_url || r?.division_image || "").trim();
       if (url) div.division_image = url;
-    } else {
-      // non-header rows only fill blanks
-      if (!Number.isFinite(div.division_order) && Number.isFinite(candidateOrder)) div.division_order = candidateOrder;
-
-      const st = safeStr(r?.division_status || r?.theme_status || "").trim();
-      if (!div.status && st) div.status = st;
-
-      const key = safeStr(r?.division_image_key || r?.theme_imageKey || r?.theme_image_key || "").trim();
-      if (!div.division_image_key && key) div.division_image_key = key;
-
-      const url = safeStr(r?.division_image_path || r?.division_image_url || r?.theme_image_url || r?.division_image || "").trim();
-      if (!div.division_image && url) div.division_image = url;
+      continue;
     }
 
-    // --- League entry ---
-    // Skip header-only rows from becoming leagues
-    if (isHeader) continue;
+    if (!Number.isFinite(div.division_order) && Number.isFinite(candidateOrder)) {
+      div.division_order = candidateOrder;
+    }
 
     const leagueName = safeStr(r?.league_name || r?.name || "").trim();
     const leagueUrl = safeStr(r?.league_url || r?.sleeper_url || r?.sleeperUrl || r?.url || "").trim();
     const leagueStatus = safeStr(r?.league_status || r?.status || "").trim();
     const leagueOrder = safeNum(r?.display_order ?? r?.league_order ?? null, null);
 
-    // If a weird extra blank row exists, don't create a "ghost league card"
     if (!leagueName && !leagueUrl) continue;
 
     div.leagues.push({
@@ -150,6 +143,12 @@ function buildDivisionsFromRows(rows) {
       status: leagueStatus,
       url: leagueUrl,
       order: leagueOrder,
+      open_teams: safeNum(r?.open_teams, null),
+      total_teams: safeNum(r?.total_teams, null),
+      filled_teams: safeNum(r?.filled_teams, null),
+      avatar_id: safeStr(r?.avatar_id || "").trim(),
+      league_image_key: safeStr(r?.league_image_key || "").trim(),
+      league_image_path: safeStr(r?.league_image_path || "").trim(),
     });
   }
 
@@ -177,7 +176,14 @@ function buildDivisionsFromRows(rows) {
   });
 
   for (const d of divisions) {
-    if (String(d.status || "").toUpperCase() === "AUTO") {
+    if (!Number.isFinite(d.division_order)) {
+      const match = safeStr(d.division_slug).match(/(\d+)/);
+      d.division_order = match ? Number(match[1]) : null;
+    }
+    d.open_teams = d.leagues.reduce((sum, league) => sum + Math.max(0, safeNum(league?.open_teams, 0)), 0);
+    d.total_teams = d.leagues.reduce((sum, league) => sum + Math.max(0, safeNum(league?.total_teams, 0)), 0);
+    d.has_drafting_league = d.leagues.some((league) => safeStr(league?.status).toUpperCase() === "DRAFTING");
+    if (!safeStr(d.status).trim() || String(d.status || "").toUpperCase() === "AUTO") {
       d.status = computeAutoDivisionStatus(d.leagues);
     }
   }
@@ -188,10 +194,22 @@ function buildDivisionsFromRows(rows) {
 function resolveDivisionImage(div, updatedAt) {
   const key = safeStr(div?.division_image_key).trim();
   const url = safeStr(div?.division_image).trim();
+  const fallbackLeague =
+    safeArray(div?.leagues).find((league) => safeStr(league?.league_image_path).trim() || safeStr(league?.league_image_key).trim()) ||
+    safeArray(div?.leagues).find((league) => safeStr(league?.avatar_id).trim());
 
   // If we have an R2 key, always resolve through adminR2Url()
   // so localhost uses the public r2.dev base and production uses /r2/.
-  const base = key ? r2Url(key) : url;
+  const base = key
+    ? r2Url(key)
+    : url ||
+      (safeStr(fallbackLeague?.league_image_path).trim()
+        ? safeStr(fallbackLeague?.league_image_path).trim()
+        : safeStr(fallbackLeague?.league_image_key).trim()
+          ? r2Url(safeStr(fallbackLeague?.league_image_key).trim())
+          : safeStr(fallbackLeague?.avatar_id).trim()
+            ? `https://sleepercdn.com/avatars/${safeStr(fallbackLeague?.avatar_id).trim()}`
+            : "");
 
   if (!base) return "";
   if (!updatedAt) return base;
@@ -286,17 +304,40 @@ export default function BigGameDivisionsClient({ year = DEFAULT_SEASON, version 
       {divisions.map((d) => {
         const href = `/big-game/divisions?division=${encodeURIComponent(d.division_slug)}&year=${encodeURIComponent(season)}`;
         const img = resolveDivisionImage(d, updatedAt);
+        const hasOpenings = Number(d.open_teams || 0) > 0;
+        const hasDrafting = Boolean(d.has_drafting_league);
 
         return (
           <MediaTabCard
             key={d.id}
             href={href}
             title={d.division_name}
-            subtitle={`${d.leagues.length} leagues`}
-            metaRight={<span className="badge">{safeStr(d.status || "TBD")}</span>}
+            badge={Number.isFinite(d.division_order) ? `Division ${d.division_order}` : undefined}
+            subtitle={`${d.leagues.length} leagues${hasOpenings ? ` · ${d.open_teams} openings` : ""}`}
+            metaLeft={
+              hasOpenings ? (
+                <span className="text-emerald-300">Open spots available</span>
+              ) : hasDrafting ? (
+                <span className="text-cyan-300">Draft in progress</span>
+              ) : (
+                <span className="text-muted">Currently full</span>
+              )
+            }
+            metaRight={
+              <span className={`badge ${hasOpenings ? "badge-warn" : hasDrafting ? "badge-info" : ""}`}>
+                {safeStr(d.status || "TBD")}
+              </span>
+            }
             imageSrc={img}
             imageAlt="Division"
-            footerText="View division"
+            footerText={hasOpenings ? "View division with openings" : "View division"}
+            className={
+              hasOpenings
+                ? "ring-1 ring-emerald-400/45 shadow-[0_20px_44px_rgba(16,185,129,0.16)]"
+                : hasDrafting
+                  ? "ring-1 ring-cyan-400/35 shadow-[0_20px_44px_rgba(34,211,238,0.12)]"
+                  : ""
+            }
           />
         );
       })}

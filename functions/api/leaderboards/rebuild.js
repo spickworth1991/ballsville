@@ -35,7 +35,7 @@ function isGameWindow(now = new Date()) {
   // Sun: 12:30+
   if (weekday === "Sun" && time >= 12.5) return true;
   // Mon: 19:00+
-  if (weekday === "Mon" && time >= 19) return true;
+  if (weekday === "Mon" && time >= 1) return true;
   // Thu: 19:00+
   if (weekday === "Thu" && time >= 19) return true;
 

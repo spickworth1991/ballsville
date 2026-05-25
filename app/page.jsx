@@ -2,6 +2,7 @@
 import Link from "next/link";
 import LiteYouTube from "@/components/LiteYouTube";
 import { siteConfig } from "@/app/config/siteConfig";
+import { CURRENT_SEASON } from "@/lib/season";
 
 const pageTitle = `${siteConfig.title}`;
 
@@ -378,7 +379,7 @@ export default function Page() {
         </div>
       </ReadableSection>
 
-      {/* HALL OF FAME / 2024 WINNERS */}
+      {/* HALL OF FAME / YEARLY WINNERS */}
       <ReadableSection className="py-6 pb-10">
         <div className="max-w-4xl mx-auto text-center space-y-6">
           <p className="text-xs uppercase tracking-[0.35em] text-accent">
@@ -402,7 +403,7 @@ export default function Page() {
           </Link>
 
           <h2 className="text-3xl font-bold text-primary">
-            Our Game Winners For 2024
+            Our Game Winners For {CURRENT_SEASON - 1}
           </h2>
 
           <div className="flex flex-wrap justify-center gap-3 text-sm">
