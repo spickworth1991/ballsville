@@ -10,6 +10,10 @@ import { r2Url } from "@/lib/r2Url";
 const DEFAULT_SEASON = CURRENT_SEASON;
 const R2_KEY_FOR = (season) => `data/biggame/leagues_${season}.json`;
 
+function safeArray(v) {
+  return Array.isArray(v) ? v : [];
+}
+
 function safeNum(v, fallback = null) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
