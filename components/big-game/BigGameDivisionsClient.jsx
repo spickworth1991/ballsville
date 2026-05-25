@@ -183,7 +183,7 @@ function buildDivisionsFromRows(rows) {
     d.open_teams = d.leagues.reduce((sum, league) => sum + Math.max(0, safeNum(league?.open_teams, 0)), 0);
     d.total_teams = d.leagues.reduce((sum, league) => sum + Math.max(0, safeNum(league?.total_teams, 0)), 0);
     d.has_drafting_league = d.leagues.some((league) => safeStr(league?.status).toUpperCase() === "DRAFTING");
-    if (String(d.status || "").toUpperCase() === "AUTO") {
+    if (!safeStr(d.status).trim() || String(d.status || "").toUpperCase() === "AUTO") {
       d.status = computeAutoDivisionStatus(d.leagues);
     }
   }
