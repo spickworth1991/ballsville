@@ -469,14 +469,13 @@ export default function GauntletPage() {
               <p className="mt-2 text-sm text-muted leading-relaxed">
                 Follow the Gauntlet scoreboard for full-game tracking and stacked winnings.
               </p>
-              <a
-                href="https://docs.google.com/spreadsheets/d/1UuAI4mNQtcnnZZiYyybfIGoczFCZRvuhTzXqk-h2RLQ/edit?usp=drivesdk"
-                target="_blank"
-                rel="noreferrer"
+              <Link
+                prefetch={false}
+                href="/gauntlet/leaderboard"
                 className="mt-4 inline-flex text-sm font-semibold text-accent hover:underline underline-offset-4"
               >
-                Open Gauntlet Scoreboard →
-              </a>
+                View Gauntlet Scoreboard →
+              </Link>
             </SubCard>
 
             <SubCard>
