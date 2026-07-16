@@ -1,37 +1,53 @@
 // src/app/gauntlet/page.jsx
 import Link from "next/link";
-import SectionManifestGate from "@/components/manifest/SectionManifestGate";
-import GauntletDynamicBlocks from "@/components/gauntlet/GauntletDynamicBlocks";
-import { CURRENT_SEASON } from "@/lib/season";
 
-function Card({ children }) {
+function Card({ children, id }) {
   return (
-    <section className="bg-card-surface border border-subtle shadow-md rounded-2xl p-6 md:p-8">
+    <section
+      id={id}
+      className="scroll-mt-28 bg-card-surface border border-subtle shadow-md rounded-2xl p-6 md:p-8"
+    >
       {children}
     </section>
   );
 }
 
-function SubCard({ children }) {
+function SubCard({ children, className = "" }) {
   return (
-    <div className="bg-subtle-surface border border-subtle rounded-2xl p-5 md:p-6">
+    <div className={`bg-subtle-surface border border-subtle rounded-2xl p-5 md:p-6 ${className}`}>
       {children}
     </div>
   );
 }
 
+function Pill({ children }) {
+  return (
+    <span className="rounded-full border border-subtle bg-card-surface px-3 py-1 text-[11px] font-semibold text-fg">
+      {children}
+    </span>
+  );
+}
+
+function Stat({ label, value }) {
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-[0.25em] text-muted">{label}</div>
+      <div className="mt-1 font-semibold text-fg">{value}</div>
+    </div>
+  );
+}
+
+const listClass = "mt-3 space-y-2 text-sm text-muted leading-relaxed list-disc pl-5";
+
 export default function GauntletPage() {
   return (
     <main className="relative min-h-screen text-fg">
-      {/* cosmic glow overlay (match Big Game layout) */}
       <div className="pointer-events-none absolute inset-0 -z-10">
         <div className="hero-glow" />
       </div>
 
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-12 space-y-12">
-        {/* HERO */}
         <header className="relative overflow-hidden rounded-3xl border border-border/70 bg-card-surface shadow-2xl shadow-black/40 p-6 md:p-10">
-          {/* premium glow */}
           <div className="pointer-events-none absolute inset-0 mix-blend-screen">
             <div className="opacity-50 absolute -top-24 -left-5 h-56 w-56 rounded-full bg-green-500/50 blur-3xl" />
             <div className="opacity-50 absolute -top-24 -right-5 h-56 w-56 rounded-full bg-purple-500/50 blur-3xl" />
@@ -41,412 +57,477 @@ export default function GauntletPage() {
           </div>
 
           <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,.85fr)] lg:items-start">
-            {/* left */}
             <div className="space-y-4">
-              <p className="text-xs uppercase tracking-[0.35em] text-accent">BALLSVILLE GAUNTLET</p>
+              <p className="text-xs uppercase tracking-[0.35em] text-accent">THE BALLSVILLE GAME #5</p>
 
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold leading-tight">
-                3 Legions. 12 Gods. <span className="text-primary">1 Grand Champion</span>.
+                The <span className="text-primary">GAUNTLET</span> Game
               </h1>
 
               <p className="text-sm sm:text-base text-muted max-w-prose">
-                24 teams per <span className="text-fg font-semibold">God</span>, four Gods per{" "}
-                <span className="text-fg font-semibold">Legion</span>: Egyptians, Greeks, and Romans.
-                Survive all legs — the 12 God Champions collide in Week 17 for the Grand Championship.
+                A 2026, 14-team challenge that evolves through Redraft, Pirate, Guillotine,
+                Playoffs, and a custom Week 17 Championship.
               </p>
 
               <div className="mt-4 inline-flex flex-wrap gap-2 text-xs sm:text-sm">
-                <span className="rounded-full border border-subtle bg-card-surface px-3 py-1">
-                  Redraft → Guillotine → Pirate Playoffs → Championships
-                </span>
-                <span className="rounded-full border border-subtle bg-card-surface px-3 py-1">288 total entries</span>
-                <span className="rounded-full border border-subtle bg-card-surface px-3 py-1">
-                  Week 17 Grand Championship
-                </span>
+                <Pill>$20 buy-in</Pill>
+                <Pill>14 teams</Pill>
+                <Pill>Five trials</Pill>
+                <Pill>Weeks 1–17</Pill>
               </div>
 
               <div className="flex flex-wrap gap-3 pt-2">
-                <Link prefetch={false} href="/gauntlet/intro" className="btn btn-primary">
-                  ⚔️ Gauntlet Game Intro
-                </Link>
-                <Link prefetch={false} href="/gauntlet/cash-doc" className="btn btn-outline">
-                  💸 View Cash Doc
-                </Link>
+                <a href="#opening-phase" className="btn btn-primary">
+                  Opening Rules
+                </a>
+                <a href="#trials" className="btn btn-outline">
+                  View All Trials
+                </a>
               </div>
 
-              {/* quick stats (kept) */}
               <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4 text-sm">
-                <div>
-                  <div className="text-[11px] uppercase tracking-[0.25em] text-muted">Entries</div>
-                  <div className="mt-1 font-semibold text-fg">288</div>
-                </div>
-                <div>
-                  <div className="text-[11px] uppercase tracking-[0.25em] text-muted">God Champs</div>
-                  <div className="mt-1 font-semibold text-fg">12</div>
-                </div>
-                <div>
-                  <div className="text-[11px] uppercase tracking-[0.25em] text-muted">Payouts</div>
-                  <div className="mt-1 font-semibold text-fg">133+</div>
-                </div>
-                <div>
-                  <div className="text-[11px] uppercase tracking-[0.25em] text-muted">Max Winnings</div>
-                  <div className="mt-1 font-semibold text-fg">$2,342</div>
-                </div>
+                <Stat label="Buy-in" value="$20" />
+                <Stat label="Season FAAB" value="$250" />
+                <Stat label="Rosters Chopped" value="8" />
+                <Stat label="Max Upside" value="$2,450" />
               </div>
             </div>
 
-            {/* right: compact at-a-glance (NO rules in hero) */}
             <div className="space-y-4 py-4">
               <div className="rounded-2xl border border-border/60 bg-card-trans backdrop-blur-sm overflow-hidden shadow-xl shadow-black/40">
                 <div className="px-4 py-3 border-b border-border/60">
                   <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
-                    2026 GAUNTLET GAME
+                    2026 GAME FORMAT
                   </span>
                   <span className="block text-[11px] text-muted">
-                    3 legs + championships • 12 Gods • 3 Legions • Light & Dark leagues
+                    Build, survive, adapt, then decide how much to wager.
                   </span>
                 </div>
 
-                <div className="p-5 sm:p-6">
-                  <div className="flex flex-wrap gap-2 text-[11px]">
-                    <span className="rounded-full border border-subtle bg-card-surface px-3 py-1 font-semibold text-fg">
-                      $200 FAAB
-                    </span>
-                    <span className="rounded-full border border-subtle bg-card-surface px-3 py-1 font-semibold text-fg">
-                      Redraft W1–W9
-                    </span>
-                    <span className="rounded-full border border-subtle bg-card-surface px-3 py-1 font-semibold text-fg">
-                      Guillotine W10–W12
-                    </span>
-                    <span className="rounded-full border border-subtle bg-card-surface px-3 py-1 font-semibold text-fg">
-                      Pirate W13–W15
-                    </span>
-                    <span className="rounded-full border border-subtle bg-card-surface px-3 py-1 font-semibold text-fg">
-                      Champs W16–W17
-                    </span>
-                  </div>
-
-                  <div className="mt-4 text-sm text-muted leading-relaxed">
-                    Quick view only — full rules are below.
-                  </div>
-                </div>
+                <ol className="p-5 sm:p-6 space-y-3 text-sm">
+                  <li className="flex items-center justify-between gap-4">
+                    <span className="font-semibold text-fg">Trial 1 · Redraft</span>
+                    <span className="text-muted">Weeks 1–5</span>
+                  </li>
+                  <li className="flex items-center justify-between gap-4">
+                    <span className="font-semibold text-fg">Trial 2 · Pirate</span>
+                    <span className="text-muted">Weeks 6–10</span>
+                  </li>
+                  <li className="flex items-center justify-between gap-4">
+                    <span className="font-semibold text-fg">Trial 3 · Guillotine</span>
+                    <span className="text-muted">Weeks 11–14</span>
+                  </li>
+                  <li className="flex items-center justify-between gap-4">
+                    <span className="font-semibold text-fg">Trial 4 · Playoffs</span>
+                    <span className="text-muted">Weeks 15–16</span>
+                  </li>
+                  <li className="flex items-center justify-between gap-4 border-t border-border/60 pt-3">
+                    <span className="font-semibold text-primary">Trial 5 · Championship</span>
+                    <span className="text-muted">Week 17</span>
+                  </li>
+                </ol>
               </div>
             </div>
           </div>
-
-          {/* Owner updates (still part of hero; manifest-gated for cache efficiency) */}
-          <SectionManifestGate section="gauntlet" season={CURRENT_SEASON}>
-            <GauntletDynamicBlocks season={CURRENT_SEASON} showLegions={false} />
-          </SectionManifestGate>
         </header>
 
-        {/* RULES (separate section below hero) */}
-        <Card>
+        <Card id="opening-phase">
           <header className="space-y-2">
-            <p className="text-xs uppercase tracking-[0.35em] text-muted">2026 GAUNTLET GAME</p>
+            <p className="text-xs uppercase tracking-[0.35em] text-muted">OPENING PHASE · PRE-DRAFT</p>
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-primary">
-              Welcome to the 2026 Gauntlet Game
+              Build the Team You’ll Carry Through the Game
             </h2>
             <p className="text-sm sm:text-base text-muted leading-relaxed max-w-3xl">
-              This game integrates aspects from <span className="text-fg font-semibold">three</span> popular fantasy football styles.
-              The season runs in <span className="text-fg font-semibold">three legs</span>, followed by the Championship stage.
+              Rosters stay constant through every phase, with one six-spot bench expansion after Week 10.
+              Trades are intentionally restricted, and the same $250 FAAB budget must last all season.
             </p>
           </header>
 
           <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
             <SubCard>
-              <div className="text-xs tracking-widest text-muted uppercase">Structure</div>
-              <div className="mt-2 text-sm text-muted leading-relaxed">
-                <span className="text-fg font-semibold">12 GODS</span> across{" "}
-                <span className="text-fg font-semibold">3 LEGIONS</span> (4 Gods per Legion).
-                Each God has <span className="text-fg font-semibold">two 12-team leagues</span>:{" "}
-                <span className="text-fg font-semibold">Light</span> and{" "}
-                <span className="text-fg font-semibold">Dark</span>.
-              </div>
-            </SubCard>
-
-            <SubCard>
-              <div className="text-xs tracking-widest text-muted uppercase">FAAB</div>
-              <div className="mt-2 text-sm text-muted leading-relaxed">
-                Each team gets <span className="text-fg font-semibold">$200 FAAB</span> after the draft.
-                FAAB <span className="text-fg font-semibold">cannot</span> be included in trades.
-                It can be used on waivers until the{" "}
-                <span className="text-fg font-semibold">Wednesday following Week 12</span> (end of Guillotine).
-              </div>
-            </SubCard>
-
-            <SubCard>
-              <div className="text-xs tracking-widest text-muted uppercase">Season Format</div>
-              <div className="mt-2 text-sm text-muted leading-relaxed">
-                <span className="text-fg font-semibold">LEG 1:</span> Redraft (W1–W9) <br />
-                <span className="text-fg font-semibold">LEG 2:</span> Guillotine (W10–W12) <br />
-                <span className="text-fg font-semibold">LEG 3:</span> Pirate Playoffs (W13–W15) <br />
-                <span className="text-primary font-bold"> Championships (W16–W17)</span>
-              </div>
-            </SubCard>
-          </div>
-
-          <div className="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-4">
-            {/* LEG 1 */}
-            <div className="lg:col-span-6">
-              <SubCard>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-xs tracking-widest text-muted uppercase">LEG 1</div>
-                    <div className="mt-1 text-lg font-semibold text-primary">Redraft (Weeks 1–9)</div>
-                  </div>
-                  <span className="rounded-full border border-subtle bg-card-surface px-3 py-1 text-[11px] font-semibold text-fg">
-                    Trade Deadline: End of Week 9
-                  </span>
-                </div>
-
-                <ul className="mt-3 space-y-2 text-sm text-muted leading-relaxed list-disc pl-5">
-                  <li>Weeks 1–9: set your lineup to the best of your ability.</li>
-                  <li>
-                    End of Week 9: the team that is{" "}
-                    <span className="text-fg font-semibold">last in the standings</span> is eliminated.
-                    Their entire roster is dropped and available for waivers.
-                  </li>
-                  <li>
-                    If it becomes{" "}
-                    <span className="text-fg font-semibold">mathematically impossible</span> to move from the bottom prior to the end of Week 9,
-                    that team owner will not be able to make trades.
-                  </li>
-                </ul>
-              </SubCard>
-            </div>
-
-            {/* LEG 2 */}
-            <div className="lg:col-span-6">
-              <SubCard>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-xs tracking-widest text-muted uppercase">LEG 2</div>
-                    <div className="mt-1 text-lg font-semibold text-primary">Guillotine (Weeks 10–12)</div>
-                  </div>
-                  <span className="rounded-full border border-subtle bg-card-surface px-3 py-1 text-[11px] font-semibold text-fg">
-                    1 eliminated each week
-                  </span>
-                </div>
-
-                <ul className="mt-3 space-y-2 text-sm text-muted leading-relaxed list-disc pl-5">
-                  <li>
-                    Weeks 10–12: at the end of each week (10, 11, 12), the{" "}
-                    <span className="text-fg font-semibold">lowest weekly score</span> is eliminated.
-                  </li>
-                  <li>The eliminated team’s roster is dropped and available for waivers.</li>
-                  <li>
-                    Waivers run until the{" "}
-                    <span className="text-fg font-semibold">Wednesday following Week 12</span>.
-                  </li>
-                </ul>
-              </SubCard>
-            </div>
-
-            {/* LEG 3 */}
-            <div className="lg:col-span-12">
-              <SubCard>
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div>
-                    <div className="text-xs tracking-widest text-muted uppercase">LEG 3</div>
-                    <div className="mt-1 text-lg font-semibold text-primary">
-                      Best Ball Pirate Playoffs (Weeks 13–15)
-                    </div>
-                  </div>
-                  <span className="rounded-full border border-subtle bg-card-surface px-3 py-1 text-[11px] font-semibold text-fg">
-                    Pirate deadline: Thu 7:00pm ET
-                  </span>
-                </div>
-
-                <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="rounded-2xl border border-subtle bg-subtle-surface p-4">
-                    <div className="text-sm font-semibold text-fg">Week 13</div>
-                    <div className="mt-1 text-sm text-muted leading-relaxed">
-                      8 teams enter playoffs (each league). Winners “Pirate” 1 player from the losing team.
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-subtle bg-subtle-surface p-4">
-                    <div className="text-sm font-semibold text-fg">Week 14</div>
-                    <div className="mt-1 text-sm text-muted leading-relaxed">
-                      4 teams remain. Winners “Pirate” 1 player from the losing team.
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-subtle bg-subtle-surface p-4">
-                    <div className="text-sm font-semibold text-fg">Week 15</div>
-                    <div className="mt-1 text-sm text-muted leading-relaxed">
-                      Finals. Winner “Pirate” 1 player from the losing team.
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 text-sm text-muted leading-relaxed">
-                  <ul className="list-disc pl-5 space-y-2">
-                    <li>
-                      The league manager will move the chosen player{" "}
-                      <span className="text-fg font-semibold">prior to the Thursday night game</span>.
-                    </li>
-                    <li>
-                      If the winner fails to pick a player before{" "}
-                      <span className="text-fg font-semibold">Thursday at 7:00pm ET</span>,
-                      they forfeit the right to pirate that week.
-                    </li>
-                  </ul>
-                </div>
-              </SubCard>
-            </div>
-
-            {/* LEG 4 */}
-            <div className="lg:col-span-12">
-              <SubCard>
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div>
-                    
-                    <div className="mt-1 text-lg font-semibold text-primary">Championships (Weeks 16–17)</div>
-                  </div>
-                  <span className="rounded-full border border-subtle bg-card-surface px-3 py-1 text-[11px] font-semibold text-fg">
-                    No Pirating
-                  </span>
-                </div>
-
-                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="rounded-2xl border border-subtle bg-card-trans p-4">
-                    <div className="text-xs tracking-widest text-muted uppercase">Week 16</div>
-                    <div className="mt-1 text-sm text-muted leading-relaxed">
-                      The <span className="text-fg font-semibold">Light</span> champion and{" "}
-                      <span className="text-fg font-semibold">Dark</span> champion for each God face off for the{" "}
-                      <span className="text-fg font-semibold">God Championship</span>. No player is stolen at this stage.
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-subtle bg-card-trans p-4">
-                    <div className="text-xs tracking-widest text-muted uppercase">Week 17</div>
-                    <div className="mt-1 text-sm text-muted leading-relaxed">
-                      Each God Champion (12 of you) enters a winner-take-all{" "}
-                      <span className="text-fg font-semibold">GAUNTLET GRAND CHAMPIONSHIP</span>.
-                    </div>
-                  </div>
-                </div>
-              </SubCard>
-            </div>
-          </div>
-        </Card>
-
-        {/* LEGIONS */}
-        <section className="space-y-4 relative overflow-hidden rounded-3xl border border-border/70 bg-card-surface shadow-2xl shadow-black/40 p-6 md:p-10">
-          <header>
-            <h2 className="h2">The Legions</h2>
-            <p className="text-sm text-muted mt-2 max-w-2xl">
-              Three Legions — Egyptians, Greeks, and Romans — each with four Gods and 24 teams per God.
-              Join a God, fill your league, and fight your way toward the Gauntlet.
-            </p>
-          </header>
-
-          <SectionManifestGate section="gauntlet" season={CURRENT_SEASON}>
-            <GauntletDynamicBlocks season={CURRENT_SEASON} showOwner={false} showLegions embeddedLegions={false} />
-          </SectionManifestGate>
-        </section>
-
-        {/* PAYOUTS + BONUSES MINI CHART */}
-        <Card>
-          <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-            <div>
-              <h2 className="h2">Payouts & Bonuses Everywhere</h2>
-              <p className="text-sm text-muted mt-2 max-w-2xl">
-                Redraft Weeks 1–9, Guillotine Weeks 10–12, Pirate Playoffs Weeks 13–15, Championships Weeks 16–17.
-                Payouts and BONUSES are stackable across all stages.
+              <div className="text-xs tracking-widest text-muted uppercase">The Cash</div>
+              <dl className="mt-3 space-y-2 text-sm">
+                <div className="flex justify-between gap-4"><dt className="text-muted">Buy-in</dt><dd className="font-semibold">$20</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-muted">Players</dt><dd className="font-semibold">14</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-muted">Total collected</dt><dd className="font-semibold">$280</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-muted">League payout</dt><dd className="font-semibold">$210</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-muted">Game payout</dt><dd className="font-semibold">$600</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-muted">Game collects</dt><dd className="font-semibold">$240</dd></div>
+              </dl>
+              <p className="mt-4 text-xs text-muted leading-relaxed">
+                The game balance is itemized in the semi-annual Cash Doc. Expenses include free cash
+                mini-games, free entries, and other BALLSVILLE extras.
               </p>
-            </div>
+            </SubCard>
 
-            <Link prefetch={false} href="/gauntlet/cash-doc" className="btn btn-outline">
-              CASH DOC →
-            </Link>
-          </header>
-
-          <div className="mt-5 overflow-x-auto">
-            <table className="min-w-[520px] text-sm">
-              <thead>
-                <tr className="text-[11px] uppercase tracking-[0.2em] text-muted border-b border-subtle">
-                  <th className="py-2 pr-4 text-left font-semibold">Stage</th>
-                  <th className="py-2 px-4 text-left font-semibold">Weeks</th>
-                  <th className="py-2 px-4 text-left font-semibold">Payouts</th>
-                  <th className="py-2 pl-4 text-left font-semibold">Bonuses</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="border-b border-subtle">
-                  <td className="py-2 pr-4 font-medium">Redraft</td>
-                  <td className="py-2 px-4 text-muted">Weeks 1–9</td>
-                  <td className="py-2 px-4">24 Payouts</td>
-                  <td className="py-2 pl-4">12 BONUSES</td>
-                </tr>
-                <tr className="border-b border-subtle">
-                  <td className="py-2 pr-4 font-medium">Guillotine</td>
-                  <td className="py-2 px-4 text-muted">Weeks 10–12</td>
-                  <td className="py-2 px-4">24 Payouts</td>
-                  <td className="py-2 pl-4">4 BONUSES</td>
-                </tr>
-                <tr>
-                  <td className="py-2 pr-4 font-medium">Playoffs + Championships</td>
-                  <td className="py-2 px-4 text-muted">Weeks 13–17</td>
-                  <td className="py-2 px-4">85 Payouts</td>
-                  <td className="py-2 pl-4">Up to 24 BONUSES</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <p className="mt-4 text-xs text-muted">
-            For the full breakdown of every payout, BONUS, and conditional upside, read the{" "}
-            <Link prefetch={false} href="/gauntlet/cash-doc" className="text-accent hover:underline underline-offset-2">
-              Gauntlet Cash Doc
-            </Link>
-            .
-          </p>
-        </Card>
-
-        {/* BRACKET EXPLAINER */}
-        <Card>
-          <header className="space-y-2">
-            <h2 className="h2">The Bracket & Championships</h2>
-            <p className="text-sm text-muted max-w-2xl">
-              Weeks 1–12 run inside your individual leagues. Weeks 13–15 become Pirate Playoffs inside each Light/Dark league.
-              Week 16 is the God Championship (Light champ vs Dark champ). Week 17 is the Grand Championship with all 12 God Champs.
-            </p>
-          </header>
-
-          <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-            {/* CLICKABLE LIVE BRACKET CARD */}
-            <Link
-              prefetch={false}
-              href="/gauntlet/leaderboard"
-              className="group block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            >
-              <SubCard>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-muted">BRACKET PROTOTYPE</p>
-                <p className="mt-2 text-sm text-muted">
-                  This is where your God-level progression will live — follow matchups, see who advances,
-                  and track which Gods remain as the season moves into Pirate Playoffs and then Championships.
-                </p>
-
-                <div className="mt-3 text-xs font-semibold text-accent">View Live Bracket →</div>
-              </SubCard>
-            </Link>
-
-            {/* STATIC INFO CARD */}
             <SubCard>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-muted">LIGHT & DARK LEAGUES</p>
-              <p className="mt-2 text-sm text-muted">
-                Each God has a <span className="text-fg font-semibold">Light</span> and{" "}
-                <span className="text-fg font-semibold">Dark</span> league. They run as 12-team leagues Weeks 1–12,
-                then continue into Pirate Playoffs, and culminate with a Light vs Dark God Championship in Week 16.
-              </p>
-              <ul className="mt-3 text-xs text-muted space-y-1.5">
-                <li>• Pirate Playoffs happen Weeks 13–15 (winner steals a player).</li>
-                <li>• Week 16: Light champion vs Dark champion for the God Championship.</li>
-                <li>• Week 17: 12 God Champions enter the winner-take-all Grand Championship.</li>
+              <div className="text-xs tracking-widest text-muted uppercase">Constant Roster</div>
+              <ul className={listClass}>
+                <li>QB &amp; Superflex</li>
+                <li>2 RB</li>
+                <li>3 WR</li>
+                <li>Tri-Flex</li>
+                <li>6 bench</li>
+                <li>2 IR</li>
+              </ul>
+              <div className="mt-4 rounded-xl border border-subtle bg-card-surface p-3 text-xs text-muted leading-relaxed">
+                <span className="font-semibold text-fg">Bench expansion:</span> Six additional bench spots,
+                executed first thing Tuesday after Week 10.  11/11/2026.
+              </div>
+            </SubCard>
+
+            <SubCard>
+              <div className="text-xs tracking-widest text-muted uppercase">Scoring &amp; Draft</div>
+              <ul className={listClass}>
+                <li>+6 points per passing TD</li>
+                <li>-2 points per interception</li>
+                <li>League median</li>
+                <li>Snake draft with no third-round reversal</li>
+                <li>Three shuffles unless otherwise specified</li>
+                <li>Drafts begin as soon as possible</li>
+                <li>Draft timers default to four hours but may vary</li>
               </ul>
             </SubCard>
           </div>
+
+          <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <SubCard>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h3 className="text-lg font-semibold text-primary">Trade Rules</h3>
+                <Pill>Heavily restricted</Pill>
+              </div>
+              <p className="mt-3 text-sm text-muted leading-relaxed">
+                This game is built around struggle. Trades are restricted so no advantage can be gained
+                through friends or weaker players.
+              </p>
+              <ul className={listClass}>
+                <li>No draft trading.</li>
+                <li>No FAAB trades.</li>
+                <li>Every trade will be heavily scrutinized.</li>
+                <li>
+                  Trades must fall within a <span className="font-semibold text-fg">30%–70% value balance</span>{" "}
+                  according to a popular trade calculator or the BALLSVILLE website.
+                </li>
+                <li>
+                  If you cannot provide a site showing that balance, the trade is eligible for automatic
+                  reversal without a league vote.
+                </li>
+              </ul>
+              <div className="mt-4 rounded-xl border border-orange-400/40 bg-orange-400/10 p-4 text-sm text-muted leading-relaxed">
+                <span className="font-semibold text-fg">Important:</span> If an ineligible traded player’s game
+                begins, that player will be removed from your roster and you are responsible for filling the spot. Keep trades fair and this will not affect gameplay.
+                 <dl className="mt-3 space-y-2 text-sm">
+                <div className="flex justify-between gap-4"><dt className="text-muted">This practice is a Safeguard for the games integrity. 
+                  As harsh as this rule seems, we find it necessary for this particular game.</dt></div>
+                
+              </dl>
+              
+              </div>
+            </SubCard>
+
+            <SubCard>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h3 className="text-lg font-semibold text-primary">Waivers &amp; Chops</h3>
+                <Pill>$250 for the full season</Pill>
+              </div>
+              <ul className={listClass}>
+                <li>Waivers clear Wednesday at 12:00 p.m. EST.</li>
+                <li>Team cuts happen by Tuesday morning, giving players 24 hours to make claims.</li>
+                <li>Your $250 FAAB does not reset.</li>
+                <li>Eight total rosters will be chopped over six cut weeks: after Weeks 5, 10, 11, 12, 13, and 14.</li>
+              </ul>
+              <p className="mt-4 text-sm text-muted leading-relaxed">
+                Spend carefully. Every chopped roster is dumped to waivers, and your one FAAB budget has to
+                survive the entire game.
+              </p>
+            </SubCard>
+          </div>
+        </Card>
+
+        <Card id="trials">
+          <header className="space-y-2">
+            <p className="text-xs uppercase tracking-[0.35em] text-muted">THE FIVE TRIALS</p>
+            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-primary">
+              The Format Changes as the Field Shrinks
+            </h2>
+            <p className="text-sm sm:text-base text-muted leading-relaxed max-w-3xl">
+              Each trial tests something different: drafting, lineup strategy, roster theft, FAAB discipline,
+              weekly survival, Best Ball depth, and finally your willingness to wager what you won.
+            </p>
+          </header>
+
+          <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <SubCard>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs tracking-widest text-muted uppercase">TRIAL 1</div>
+                  <h3 className="mt-1 text-lg font-semibold text-primary">Redraft</h3>
+                </div>
+                <Pill>Weeks 1–5</Pill>
+              </div>
+              <ul className={listClass}>
+                <li>Five weeks of standard Redraft play.</li>
+                <li>League median scoring.</li>
+                <li>Start 11.</li>
+                <li>After Week 5, the bottom two teams in the standings are chopped.</li>
+                <li>Their rosters are dumped to waivers and the owners remain as spectators only.</li>
+              </ul>
+              <p className="mt-4 text-xs text-muted leading-relaxed">
+                Teams eliminated during the Playoff trial are not chopped, and their rosters do not dump.
+                During Weeks 6–10, the schedule will be adjusted for players who would otherwise face an
+                eliminated opponent.
+              </p>
+
+              <div className="mt-4 rounded-xl border border-orange-400/40 bg-orange-400/10 p-4 text-sm text-muted leading-relaxed">
+                <span className="font-semibold text-fg">Strategy Note:</span> There will be SIX weeks of CHOPPED teams, after week 5, 10, and 11-14. You need to use FAAB wisely. 
+              </div>
+            </SubCard>
+
+            <SubCard>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs tracking-widest text-muted uppercase">TRIAL 2</div>
+                  <h3 className="mt-1 text-lg font-semibold text-primary">Pirate</h3>
+                </div>
+                <Pill>Weeks 6–10</Pill>
+              </div>
+              <p className="mt-3 text-sm text-muted leading-relaxed">
+                Beat your opponent and choose one of two rewards: <span className="font-semibold text-fg">Plunder</span>{" "}
+                a player or <span className="font-semibold text-fg">Pilfer</span> part of their FAAB.
+              </p>
+
+              <div className="mt-4 grid sm:grid-cols-2 gap-3">
+                <div className="rounded-xl border border-subtle bg-card-surface p-4">
+                  <div className="text-sm font-semibold text-fg">PLUNDER · Take an Asset</div>
+                  <ul className="mt-2 space-y-1.5 text-xs text-muted leading-relaxed list-disc pl-4">
+                    <li>Swap a player from your starting lineup for any player on the loser’s roster.</li>
+                    <li>The swap must use the same skill position.</li>
+                    <li>The losing team has no player locks.</li>
+                  </ul>
+                </div>
+                <div className="rounded-xl border border-subtle bg-card-surface p-4">
+                  <div className="text-sm font-semibold text-fg">PILFER · Take the Treasure</div>
+                  <ul className="mt-2 space-y-1.5 text-xs text-muted leading-relaxed list-disc pl-4">
+                    <li>Steal 25% of the loser’s current FAAB.</li>
+                    <li>The amount is rounded up to the nearest whole number.</li>
+                  </ul>
+                </div>
+              </div>
+
+              <ul className={listClass}>
+                <li>The matchup winner sends the offer, and the loser must accept by Tuesday evening.</li>
+                <li>If it is not accepted, tag WESTLEX or a Game Manager with the details so it can be forced.</li>
+                <li>After Week 10, the bottom two teams in the standings are chopped, leaving ten teams.</li>
+              </ul>
+              <p className="mt-4 text-xs text-muted leading-relaxed">
+                Strategy note: If you are locked into a win, you may substitute a bench player into your lineup
+                to make that player eligible to swap. This can also help navigate late bye weeks.
+              </p>
+            </SubCard>
+
+            <SubCard>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs tracking-widest text-muted uppercase">TRIAL 3</div>
+                  <h3 className="mt-1 text-lg font-semibold text-primary">Guillotine</h3>
+                </div>
+                <Pill>Weeks 11–14</Pill>
+              </div>
+              <ul className={listClass}>
+                <li>Trades are disabled after Week 10.</li>
+                <li>Six additional bench spots are added.</li>
+                <li>Head-to-head matchups no longer matter; the game switches to weekly points.</li>
+                <li>The lowest-scoring team each week is chopped.</li>
+                <li>Chops happen after Weeks 11, 12, 13, and 14.</li>
+                <li>Teams are dropped Tuesday and waivers run Wednesday.</li>
+              </ul>
+              <div className="mt-4 rounded-xl border border-red-400/40 bg-red-400/10 p-4 text-sm text-muted">
+                <span className="font-semibold text-fg">One bad week ends your season.</span>
+              </div>
+            </SubCard>
+
+            <SubCard>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs tracking-widest text-muted uppercase">TRIAL 4</div>
+                  <h3 className="mt-1 text-lg font-semibold text-primary">Playoffs</h3>
+                </div>
+                <Pill>Weeks 15–16</Pill>
+              </div>
+              <p className="mt-3 text-sm text-muted leading-relaxed">
+                Best Ball activates after Week 14. Waivers continue, and you can still manage your roster,
+                but you no longer need to set a lineup.
+              </p>
+
+              <div className="mt-4 grid sm:grid-cols-2 gap-3">
+                <div className="rounded-xl border border-subtle bg-card-surface p-4">
+                  <div className="text-sm font-semibold text-fg">Week 15</div>
+                  <ul className="mt-2 space-y-1.5 text-xs text-muted leading-relaxed list-disc pl-4">
+                    <li>Six teams enter the Playoff trial.</li>
+                    <li>The bottom three in weekly points are eliminated.</li>
+                    <li>Their rosters are not chopped.</li>
+                    <li>The top three advance and bank $20.</li>
+                  </ul>
+                </div>
+                <div className="rounded-xl border border-subtle bg-card-surface p-4">
+                  <div className="text-sm font-semibold text-fg">Week 16</div>
+                  <ul className="mt-2 space-y-1.5 text-xs text-muted leading-relaxed list-disc pl-4">
+                    <li>The remaining three teams play the week.</li>
+                    <li>The bottom two are eliminated.</li>
+                    <li>The highest Week 16 score becomes League Winner.</li>
+                    <li>The winner receives $150 to bank or wager in three $50 increments.</li>
+                  </ul>
+                </div>
+              </div>
+              <p className="mt-4 text-xs text-muted leading-relaxed">
+                Game Managers will enter the league and ask the winner how much they want to keep and how much
+                they want to play in the Championship.
+              </p>
+            </SubCard>
+          </div>
+        </Card>
+
+        <Card id="championship">
+          <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.35em] text-muted">TRIAL 5 · WEEK 17</p>
+              <h2 className="mt-2 text-2xl sm:text-3xl font-extrabold tracking-tight text-primary">
+                “The BALLSVILLE Game” Custom Championship
+              </h2>
+              <p className="mt-2 text-sm sm:text-base text-muted leading-relaxed max-w-3xl">
+                Up to 12 League Winners may enter. Each winner chooses how much of their League winnings to
+                bank and how much to wager across the three Championship pots.
+              </p>
+            </div>
+            <Pill>$600 Main Pot Bonus</Pill>
+          </header>
+
+          <div className="mt-6 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-4">
+            <SubCard>
+              <h3 className="text-lg font-semibold text-primary">Choose Your Wager</h3>
+              <ul className={listClass}>
+                <li>Wager $50, $100, or $150 from your League winnings.</li>
+                <li>Bank everything you do not wager.</li>
+                <li>All $50 wagers places one $50 coin in the Main Pot.</li>
+                <li>A $100 wager places one $50 coin in the Main Pot and one $50 coin in Side Pot 1.</li>
+                <li>A $150 wager places one $50 coin in the Main Pot and one $50 coin in Side Pot 1 and one $50 coin in Side Pot 2.</li>
+                <li>You must be entered in a pot to win it.</li>
+              </ul>
+              <p className="mt-4 text-xs text-muted leading-relaxed">
+                Example: A $50 wager can win the Main Pot but cannot win either Side Pot.
+              </p>
+            </SubCard>
+
+            <SubCard>
+              <h3 className="text-lg font-semibold text-primary">Championship Pots</h3>
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full min-w-[480px] text-sm">
+                  <thead>
+                    <tr className="text-[11px] uppercase tracking-[0.2em] text-muted border-b border-subtle">
+                      <th className="py-3 pr-4 text-left font-semibold">Pot</th>
+                      <th className="py-3 px-4 text-left font-semibold">Funded By</th>
+                      <th className="py-3 pl-4 text-left font-semibold">Awarded To</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-subtle">
+                      <td className="py-3 pr-4 font-medium">Main Pot 🏆</td>
+                      <td className="py-3 px-4 text-muted">$50 × all entrants + $600 bonus</td>
+                      <td className="py-3 pl-4">Main Pot winner</td>
+                    </tr>
+                    <tr className="border-b border-subtle">
+                      <td className="py-3 pr-4 font-medium">Side Pot 1</td>
+                      <td className="py-3 px-4 text-muted">$50 × all $100/$150 entrants</td>
+                      <td className="py-3 pl-4">Side Pot 1 winner</td>
+                    </tr>
+                    <tr>
+                      <td className="py-3 pr-4 font-medium">Side Pot 2</td>
+                      <td className="py-3 px-4 text-muted">$50 × all $150 entrants</td>
+                      <td className="py-3 pl-4">Side Pot 2 winner</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-4 text-xs text-muted">
+                The number of coins in each pot depends on how many League Winners choose that wager level.
+              </p>
+            </SubCard>
+          </div>
+        </Card>
+
+        <Card id="closing-phase">
+          <header className="space-y-2">
+            <p className="text-xs uppercase tracking-[0.35em] text-muted">CLOSING PHASE</p>
+            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-primary">
+              Tracking, Verification &amp; Payouts
+            </h2>
+          </header>
+
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <SubCard>
+              <div className="text-xs tracking-widest text-muted uppercase">Scoreboard</div>
+              <p className="mt-2 text-sm text-muted leading-relaxed">
+                Follow the Gauntlet scoreboard for full-game tracking and stacked winnings.
+              </p>
+              <a
+                href="https://docs.google.com/spreadsheets/d/1UuAI4mNQtcnnZZiYyybfIGoczFCZRvuhTzXqk-h2RLQ/edit?usp=drivesdk"
+                target="_blank"
+                rel="noreferrer"
+                className="mt-4 inline-flex text-sm font-semibold text-accent hover:underline underline-offset-4"
+              >
+                Open Gauntlet Scoreboard →
+              </a>
+            </SubCard>
+
+            <SubCard>
+              <div className="text-xs tracking-widest text-muted uppercase">Verification</div>
+              <p className="mt-2 text-sm text-muted leading-relaxed">
+                Winning leagues will be opened so players can verify results firsthand. The spreadsheet will
+                remain available for review, and unknown LeagueSafe names will be verified before allocation.
+              </p>
+            </SubCard>
+
+            <SubCard>
+              <div className="text-xs tracking-widest text-muted uppercase">Payouts</div>
+              <p className="mt-2 text-sm text-muted leading-relaxed">
+                Payouts will be assigned promptly after the game ends. They will be allocated and submitted in
+                each league for review after results and player names are verified.
+              </p>
+            </SubCard>
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-border/60 bg-card-trans p-5 md:p-6">
+            <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+              <div>
+                <h3 className="text-lg font-semibold text-fg">The BALLSVILLE Game #5</h3>
+                <p className="mt-2 text-sm text-muted leading-relaxed max-w-3xl">
+                  BALLSVILLE has six games—one for each year it has been around. The Gauntlet is designed to be
+                  the most challenging game in the BALLSVILLE universe, with a maximum possible upside
+                  of $2,450 and 3-in-14 odds to win a prize.
+                </p>
+                <p className="mt-2 text-sm text-muted leading-relaxed max-w-3xl">
+                  If the game does not reach its 12-league goal, the Championship prize will decrease. If it
+                  exceeds the goal, the prize will grow and a second-place award will be added to preserve strong odds.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-3 md:justify-end">
+                <Link prefetch={false} href="/constitution" className="btn btn-outline">
+                  Bylaws &amp; Code of Conduct
+                </Link>
+                <a href="#opening-phase" className="btn btn-primary">
+                  Back to Rules
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <p className="mt-4 text-xs text-muted text-center">
+            Players are responsible for reading all BALLSVILLE bylaws and the Code of Conduct.
+          </p>
+
+          <p className="mt-6 text-center text-sm font-semibold text-fg">
+            Thank you for reading, and good luck in there.
+          </p>
         </Card>
       </div>
     </main>
