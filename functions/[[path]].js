@@ -33,6 +33,23 @@ function isArsenalContext(request) {
   return false;
 }
 
+const ARSENAL_API_PREFIXES = [
+  "/api/arsenal/",
+  "/api/ballsville-adp",
+  "/api/draft-pick-tracker/",
+  "/api/nfl-scoreboard",
+  "/api/player-news",
+  "/api/push/",
+  "/api/trust-center/",
+  "/api/update-values-trigger",
+];
+
+function isArsenalApi(pathname) {
+  return ARSENAL_API_PREFIXES.some(
+    (prefix) => pathname === prefix.replace(/\/$/, "") || pathname.startsWith(prefix)
+  );
+}
+
 function rewriteArsenalHtml(html) {
   // Rewrite root /_next/ to /tools/app/_next/
   html = html.replace(/(["'(])\/_next\//g, '$1/tools/app/_next/');
@@ -80,6 +97,13 @@ export async function onRequest(context) {
   if (url.pathname === "/tools/app" || url.pathname.startsWith("/tools/app/")) {
     const pathAfter = url.pathname.replace(/^\/tools\/app/, "") || "/";
     return proxyToArsenal(request, pathAfter + (url.search || ""));
+  }
+
+  // Account and tool APIs must bypass Ballsville's static export entirely.
+  // Otherwise POST/PATCH/DELETE requests receive a static-site 405 before the
+  // fallback proxy gets a chance to forward them to The Fantasy Arsenal.
+  if (isArsenalApi(url.pathname)) {
+    return proxyToArsenal(request, url.pathname + (url.search || ""));
   }
 
   // 2) Next chunks often come without referer. Serve Ballsville if present, else fallback to Arsenal.
@@ -144,7 +168,12 @@ export async function onRequest(context) {
   const servedHtmlShell = res && res.status === 200 && ct.includes("text/html");
   const shouldTreatAsMissing = servedHtmlShell && (looksLikeAsset || url.searchParams.has("_rsc"));
 
-  if (res && res.status !== 404 && !shouldTreatAsMissing) return res;
+  // A same-origin Ballsville fallback can return 200 HTML for an Arsenal
+  // navigation. Do not allow that shell to replace the app inside the iframe.
+  const arsenalDocumentFallback =
+    inArsenalCandidate && servedHtmlShell && wantsHtml(request);
+
+  if (res && res.status !== 404 && !shouldTreatAsMissing && !arsenalDocumentFallback) return res;
 
   // 5) Ballsville missing (404) or returned an HTML shell for an Arsenal JSON/asset.
   const inArsenal = inArsenalCandidate;
@@ -159,7 +188,10 @@ export async function onRequest(context) {
 
     // Document navigation (clicking links in Arsenal) → redirect to mounted path
     if (wantsHtml(request) && !looksLikeAsset) {
-      return Response.redirect(`/tools/app${url.pathname}${url.search || ""}`, 302);
+      return Response.redirect(
+        new URL(`/tools/app${url.pathname}${url.search || ""}`, url.origin),
+        302
+      );
     }
 
     // Assets/data/api/json/images → proxy
