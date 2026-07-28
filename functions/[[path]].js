@@ -122,14 +122,28 @@ export async function onRequest(context) {
   // NOTE: RSC / router fetches sometimes omit the Referer header (depending on the app's
   // referrer policy), so we also treat certain known tool routes as "Arsenal".
   const ARSENAL_TOOL_ROUTES = [
-    "/trade",
-    "/player-stock",
-    "/player-availability",
-    "/power-rankings",
-    "/sos",
+    "/account",
+    "/commissioner-dashboard",
+    "/depth-charts",
+    "/draft-grades",
+    "/draft-helper",
+    "/draft-pick-tracker",
+    "/game-center",
+    "/intelligence",
+    "/leaderboard",
+    "/league-history",
+    "/league-hub",
     "/lineup",
-    "/adp",
-    "/draft-compare",
+    "/manager-intelligence",
+    "/managers",
+    "/player-availability",
+    "/player-stock",
+    "/playoff-odds",
+    "/power-rankings",
+    "/profile",
+    "/sos",
+    "/trade",
+    "/trust-center",
   ];
 
   const inArsenalCandidate =
