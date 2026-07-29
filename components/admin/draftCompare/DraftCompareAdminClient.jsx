@@ -86,6 +86,7 @@ function normalizeModeRows(inputRows, activeSeason) {
       order: safeInt(r.order, 0),
       title: safeStr(r.title || "").trim(),
       subtitle: safeStr(r.subtitle || "").trim(),
+      autoUpdate: r.autoUpdate === true,
     };
   });
 }
@@ -183,6 +184,7 @@ async function saveModesBeforeBuild() {
       imageKey: safeStr(r?.imageKey || r?.image_key || ""),
       image_url: safeStr(r?.image_url || r?.imageUrl || r?.image || ""),
       hasDraftJson: !!r?.hasDraftJson,
+      autoUpdate: r?.autoUpdate === true,
     }));
   }, [rows, season]);
 
@@ -198,6 +200,7 @@ async function saveModesBeforeBuild() {
         imageKey: "",
         image_url: "",
         hasDraftJson: false,
+        autoUpdate: false,
       },
     ]);
   };
@@ -273,6 +276,7 @@ async function saveModesBeforeBuild() {
           year: Number(r.year || season) || season,
           imageKey: safeStr(r.imageKey).trim(),
           image_url: safeStr(r.image_url).trim(),
+          autoUpdate: r.autoUpdate === true,
         }))
         .filter((r) => r.modeSlug && r.title);
 
@@ -537,6 +541,18 @@ async function saveModesBeforeBuild() {
                   </div>
 
                   <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <label className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm ${
+                      r.hasDraftJson ? "border-subtle text-primary" : "border-subtle text-muted opacity-60"
+                    }`}>
+                      <input
+                        type="checkbox"
+                        checked={r.autoUpdate === true}
+                        disabled={!r.hasDraftJson || saving}
+                        onChange={(e) => updateRow(idx, { autoUpdate: e.target.checked })}
+                      />
+                      Auto-update twice daily
+                    </label>
+
                     <button
                       type="button"
                       className={`btn btn-primary${!canBuild ? " opacity-50 cursor-not-allowed" : ""}`}
