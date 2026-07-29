@@ -11,6 +11,8 @@ export default function ToolsPage() {
   const [appReady, setAppReady] = useState(false);
   const [startTime, setStartTime] = useState(DEFAULT_SPLASH_START);
   const videoRef = useRef(null);
+  const iframeRef = useRef(null);
+  const [focusMode, setFocusMode] = useState(false);
 
   // Read ?t= from the URL on the client (no useSearchParams -> no Suspense build error)
   useEffect(() => {
@@ -22,6 +24,25 @@ export default function ToolsPage() {
     } catch {
       // ignore
     }
+  }, []);
+
+  useEffect(() => {
+    const receive = (event) => {
+      const message = event.data;
+      if (!message || message.source !== "the-fantasy-arsenal") return;
+      if (message.type === "ARSENAL_READY") {
+        setAppReady(true);
+        event.source?.postMessage({
+          source:"ballsville",
+          type:"BALLSVILLE_CONTEXT",
+          theme:document.documentElement.dataset.theme || "dark",
+          embedded:true,
+          safeArea:true,
+        }, event.origin);
+      }
+    };
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
   }, []);
 
   useEffect(() => {
@@ -39,9 +60,9 @@ export default function ToolsPage() {
   }, []);
 
   return (
-    <main className="relative min-h-[calc(100dvh-64px)] bg-[#020617]">
+    <main className={`relative bg-[#020617] ${focusMode ? "fixed inset-0 z-[1200] min-h-[100dvh]" : "min-h-[calc(100dvh-64px)]"}`}>
       {/* Arsenal mounted under /tools/app */}
-      <div className="relative h-[calc(100dvh-64px)] w-full overflow-hidden">
+      <div className={`relative w-full overflow-hidden ${focusMode ? "h-[100dvh]" : "h-[calc(100dvh-64px)]"}`}>
         {!appReady && !showSplash ? (
           <div className="absolute inset-0 z-10 grid place-items-center bg-[#020617] text-white">
             <div className="text-center">
@@ -53,6 +74,7 @@ export default function ToolsPage() {
           </div>
         ) : null}
         <iframe
+          ref={iframeRef}
           title="The Fantasy Arsenal"
           src="/tools/app/"
           onLoad={() => setAppReady(true)}
@@ -60,12 +82,21 @@ export default function ToolsPage() {
           allow="clipboard-write; fullscreen"
           referrerPolicy="strict-origin-when-cross-origin"
         />
-        <a
-          href="/tools/app/"
-          className="absolute bottom-[max(.75rem,env(safe-area-inset-bottom))] right-3 z-20 rounded-full border border-white/15 bg-slate-950/90 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-cyan-100 shadow-xl backdrop-blur md:bottom-4 md:right-4"
-          title="Open The Fantasy Arsenal without the Ballsville navigation"
+        <button
+          type="button"
+          onClick={() => setFocusMode((value) => !value)}
+          className="absolute bottom-[max(.75rem,env(safe-area-inset-bottom))] left-3 z-20 rounded-full border border-white/15 bg-slate-950/90 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white/70 shadow-xl backdrop-blur md:bottom-4 md:left-4"
         >
-          Focus mode ↗
+          {focusMode ? "Exit focus" : "Focus mode"}
+        </button>
+        <a
+          href="https://thefantasyarsenal.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="absolute bottom-[max(.75rem,env(safe-area-inset-bottom))] right-3 z-20 rounded-full border border-white/15 bg-slate-950/90 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-cyan-100 shadow-xl backdrop-blur md:bottom-4 md:right-4"
+          title="Open The Fantasy Arsenal in a new tab"
+        >
+          Open Arsenal ↗
         </a>
       </div>
 
