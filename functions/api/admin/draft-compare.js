@@ -155,6 +155,7 @@ function sanitizeModesInput(rows, season) {
         year,
         imageKey,
         image_url,
+        autoUpdate: r.autoUpdate === true,
       };
     })
     .filter((r) => r.modeSlug && r.title);

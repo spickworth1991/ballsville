@@ -1,0 +1,31 @@
+name: Update Draft Compare ADP
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "17 5,17 * * *"
+
+concurrency:
+  group: update-draft-compare-adp
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Rebuild enabled ADP groups from their saved leagues
+        run: node --experimental-default-type=module script/update-draft-compare-adp.mjs
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          ADMIN_BUCKET: ${{ secrets.ADMIN_BUCKET }}
