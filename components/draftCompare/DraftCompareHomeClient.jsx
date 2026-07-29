@@ -33,6 +33,19 @@ function withV(url, v) {
   return `${url}${hasQ ? "&" : "?"}v=${encodeURIComponent(v)}`;
 }
 
+function formatRefreshDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
 async function fetchJsonMaybe(url) {
   const res = await fetch(url, { cache: "no-store" });
   if (res.status === 404) return null;
@@ -51,7 +64,8 @@ function normalizeModesFromJson(j, fileSeason) {
       const year = safeNum(r?.year || r?.season || fileSeason) || safeNum(fileSeason);
       const imageKey = safeStr(r?.imageKey || r?.image_key || "");
       const image_url = safeStr(r?.image_url || r?.imageUrl || r?.image || "");
-      return { slug, title, subtitle, order, year, imageKey, image_url };
+      const lastRefreshedAt = safeStr(r?.lastRefreshedAt || r?.last_refreshed_at || "");
+      return { slug, title, subtitle, order, year, imageKey, image_url, lastRefreshedAt };
     })
     .filter((x) => x.slug && x.title);
 
@@ -173,6 +187,11 @@ function ModeCard({ mode }) {
         <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">{year}</div>
         <div className="mt-1 text-lg font-semibold text-primary">{mode.title}</div>
         {mode.subtitle ? <div className="mt-1 text-sm text-muted">{mode.subtitle}</div> : null}
+        {mode.lastRefreshedAt ? (
+          <div className="mt-3 text-xs text-slate-300">
+            ADP refreshed <span className="font-semibold text-white">{formatRefreshDate(mode.lastRefreshedAt)}</span>
+          </div>
+        ) : null}
         <div className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-accent">
           Open <span className="transition group-hover:translate-x-0.5">→</span>
         </div>

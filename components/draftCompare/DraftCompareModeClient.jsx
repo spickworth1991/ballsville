@@ -42,6 +42,19 @@ function withV(url, v) {
   const hasQ = url.includes("?");
   return `${url}${hasQ ? "&" : "?"}v=${encodeURIComponent(v)}`;
 }
+
+function formatRefreshDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
 function pctFmt(x) {
   if (!Number.isFinite(x)) return "—";
   return `${(x * 100).toFixed(0)}%`;
@@ -679,6 +692,14 @@ function ModeInner({ mode, season, version, gateError }) {
           </div>
           <h1 className="mt-2 text-2xl font-semibold text-primary">{pageTitle}</h1>
           <p className="mt-1 text-sm text-muted">{comparing ? "Comparing Side A vs Side B" : "Aggregated view (Side A)"}</p>
+          {raw?.lastRefreshedAt || raw?.autoUpdatedAt || raw?.createdAt ? (
+            <p className="mt-1 text-xs text-muted">
+              ADP refreshed{" "}
+              <span className="font-semibold text-primary">
+                {formatRefreshDate(raw?.lastRefreshedAt || raw?.autoUpdatedAt || raw?.createdAt)}
+              </span>
+            </p>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">

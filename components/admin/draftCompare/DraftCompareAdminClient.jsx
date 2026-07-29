@@ -24,6 +24,19 @@ function cleanSlug(s) {
     .slice(0, 64);
 }
 
+function formatRefreshDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
 function deriveSlug(row) {
   const existing = cleanSlug(row?.modeSlug || row?.slug || row?.id || row?.name);
   if (existing) return existing;
@@ -87,6 +100,7 @@ function normalizeModeRows(inputRows, activeSeason) {
       title: safeStr(r.title || "").trim(),
       subtitle: safeStr(r.subtitle || "").trim(),
       autoUpdate: r.autoUpdate === true,
+      lastRefreshedAt: safeStr(r.lastRefreshedAt || r.last_refreshed_at).trim(),
     };
   });
 }
@@ -185,6 +199,7 @@ async function saveModesBeforeBuild() {
       image_url: safeStr(r?.image_url || r?.imageUrl || r?.image || ""),
       hasDraftJson: !!r?.hasDraftJson,
       autoUpdate: r?.autoUpdate === true,
+      lastRefreshedAt: safeStr(r?.lastRefreshedAt || r?.last_refreshed_at).trim(),
     }));
   }, [rows, season]);
 
@@ -277,6 +292,7 @@ async function saveModesBeforeBuild() {
           imageKey: safeStr(r.imageKey).trim(),
           image_url: safeStr(r.image_url).trim(),
           autoUpdate: r.autoUpdate === true,
+          lastRefreshedAt: safeStr(r.lastRefreshedAt).trim(),
         }))
         .filter((r) => r.modeSlug && r.title);
 
@@ -479,6 +495,12 @@ async function saveModesBeforeBuild() {
                     {previewUrl ? (
                       <span className="rounded-full border border-border/60 bg-black/5 px-3 py-1 text-[11px] font-semibold text-muted">
                         Image set
+                      </span>
+                    ) : null}
+
+                    {r.lastRefreshedAt ? (
+                      <span className="rounded-full border border-cyan-400/25 bg-cyan-500/10 px-3 py-1 text-[11px] font-semibold text-cyan-100">
+                        ADP refreshed {formatRefreshDate(r.lastRefreshedAt)}
                       </span>
                     ) : null}
 

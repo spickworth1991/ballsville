@@ -114,6 +114,7 @@ for (const modesKey of modeFiles) {
         schemaVersion: 2,
         createdAt: now,
         autoUpdatedAt: now,
+        lastRefreshedAt: now,
         modeSlug,
         title: mode?.title || previous?.title || modeSlug,
         order: Number(mode?.order || previous?.order || 0),
@@ -122,6 +123,7 @@ for (const modesKey of modeFiles) {
         selectedKeys: keys,
       });
       console.log(`UPDATED ${season}/${modeSlug}: ${keys.length} connected league selections`);
+      mode.lastRefreshedAt = now;
       updated += 1;
       seasonUpdated += 1;
     } catch (error) {
@@ -132,6 +134,12 @@ for (const modesKey of modeFiles) {
 
   if (seasonUpdated > 0) {
     const now = new Date().toISOString();
+    await writeJson(modesKey, {
+      ...(modesPayload && !Array.isArray(modesPayload) ? modesPayload : {}),
+      season: Number(season),
+      updated_at: now,
+      rows: modes,
+    });
     await writeJson(`data/manifests/draft-compare_${season}.json`, {
       section: "draft-compare", season: Number(season), updatedAt: now, nonce: crypto.randomUUID(),
     });
