@@ -21,6 +21,17 @@ export default function AdminHomePage() {
 
             <Link
               prefetch={false}
+              href="/admin/joe-street-journal"
+              className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
+            >
+              <h2 className="text-lg font-semibold text-primary">Joe Street Journal</h2>
+              <p className="mt-1 text-sm text-muted">
+                Edit the DFS information page, sections, calls to action, and every external link.
+              </p>
+            </Link>
+
+            <Link
+              prefetch={false}
               href="/admin/games"
               className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition"
             >

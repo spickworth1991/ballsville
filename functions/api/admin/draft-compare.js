@@ -156,6 +156,7 @@ function sanitizeModesInput(rows, season) {
         imageKey,
         image_url,
         autoUpdate: r.autoUpdate === true,
+        lastRefreshedAt: safeStr(r.lastRefreshedAt || r.last_refreshed_at).trim(),
       };
     })
     .filter((r) => r.modeSlug && r.title);
@@ -226,7 +227,33 @@ export async function onRequest(context) {
         if (!slug) return json({ error: "Missing modeSlug" }, 400);
         const payload = body?.data ?? body?.payload ?? body?.json ?? null;
         if (!payload) return json({ error: "Missing data" }, 400);
-        await writeJSON(env, draftsKey(s, slug), payload);
+        const refreshedPayload =
+          payload && typeof payload === "object" && !Array.isArray(payload)
+            ? { ...payload, lastRefreshedAt: now }
+            : payload;
+        await writeJSON(env, draftsKey(s, slug), refreshedPayload);
+
+        // Keep one canonical refresh timestamp on the mode record so the admin,
+        // mode picker, and mode detail pages all report the same rebuild.
+        const existingModes = await readJSON(env, modesKey(s));
+        const rawRows = Array.isArray(existingModes?.rows)
+          ? existingModes.rows
+          : Array.isArray(existingModes)
+            ? existingModes
+            : [];
+        const refreshedRows = rawRows.map((row) =>
+          cleanSlug(row?.modeSlug || row?.slug || row?.id || row?.name) === slug
+            ? { ...row, lastRefreshedAt: now }
+            : row
+        );
+        if (refreshedRows.length) {
+          await writeJSON(env, modesKey(s), {
+            season: s,
+            updated_at: now,
+            rows: sanitizeModesInput(refreshedRows, s),
+          });
+        }
+
         await touchManifest(env, "draft-compare", s);
         await touchManifest(env, "draft-compare", null);
         return json({ ok: true, season: s, key: draftsKey(s, slug), type: "drafts", modeSlug: slug, updated_at: now });
