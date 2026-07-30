@@ -1,102 +1,6 @@
 const SECTION = "joe-street-journal";
 const CONTENT_KEY = "content/joe-street-journal/main.json";
 
-const INITIAL_CONTENT = {
-  schemaVersion: 1,
-  branding: {
-    eyebrow: "Ballsville presents",
-    title: "The Joe Street",
-    accent: "Journal",
-    description:
-      "Your front door to the Ballsville DFS League: a new lineup every week, season-long stakes, weekly cash, and Joe's running account of the action.",
-  },
-  links: [
-    { id: "signup", label: "Apply to join", url: "https://forms.gle/613k73dmU6iSgyKD8" },
-    { id: "payment", label: "Pay dues on LeagueSafe", url: "https://www.leaguesafe.com/join/4444507" },
-    { id: "draftkings-referral", label: "Create a DraftKings account", url: "https://www.draftkings.com/r/JWillMayne/US-DK/US-CA" },
-    { id: "draftkings-league", label: "Open Ballsville DFS Degens", url: "https://dkn.gs/r/nd9EVtj8P0CTbd5lyateaw" },
-    { id: "rules", label: "Review official scoring", url: "https://www.draftkings.com/help/rules/1" },
-    { id: "source", label: "View original league information", url: "https://docs.google.com/document/d/19I0M17HoNYu_zi2dcLTdrbr7lzSRzLqxQb6OAnzNRQk/edit?tab=t.0" },
-    { id: "weekly", label: "Read the weekly update", url: "/joe-street-journal/weekly" },
-  ],
-  stats: [
-    { value: "$200", label: "Entry" },
-    { value: "100%", label: "Paid out" },
-    { value: "17", label: "Scoring weeks" },
-    { value: "Weekly", label: "Fresh lineups" },
-  ],
-  journey: [
-    { title: "Join", text: "Submit the short interest form so Ballsville knows you're in." },
-    { title: "Fund", text: "Confirmed entrants pay the $200 fee securely through LeagueSafe." },
-    { title: "Compete", text: "Build a new Sunday Main Slate lineup every week on DraftKings." },
-  ],
-  sections: [
-    {
-      id: "format",
-      title: "The format",
-      body: "This league is played on DraftKings. Each week you'll build a brand-new lineup using DraftKings' Salary Cap format. Every player has a salary, and your job is to build the best lineup possible while staying under the cap. You're never stuck with the same team—every week is a fresh start.\n\nStandard DraftKings PPR scoring applies.",
-      items: ["1 QB", "2 RB", "3 WR", "1 TE", "1 FLEX (RB/WR/TE)", "1 D/ST"],
-      linkId: "rules",
-    },
-    {
-      id: "payouts",
-      title: "The prize pool",
-      body: "The prize pool is 100% paid out and split between weekly prizes and season-long cumulative prizes. The final payout structure will be announced once league size is finalized.",
-      items: [
-        "Season-long (~60%): Top three cumulative scores win.",
-        "The final season-long structure depends on league size, with a goal of paying up to the top 10 if participation allows.",
-        "Weekly (40%): Weekly winners earn an estimated $100+ depending on league size.",
-        "The goal is to pay up to the top three each week.",
-        "Ballsville freebies may be used as bonus prizes throughout the season.",
-      ],
-      linkId: "",
-    },
-    {
-      id: "schedule",
-      title: "The schedule",
-      body: "The official contest each week is the DraftKings Sunday Main Slate.",
-      items: [
-        "Weeks 1–17 count toward cumulative season standings.",
-        "Week 18 is a bonus week reserved for Ballsville freebies.",
-        "Every Wednesday, the upcoming contest is posted in the Ballsville Discord DFS channel.",
-        "All LeagueSafe funds are paid no later than Wednesday, January 13, 2027—within three days after Week 18.",
-      ],
-      linkId: "",
-    },
-    {
-      id: "commitment",
-      title: "The commitment",
-      body: "Season standings are cumulative. Missing one week does not eliminate you, but it creates a significant disadvantage. Missing multiple weeks will likely leave you competing only for weekly prizes. This league is built for active owners from Week 1 through Week 17.\n\nLife happens, but if you do not believe you can submit a lineup most weeks, please do not enter.",
-      items: ["No refunds", "No chargebacks", "No exceptions for missed lineups"],
-      calloutTitle: "Know before you enter",
-      calloutText: "By paying your entry fee and joining Ballsville DFS Degens, you commit to the entire NFL season. There are no concessions for missed weeks.",
-      linkId: "",
-    },
-  ],
-  draftKings: {
-    title: "New to DraftKings?",
-    description: "Use Joe's referral link and complete these steps. The referral is only for first-time DraftKings users.",
-    steps: [
-      "Create your DraftKings account.",
-      "Deposit at least $20.",
-      "Enter any DraftKings contest.",
-      "Join the Ballsville DFS Degens league.",
-    ],
-  },
-  signup: {
-    eyebrow: "Get on the field",
-    title: "Ready to play?",
-    description: "Apply first. Once your spot is confirmed, fund it through LeagueSafe and join the official DraftKings league.",
-    paymentNote: "All league funds are held securely through LeagueSafe. Payment is for confirmed entrants committing to the full season.",
-  },
-  weekly: {
-    eyebrow: "Already in the league?",
-    title: "Joe's weekly desk is down the hall.",
-    description: "Open the live edition for weekly updates, analysis, props, and receipts.",
-  },
-  disclaimer: "Participation is subject to DraftKings eligibility and local laws.",
-};
-
 function response(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -196,16 +100,14 @@ export async function onRequest(context) {
     const r2 = bucket(context.env);
 
     if (context.request.method === "GET") {
-      let data = await read(r2);
-      let initialized = false;
+      const data = await read(r2);
       if (!data) {
-        const updatedAt = new Date().toISOString();
-        data = { ...INITIAL_CONTENT, updatedAt };
-        await write(r2, data);
-        await manifest(r2, updatedAt);
-        initialized = true;
+        return response(
+          { ok: false, error: `Journal content is missing from R2 at ${CONTENT_KEY}. Restore the R2 object before editing.` },
+          404
+        );
       }
-      return response({ ok: true, data, key: CONTENT_KEY, initialized });
+      return response({ ok: true, data, key: CONTENT_KEY });
     }
 
     if (context.request.method === "PUT" || context.request.method === "POST") {

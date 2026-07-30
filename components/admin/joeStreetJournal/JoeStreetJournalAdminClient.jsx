@@ -53,7 +53,6 @@ export default function JoeStreetJournalAdminClient() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) throw new Error(json.error || `Load failed (${res.status})`);
       setData(json.data);
-      if (json.initialized) setMessage("The complete current Journal page was initialized and saved to R2.");
     } catch (err) {
       setError(err?.message || "Unable to load.");
     } finally {
