@@ -19,6 +19,10 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, "..");
+const CURRENT_SEASON = String(new Date().getUTCMonth() < 2
+  ? new Date().getUTCFullYear() - 1
+  : new Date().getUTCFullYear());
+const UPLOAD_RETRIES = 5;
 
 function must(name) {
   const v = process.env[name];
@@ -64,14 +68,24 @@ function contentTypeFor(filePath) {
 
 async function putFile(localPath, key) {
   const body = fs.readFileSync(localPath);
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: body,
-      ContentType: contentTypeFor(localPath),
-    })
-  );
+  for (let attempt = 1; attempt <= UPLOAD_RETRIES; attempt += 1) {
+    try {
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: body,
+          ContentType: contentTypeFor(localPath),
+        })
+      );
+      return;
+    } catch (err) {
+      if (attempt === UPLOAD_RETRIES) throw err;
+      const delayMs = Math.min(15_000, 750 * (2 ** (attempt - 1))) + Math.floor(Math.random() * 250);
+      console.warn(`R2 upload failed for ${key}; retry ${attempt}/${UPLOAD_RETRIES - 1} in ${delayMs}ms.`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
 }
 
 async function main() {
@@ -80,7 +94,15 @@ async function main() {
   if (fs.existsSync(autoDir)) fs.rmSync(autoDir, { recursive: true, force: true });
 
   console.log("\n=== Generating leaderboards JSONs ===\n");
-  run("node", [path.join(ROOT, "script/leaderboards/auto-gen.js")], { cwd: ROOT });
+  run("node", [path.join(ROOT, "script/leaderboards/auto-gen.js")], {
+    cwd: ROOT,
+    env: {
+      ...process.env,
+      // Automation must never rewrite historical seasons.
+      LEADERBOARD_YEARS: CURRENT_SEASON,
+      USE_CACHED_PLAYERS: "true",
+    },
+  });
 
   if (!fs.existsSync(autoDir)) {
     throw new Error("auto/ folder was not created by auto-gen.js");
@@ -88,8 +110,13 @@ async function main() {
 
   // 2) Upload to R2 under data/leaderboards/
   console.log("\n=== Uploading to R2 ===\n");
-  const files = listFilesRecursive(autoDir).filter((f) => f.endsWith(".json"));
+  const seasonPattern = new RegExp(`^(leaderboards|weekly_manifest|weekly_rosters)_${CURRENT_SEASON}(?:_part\\d+)?\\.json$`);
+  const files = listFilesRecursive(autoDir).filter((f) => seasonPattern.test(path.basename(f)));
   files.sort();
+
+  if (!files.length) {
+    throw new Error(`No leaderboard artifacts were generated for current season ${CURRENT_SEASON}`);
+  }
 
   for (const f of files) {
     const rel = path.relative(autoDir, f).split(path.sep).join("/");
