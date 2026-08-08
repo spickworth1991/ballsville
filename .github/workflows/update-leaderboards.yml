@@ -3,9 +3,14 @@ name: Update Leaderboards
 on:
   workflow_dispatch: {}
 
+concurrency:
+  group: update-leaderboards-current-season
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -19,7 +24,7 @@ jobs:
         run: npm ci
 
       - name: Build + upload leaderboards to R2
-        run: node script/buildleaderboards.mjs
+        run: npm run leaderboards:auto
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}

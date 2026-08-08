@@ -18,7 +18,8 @@ function getCurrentSeason(d = new Date()) {
 
 /** =================== CONSTANTS =================== */
 const CONCURRENCY = 5;
-const RETRIES = 3;
+const RETRIES = 6;
+const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_WEEKS = 18;
 // "current year" here means the current NFL season, not calendar year.
 const CURRENT_YEAR = String(getCurrentSeason());
@@ -35,7 +36,7 @@ const perYearPart        = (y, i) => path.join(BACKUP_DIR, `weekly_rosters_${y}_
 const MAX_CHUNK_SIZE = 23 * 1024 * 1024; // ~23 MiB headroom < Cloudflare 25 MiB
 
 const limit = pLimit(CONCURRENCY);
-const axiosInstance = axios.create();
+const axiosInstance = axios.create({ timeout: REQUEST_TIMEOUT_MS });
 
 // ✅ Combined maps for multiple leaderboards
 const LEAGUE_MAP = {
@@ -901,6 +902,24 @@ const LEAGUE_MAP = {
         "1373199586134355968"
       ]
     }
+    },
+
+    redraft: {
+      name: "2026 Redraft",
+      divisions: {
+      "Redraft ($25)": [
+        "1381795979614756864",
+        "1381797002714550272",
+        "1381796083264397312",
+        "1381796206534995968",
+        "1381796320213241856",
+        "1381796453210415104",
+        "1381796573725360128",
+        "1381796675210715136",
+        "1381796784434601984",
+        "1381796886897233920"
+      ]
+    }
     }
   }
 };
@@ -1095,7 +1114,15 @@ async function fetchWithRetry(url, retries = RETRIES) {
     try { return (await axiosInstance.get(url)).data; }
     catch (err) {
       if (i === retries - 1) throw err;
-      await new Promise(res => setTimeout(res, 500 * (i + 1)));
+      const status = err?.response?.status;
+      const retryAfter = Number(err?.response?.headers?.["retry-after"]);
+      const backoffMs = Number.isFinite(retryAfter) && retryAfter > 0
+        ? retryAfter * 1_000
+        : Math.min(15_000, 750 * (2 ** i)) + Math.floor(Math.random() * 250);
+      console.warn(
+        `Sleeper request failed${status ? ` (${status})` : ""}; retry ${i + 1}/${retries - 1} in ${backoffMs}ms: ${url}`
+      );
+      await new Promise(res => setTimeout(res, backoffMs));
     }
   }
 }
@@ -1930,8 +1957,8 @@ async function main() {
 
     const yearChoices = yearsForPrompt
       .slice()
-      .sort()
-      .map((y) => ({ title: y, value: y, selected: true }));
+      .sort((a, b) => Number(b) - Number(a))
+      .map((y) => ({ title: y, value: y, selected: y === CURRENT_YEAR }));
 
     const ans = await prompts(
       [
