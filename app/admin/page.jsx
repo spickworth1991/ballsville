@@ -19,6 +19,11 @@ export default function AdminHomePage() {
 
           <div className="grid gap-4 sm:grid-cols-2">
 
+            <Link prefetch={false} href="/admin/home-promotion" className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition">
+              <h2 className="text-lg font-semibold text-primary">Homepage Promotion</h2>
+              <p className="mt-1 text-sm text-muted">Edit the homepage giveaway details, links, and artwork.</p>
+            </Link>
+
             <Link
               prefetch={false}
               href="/admin/joe-street-journal"

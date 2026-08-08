@@ -3,6 +3,7 @@ import Link from "next/link";
 import LiteYouTube from "@/components/LiteYouTube";
 import { siteConfig } from "@/app/config/siteConfig";
 import { CURRENT_SEASON } from "@/lib/season";
+import HomePromotion from "@/components/HomePromotion";
 
 const pageTitle = `${siteConfig.title}`;
 
@@ -94,6 +95,8 @@ export default function Page() {
           </div>
         </div>
       </ReadableSection>
+
+      <HomePromotion />
 
       {/* GAMES OFFERED */}
       <ReadableSection className="py-6">
