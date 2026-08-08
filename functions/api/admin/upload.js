@@ -173,6 +173,8 @@ function baseKeyForUpload({
   managerId,
   modeSlug,
 }) {
+  if (section === "homepage-promotion") return "media/sitewide/homepage-promotion";
+
   // ============
   // MINI-LEAGUES
   // ============
