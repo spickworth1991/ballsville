@@ -19,9 +19,8 @@ const GAME_TZ = "America/Detroit";
 
 /**
  * Rough "NFL game time" window in Eastern Time (America/Detroit):
- *  - Thursday: 19:00–23:59
- *  - Sunday:   13:00–23:59
- *  - Monday:   19:00–23:59
+ *  - September-November: Thursday, Sunday, and Monday
+ *  - December: Thursday, Saturday, Sunday, and Monday
  *  - Plus spillover 00:00–01:00 after late games on Mon/Tue/Fri
  *
  * This doesn't have to be perfect; it just avoids hammering during truly dead times.
@@ -29,6 +28,7 @@ const GAME_TZ = "America/Detroit";
 function isGameWindow(now = new Date()) {
   const fmt = new Intl.DateTimeFormat("en-US", {
     timeZone: GAME_TZ,
+    month: "numeric",
     weekday: "short",
     hour: "2-digit",
     minute: "2-digit",
@@ -36,6 +36,10 @@ function isGameWindow(now = new Date()) {
   });
 
   const parts = fmt.formatToParts(now);
+  const month = parseInt(
+    parts.find((p) => p.type === "month")?.value || "0",
+    10
+  );
   const weekday = parts.find((p) => p.type === "weekday")?.value;
 
   const hour = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
@@ -43,8 +47,11 @@ function isGameWindow(now = new Date()) {
 
   const time = hour + minute / 60; // decimal hour
 
-  // Saturday window: 16:30+
-  if (weekday === "Sat" && time >= 16.5) return true;
+  // The regular fantasy schedule only runs from September through December.
+  if (month < 9 || month > 12) return false;
+
+  // Saturday games are included only once the December schedule begins.
+  if (month === 12 && weekday === "Sat" && time >= 16.5) return true;
 
   // Sunday window: 12:30+
   if (weekday === "Sun" && time >= 12.5) return true;
