@@ -24,6 +24,7 @@ const GAME_TZ = "America/Detroit";
 function getDetroitParts(now = new Date()) {
   const fmt = new Intl.DateTimeFormat("en-US", {
     timeZone: GAME_TZ,
+    month: "numeric",
     weekday: "short",
     hour: "2-digit",
     minute: "2-digit",
@@ -31,23 +32,27 @@ function getDetroitParts(now = new Date()) {
   });
 
   const parts = fmt.formatToParts(now);
+  const month = parseInt(parts.find((p) => p.type === "month")?.value || "0", 10);
   const weekday = parts.find((p) => p.type === "weekday")?.value; // "Sun", "Mon", ...
   const hour = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
   const minute = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
   const time = hour + minute / 60; // decimal hour
-  return { weekday, hour, minute, time };
+  return { month, weekday, hour, minute, time };
 }
 
 function inGameWindow(now = new Date()) {
-  const { weekday, time } = getDetroitParts(now);
+  const { month, weekday, time } = getDetroitParts(now);
 
   // Match the same philosophy you used on the CF function:
-  // - Sat: 16:30+
+  // - Sep-Nov: Thu, Sun, and Mon
+  // - Dec: Thu, Sat, Sun, and Mon
   // - Sun: 12:30+
   // - Mon: 19:00+
   // - Thu: 19:00+
   // - Spillover: 00:00–01:59 on Mon/Tue/Fri
-  if (weekday === "Sat" && time >= 16.5) return true;
+  if (month < 9 || month > 12) return false;
+
+  if (month === 12 && weekday === "Sat" && time >= 16.5) return true;
   if (weekday === "Sun" && time >= 12.5) return true;
   if (weekday === "Mon" && time >= 19) return true;
   if (weekday === "Thu" && time >= 19) return true;
