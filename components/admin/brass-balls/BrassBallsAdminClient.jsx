@@ -209,7 +209,7 @@ export default function BrassBallsAdminClient() {
                 type="number"
                 value={season}
                 onChange={(e) => setSeason(num(e.target.value))}
-                className="mt-1 w-full rounded-xl border border-subtle bg-background px-3 py-2"
+                className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-white placeholder:text-slate-500 focus:border-amber-300 focus:outline-none"
               />
             </label>
             <label className="text-sm">
@@ -222,7 +222,7 @@ export default function BrassBallsAdminClient() {
                 onChange={(e) =>
                   setDoc({ ...doc, currentWeek: num(e.target.value) })
                 }
-                className="mt-1 w-full rounded-xl border border-subtle bg-background px-3 py-2"
+                className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-white placeholder:text-slate-500 focus:border-amber-300 focus:outline-none"
               />
             </label>
             <label className="text-sm">
@@ -231,7 +231,7 @@ export default function BrassBallsAdminClient() {
                 <input
                   value={doc.leagueId}
                   onChange={(e) => setDoc({ ...doc, leagueId: e.target.value })}
-                  className="min-w-0 flex-1 rounded-xl border border-subtle bg-background px-3 py-2"
+                  className="min-w-0 flex-1 rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-white placeholder:text-slate-500 focus:border-amber-300 focus:outline-none"
                 />
                 <button
                   type="button"
@@ -252,7 +252,7 @@ export default function BrassBallsAdminClient() {
               <input
                 value={doc.title}
                 onChange={(e) => setDoc({ ...doc, title: e.target.value })}
-                className="mt-1 w-full rounded-xl border border-subtle bg-background px-3 py-2"
+                className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-white placeholder:text-slate-500 focus:border-amber-300 focus:outline-none"
               />
             </label>
             <label className="text-sm">
@@ -261,7 +261,7 @@ export default function BrassBallsAdminClient() {
                 value={doc.youtubeId}
                 onChange={(e) => setDoc({ ...doc, youtubeId: e.target.value })}
                 placeholder="Only the ID, not the full URL"
-                className="mt-1 w-full rounded-xl border border-subtle bg-background px-3 py-2"
+                className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-white placeholder:text-slate-500 focus:border-amber-300 focus:outline-none"
               />
             </label>
             <label className="text-sm sm:col-span-2">
@@ -270,7 +270,7 @@ export default function BrassBallsAdminClient() {
                 rows="4"
                 value={doc.intro}
                 onChange={(e) => setDoc({ ...doc, intro: e.target.value })}
-                className="mt-1 w-full rounded-xl border border-subtle bg-background px-3 py-2"
+                className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-white placeholder:text-slate-500 focus:border-amber-300 focus:outline-none"
               />
             </label>
             <label className="text-sm">
@@ -285,14 +285,14 @@ export default function BrassBallsAdminClient() {
                     "brass-balls-hero",
                   )
                 }
-                className="mt-1 block w-full rounded-xl border border-subtle bg-background px-3 py-2"
+                className="mt-1 block w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-sm text-white file:mr-3 file:rounded-lg file:border-0 file:bg-amber-300 file:px-3 file:py-1.5 file:font-bold file:text-slate-950"
               />
               <input
                 value={doc.heroImageUrl}
                 onChange={(e) =>
                   setDoc({ ...doc, heroImageUrl: e.target.value })
                 }
-                className="mt-2 w-full rounded-xl border border-subtle bg-background px-3 py-2"
+                className="mt-2 w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-white placeholder:text-slate-500 focus:border-amber-300 focus:outline-none"
               />
             </label>
             <label className="text-sm">
@@ -307,14 +307,14 @@ export default function BrassBallsAdminClient() {
                     "brass-balls-secondary",
                   )
                 }
-                className="mt-1 block w-full rounded-xl border border-subtle bg-background px-3 py-2"
+                className="mt-1 block w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-sm text-white file:mr-3 file:rounded-lg file:border-0 file:bg-amber-300 file:px-3 file:py-1.5 file:font-bold file:text-slate-950"
               />
               <input
                 value={doc.secondaryImageUrl}
                 onChange={(e) =>
                   setDoc({ ...doc, secondaryImageUrl: e.target.value })
                 }
-                className="mt-2 w-full rounded-xl border border-subtle bg-background px-3 py-2"
+                className="mt-2 w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-white placeholder:text-slate-500 focus:border-amber-300 focus:outline-none"
               />
             </label>
             <label className="text-sm sm:col-span-2">
@@ -329,14 +329,14 @@ export default function BrassBallsAdminClient() {
                     "brass-balls-assignments",
                   )
                 }
-                className="mt-1 block w-full rounded-xl border border-subtle bg-background px-3 py-2"
+                className="mt-1 block w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-sm text-white file:mr-3 file:rounded-lg file:border-0 file:bg-amber-300 file:px-3 file:py-1.5 file:font-bold file:text-slate-950"
               />
               <input
                 value={doc.actualBoardImageUrl || ""}
                 onChange={(e) =>
                   setDoc({ ...doc, actualBoardImageUrl: e.target.value })
                 }
-                className="mt-2 w-full rounded-xl border border-subtle bg-background px-3 py-2"
+                className="mt-2 w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-white placeholder:text-slate-500 focus:border-amber-300 focus:outline-none"
               />
             </label>
           </div>
@@ -360,7 +360,7 @@ export default function BrassBallsAdminClient() {
                       onChange={(e) =>
                         updateWeek(wi, { week: num(e.target.value) })
                       }
-                      className="mt-1 w-24 rounded-xl border border-subtle bg-background px-3 py-2"
+                      className="mt-1 w-24 rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-white focus:border-amber-300 focus:outline-none"
                     />
                   </label>
                   <label className="min-w-48 flex-1 text-sm">
@@ -370,7 +370,7 @@ export default function BrassBallsAdminClient() {
                       onChange={(e) =>
                         updateWeek(wi, { label: e.target.value })
                       }
-                      className="mt-1 w-full rounded-xl border border-subtle bg-background px-3 py-2"
+                      className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-white placeholder:text-slate-500 focus:border-amber-300 focus:outline-none"
                     />
                   </label>
                   <button
@@ -397,7 +397,7 @@ export default function BrassBallsAdminClient() {
                         onChange={(e) =>
                           updateMatchup(wi, mi, "teamA", e.target.value)
                         }
-                        className="rounded-xl border border-subtle bg-background px-3 py-2"
+                        className="rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-white focus:border-amber-300 focus:outline-none"
                       >
                         <option value="">Select a username</option>
                         {teams.map((team) => (
@@ -416,7 +416,7 @@ export default function BrassBallsAdminClient() {
                         onChange={(e) =>
                           updateMatchup(wi, mi, "teamB", e.target.value)
                         }
-                        className="rounded-xl border border-subtle bg-background px-3 py-2"
+                        className="rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-white focus:border-amber-300 focus:outline-none"
                       >
                         <option value="">No opponent / solo</option>
                         {teams.map((team) => (

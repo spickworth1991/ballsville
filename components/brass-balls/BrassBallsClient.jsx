@@ -52,7 +52,9 @@ function TeamScore({ slot, matchup, rosters, users }) {
       )}
       <div className="min-w-0 flex-1">
         <div className="truncate font-semibold text-white">{name}</div>
-        <div className="text-xs text-slate-400">Roster {slot?.rosterId || "—"}</div>
+        <div className="text-xs text-slate-400">
+          Roster {slot?.rosterId || "—"}
+        </div>
       </div>
       <div className="rounded-xl bg-amber-300 px-3 py-2 text-2xl font-black text-slate-950">
         {matchup ? num(matchup.points).toFixed(2) : "—"}
@@ -100,6 +102,10 @@ export default function BrassBallsClient({ season }) {
   });
   const [openId, setOpenId] = useState("");
   const [error, setError] = useState("");
+  const [refreshEvery, setRefreshEvery] = useState(0);
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   useEffect(() => {
     fetch(
@@ -123,6 +129,7 @@ export default function BrassBallsClient({ season }) {
 
   useEffect(() => {
     if (!doc?.leagueId || !week) return;
+    setRefreshing(true);
     const id = encodeURIComponent(doc.leagueId);
     Promise.all([
       fetch(`https://api.sleeper.app/v1/league/${id}/rosters`).then((r) =>
@@ -140,11 +147,23 @@ export default function BrassBallsClient({ season }) {
             .then((r) => r.json())
             .catch(() => ({})),
     ])
-      .then(([rosters, users, matchups, players]) =>
-        setLive({ rosters, users, matchups, players }),
-      )
-      .catch(() => setError("Live Sleeper scores could not be loaded."));
-  }, [doc?.leagueId, week]); // player directory is reused after its first load
+      .then(([rosters, users, matchups, players]) => {
+        setLive({ rosters, users, matchups, players });
+        setLastUpdated(new Date());
+        setError("");
+      })
+      .catch(() => setError("Live Sleeper scores could not be loaded."))
+      .finally(() => setRefreshing(false));
+  }, [doc?.leagueId, week, refreshNonce]); // player directory is reused after its first load
+
+  useEffect(() => {
+    if (!refreshEvery) return undefined;
+    const timer = window.setInterval(
+      () => setRefreshNonce((value) => value + 1),
+      refreshEvery * 1000,
+    );
+    return () => window.clearInterval(timer);
+  }, [refreshEvery]);
 
   const weekDoc = useMemo(
     () => (doc?.weeks || []).find((row) => num(row.week) === num(week)),
@@ -226,23 +245,55 @@ export default function BrassBallsClient({ season }) {
                   Week {week} matchups
                 </h2>
               </div>
-              <select
-                value={week}
-                onChange={(event) => {
-                  setWeek(num(event.target.value));
-                  setOpenId("");
-                }}
-                className="rounded-xl border border-subtle bg-card-surface px-4 py-3 text-primary"
-              >
-                {(doc?.weeks || [])
-                  .sort((a, b) => num(a.week) - num(b.week))
-                  .map((row) => (
-                    <option key={row.week} value={row.week}>
-                      Week {row.week}
-                      {row.label ? ` · ${row.label}` : ""}
-                    </option>
-                  ))}
-              </select>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-muted">
+                  Week
+                  <select
+                    value={week}
+                    onChange={(event) => {
+                      setWeek(num(event.target.value));
+                      setOpenId("");
+                    }}
+                    className="mt-1 block rounded-xl border border-slate-600 bg-slate-950 px-4 py-3 text-white"
+                  >
+                    {(doc?.weeks || [])
+                      .sort((a, b) => num(a.week) - num(b.week))
+                      .map((row) => (
+                        <option key={row.week} value={row.week}>
+                          Week {row.week}
+                          {row.label ? ` · ${row.label}` : ""}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-muted">
+                  Score refresh
+                  <select
+                    value={refreshEvery}
+                    onChange={(event) =>
+                      setRefreshEvery(num(event.target.value))
+                    }
+                    className="mt-1 block rounded-xl border border-slate-600 bg-slate-950 px-4 py-3 text-white"
+                  >
+                    <option value="0">Manual only</option>
+                    <option value="30">Every 30 seconds</option>
+                    <option value="60">Every 60 seconds</option>
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setRefreshNonce((value) => value + 1)}
+                  disabled={refreshing}
+                  className="rounded-xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-xs font-black text-amber-200 disabled:opacity-50"
+                >
+                  {refreshing ? "Refreshing…" : "Refresh now"}
+                </button>
+              </div>
+            </div>
+            <div className="mt-2 text-right text-[10px] text-muted">
+              {lastUpdated
+                ? `Scores updated ${lastUpdated.toLocaleTimeString()}`
+                : "Scores have not loaded yet"}
             </div>
             {error ? (
               <div className="mt-5 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-red-100">
