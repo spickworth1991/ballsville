@@ -29,8 +29,24 @@ function teamName(rosterId, rosters, users, fallback = "Team") {
   );
 }
 
+function teamIdentity(rosterId, rosters, users, fallback = "Team") {
+  const roster = rosters.find(
+    (row) => String(row.roster_id) === String(rosterId),
+  );
+  const user = users.find(
+    (row) => String(row.user_id) === String(roster?.owner_id),
+  );
+  const username = text(user?.username || user?.display_name);
+  const namedTeam = text(user?.metadata?.team_name);
+  return {
+    primary: namedTeam || (username ? `@${username.replace(/^@/, "")}` : fallback),
+    secondary: namedTeam && username ? `@${username.replace(/^@/, "")}` : "",
+  };
+}
+
 function TeamScore({ slot, matchup, rosters, users }) {
-  const name = text(slot?.label) || teamName(slot?.rosterId, rosters, users);
+  const identity = teamIdentity(slot?.rosterId, rosters, users);
+  const name = text(slot?.label) || identity.primary;
   const roster = rosters.find(
     (row) => String(row.roster_id) === String(slot?.rosterId),
   );
@@ -52,9 +68,9 @@ function TeamScore({ slot, matchup, rosters, users }) {
       )}
       <div className="min-w-0 flex-1">
         <div className="truncate font-semibold text-white">{name}</div>
-        <div className="text-xs text-slate-400">
-          Roster {slot?.rosterId || "—"}
-        </div>
+        {identity.secondary ? (
+          <div className="truncate text-xs text-slate-400">{identity.secondary}</div>
+        ) : null}
       </div>
       <div className="rounded-xl bg-amber-300 px-3 py-2 text-2xl font-black text-slate-950">
         {matchup ? num(matchup.points).toFixed(2) : "—"}
