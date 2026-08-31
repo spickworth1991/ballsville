@@ -61,6 +61,12 @@ const NAV_ITEMS = [
         isNew: true,
       },
       {
+        id: "brass-balls",
+        name: "The Brass Balls",
+        to: "/brass-balls",
+        isNew: true,
+      },
+      {
         id: "redraft",
         name: "Redraft",
         to: "/redraft",
