@@ -21,6 +21,9 @@
 // HIGHLANDER sections:
 //    "highlander-updates"   (main Highlander page image)
 //    "highlander-league"    (per-league image; requires leagueOrder)
+// BRASS BALLS sections:
+//    "brass-balls-hero"
+//    "brass-balls-secondary"
 
 // - divisionCode: "100" (required for mini-leagues-division and mini-leagues-league)
 // - leagueOrder: "1" (required for mini-leagues-league and redraft-league and biggame-league)
@@ -194,6 +197,10 @@ function baseKeyForUpload({
   // ==========
   if (section === "highlander-updates") return `media/highlander/updates_${season}`;
   if (section === "highlander-league") return `media/highlander/leagues/${season}/${leagueOrder}`;
+
+  if (section === "brass-balls-hero") return `media/brass-balls/hero_${season}`;
+  if (section === "brass-balls-secondary") return `media/brass-balls/secondary_${season}`;
+  if (section === "brass-balls-assignments") return `media/brass-balls/assignments_${season}`;
 
 // =======
   // REDRAFT

@@ -57,6 +57,11 @@ export default function AdminWagerTrackersPage() {
               </p>
             </Link>
 
+            <Link prefetch={false} href="/admin/brass-balls" className="card bg-card-surface border border-subtle p-5 hover:border-accent hover:-translate-y-0.5 transition">
+              <h2 className="text-lg font-semibold text-primary">The Brass Balls</h2>
+              <p className="mt-1 text-sm text-muted">Set custom weekly matchups and public page media.</p>
+            </Link>
+
             <Link
               prefetch={false}
               href="/admin/gauntlet"
