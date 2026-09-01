@@ -19,6 +19,26 @@ function cls(...a) {
   return a.filter(Boolean).join(" ");
 }
 
+function deriveSelectionKey(entry) {
+  const leagueId = safeStr(entry?.leagueId).trim();
+  const draftId = safeStr(entry?.draftId).trim();
+  if (!leagueId) return "";
+  return draftId ? `${leagueId}::${draftId}` : leagueId;
+}
+
+function getExistingSelectionKeys(data) {
+  const explicit = Array.isArray(data?.selectedKeys)
+    ? data.selectedKeys.map(safeStr).map((value) => value.trim()).filter(Boolean)
+    : [];
+  if (explicit.length) return explicit;
+
+  return Array.isArray(data?.leagues)
+    ? data.leagues
+        .map((entry) => safeStr(entry?.selectionKey).trim() || deriveSelectionKey(entry))
+        .filter(Boolean)
+    : [];
+}
+
 async function apiGet(url) {
   const res = await fetch(url, { cache: "no-store" });
   const data = await res.json().catch(() => ({}));
@@ -80,6 +100,7 @@ export default function DraftCompareBuildSelectLeaguesClient() {
   const [selected, setSelected] = useState(() => new Set());
   const [building, setBuilding] = useState(false);
   const [buildMsg, setBuildMsg] = useState("");
+  const [preselectedCount, setPreselectedCount] = useState(0);
 
   const canProceed = useMemo(() => {
     return (
@@ -102,9 +123,19 @@ export default function DraftCompareBuildSelectLeaguesClient() {
         const url = `/api/sleeper/leagues?username=${encodeURIComponent(username)}&season=${encodeURIComponent(
           String(sleeperSeason)
         )}&includeDrafts=0`;
-        const data = await apiGet(url);
+        const [data, existingResponse] = await Promise.all([
+          apiGet(url),
+          action === "rebuild" && modeSlug && Number.isFinite(season)
+            ? apiGet(
+                `/api/admin/draft-compare?season=${encodeURIComponent(String(season))}&type=drafts&modeSlug=${encodeURIComponent(
+                  modeSlug
+                )}`
+              )
+            : Promise.resolve(null),
+        ]);
         if (cancelled) return;
         const list = Array.isArray(data?.leagues) ? data.leagues : [];
+        const existingKeys = getExistingSelectionKeys(existingResponse?.data);
 
         list.sort((a, b) => {
           const ta =
@@ -120,7 +151,8 @@ export default function DraftCompareBuildSelectLeaguesClient() {
         });
 
         setLeagues(list);
-        setSelected(new Set());
+        setSelected(new Set(existingKeys));
+        setPreselectedCount(existingKeys.length);
 
         setDraftsByLeague(() => {
           const next = {};
@@ -170,7 +202,7 @@ export default function DraftCompareBuildSelectLeaguesClient() {
     return () => {
       cancelled = true;
     };
-  }, [username, sleeperSeason]);
+  }, [username, sleeperSeason, action, modeSlug, season]);
 
   const allSelectableKeys = useMemo(() => {
     const keys = [];
@@ -379,6 +411,11 @@ export default function DraftCompareBuildSelectLeaguesClient() {
 
           {!loading && leagues.length > 0 ? (
             <div className="mt-3 text-xs text-muted">
+              {action === "rebuild" && preselectedCount > 0 ? (
+                <span className="mr-1">
+                  Your {preselectedCount} saved draft selection{preselectedCount === 1 ? " is" : "s are"} already checked.
+                </span>
+              ) : null}
               {allDraftLookupsSettled
                 ? `Select All will pick every available draft for this rebuild (${allSelectableKeys.length} total).`
                 : "Drafts are still loading. Select All will unlock when every league has finished loading its draft list."}
