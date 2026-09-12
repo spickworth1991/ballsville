@@ -764,6 +764,7 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
   const [weeklyData, setWeeklyData] = useState(null);
   const [visibleWeeksStart, setVisibleWeeksStart] = useState(0);
   const weeklyCache = useRef({}); // cache per year
+  const weeklyRequests = useRef({}); // share in-flight loads per year
 
   // Reset weeks pager & weekly sort when year/mode/toggle changes
   useEffect(() => {
@@ -823,23 +824,34 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
   }, [showWeeks, weeklyData, year, category, scopedOwners, data.weeks]);
 
   // Helper: load weekly data
-  const loadWeeklyDataForYear = async () => {
+  const loadWeeklyDataForYear = async ({ updateState = true } = {}) => {
     if (weeklyCache.current[year]) {
-      setWeeklyData(weeklyCache.current[year]);
+      if (updateState) setWeeklyData(weeklyCache.current[year]);
       return weeklyCache.current[year];
     }
-    try {
+
+    if (weeklyRequests.current[year]) {
+      const cachedRequest = await weeklyRequests.current[year];
+      if (updateState && cachedRequest) setWeeklyData(cachedRequest);
+      return cachedRequest;
+    }
+
+    const request = (async () => {
       const base = (basePath || "/r2/data/leaderboards").replace(/\/$/, "");
       const manRes = await fetch(`${base}/weekly_manifest_${year}.json`, { cache: "no-store" });
       if (!manRes.ok) return null;
 
       const manifest = await manRes.json(); // { parts: [...] }
-      let combined = {};
-      for (const part of manifest.parts || []) {
-        const url = `${base}/${part}`;
-        const res = await fetch(url, { cache: "no-store" });
-        if (!res.ok) continue;
-        const chunk = await res.json();
+      const chunks = await Promise.all(
+        (manifest.parts || []).map(async (part) => {
+          const res = await fetch(`${base}/${part}`, { cache: "no-store" });
+          return res.ok ? res.json() : null;
+        }),
+      );
+
+      const combined = {};
+      for (const chunk of chunks) {
+        if (!chunk) continue;
         for (const y in chunk) {
           combined[y] = combined[y] || {};
           for (const mode in chunk[y]) {
@@ -849,12 +861,31 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
         }
       }
       weeklyCache.current[year] = combined;
-      setWeeklyData(combined);
+      return combined;
+    })();
+
+    weeklyRequests.current[year] = request;
+    try {
+      const combined = await request;
+      if (updateState && combined) setWeeklyData(combined);
       return combined;
     } catch {
       return null;
+    } finally {
+      delete weeklyRequests.current[year];
     }
   };
+
+  // Warm the roster-detail cache after the main leaderboard has rendered.
+  useEffect(() => {
+    const preload = () => loadWeeklyDataForYear({ updateState: false });
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(preload, { timeout: 1500 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const id = window.setTimeout(preload, 500);
+    return () => window.clearTimeout(id);
+  }, [year, basePath]);
 
   // Only auto-load when Weekly is ON; otherwise lazy-load on click
   useEffect(() => {
