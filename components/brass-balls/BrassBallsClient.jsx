@@ -44,7 +44,58 @@ function teamIdentity(rosterId, rosters, users, fallback = "Team") {
   };
 }
 
-function TeamScore({ slot, matchup, rosters, users }) {
+function computeBestBallLineup(matchup, players) {
+  if (!matchup) return { total: null, selected: new Map() };
+
+  const entries = Object.entries(matchup.players_points || {})
+    .map(([id, score]) => {
+      const player = players[id] || {};
+      const position = text(
+        player.position || player.fantasy_positions?.[0],
+      ).toUpperCase();
+      return { id: String(id), position, points: num(score) };
+    })
+    .filter((player) => ["QB", "RB", "WR", "TE"].includes(player.position));
+
+  // Until the player directory arrives, Sleeper's aggregate is the safest
+  // placeholder. Once it is available, optimize the league's best-ball slots.
+  if (!entries.length) {
+    return { total: num(matchup.points), selected: new Map() };
+  }
+
+  const remaining = [...entries];
+  const selected = new Map();
+  const take = (count, slot, eligible) => {
+    for (let index = 0; index < count; index += 1) {
+      const candidates = remaining
+        .filter((player) => eligible.includes(player.position))
+        .sort((a, b) => b.points - a.points);
+      const player = candidates[0];
+      if (!player) break;
+      selected.set(player.id, slot);
+      remaining.splice(
+        remaining.findIndex((row) => row.id === player.id),
+        1,
+      );
+    }
+  };
+
+  take(1, "QB", ["QB"]);
+  take(2, "RB", ["RB"]);
+  take(3, "WR", ["WR"]);
+  take(1, "TE", ["TE"]);
+  take(2, "FLEX", ["RB", "WR", "TE"]);
+  take(1, "SUPER FLEX", ["QB", "RB", "WR", "TE"]);
+
+  const total = entries.reduce(
+    (sum, player) =>
+      sum + (selected.has(player.id) ? num(player.points) : 0),
+    0,
+  );
+  return { total, selected };
+}
+
+function TeamScore({ slot, matchup, rosters, users, players }) {
   const identity = teamIdentity(slot?.rosterId, rosters, users);
   const name = text(slot?.label) || identity.primary;
   const roster = rosters.find(
@@ -73,7 +124,9 @@ function TeamScore({ slot, matchup, rosters, users }) {
         ) : null}
       </div>
       <div className="rounded-xl bg-amber-300 px-3 py-2 text-2xl font-black text-slate-950">
-        {matchup ? num(matchup.points).toFixed(2) : "—"}
+        {matchup
+          ? computeBestBallLineup(matchup, players).total.toFixed(2)
+          : "—"}
       </div>
     </div>
   );
@@ -81,9 +134,14 @@ function TeamScore({ slot, matchup, rosters, users }) {
 
 function PlayerRows({ matchup, players }) {
   const points = matchup?.players_points || {};
-  const starters = new Set((matchup?.starters || []).map(String));
+  const { selected } = computeBestBallLineup(matchup, players);
   return Object.entries(points)
-    .sort((a, b) => num(b[1]) - num(a[1]))
+    .sort(
+      (a, b) =>
+        Number(selected.has(String(b[0]))) -
+          Number(selected.has(String(a[0]))) ||
+        num(b[1]) - num(a[1]),
+    )
     .map(([id, score]) => {
       const player = players[id] || {};
       const name =
@@ -98,7 +156,7 @@ function PlayerRows({ matchup, players }) {
             <span className="ml-2 text-xs text-muted">
               {player.position || ""}
               {player.team ? ` · ${player.team}` : ""}
-              {starters.has(id) ? " · Starter" : ""}
+              {selected.has(id) ? ` · Counts (${selected.get(id)})` : " · Bench"}
             </span>
           </div>
           <b className="text-primary">{num(score).toFixed(2)}</b>
@@ -339,6 +397,7 @@ export default function BrassBallsClient({ season }) {
                         matchup={a}
                         rosters={live.rosters}
                         users={live.users}
+                        players={live.players}
                       />
                       <div className="mx-auto rounded-full border border-amber-300/35 bg-amber-300/10 px-4 py-2 text-center text-xs font-black uppercase tracking-widest text-amber-200">
                         {pair.teamB?.rosterId ? "vs" : "No opponent"}
@@ -349,6 +408,7 @@ export default function BrassBallsClient({ season }) {
                           matchup={b}
                           rosters={live.rosters}
                           users={live.users}
+                          players={live.players}
                         />
                       ) : (
                         <div className="rounded-2xl border border-dashed border-slate-600 bg-slate-950 p-4 text-center text-sm text-slate-300">
