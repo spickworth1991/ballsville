@@ -150,6 +150,7 @@ function getDraftBreakdownForPlayer({ leagueIndex, leagueIds, name, position }) 
       roundPick: rp,
       round,
       pickInRound: pick,
+      winningBid: numOrNull(p?.avgWinningBid ?? p?.winningBid ?? p?.amount),
     });
   }
 
@@ -186,6 +187,8 @@ function PlayerDraftBreakdownModal({
   sideBData,
   selectedCountA,
   selectedCountB,
+  isAuctionA = false,
+  isAuctionB = false,
   context, // NEW
   onClose,
 }) {
@@ -210,6 +213,7 @@ function PlayerDraftBreakdownModal({
   const topPct = from?.topPct;
 
   const headline = (() => {
+    if (isAuctionA) return null;
     // If we clicked from a specific slot on the board/cell list
     if (fromRp) {
       if (topName) {
@@ -223,12 +227,13 @@ function PlayerDraftBreakdownModal({
   })();
 
   const placementLine =
-    placedRp && placedOverall ? `Placed on the board at ${placedRp} (#${placedOverall}) based on ADP order.` : null;
+    !isAuctionA && placedRp && placedOverall ? `Placed on the board at ${placedRp} (#${placedOverall}) based on ADP order.` : null;
 
   const draftedA = safeArray(sideAData).length;
   const draftedB = safeArray(sideBData).length;
 
   const mismatchHint = (() => {
+    if (isAuctionA) return null;
     // Only show if we have a clicked slot AND the player has draft rows (so we can compare)
     if (!fromRp) return null;
     if (!draftedA && !draftedB) return null;
@@ -257,7 +262,7 @@ function PlayerDraftBreakdownModal({
     </div>
   );
 
-  function SideBlock({ label, rows, selectedCount, accent }) {
+  function SideBlock({ label, rows, selectedCount, accent, isAuction }) {
     const draftedCount = safeArray(rows).length;
     const tone = accent ? "accent" : "primary";
 
@@ -295,8 +300,8 @@ function PlayerDraftBreakdownModal({
                         <div className="mt-0.5 truncate text-[11px] text-muted">{r.leagueId}</div>
                       </div>
                       <div className="flex flex-col items-end gap-1">
-                        <Chip tone={tone}>{r.roundPick}</Chip>
-                        <Chip>{r.overallPick ?? "—"}</Chip>
+                        <Chip tone={tone}>{isAuction ? bidFmt(r.winningBid) : r.roundPick}</Chip>
+                        {!isAuction ? <Chip>{r.overallPick ?? "—"}</Chip> : null}
                       </div>
                     </div>
                   </button>
@@ -308,8 +313,8 @@ function PlayerDraftBreakdownModal({
                   <thead className="bg-card-surface/95 backdrop-blur">
                     <tr className="text-left text-xs text-muted">
                       <th className="px-4 py-3">League</th>
-                      <th className="px-4 py-3">Round.Pick</th>
-                      <th className="px-4 py-3">Overall</th>
+                      <th className="px-4 py-3">{isAuction ? "Winning bid" : "Round.Pick"}</th>
+                      {!isAuction ? <th className="px-4 py-3">Overall</th> : null}
                     </tr>
                   </thead>
                   <tbody>
@@ -319,12 +324,14 @@ function PlayerDraftBreakdownModal({
                           <div className="truncate font-semibold">{r.leagueName}</div>
                           <div className="truncate text-xs text-muted">{r.leagueId}</div>
                         </td>
-                        <td className="px-4 py-3 text-muted tabular-nums">
-                          <span className="inline-flex rounded-full border border-border bg-background/30 px-2 py-0.5 text-xs">
-                            {r.roundPick}
-                          </span>
+                        <td className={cls("px-4 py-3 tabular-nums", isAuction ? "font-semibold text-emerald-300" : "text-muted")}>
+                          {isAuction ? bidFmt(r.winningBid) : (
+                            <span className="inline-flex rounded-full border border-border bg-background/30 px-2 py-0.5 text-xs">
+                              {r.roundPick}
+                            </span>
+                          )}
                         </td>
-                        <td className="px-4 py-3 text-muted tabular-nums">{r.overallPick ?? "—"}</td>
+                        {!isAuction ? <td className="px-4 py-3 text-muted tabular-nums">{r.overallPick ?? "—"}</td> : null}
                       </tr>
                     ))}
                   </tbody>
@@ -382,12 +389,14 @@ function PlayerDraftBreakdownModal({
             {emptyReason ? <div className="text-muted">{emptyReason}</div> : null}
           </div>
           <div className={cls("grid gap-3 sm:gap-4", hasB ? "md:grid-cols-2" : "md:grid-cols-1")}>
-            {hasA ? <SideBlock label={aLabel} rows={sideAData} selectedCount={selectedCountA} /> : null}
-            {hasB ? <SideBlock label={bLabel} rows={sideBData} selectedCount={selectedCountB} accent /> : null}
+            {hasA ? <SideBlock label={aLabel} rows={sideAData} selectedCount={selectedCountA} isAuction={isAuctionA} /> : null}
+            {hasB ? <SideBlock label={bLabel} rows={sideBData} selectedCount={selectedCountB} accent isAuction={isAuctionB} /> : null}
           </div>
 
           <div className="mt-3 text-[11px] text-muted sm:mt-4 sm:text-xs">
-            Tip: this list shows the exact slot in each league where the player was drafted (the “why” behind the ADP).
+            {isAuctionA || isAuctionB
+              ? "Tip: this list shows the winning bid for this player in each selected auction league."
+              : "Tip: this list shows the exact slot in each league where the player was drafted (the “why” behind the ADP)."}
           </div>
         </div>
       </div>
@@ -1022,11 +1031,13 @@ function ModeInner({ mode, season, version, gateError }) {
         <PlayerDraftBreakdownModal
         open={!!playerModal}
         title={`${safeStr(playerModal.name)} (${safeStr(playerModal.position)})`}
-        subtitle="Draft breakdown"
+        subtitle={groupA?.meta?.isAuction === true ? "Auction bid breakdown" : "Draft breakdown"}
         aLabel={comparing ? "Side A" : "Selected leagues"}
         bLabel={comparing ? "Side B" : ""}
         selectedCountA={effectiveSideA.length}
         selectedCountB={comparing ? sideB.length : 0}
+        isAuctionA={groupA?.meta?.isAuction === true}
+        isAuctionB={groupB?.meta?.isAuction === true}
         sideAData={getDraftBreakdownForPlayer({
           leagueIndex,
           leagueIds: effectiveSideA,
