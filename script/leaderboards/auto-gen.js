@@ -1014,7 +1014,7 @@ const LEAGUE_MAP = {
     },
 
     auction: {
-      name: "2026 Auction",
+      name: "2026 Auction (Unnofficial)",
       divisions: {
       "Ballsville": [
         "1386228631402987520",

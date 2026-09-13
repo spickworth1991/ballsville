@@ -833,6 +833,7 @@ function ModeInner({ mode, season, version, gateError }) {
                     setPlayerModal({
                       name: nm,
                       position: ps,
+                      averageBid: numOrNull(p?.winningBid ?? p?.avgWinningBid),
                       clickedFrom: ctx || null,
                       placed: placed || null,
                     });
@@ -969,6 +970,7 @@ function ModeInner({ mode, season, version, gateError }) {
                                 setPlayerModal({
                                   name: r.name,
                                   position: r.position,
+                                  averageBid: numOrNull(r.winningBidA ?? r.winningBid),
                                   placed: placed || null,
                                   clickedFrom: null,
                                 });
@@ -1030,7 +1032,7 @@ function ModeInner({ mode, season, version, gateError }) {
       {playerModal ? (
         <PlayerDraftBreakdownModal
         open={!!playerModal}
-        title={`${safeStr(playerModal.name)} (${safeStr(playerModal.position)})`}
+        title={`${safeStr(playerModal.name)} (${safeStr(playerModal.position)})${groupA?.meta?.isAuction === true && playerModal.averageBid != null ? ` · Average bid ${bidFmt(playerModal.averageBid)}` : ""}`}
         subtitle={groupA?.meta?.isAuction === true ? "Auction bid breakdown" : "Draft breakdown"}
         aLabel={comparing ? "Side A" : "Selected leagues"}
         bLabel={comparing ? "Side B" : ""}
@@ -1254,14 +1256,18 @@ function DraftBoard({ group, onPlayer }) {
                   return (
                     <button
                       key={`${cell.r}-${cell.displayCol}`}
-                      onClick={() =>
+                      onClick={() => {
+                        if (m?.isAuction === true && cell.player) {
+                          onPlayer?.(cell.player, null);
+                          return;
+                        }
                         setOpenCell({
                           cellKey: cell.origKey,
                           rp: rpAdjusted,
                           overall: cell.overall,
                           placedPlayer: cell.player || null,
-                        })
-                      }
+                        });
+                      }}
 
                       className={cls(
                         "group relative h-[88px] border-r border-b p-2.5 text-left transition",
