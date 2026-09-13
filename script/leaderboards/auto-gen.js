@@ -1011,6 +1011,24 @@ const LEAGUE_MAP = {
         "1381796886897233920"
       ]
     }
+    },
+
+    auction: {
+      name: "2026 Auction",
+      divisions: {
+      "Ballsville": [
+        "1386228631402987520",
+        "1396896760512647168",
+        "1386524014771466240",
+        "1386926892984070144",
+        "1388749852015337472",
+        "1388750209021902848",
+        "1388750410235265024",
+        "1391255153511772160",
+        "1391445998986887168",
+        "1394475862589460480"
+      ]
+    }
     }
   }
 };
@@ -1122,7 +1140,19 @@ function playerPos(playersDB, id) {
   return String(p.position || (p.fantasy_positions && p.fantasy_positions[0]) || '').toUpperCase();
 }
 
-function computeBestBallLineup(players_points = {}, playersDB) {
+function eligibleForBestBallSlot(pos, slot) {
+  const p = String(pos || "").toUpperCase();
+  const s = String(slot || "").toUpperCase();
+  if (s === p) return true;
+  if (s === "FLEX" || s === "RB_WR_TE_FLEX") return ["RB", "WR", "TE"].includes(p);
+  if (s === "WR_RB_FLEX") return ["WR", "RB"].includes(p);
+  if (s === "REC_FLEX" || s === "WR_TE_FLEX") return ["WR", "TE"].includes(p);
+  if (s === "SUPER_FLEX") return ["QB", "RB", "WR", "TE"].includes(p);
+  if (s === "IDP_FLEX") return ["DL", "DE", "DT", "LB", "DB", "CB", "S"].includes(p);
+  return false;
+}
+
+function computeBestBallLineup(players_points = {}, playersDB, rosterPositions = []) {
   // Build candidate list from all players that scored (0 allowed; we’ll sort anyway)
   const entries = Object.entries(players_points).map(([rawId, pts]) => {
     const id = normId(rawId);
@@ -1135,40 +1165,28 @@ function computeBestBallLineup(players_points = {}, playersDB) {
     };
   });
 
-  // Partition and sort desc
-  const by = (p) => entries.filter(e => e.pos === p).sort((a,b)=> b.points - a.points);
-  const QB = by('QB'), RB = by('RB'), WR = by('WR'), TE = by('TE');
-
   const picked = new Set();
   const starters = [];
 
-  const take = (arr, n, slot) => {
-    for (let i=0; i<arr.length && n>0; i++) {
-      const e = arr[i];
-      if (!e.id || picked.has(e.id)) continue;
-      picked.add(e.id);
-      starters.push({ ...e, slot });
-      n--;
-    }
-  };
+  const ignoredSlots = new Set(["BN", "IR", "TAXI"]);
+  const lineupSlots = (Array.isArray(rosterPositions) ? rosterPositions : [])
+    .map((slot, index) => ({ slot: String(slot || "").toUpperCase(), index }))
+    .filter(({ slot }) => slot && !ignoredSlots.has(slot))
+    // Fill restrictive slots before flexible ones so FLEX/SUPER_FLEX cannot
+    // consume a player needed by a position-only slot.
+    .sort((a, b) => {
+      const eligibleCount = (slot) => entries.filter((e) => eligibleForBestBallSlot(e.pos, slot)).length;
+      return eligibleCount(a.slot) - eligibleCount(b.slot) || a.index - b.index;
+    });
 
-  // Base requirements
-  take(QB, 1, 'QB');
-  take(RB, 2, 'RB');
-  take(WR, 3, 'WR');
-  take(TE, 1, 'TE');
-
-  // FLEX x2 from remaining RB/WR/TE
-  const flexPool = entries
-    .filter(e => !picked.has(e.id) && (e.pos === 'RB' || e.pos === 'WR' || e.pos === 'TE'))
-    .sort((a,b)=> b.points - a.points);
-  take(flexPool, 2, 'FLEX');
-
-  // SF x1 from remaining QB/RB/WR/TE
-  const sfPool = entries
-    .filter(e => !picked.has(e.id) && (e.pos === 'QB' || e.pos === 'RB' || e.pos === 'WR' || e.pos === 'TE'))
-    .sort((a,b)=> b.points - a.points);
-  take(sfPool, 1, 'SF');
+  for (const { slot } of lineupSlots) {
+    const best = entries
+      .filter((e) => e.id && !picked.has(e.id) && eligibleForBestBallSlot(e.pos, slot))
+      .sort((a, b) => b.points - a.points)[0];
+    if (!best) continue;
+    picked.add(best.id);
+    starters.push({ ...best, slot });
+  }
 
   // Bench = everything not picked
   const bench = entries
@@ -1176,8 +1194,8 @@ function computeBestBallLineup(players_points = {}, playersDB) {
     .map(e => ({ id: e.id, name: e.name, points: e.points, pos: e.pos }));
 
   // Order starters nicely
-  const order = { QB:0, RB:1, WR:2, TE:3, FLEX:4, SF:5 };
-  starters.sort((a,b) => (order[a.slot]-order[b.slot]) || (b.points-a.points));
+  const slotOrder = new Map(lineupSlots.map(({ slot }, index) => [slot, index]));
+  starters.sort((a,b) => (slotOrder.get(a.slot) ?? 999) - (slotOrder.get(b.slot) ?? 999) || (b.points-a.points));
 
   return {
     starters: starters.map(e => ({ id:e.id, name:e.name, points:e.points, pos:e.pos, slot:e.slot })),
@@ -1705,10 +1723,12 @@ function logProgress(totalLeagues, msg) {
   console.log(`[${completed}/${totalLeagues}] ${msg}`);
 }
 
-async function processLeague(leagueId, division, playersDB, totalLeagues, isBestBall, category) {
+async function processLeague(leagueId, division, playersDB, totalLeagues, category) {
   const baseUrl = `https://api.sleeper.app/v1/league/${leagueId}`;
   const leagueInfo = await fetchWithRetry(baseUrl);
   const leagueName = leagueInfo.name;
+  const isBestBall = Number(leagueInfo?.settings?.best_ball || 0) === 1;
+  const rosterPositions = Array.isArray(leagueInfo?.roster_positions) ? leagueInfo.roster_positions : [];
   logProgress(totalLeagues, `Processing ${leagueName} (${division})`);
 
   const users   = await fetchWithRetry(`${baseUrl}/users`);
@@ -1766,7 +1786,7 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, isBest
       let starters, bench, weekTotal;
 
       if (isBestBall) {
-        const bb = computeBestBallLineup(m.players_points || {}, playersDB);
+        const bb = computeBestBallLineup(m.players_points || {}, playersDB, rosterPositions);
         starters = bb.starters;
         bench = bb.bench;
         weekTotal = bb.total;
@@ -1810,7 +1830,7 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, isBest
 
       let pts;
       if (isBestBall) {
-        const bb = computeBestBallLineup(m.players_points || {}, playersDB);
+        const bb = computeBestBallLineup(m.players_points || {}, playersDB, rosterPositions);
         pts = bb.total;
       } else {
         pts = (m.starters || []).reduce((sum, _, i) => sum + starterPts(m, i), 0);
@@ -1851,7 +1871,7 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, isBest
 
     let starters, bench;
     if (isBestBall) {
-      const bb = computeBestBallLineup(m.players_points || {}, playersDB);
+      const bb = computeBestBallLineup(m.players_points || {}, playersDB, rosterPositions);
       starters = bb.starters;
       bench = bb.bench;
     } else {
@@ -1986,7 +2006,10 @@ function makeYearChunkWriter(year) {
 
   function finalize() {
     if (Object.keys(current).length) writePart();
-    const manifest = { parts: writtenParts };
+    // The client polls this file's ETag to know when it should refetch the
+    // leaderboard payload. Include a changing value even when part names stay
+    // identical between builds.
+    const manifest = { updatedAt: new Date().toISOString(), parts: writtenParts };
     writeJSONMin(perYearManifest(year), manifest);
     return writtenParts;
   }
@@ -2126,8 +2149,6 @@ async function main() {
 
     const categories = LEAGUE_MAP[year] || {};
     for (const [category, details] of Object.entries(categories)) {
-      const isBestBall = category === "big_game" || category === "mini_game";
-
       const allResults = [];
       const weeklyCategoryData = {};
       const leagueNamesByDivision = {};
@@ -2144,7 +2165,6 @@ async function main() {
                 division,
                 playersDB,
                 totalLeagues,
-                isBestBall,
                 category
               );
               leagueNamesByDivision[division].push(result.leagueName);

@@ -59,6 +59,11 @@ function pctFmt(x) {
   if (!Number.isFinite(x)) return "—";
   return `${(x * 100).toFixed(0)}%`;
 }
+function bidFmt(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return `$${Number.isInteger(n) ? n : n.toFixed(2)}`;
+}
 function cls(...a) {
   return a.filter(Boolean).join(" ");
 }
@@ -533,6 +538,7 @@ function ModeInner({ mode, season, version, gateError }) {
 
   const teams = safeNum(groupA?.meta?.teams) || safeNum(groupB?.meta?.teams) || 12;
   const rounds = safeNum(groupA?.meta?.rounds) || safeNum(groupB?.meta?.rounds) || 18;
+  const isAuction = groupA?.meta?.isAuction === true;
 
   const compareRows = useMemo(() => {
     if (!groupA || !groupB) return [];
@@ -582,6 +588,8 @@ function ModeInner({ mode, season, version, gateError }) {
             adpSortA,
             adpSortB,
             delta: r.delta == null ? null : safeNum(r.delta), // B - A
+            winningBidA: numOrNull(r.winningBidA),
+            winningBidB: numOrNull(r.winningBidB),
             avgRoundPickA: Number.isFinite(adpA) && adpA > 0 ? formatRoundPickFromAvgOverall(adpA, teams) : "—",
             avgRoundPickB: Number.isFinite(adpB) && adpB > 0 ? formatRoundPickFromAvgOverall(adpB, teams) : "—",
           };
@@ -594,6 +602,7 @@ function ModeInner({ mode, season, version, gateError }) {
             position: r.position,
             adp,
             delta: null,
+            winningBid: numOrNull(r.avgWinningBid),
             avgRoundPick: Number.isFinite(adp) && adp > 0 ? formatRoundPickFromAvgOverall(adp, teams) : "—",
           };
         });
@@ -609,6 +618,8 @@ function ModeInner({ mode, season, version, gateError }) {
       if (sortKey === "name") return dir * safeStr(a.name).localeCompare(safeStr(b.name));
       if (sortKey === "pos") return dir * safeStr(a.position).localeCompare(safeStr(b.position));
       if (sortKey === "delta") return dir * (safeNum(a.delta) - safeNum(b.delta));
+      if (sortKey === "bid") return dir * (safeNum(a.winningBidA ?? a.winningBid) - safeNum(b.winningBidA ?? b.winningBid));
+      if (sortKey === "bidB") return dir * (safeNum(a.winningBidB) - safeNum(b.winningBidB));
 
       if (comparing) {
         const aA = Number.isFinite(a.adpSortA) ? a.adpSortA : Number.POSITIVE_INFINITY;
@@ -867,6 +878,9 @@ function ModeInner({ mode, season, version, gateError }) {
                       <Th onClick={() => toggleSort("rp")} active={sortKey === "rp"} dir={sortDir}>
                         Avg R.P.
                       </Th>
+                      {isAuction ? (
+                        <Th onClick={() => toggleSort("bid")} active={sortKey === "bid"} dir={sortDir}>Winning Bid</Th>
+                      ) : null}
 
                       {comparing ? (
                         <>
@@ -876,6 +890,9 @@ function ModeInner({ mode, season, version, gateError }) {
                           <Th onClick={() => toggleSort("rpB")} active={sortKey === "rpB"} dir={sortDir}>
                             B Avg R.P.
                           </Th>
+                          {groupB?.meta?.isAuction === true ? (
+                            <Th onClick={() => toggleSort("bidB")} active={sortKey === "bidB"} dir={sortDir}>B Winning Bid</Th>
+                          ) : null}
                         </>
                       ) : null}
                       <Th onClick={() => toggleSort("name")} active={sortKey === "name"} dir={sortDir}>
@@ -913,12 +930,25 @@ function ModeInner({ mode, season, version, gateError }) {
                             {comparing ? r.avgRoundPickA : r.avgRoundPick || "—"}
                           </td>
 
+                          {isAuction ? (
+                            <td className="px-4 py-3 font-semibold text-primary tabular-nums">
+                              {r.winningBidA != null || r.winningBid != null
+                                ? bidFmt(r.winningBidA ?? r.winningBid)
+                                : "—"}
+                            </td>
+                          ) : null}
+
                           {comparing ? (
                             <>
                               <td className="px-4 py-3 font-semibold text-accent tabular-nums">
                                 {r.adpB != null && r.adpB > 0 ? r.adpB.toFixed(3) : "—"}
                               </td>
                               <td className="px-4 py-3 text-muted tabular-nums">{r.avgRoundPickB || "—"}</td>
+                              {groupB?.meta?.isAuction === true ? (
+                                <td className="px-4 py-3 font-semibold text-accent tabular-nums">
+                                  {bidFmt(r.winningBidB)}
+                                </td>
+                              ) : null}
                             </>
                           ) : null}
 
@@ -1088,6 +1118,7 @@ function DraftBoard({ group, onPlayer }) {
         position,
         adp, // null means "no valid ADP"
         count: safeNum(p?.count ?? 0),
+        winningBid: numOrNull(p?.avgWinningBid ?? p?.winningBid),
       };
     })
     .filter((p) => p.name)
@@ -1246,6 +1277,9 @@ function DraftBoard({ group, onPlayer }) {
                         <div className="mt-2">
                           <div className="truncate text-[13px] font-semibold leading-4 text-white">{nm.first}</div>
                           <div className="truncate text-[12px] leading-4 text-white/90">{nm.last || " "}</div>
+                          {m?.isAuction === true && cell.player.winningBid != null ? (
+                            <div className="mt-0.5 text-[11px] font-bold text-emerald-300">{bidFmt(cell.player.winningBid)}</div>
+                          ) : null}
                         </div>
                       ) : (
                         <div className="mt-6 text-[11px] text-white/60">—</div>
