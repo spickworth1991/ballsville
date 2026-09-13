@@ -21,6 +21,11 @@ function getLeaderboardsR2Base() {
   }
 
   if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+    // `npm run proxy` serves the site on :8788 and makes the Pages /r2
+    // function available locally. This also avoids requiring public-bucket
+    // CORS for browser requests.
+    if (window.location.port === "8788") return "/r2";
+
     // Local dev: use public bucket URL
     return (
       process.env.NEXT_PUBLIC_R2_PUBLIC_BASE ||
