@@ -1051,6 +1051,10 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
             {orderedModeCards.length > 0 && (
               <div className="mt-5">
                 <div className="text-[11px] uppercase tracking-[0.28em] text-accent">Mode snapshots</div>
+                <div className="mt-2 text-xs text-muted">
+                  Mode owner counts overlap: the same person is counted once in every mode they play. Do not add these
+                  figures together; Drafted Unique Owners above is the deduplicated Ballsville-wide total.
+                </div>
                 <div className="mt-3 grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
                   {orderedModeCards.map((card) => (
                     <ModeMiniCard key={card.key || card.name} card={card} />

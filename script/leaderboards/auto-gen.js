@@ -1485,8 +1485,8 @@ function buildDynastyDraftTypeBreakdown(leagueSummaries) {
       bucket.totalRosterSlots += Number(veteranCycle?.totalTeams || 0);
       bucket.draftedTeams += Number(veteranCycle?.draftedTeams || 0);
       if (Number(veteranCycle?.draftedTeams || 0) > 0) bucket.draftedLeagues += 1;
-      uniqueNames(veteranCycle?.draftedOwnerNames).forEach((name) => bucket.draftedOwnerNames.add(name));
-      uniqueNames(veteranCycle?.filledOwnerNames).forEach((name) => bucket.filledOwnerNames.add(name));
+      uniqueNames(veteranCycle?.draftedOwnerIds || veteranCycle?.draftedOwnerNames).forEach((id) => bucket.draftedOwnerNames.add(id));
+      uniqueNames(veteranCycle?.filledOwnerIds || veteranCycle?.filledOwnerNames).forEach((id) => bucket.filledOwnerNames.add(id));
     }
 
     if (rookieCycle?.exists) {
@@ -1495,8 +1495,8 @@ function buildDynastyDraftTypeBreakdown(leagueSummaries) {
       bucket.totalRosterSlots += Number(rookieCycle?.totalTeams || 0);
       bucket.draftedTeams += Number(rookieCycle?.draftedTeams || 0);
       if (Number(rookieCycle?.draftedTeams || 0) > 0) bucket.draftedLeagues += 1;
-      uniqueNames(rookieCycle?.draftedOwnerNames).forEach((name) => bucket.draftedOwnerNames.add(name));
-      uniqueNames(rookieCycle?.filledOwnerNames).forEach((name) => bucket.filledOwnerNames.add(name));
+      uniqueNames(rookieCycle?.draftedOwnerIds || rookieCycle?.draftedOwnerNames).forEach((id) => bucket.draftedOwnerNames.add(id));
+      uniqueNames(rookieCycle?.filledOwnerIds || rookieCycle?.filledOwnerNames).forEach((id) => bucket.filledOwnerNames.add(id));
     }
   }
 
@@ -1652,9 +1652,9 @@ function buildTopOwnersFromEntries(entries, draftedRows, limit = 10) {
 }
 
 function buildCategorySummary({ category, details, owners, leagueSummaries }) {
-  const draftedOwnerNames = uniqueNames((owners || []).map((owner) => owner?.ownerName));
-  const filledOwnerNames = uniqueNames(
-    (leagueSummaries || []).flatMap((league) => league?.filledOwnerNames || [])
+  const draftedOwnerIds = uniqueNames((owners || []).map((owner) => owner?.ownerId || owner?.ownerName));
+  const filledOwnerIds = uniqueNames(
+    (leagueSummaries || []).flatMap((league) => league?.filledOwnerIds || league?.filledOwnerNames || [])
   );
   const ownerEntries = (leagueSummaries || []).flatMap((league) => league?.ownerEntries || []);
 
@@ -1699,9 +1699,9 @@ function buildCategorySummary({ category, details, owners, leagueSummaries }) {
     key: category,
     name: details?.name || category,
     draftedTeams,
-    draftedUniqueOwners: draftedOwnerNames.length,
+    draftedUniqueOwners: draftedOwnerIds.length,
     filledTeams,
-    uniqueOwnersOnceDrafted: filledOwnerNames.length,
+    uniqueOwnersOnceDrafted: filledOwnerIds.length,
     preDraftTeams,
     draftingTeams,
     openDraftSlots,
@@ -1810,11 +1810,11 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, catego
         weekTotal = Number(starters.reduce((s,p)=> s + Number(p.points||0), 0).toFixed(2));
       }
 
-      weeklyRosters[week].push({ ownerName, starters, bench });
+      weeklyRosters[week].push({ ownerId, ownerName, starters, bench });
 
       if (weekTotal > 0) {
-        if (!lastNonZeroWeekByOwner[ownerName] || week > lastNonZeroWeekByOwner[ownerName]) {
-          lastNonZeroWeekByOwner[ownerName] = week;
+        if (!lastNonZeroWeekByOwner[ownerId] || week > lastNonZeroWeekByOwner[ownerId]) {
+          lastNonZeroWeekByOwner[ownerId] = week;
         }
       }
     });
@@ -1836,9 +1836,10 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, catego
         pts = (m.starters || []).reduce((sum, _, i) => sum + starterPts(m, i), 0);
       }
 
-      let existing = owners.find(o => o.ownerName === ownerName);
+      let existing = owners.find(o => o.ownerId === ownerId);
       if (!existing) {
         existing = {
+          ownerId,
           ownerName,
           leagueName,
           division,
@@ -1862,11 +1863,11 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, catego
   const latestWeekWithData = Object.keys(matchupsByWeek).map(Number).sort((a,b)=>b-a)[0] || null;
 
   owners.forEach(owner => {
-    const targetWeek = lastNonZeroWeekByOwner[owner.ownerName] ?? latestWeekWithData;
+    const targetWeek = lastNonZeroWeekByOwner[owner.ownerId] ?? latestWeekWithData;
     if (!targetWeek) return;
 
     const m = (matchupsByWeek[targetWeek] || [])
-      .find(mm => userMap[rosterMap[mm.roster_id]] === owner.ownerName);
+      .find(mm => rosterMap[mm.roster_id] === owner.ownerId);
     if (!m) return;
 
     let starters, bench;
@@ -1905,6 +1906,7 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, catego
     filledOwnerIds.map((ownerId) => userMap[ownerId] || ownerId)
   );
   const draftedTeams = owners.length;
+  const draftedOwnerIds = uniqueNames(owners.map((owner) => owner?.ownerId));
   const draftedOwnerNames = uniqueNames(owners.map((owner) => owner?.ownerName));
   const filledTeams = filledOwnerIds.length;
   const openDraftSlots = Math.max(0, totalRosterSlots - filledTeams);
@@ -1922,8 +1924,9 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, catego
   const rookieDraftStatus = safeOwnerName(rookieDraftDetails?.status || "pre_draft").toLowerCase();
   const veteranDraftedTeams = veteranDraftStatus === "complete" ? totalRosterSlots : 0;
   const rookieDraftedTeams = rookieDraftStatus === "complete" ? totalRosterSlots : 0;
-  const ownerEntries = filledOwnerNames.map((ownerName) => ({
-    ownerName,
+  const ownerEntries = filledOwnerIds.map((ownerId) => ({
+    ownerId,
+    ownerName: userMap[ownerId] || ownerId,
     leagueName,
     stage: isPreDraft ? "pre_draft" : isDrafting ? "drafting" : "drafted",
     draftType,
@@ -1956,7 +1959,9 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, catego
               totalTeams: totalRosterSlots,
               draftedTeams: veteranDraftedTeams,
               draftedOwnerNames: veteranDraftedTeams > 0 ? filledOwnerNames : [],
+              draftedOwnerIds: veteranDraftedTeams > 0 ? filledOwnerIds : [],
               filledOwnerNames,
+              filledOwnerIds,
             }
           : null,
       dynastyRookie:
@@ -1967,11 +1972,15 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, catego
               totalTeams: totalRosterSlots,
               draftedTeams: rookieDraftedTeams,
               draftedOwnerNames: rookieDraftedTeams > 0 ? filledOwnerNames : [],
+              draftedOwnerIds: rookieDraftedTeams > 0 ? filledOwnerIds : [],
               filledOwnerNames,
+              filledOwnerIds,
             }
           : null,
       draftedOwnerNames,
+      draftedOwnerIds,
       filledOwnerNames,
+      filledOwnerIds,
       ownerEntries,
     },
   };
@@ -2309,8 +2318,8 @@ async function main() {
       yearSummaryAccumulator.activeDraftLeagues += Number(categorySummary.activeDraftLeagues || 0);
 
       leagueSummaries.forEach((league) => {
-        uniqueNames(league?.draftedOwnerNames).forEach((name) => yearSummaryAccumulator.draftedOwnerNames.add(name));
-        uniqueNames(league?.filledOwnerNames).forEach((name) => yearSummaryAccumulator.filledOwnerNames.add(name));
+        uniqueNames(league?.draftedOwnerIds || league?.draftedOwnerNames).forEach((id) => yearSummaryAccumulator.draftedOwnerNames.add(id));
+        uniqueNames(league?.filledOwnerIds || league?.filledOwnerNames).forEach((id) => yearSummaryAccumulator.filledOwnerNames.add(id));
       });
 
       yearSummaryAccumulator.activeModes.push(category);
