@@ -1734,7 +1734,15 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, catego
   const users   = await fetchWithRetry(`${baseUrl}/users`);
   const rosters = await fetchWithRetry(`${baseUrl}/rosters`);
   const userMap = {};
-  users.forEach(u => (userMap[u.user_id] = u.display_name));
+  const userDetails = {};
+  users.forEach((u) => {
+    userMap[u.user_id] = u.display_name;
+    userDetails[u.user_id] = {
+      username: u.username || u.display_name || "",
+      teamName: u?.metadata?.team_name || u.display_name || "",
+      avatar: u.avatar || "",
+    };
+  });
   const rosterMap = {};
   rosters.forEach(r => (rosterMap[r.roster_id] = r.owner_id));
 
@@ -1841,6 +1849,9 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, catego
         existing = {
           ownerId,
           ownerName,
+          username: userDetails[ownerId]?.username || ownerName,
+          teamName: userDetails[ownerId]?.teamName || ownerName,
+          avatar: userDetails[ownerId]?.avatar || "",
           leagueName,
           division,
           draftSlot: draftSlotMap[ownerId] || null,

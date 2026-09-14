@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { adminR2Url as r2Url } from "@/lib/r2Client";
+import HighlanderChoppingBlock from "@/components/highlander/HighlanderChoppingBlock";
 
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
@@ -304,6 +305,8 @@ export default function HighlanderClient({ season }) {
           </div>
         </div>
       </section>
+
+      <HighlanderChoppingBlock season={season} />
 
       {/* MANAGER UPDATES (TOP, UNDER HERO) */}
       <section className="section pt-0">
