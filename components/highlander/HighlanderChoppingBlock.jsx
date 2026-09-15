@@ -32,7 +32,7 @@ function teamLabel(owner) {
 
 function avatarUrl(owner) {
   const avatar = String(owner?.avatar || "").trim();
-  return avatar ? `https://sleepercdn.com/avatars/thumbs/${encodeURIComponent(avatar)}` : "";
+  return avatar ? `https://sleepercdn.com/avatars/${encodeURIComponent(avatar)}` : "";
 }
 
 function buildCompetition(owners) {
@@ -76,8 +76,18 @@ function PlayerAvatar({ owner }) {
   const src = avatarUrl(owner);
   const initial = ownerLabel(owner).slice(0, 1).toUpperCase() || "?";
   return (
-    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-cyan-300/50 bg-slate-950 text-sm font-black text-cyan-100 shadow-[0_0_12px_rgba(34,211,238,.25)]">
-      {src ? <img src={src} alt="" className="h-full w-full object-cover" /> : initial}
+    <span className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-cyan-300/50 bg-slate-950 text-sm font-black text-cyan-100 shadow-[0_0_12px_rgba(34,211,238,.25)] sm:h-9 sm:w-9">
+      {initial}
+      {src ? (
+        <img
+          src={src}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+          }}
+        />
+      ) : null}
     </span>
   );
 }
@@ -227,15 +237,15 @@ export default function HighlanderChoppingBlock({ season }) {
                 <div className="p-10 text-center text-sm text-slate-300">No scored Highlander games are available for this week yet.</div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[650px] border-collapse text-left">
+                  <table className="w-full border-collapse text-left sm:min-w-[650px]">
                     <thead className="border-b border-slate-500 bg-slate-950/95 text-xs uppercase tracking-wider text-blue-200">
                       <tr>
-                        <th className="w-16 px-3 py-3 text-center">#</th>
-                        <th className="px-3 py-3">Team</th>
-                        <th className="px-3 py-3">Manager</th>
-                        {!league ? <th className="px-3 py-3">League</th> : null}
-                        <th className="px-3 py-3 text-right">Points</th>
-                        <th className="w-28 px-3 py-3 text-center">Status</th>
+                        <th className="w-10 px-1.5 py-3 text-center sm:w-16 sm:px-3">#</th>
+                        <th className="px-1.5 py-3 sm:px-3"><span className="sm:hidden">Manager</span><span className="hidden sm:inline">Team</span></th>
+                        <th className="hidden px-3 py-3 sm:table-cell">Manager</th>
+                        {!league ? <th className="hidden px-3 py-3 md:table-cell">League</th> : null}
+                        <th className="px-1.5 py-3 text-right sm:px-3">Points</th>
+                        <th className="w-20 px-1.5 py-3 text-center sm:w-28 sm:px-3">Status</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -253,21 +263,27 @@ export default function HighlanderChoppingBlock({ season }) {
                                 : "odd:bg-slate-950/75 even:bg-slate-900/65"
                             } ${!league ? "cursor-pointer hover:bg-red-900/55" : ""}`}
                           >
-                            <td className="px-3 py-2 text-center text-lg font-black text-amber-100">{index + 1}</td>
-                            <td className="px-3 py-2">
-                              <div className="flex items-center gap-3">
+                            <td className="px-1.5 py-2 text-center text-base font-black text-amber-100 sm:px-3 sm:text-lg">{index + 1}</td>
+                            <td className="min-w-0 px-1.5 py-2 sm:px-3">
+                              <div className="flex min-w-0 items-center gap-2 sm:gap-3">
                                 <PlayerAvatar owner={owner} />
-                                <span className="max-w-[240px] truncate font-bold text-white">{teamLabel(owner)}</span>
+                                <div className="min-w-0">
+                                  <div className="truncate text-sm font-bold text-white sm:text-base">
+                                    <span className="sm:hidden">{ownerLabel(owner)}</span>
+                                    <span className="hidden sm:inline">{teamLabel(owner)}</span>
+                                  </div>
+                                  {!league ? <div className="truncate text-[10px] text-slate-400 md:hidden">{owner.leagueName}</div> : null}
+                                </div>
                               </div>
                             </td>
-                            <td className="px-3 py-2 text-sm text-blue-200">@{ownerLabel(owner).replace(/^@/, "")}</td>
-                            {!league ? <td className="px-3 py-2 text-sm text-slate-300">{owner.leagueName}</td> : null}
-                            <td className="px-3 py-2 text-right text-xl font-black tabular-nums text-amber-200">{Number(owner.weekScore).toFixed(2)}</td>
-                            <td className="px-3 py-2 text-center">
+                            <td className="hidden px-3 py-2 text-sm text-blue-200 sm:table-cell">@{ownerLabel(owner).replace(/^@/, "")}</td>
+                            {!league ? <td className="hidden px-3 py-2 text-sm text-slate-300 md:table-cell">{owner.leagueName}</td> : null}
+                            <td className="px-1.5 py-2 text-right text-base font-black tabular-nums text-amber-200 sm:px-3 sm:text-xl">{Number(owner.weekScore).toFixed(2)}</td>
+                            <td className="px-1.5 py-2 text-center sm:px-3">
                               {isChopped ? (
-                                <span className="inline-block -rotate-3 rounded border-2 border-red-500 px-2 py-1 text-xs font-black uppercase tracking-wider text-red-400 shadow-[0_0_12px_rgba(239,68,68,.4)]">Chopped</span>
+                                <span className="inline-block -rotate-3 rounded border-2 border-red-500 px-1 py-1 text-[9px] font-black uppercase tracking-normal text-red-400 shadow-[0_0_12px_rgba(239,68,68,.4)] sm:px-2 sm:text-xs sm:tracking-wider">Chopped</span>
                               ) : (
-                                <span className="text-xs font-bold uppercase tracking-wider text-emerald-300">Alive</span>
+                                <span className="text-[10px] font-bold uppercase tracking-normal text-emerald-300 sm:text-xs sm:tracking-wider">Alive</span>
                               )}
                             </td>
                           </tr>
