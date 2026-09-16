@@ -18,14 +18,28 @@ const TERRITORY_COLORS = ["#7c3aed", "#dc2626", "#ea580c", "#16a34a", "#eab308",
 
 function territoryState(doc, throughWeek = 18) {
   const teams = Array.isArray(doc?.teams) ? doc.teams : [];
-  const counts = new Map(teams.map((team) => [String(team.rosterId), 7]));
+  const cells = teams.flatMap((team) =>
+    Array.from({ length: 7 }, (_, index) => ({
+      id: `${team.rosterId}:${index}`,
+      homeRosterId: String(team.rosterId),
+      ownerRosterId: String(team.rosterId),
+      index,
+    })),
+  );
   const battles = [];
   const transfer = (winner, loser, amount) => {
-    const available = counts.get(loser) || 0;
-    const moved = Math.min(amount, available);
-    counts.set(loser, available - moved);
-    counts.set(winner, (counts.get(winner) || 0) + moved);
-    return moved;
+    // Return captured land first, then outside home cells, keeping the center
+    // stronghold as the final territory whenever possible.
+    const available = cells
+      .filter((cell) => cell.ownerRosterId === loser)
+      .sort((a, b) => {
+        const aCaptured = a.homeRosterId !== loser ? 0 : 1;
+        const bCaptured = b.homeRosterId !== loser ? 0 : 1;
+        return aCaptured - bCaptured || a.index - b.index;
+      });
+    const selected = available.slice(0, amount);
+    selected.forEach((cell) => { cell.ownerRosterId = winner; });
+    return selected.length;
   };
   [...(doc?.weeks || [])]
     .sort((a, b) => num(a.week) - num(b.week))
@@ -42,12 +56,45 @@ function territoryState(doc, throughWeek = 18) {
       }
       battles.push({ week: week.week, pair, moved });
     }));
-  return { counts, battles };
+  const counts = new Map(teams.map((team) => [String(team.rosterId), 0]));
+  cells.forEach((cell) => counts.set(cell.ownerRosterId, (counts.get(cell.ownerRosterId) || 0) + 1));
+  return { counts, cells, battles };
+}
+
+const HEX_POSITIONS = [
+  [50, 5], [76, 20], [76, 53], [50, 68], [24, 53], [24, 20], [50, 36],
+];
+
+function TerritoryCluster({ homeTeam, cells, teamById }) {
+  return (
+    <div className="relative mx-auto h-28 w-32" aria-label={`Original territory cluster for ${homeTeam.teamName || homeTeam.username}`}>
+      {cells.map((cell) => {
+        const owner = teamById.get(cell.ownerRosterId) || homeTeam;
+        const color = TERRITORY_COLORS[num(owner.color) % TERRITORY_COLORS.length];
+        return (
+          <span
+            key={cell.id}
+            title={`Owned by ${owner.teamName || `@${owner.username}`}`}
+            className="absolute h-10 w-11 -translate-x-1/2 border-2 border-white/55 shadow-[0_0_10px_currentColor] transition-colors"
+            style={{
+              left: `${HEX_POSITIONS[cell.index][0]}%`,
+              top: `${HEX_POSITIONS[cell.index][1]}%`,
+              background: `radial-gradient(circle, ${color}, #090909 145%)`,
+              color,
+              clipPath: "polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%)",
+              zIndex: cell.index === 6 ? 2 : 1,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
 }
 
 function TerritoryBoard({ doc, week, setWeek }) {
   const teams = Array.isArray(doc?.teams) ? doc.teams : [];
-  const { counts } = territoryState(doc, week);
+  const { counts, cells } = territoryState(doc, week);
+  const teamById = new Map(teams.map((team) => [String(team.rosterId), team]));
   if (!teams.length) return (
     <div className="mt-8 rounded-3xl border border-dashed border-amber-300/30 p-8 text-center text-muted">
       North and South assignments will appear after they are published by the commissioner.
@@ -83,11 +130,11 @@ function TerritoryBoard({ doc, week, setWeek }) {
                       <div className="min-w-0 truncate text-sm font-black text-white">{team.teamName || `@${team.username}`}</div>
                       <div className="rounded-md bg-black px-2 py-1 text-xl font-black text-amber-200">{count}</div>
                     </div>
-                    <div className="mx-auto mt-3 flex min-h-16 max-w-32 flex-wrap items-center justify-center gap-0.5" aria-label={`${count} territories`}>
-                      {Array.from({ length: count }, (_, index) => (
-                        <span key={index} className="h-7 w-8 border border-white/45 shadow-[0_0_9px_currentColor]" style={{ background: `radial-gradient(circle, ${color}, #090909 130%)`, color, clipPath: "polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%)" }} />
-                      ))}
-                    </div>
+                    <TerritoryCluster
+                      homeTeam={team}
+                      cells={cells.filter((cell) => cell.homeRosterId === String(team.rosterId))}
+                      teamById={teamById}
+                    />
                     <div className="mt-2 truncate text-xs text-slate-400">@{String(team.username || "").replace(/^@/, "")}</div>
                   </div>
                 );
