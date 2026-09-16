@@ -65,6 +65,7 @@ const NAV_ITEMS = [
         name: "The Brass Balls",
         to: "/brass-balls",
         isNew: true,
+        children: [{ name: "Scoring & Territories", to: "/brass-balls/scoring" }],
       },
       {
         id: "redraft",

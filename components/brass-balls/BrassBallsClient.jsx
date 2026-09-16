@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import LiteYouTube from "@/components/LiteYouTube";
+import Link from "next/link";
 import { adminR2Url } from "@/lib/r2Client";
 
 const num = (value) => Number(value || 0);
@@ -13,6 +14,82 @@ const DEFAULT_MEDIA = {
   board: "/photos/brass-balls/board-no-names-2026.png",
   assignments: "/photos/brass-balls/actual-board-2026.png",
 };
+const TERRITORY_COLORS = ["#7c3aed", "#dc2626", "#ea580c", "#16a34a", "#eab308", "#2563eb"];
+
+function territoryState(doc) {
+  const teams = Array.isArray(doc?.teams) ? doc.teams : [];
+  const counts = new Map(teams.map((team) => [String(team.rosterId), 6]));
+  const battles = [];
+  const transfer = (winner, loser, amount) => {
+    const available = counts.get(loser) || 0;
+    const moved = Math.min(amount, available);
+    counts.set(loser, available - moved);
+    counts.set(winner, (counts.get(winner) || 0) + moved);
+    return moved;
+  };
+  [...(doc?.weeks || [])]
+    .sort((a, b) => num(a.week) - num(b.week))
+    .filter((week) => week.completed)
+    .forEach((week) => (week.matchups || []).forEach((pair) => {
+      const attacker = String(pair.teamA?.rosterId || "");
+      const defender = String(pair.teamB?.rosterId || "");
+      const winner = String(pair.result?.winnerRosterId || "");
+      let moved = 0;
+      if (pair.battleType === "war" && winner && [attacker, defender].includes(winner)) {
+        moved = transfer(winner, winner === attacker ? defender : attacker, 2);
+      } else if (winner && winner === attacker) {
+        moved = transfer(attacker, defender, 1);
+      }
+      battles.push({ week: week.week, pair, moved });
+    }));
+  return { counts, battles };
+}
+
+function TerritoryBoard({ doc }) {
+  const teams = Array.isArray(doc?.teams) ? doc.teams : [];
+  const { counts } = territoryState(doc);
+  if (!teams.length) return (
+    <div className="mt-8 rounded-3xl border border-dashed border-amber-300/30 p-8 text-center text-muted">
+      North and South assignments will appear after they are published by the commissioner.
+    </div>
+  );
+  return (
+    <section className="mt-8 overflow-hidden rounded-[32px] border border-amber-400/35 bg-[radial-gradient(circle_at_50%_0%,rgba(120,53,15,.35),transparent_45%),#05070b] p-4 shadow-2xl sm:p-7">
+      <div className="text-center">
+        <div className="text-xs font-black uppercase tracking-[.3em] text-amber-300">Fantasy Football Territories</div>
+        <h1 className="mt-2 text-3xl font-black uppercase text-white sm:text-5xl">The Brass Balls War Map</h1>
+        <p className="mt-2 text-sm text-slate-400">Completed results through Week {Math.max(0, ...(doc.weeks || []).filter((w) => w.completed).map((w) => num(w.week))) || "—"}</p>
+      </div>
+      <div className="mt-7 grid gap-6 xl:grid-cols-2">
+        {["north", "south"].map((side) => (
+          <div key={side} className="rounded-3xl border border-white/10 bg-black/45 p-4">
+            <h2 className="text-center text-2xl font-black uppercase tracking-[.18em] text-white">The {side}</h2>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {teams.filter((team) => (team.side || "north") === side).sort((a, b) => num(b.color) - num(a.color)).map((team) => {
+                const count = counts.get(String(team.rosterId)) || 0;
+                const color = TERRITORY_COLORS[num(team.color) % TERRITORY_COLORS.length];
+                return (
+                  <div key={team.rosterId} className="rounded-2xl border border-white/10 bg-slate-950/90 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0 truncate font-bold text-white">{team.teamName || `@${team.username}`}</div>
+                      <div className="text-xl font-black text-amber-200">{count}</div>
+                    </div>
+                    <div className="mt-3 flex min-h-8 flex-wrap gap-1" aria-label={`${count} territories`}>
+                      {Array.from({ length: count }, (_, index) => (
+                        <span key={index} className="h-6 w-7 border border-white/35 shadow-[0_0_8px_currentColor]" style={{ backgroundColor: color, color, clipPath: "polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%)" }} />
+                      ))}
+                    </div>
+                    <div className="mt-2 truncate text-xs text-slate-400">@{String(team.username || "").replace(/^@/, "")}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 function teamName(rosterId, rosters, users, fallback = "Team") {
   const roster = rosters.find(
@@ -165,7 +242,7 @@ function PlayerRows({ matchup, players }) {
     });
 }
 
-export default function BrassBallsClient({ season }) {
+export default function BrassBallsClient({ season, scoringOnly = false }) {
   const [doc, setDoc] = useState(null);
   const [week, setWeek] = useState(1);
   const [live, setLive] = useState({
@@ -202,7 +279,7 @@ export default function BrassBallsClient({ season }) {
   }, [season]);
 
   useEffect(() => {
-    if (!doc?.leagueId || !week) return;
+    if (!scoringOnly || !doc?.leagueId || !week) return;
     setRefreshing(true);
     const id = encodeURIComponent(doc.leagueId);
     Promise.all([
@@ -228,7 +305,7 @@ export default function BrassBallsClient({ season }) {
       })
       .catch(() => setError("Live Sleeper scores could not be loaded."))
       .finally(() => setRefreshing(false));
-  }, [doc?.leagueId, week, refreshNonce]); // player directory is reused after its first load
+  }, [doc?.leagueId, week, refreshNonce, scoringOnly]); // player directory is reused after its first load
 
   useEffect(() => {
     if (!refreshEvery) return undefined;
@@ -257,6 +334,8 @@ export default function BrassBallsClient({ season }) {
     <main className="min-h-screen text-primary">
       <section className="section pt-24">
         <div className="container-site max-w-6xl">
+          {!scoringOnly ? (
+            <>
           <div className="overflow-hidden rounded-[32px] border border-subtle bg-card-surface">
             <div className="p-6 sm:p-9">
               <div className="text-xs font-bold uppercase tracking-[.28em] text-accent">
@@ -269,6 +348,9 @@ export default function BrassBallsClient({ season }) {
                 {doc?.intro ||
                   "A test game mode built around custom weekly head-to-head assignments. Matchups do not have to follow the league’s standard schedule, and a team can stand alone in any week."}
               </p>
+              <Link href="/brass-balls/scoring" className="btn btn-primary mt-5 inline-flex">
+                Open scoring and territories
+              </Link>
             </div>
             <div className="border-t border-subtle bg-black">
               <img
@@ -309,6 +391,21 @@ export default function BrassBallsClient({ season }) {
             />
           </div>
 
+            </>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-[.28em] text-amber-300">The Brass Balls</div>
+                  <h1 className="mt-2 text-4xl font-black sm:text-6xl">Scoring & Territories</h1>
+                </div>
+                <Link href="/brass-balls" className="btn btn-secondary">Back to game rules</Link>
+              </div>
+              <TerritoryBoard doc={doc} />
+            </>
+          )}
+
+          {scoringOnly ? (
           <section className="mt-10">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
@@ -400,7 +497,7 @@ export default function BrassBallsClient({ season }) {
                         players={live.players}
                       />
                       <div className="mx-auto rounded-full border border-amber-300/35 bg-amber-300/10 px-4 py-2 text-center text-xs font-black uppercase tracking-widest text-amber-200">
-                        {pair.teamB?.rosterId ? "vs" : "No opponent"}
+                        {pair.teamB?.rosterId ? (pair.battleType === "war" ? "WAR · 2" : "ATTACKS · 1") : "No opponent"}
                       </div>
                       {pair.teamB?.rosterId ? (
                         <TeamScore
@@ -460,6 +557,7 @@ export default function BrassBallsClient({ season }) {
               ) : null}
             </div>
           </section>
+          ) : null}
         </div>
       </section>
     </main>

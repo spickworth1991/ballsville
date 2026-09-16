@@ -47,16 +47,36 @@ async function requireAdmin(context) {
 }
 
 function clean(data, season) {
+  const teams = (Array.isArray(data?.teams) ? data.teams : [])
+    .map((team, index) => ({
+      rosterId: text(team?.rosterId),
+      username: text(team?.username),
+      teamName: text(team?.teamName),
+      avatar: text(team?.avatar),
+      side: text(team?.side).toLowerCase() === "south" ? "south" : "north",
+      color: Math.max(0, Math.min(5, number(team?.color, index % 6))),
+    }))
+    .filter((team) => team.rosterId);
   const weeks = (Array.isArray(data?.weeks) ? data.weeks : [])
     .map((week) => ({
       week: Math.max(1, Math.min(18, number(week?.week, 1))),
       label: text(week?.label),
+      completed: Boolean(week?.completed),
       matchups: (Array.isArray(week?.matchups) ? week.matchups : [])
         .map((pair, index) => ({
           id: text(pair?.id) || `w${number(week?.week, 1)}-${index + 1}`,
           teamA: { rosterId: text(pair?.teamA?.rosterId) },
           teamB: text(pair?.teamB?.rosterId)
             ? { rosterId: text(pair.teamB.rosterId) }
+            : null,
+          battleType: text(pair?.battleType).toLowerCase() === "war" ? "war" : "attack",
+          result: pair?.result
+            ? {
+                winnerRosterId: text(pair.result.winnerRosterId),
+                teamAScore: number(pair.result.teamAScore),
+                teamBScore: number(pair.result.teamBScore),
+                resolvedAt: text(pair.result.resolvedAt),
+              }
             : null,
         }))
         .filter((pair) => pair.teamA.rosterId),
@@ -72,6 +92,7 @@ function clean(data, season) {
     secondaryImageUrl: text(data?.secondaryImageUrl),
     actualBoardImageUrl: text(data?.actualBoardImageUrl),
     youtubeId: text(data?.youtubeId),
+    teams,
     updatedAt: new Date().toISOString(),
     weeks,
   };

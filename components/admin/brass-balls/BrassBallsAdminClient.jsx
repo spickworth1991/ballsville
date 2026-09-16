@@ -10,8 +10,10 @@ const emptyMatchup = () => ({
   id: crypto.randomUUID(),
   teamA: { rosterId: "" },
   teamB: null,
+  battleType: "attack",
+  result: null,
 });
-const emptyWeek = (week) => ({ week, label: "", matchups: [emptyMatchup()] });
+const emptyWeek = (week) => ({ week, label: "", completed: false, matchups: [emptyMatchup()] });
 const defaults = {
   season: CURRENT_SEASON,
   title: "The Brass Balls",
@@ -22,8 +24,32 @@ const defaults = {
   secondaryImageUrl: "/photos/brass-balls/board-no-names-2026.png",
   actualBoardImageUrl: "/photos/brass-balls/actual-board-2026.png",
   youtubeId: "",
+  teams: [],
   weeks: [emptyWeek(1)],
 };
+
+function bestBallTotal(matchup, players) {
+  const pool = Object.entries(matchup?.players_points || {})
+    .map(([id, score]) => ({
+      position: String(players?.[id]?.position || players?.[id]?.fantasy_positions?.[0] || "").toUpperCase(),
+      points: Number(score || 0),
+    }))
+    .filter((player) => ["QB", "RB", "WR", "TE"].includes(player.position));
+  const remaining = [...pool];
+  let total = 0;
+  const take = (count, positions) => {
+    for (let i = 0; i < count; i += 1) {
+      const choices = remaining.filter((p) => positions.includes(p.position)).sort((a, b) => b.points - a.points);
+      if (!choices.length) return;
+      const choice = choices[0];
+      total += choice.points;
+      remaining.splice(remaining.indexOf(choice), 1);
+    }
+  };
+  take(1, ["QB"]); take(2, ["RB"]); take(3, ["WR"]); take(1, ["TE"]);
+  take(2, ["RB", "WR", "TE"]); take(1, ["QB", "RB", "WR", "TE"]);
+  return Number(total.toFixed(2));
+}
 
 async function token() {
   const { data } = await getSupabase().auth.getSession();
@@ -105,8 +131,7 @@ export default function BrassBallsAdminClient() {
           r.json(),
         ),
       ]);
-      setTeams(
-        rosters
+      const loaded = rosters
           .map((roster) => {
             const user = users.find(
               (row) => String(row.user_id) === String(roster.owner_id),
@@ -118,10 +143,22 @@ export default function BrassBallsAdminClient() {
                 user?.display_name ||
                 `Roster ${roster.roster_id}`,
               teamName: user?.metadata?.team_name || "",
+              avatar: user?.avatar || "",
             };
           })
-          .sort((a, b) => a.username.localeCompare(b.username)),
-      );
+          .sort((a, b) => a.username.localeCompare(b.username));
+      setTeams(loaded);
+      setDoc((current) => {
+        const existing = new Map((current.teams || []).map((team) => [String(team.rosterId), team]));
+        return {
+          ...current,
+          teams: loaded.map((team, index) => ({
+            ...team,
+            side: existing.get(team.rosterId)?.side || (index < 6 ? "north" : "south"),
+            color: existing.get(team.rosterId)?.color ?? (index % 6),
+          })),
+        };
+      });
       setMessage(`Loaded ${rosters.length} teams from Sleeper.`);
     } catch {
       setMessage("Sleeper teams could not be loaded. Check the league ID.");
@@ -155,17 +192,80 @@ export default function BrassBallsAdminClient() {
                         : side === "teamB"
                           ? null
                           : { rosterId: "" },
+                      result: null,
                     },
               ),
             },
       ),
     }));
+  const patchMatchup = (weekIndex, matchupIndex, patch) =>
+    setDoc((current) => ({
+      ...current,
+      weeks: current.weeks.map((week, wi) => wi !== weekIndex ? week : ({
+        ...week,
+        completed: false,
+        matchups: week.matchups.map((pair, mi) => mi === matchupIndex ? { ...pair, ...patch, result: null } : pair),
+      })),
+    }));
+  const patchTeam = (rosterId, patch) =>
+    setDoc((current) => ({
+      ...current,
+      teams: (current.teams || []).map((team) => String(team.rosterId) === String(rosterId) ? { ...team, ...patch } : team),
+    }));
+
+  const resolveWeek = async (weekIndex) => {
+    const target = doc.weeks[weekIndex];
+    if (!doc.leagueId || !target) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const [matchups, players] = await Promise.all([
+        fetch(`https://api.sleeper.app/v1/league/${encodeURIComponent(doc.leagueId)}/matchups/${target.week}`).then((r) => r.json()),
+        fetch("https://api.sleeper.app/v1/players/nfl").then((r) => r.json()),
+      ]);
+      const byRoster = new Map(matchups.map((row) => [String(row.roster_id), row]));
+      const resolved = target.matchups.map((pair) => {
+        if (!pair.teamA?.rosterId || !pair.teamB?.rosterId) {
+          return { ...pair, result: null };
+        }
+        const aScore = bestBallTotal(byRoster.get(String(pair.teamA?.rosterId)), players);
+        const bScore = bestBallTotal(byRoster.get(String(pair.teamB?.rosterId)), players);
+        return {
+          ...pair,
+          result: {
+            winnerRosterId: aScore === bScore ? "" : aScore > bScore ? String(pair.teamA?.rosterId) : String(pair.teamB?.rosterId),
+            teamAScore: aScore,
+            teamBScore: bScore,
+            resolvedAt: new Date().toISOString(),
+          },
+        };
+      });
+      updateWeek(weekIndex, { completed: true, matchups: resolved });
+      setMessage(`Week ${target.week} scores resolved. Publish to save the territory results.`);
+    } catch (error) {
+      setMessage(error?.message || "Week scores could not be resolved.");
+    } finally {
+      setBusy(false);
+    }
+  };
   const teamLabel = (team) =>
     team.teamName
       ? `${team.teamName} · @${team.username}`
       : `@${team.username} · Roster ${team.rosterId}`;
   const save = async () => {
     if (!doc.leagueId) return setMessage("A Sleeper league ID is required.");
+    if ((doc.teams || []).length) {
+      const north = doc.teams.filter((team) => team.side === "north");
+      const south = doc.teams.filter((team) => team.side === "south");
+      if (north.length !== 6 || south.length !== 6) {
+        return setMessage(`Assign exactly 6 teams to each side. North: ${north.length}; South: ${south.length}.`);
+      }
+      for (const [name, side] of [["North", north], ["South", south]]) {
+        if (new Set(side.map((team) => num(team.color))).size !== 6) {
+          return setMessage(`${name} must use each of the six territory colors exactly once.`);
+        }
+      }
+    }
     setBusy(true);
     setMessage("");
     try {
@@ -201,6 +301,9 @@ export default function BrassBallsAdminClient() {
           description="Set the custom weekly schedule. Scores and player breakdowns come directly from Sleeper."
           publicHref="/brass-balls"
         />
+        <div className="rounded-xl border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
+          Weekly territory results lock after Monday Night Football: Tuesday at 1:00 AM Eastern. Resolve the week after that cutoff, then publish it to the board.
+        </div>
         <div className="card border border-subtle bg-card-surface p-5">
           <div className="grid gap-4 sm:grid-cols-3">
             <label className="text-sm">
@@ -244,6 +347,26 @@ export default function BrassBallsAdminClient() {
             </label>
           </div>
         </div>
+        {(doc.teams || []).length ? (
+          <div className="card border border-subtle bg-card-surface p-5">
+            <h2 className="text-xl font-semibold">North and South assignments</h2>
+            <p className="mt-1 text-sm text-muted">Assign six teams to each board. Color numbers identify each team’s starting territory.</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {(doc.teams || []).map((team) => (
+                <div key={team.rosterId} className="grid grid-cols-[1fr_auto_auto] items-center gap-2 rounded-xl border border-subtle p-3">
+                  <div className="min-w-0 truncate text-sm font-semibold">{teamLabel(team)}</div>
+                  <select value={team.side || "north"} onChange={(e) => patchTeam(team.rosterId, { side: e.target.value })} className="rounded-lg border border-slate-600 bg-slate-950 px-2 py-2 text-xs text-white">
+                    <option value="north">North</option>
+                    <option value="south">South</option>
+                  </select>
+                  <select value={team.color ?? 0} onChange={(e) => patchTeam(team.rosterId, { color: num(e.target.value) })} className="rounded-lg border border-slate-600 bg-slate-950 px-2 py-2 text-xs text-white">
+                    {["Purple", "Red", "Orange", "Green", "Gold", "Blue"].map((name, index) => <option key={name} value={index}>{name}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <div className="card border border-subtle bg-card-surface p-5">
           <h2 className="text-xl font-semibold">Public page content</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -385,13 +508,26 @@ export default function BrassBallsAdminClient() {
                   >
                     Remove week
                   </button>
+                  <button type="button" onClick={() => resolveWeek(wi)} disabled={busy} className="btn btn-primary">
+                    {week.completed ? "Re-resolve completed week" : "Resolve completed week"}
+                  </button>
+                  {week.completed ? <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-xs font-bold text-emerald-200">Completed</span> : null}
                 </div>
                 <div className="mt-4 space-y-3">
                   {week.matchups.map((pair, mi) => (
                     <div
                       key={pair.id || mi}
-                      className="grid gap-3 rounded-2xl border border-subtle p-4 sm:grid-cols-[1fr_auto_1fr_auto] sm:items-center"
+                      className="grid gap-3 rounded-2xl border border-subtle p-4 sm:grid-cols-[1fr_auto_1fr_auto_auto] sm:items-center"
                     >
+                      <div className="sm:col-span-5 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+                        <div className="text-xs font-bold uppercase tracking-wider text-amber-200">
+                          {pair.battleType === "war" ? "War · both teams attack" : "Attack · left attacks right"}
+                        </div>
+                        <select value={pair.battleType || "attack"} onChange={(e) => patchMatchup(wi, mi, { battleType: e.target.value })} className="rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-xs text-white">
+                          <option value="attack">Attack (1 territory)</option>
+                          <option value="war">War (2 territories)</option>
+                        </select>
+                      </div>
                       <select
                         value={pair.teamA?.rosterId || ""}
                         onChange={(e) =>
@@ -399,7 +535,7 @@ export default function BrassBallsAdminClient() {
                         }
                         className="rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-white focus:border-amber-300 focus:outline-none"
                       >
-                        <option value="">Select a username</option>
+                        <option value="">Select attacker</option>
                         {teams.map((team) => (
                           <option
                             key={team.rosterId}
@@ -410,7 +546,7 @@ export default function BrassBallsAdminClient() {
                           </option>
                         ))}
                       </select>
-                      <b className="text-center text-muted">VS</b>
+                      <b className="text-center text-muted">ATTACKS</b>
                       <select
                         value={pair.teamB?.rosterId || ""}
                         onChange={(e) =>
@@ -418,7 +554,7 @@ export default function BrassBallsAdminClient() {
                         }
                         className="rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-white focus:border-amber-300 focus:outline-none"
                       >
-                        <option value="">No opponent / solo</option>
+                        <option value="">Select defender</option>
                         {teams.map((team) => (
                           <option
                             key={team.rosterId}
@@ -440,6 +576,12 @@ export default function BrassBallsAdminClient() {
                       >
                         Remove
                       </button>
+                      {pair.result ? (
+                        <div className="text-right text-xs text-muted sm:col-span-5">
+                          Saved result: <b className="text-primary">{num(pair.result.teamAScore).toFixed(2)}–{num(pair.result.teamBScore).toFixed(2)}</b>
+                          {pair.result.winnerRosterId ? " · winner recorded" : " · tie, no territory moved"}
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                   <button
