@@ -16,9 +16,9 @@ const DEFAULT_MEDIA = {
 };
 const TERRITORY_COLORS = ["#7c3aed", "#dc2626", "#ea580c", "#16a34a", "#eab308", "#2563eb"];
 
-function territoryState(doc) {
+function territoryState(doc, throughWeek = 18) {
   const teams = Array.isArray(doc?.teams) ? doc.teams : [];
-  const counts = new Map(teams.map((team) => [String(team.rosterId), 6]));
+  const counts = new Map(teams.map((team) => [String(team.rosterId), 7]));
   const battles = [];
   const transfer = (winner, loser, amount) => {
     const available = counts.get(loser) || 0;
@@ -29,7 +29,7 @@ function territoryState(doc) {
   };
   [...(doc?.weeks || [])]
     .sort((a, b) => num(a.week) - num(b.week))
-    .filter((week) => week.completed)
+    .filter((week) => week.completed && num(week.week) <= num(throughWeek))
     .forEach((week) => (week.matchups || []).forEach((pair) => {
       const attacker = String(pair.teamA?.rosterId || "");
       const defender = String(pair.teamB?.rosterId || "");
@@ -45,38 +45,47 @@ function territoryState(doc) {
   return { counts, battles };
 }
 
-function TerritoryBoard({ doc }) {
+function TerritoryBoard({ doc, week, setWeek }) {
   const teams = Array.isArray(doc?.teams) ? doc.teams : [];
-  const { counts } = territoryState(doc);
+  const { counts } = territoryState(doc, week);
   if (!teams.length) return (
     <div className="mt-8 rounded-3xl border border-dashed border-amber-300/30 p-8 text-center text-muted">
       North and South assignments will appear after they are published by the commissioner.
     </div>
   );
   return (
-    <section className="mt-8 overflow-hidden rounded-[32px] border border-amber-400/35 bg-[radial-gradient(circle_at_50%_0%,rgba(120,53,15,.35),transparent_45%),#05070b] p-4 shadow-2xl sm:p-7">
-      <div className="text-center">
-        <div className="text-xs font-black uppercase tracking-[.3em] text-amber-300">Fantasy Football Territories</div>
-        <h1 className="mt-2 text-3xl font-black uppercase text-white sm:text-5xl">The Brass Balls War Map</h1>
-        <p className="mt-2 text-sm text-slate-400">Completed results through Week {Math.max(0, ...(doc.weeks || []).filter((w) => w.completed).map((w) => num(w.week))) || "—"}</p>
+    <section className="mt-8 overflow-hidden rounded-[32px] border-2 border-amber-500/55 bg-[#08090d] p-3 shadow-[0_25px_80px_rgba(0,0,0,.9),inset_0_0_45px_rgba(0,0,0,.8)] sm:p-7">
+      <div className="rounded-[24px] border border-slate-500/40 bg-[linear-gradient(145deg,#171a20,#050609_55%,#11141a)] px-4 py-6 shadow-[inset_0_1px_0_rgba(255,255,255,.08)] sm:px-7">
+      <div className="flex flex-col gap-4 text-center sm:flex-row sm:items-end sm:justify-between sm:text-left">
+        <div>
+          <div className="text-xs font-black uppercase tracking-[.3em] text-amber-300">Fantasy Football Territories</div>
+          <h1 className="mt-2 text-3xl font-black uppercase text-white drop-shadow-[0_3px_0_#713f12] sm:text-5xl">The Brass Balls War Map</h1>
+          <p className="mt-2 text-sm font-semibold text-slate-300">Territory ownership after completed results through Week {week}</p>
+        </div>
+        <label className="mx-auto text-left text-[10px] font-black uppercase tracking-widest text-amber-200 sm:mx-0">
+          View week
+          <select value={week} onChange={(event) => setWeek(num(event.target.value))} className="mt-1 block min-w-40 rounded-xl border border-amber-400/50 bg-black px-4 py-3 text-base font-bold text-white outline-none focus:border-amber-300">
+            {(doc.weeks || []).slice().sort((a, b) => num(a.week) - num(b.week)).map((row) => <option key={row.week} value={row.week}>Week {row.week}{row.completed ? " · Final" : ""}</option>)}
+          </select>
+        </label>
       </div>
       <div className="mt-7 grid gap-6 xl:grid-cols-2">
         {["north", "south"].map((side) => (
-          <div key={side} className="rounded-3xl border border-white/10 bg-black/45 p-4">
-            <h2 className="text-center text-2xl font-black uppercase tracking-[.18em] text-white">The {side}</h2>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div key={side} className="rounded-3xl border-2 border-slate-600 bg-[#030405] p-4 shadow-[inset_0_0_30px_rgba(0,0,0,1)]">
+            <h2 className="border-b border-amber-500/35 pb-3 text-center font-serif text-3xl font-black uppercase tracking-[.18em] text-white">The {side}</h2>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-2 2xl:grid-cols-3">
               {teams.filter((team) => (team.side || "north") === side).sort((a, b) => num(b.color) - num(a.color)).map((team) => {
                 const count = counts.get(String(team.rosterId)) || 0;
                 const color = TERRITORY_COLORS[num(team.color) % TERRITORY_COLORS.length];
                 return (
-                  <div key={team.rosterId} className="rounded-2xl border border-white/10 bg-slate-950/90 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0 truncate font-bold text-white">{team.teamName || `@${team.username}`}</div>
-                      <div className="text-xl font-black text-amber-200">{count}</div>
+                  <div key={team.rosterId} className="rounded-2xl border-2 bg-[#0c0e12] p-3 shadow-[0_8px_20px_rgba(0,0,0,.7)]" style={{ borderColor: `${color}aa` }}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0 truncate text-sm font-black text-white">{team.teamName || `@${team.username}`}</div>
+                      <div className="rounded-md bg-black px-2 py-1 text-xl font-black text-amber-200">{count}</div>
                     </div>
-                    <div className="mt-3 flex min-h-8 flex-wrap gap-1" aria-label={`${count} territories`}>
+                    <div className="mx-auto mt-3 flex min-h-16 max-w-32 flex-wrap items-center justify-center gap-0.5" aria-label={`${count} territories`}>
                       {Array.from({ length: count }, (_, index) => (
-                        <span key={index} className="h-6 w-7 border border-white/35 shadow-[0_0_8px_currentColor]" style={{ backgroundColor: color, color, clipPath: "polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%)" }} />
+                        <span key={index} className="h-7 w-8 border border-white/45 shadow-[0_0_9px_currentColor]" style={{ background: `radial-gradient(circle, ${color}, #090909 130%)`, color, clipPath: "polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%)" }} />
                       ))}
                     </div>
                     <div className="mt-2 truncate text-xs text-slate-400">@{String(team.username || "").replace(/^@/, "")}</div>
@@ -86,6 +95,7 @@ function TerritoryBoard({ doc }) {
             </div>
           </div>
         ))}
+      </div>
       </div>
     </section>
   );
@@ -401,7 +411,7 @@ export default function BrassBallsClient({ season, scoringOnly = false }) {
                 </div>
                 <Link href="/brass-balls" className="btn btn-secondary">Back to game rules</Link>
               </div>
-              <TerritoryBoard doc={doc} />
+              <TerritoryBoard doc={doc} week={week} setWeek={(nextWeek) => { setWeek(nextWeek); setOpenId(""); }} />
             </>
           )}
 

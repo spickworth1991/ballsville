@@ -89,6 +89,24 @@ async function uploadImage(file, section, season) {
   return `/r2/${data.key}`;
 }
 
+function AdminDisclosure({ summary, initialOpen = false, children }) {
+  const [open, setOpen] = useState(initialOpen);
+  return (
+    <div className="card overflow-hidden border border-subtle bg-card-surface">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center justify-between gap-4 p-5 text-left"
+        aria-expanded={open}
+      >
+        <div className="min-w-0 flex-1">{summary}</div>
+        <span className={`text-xl text-muted transition-transform ${open ? "rotate-180" : ""}`}>⌄</span>
+      </button>
+      {open ? <div className="border-t border-subtle p-5">{children}</div> : null}
+    </div>
+  );
+}
+
 export default function BrassBallsAdminClient() {
   const [season, setSeason] = useState(CURRENT_SEASON);
   const [doc, setDoc] = useState(defaults);
@@ -358,8 +376,16 @@ export default function BrassBallsAdminClient() {
           </div>
         </div>
         {(doc.teams || []).length ? (
-          <div className="card border border-subtle bg-card-surface p-5">
-            <h2 className="text-xl font-semibold">North and South assignments</h2>
+          <AdminDisclosure
+            summary={(
+              <div>
+                <h2 className="text-xl font-semibold">North and South assignments</h2>
+                <p className="mt-1 text-xs text-muted">
+                  {(doc.teams || []).filter((team) => team.side === "north").length} North · {(doc.teams || []).filter((team) => team.side === "south").length} South
+                </p>
+              </div>
+            )}
+          >
             <p className="mt-1 text-sm text-muted">Assign six teams to each board. Color numbers identify each team’s starting territory.</p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               {(doc.teams || []).map((team) => (
@@ -375,7 +401,7 @@ export default function BrassBallsAdminClient() {
                 </div>
               ))}
             </div>
-          </div>
+          </AdminDisclosure>
         ) : null}
         <div className="card border border-subtle bg-card-surface p-5">
           <h2 className="text-xl font-semibold">Public page content</h2>
@@ -478,9 +504,17 @@ export default function BrassBallsAdminClient() {
           {doc.weeks
             .sort((a, b) => num(a.week) - num(b.week))
             .map((week, wi) => (
-              <div
+              <AdminDisclosure
                 key={`${week.week}-${wi}`}
-                className="card border border-subtle bg-card-surface p-5"
+                initialOpen={num(week.week) === num(doc.currentWeek)}
+                summary={(
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="text-xl font-black">Week {week.week}</span>
+                    {week.label ? <span className="text-sm text-muted">{week.label}</span> : null}
+                    <span className="text-xs text-muted">{(week.matchups || []).length} matchup{(week.matchups || []).length === 1 ? "" : "s"}</span>
+                    {week.completed ? <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[10px] font-bold uppercase text-emerald-200">Completed</span> : null}
+                  </div>
+                )}
               >
                 <div className="flex flex-wrap items-end gap-3">
                   <label className="text-sm">
@@ -606,7 +640,7 @@ export default function BrassBallsAdminClient() {
                     + Add matchup
                   </button>
                 </div>
-              </div>
+              </AdminDisclosure>
             ))}
         </div>
         <div className="flex flex-wrap gap-3">
