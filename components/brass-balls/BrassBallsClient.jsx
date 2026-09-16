@@ -91,6 +91,22 @@ function TerritoryCluster({ homeTeam, cells, teamById }) {
   );
 }
 
+function StrongholdCard({ team, count, cells, teamById, compact = false }) {
+  const color = TERRITORY_COLORS[num(team.color) % TERRITORY_COLORS.length];
+  return (
+    <div className={`rounded-2xl border-2 bg-[#0c0e12] shadow-[0_8px_20px_rgba(0,0,0,.7)] ${compact ? "p-2" : "p-3"}`} style={{ borderColor: `${color}aa` }}>
+      <div className="flex items-center justify-between gap-2">
+        <div className={`${compact ? "text-xs" : "text-sm"} min-w-0 truncate font-black text-white`} title={team.teamName || team.username}>
+          {team.teamName || `@${team.username}`}
+        </div>
+        <div className={`${compact ? "text-base" : "text-xl"} rounded-md bg-black px-2 py-1 font-black text-amber-200`}>{count}</div>
+      </div>
+      <TerritoryCluster homeTeam={team} cells={cells.filter((cell) => cell.homeRosterId === String(team.rosterId))} teamById={teamById} />
+      <div className="truncate text-center text-[10px] font-bold uppercase tracking-wide text-slate-400">@{String(team.username || "").replace(/^@/, "")}</div>
+    </div>
+  );
+}
+
 function TerritoryBoard({ doc, week, setWeek }) {
   const teams = Array.isArray(doc?.teams) ? doc.teams : [];
   const { counts, cells } = territoryState(doc, week);
@@ -116,32 +132,31 @@ function TerritoryBoard({ doc, week, setWeek }) {
           </select>
         </label>
       </div>
-      <div className="mt-7 grid gap-6 xl:grid-cols-2">
-        {["north", "south"].map((side) => (
+      <div className="mt-7 grid gap-8">
+        {["north", "south"].map((side) => {
+          const sideTeams = teams.filter((team) => (team.side || "north") === side).sort((a, b) => num(a.color) - num(b.color));
+          const ringPositions = [[5, 18], [38, 1], [71, 18], [71, 55], [38, 66], [5, 55]];
+          return (
           <div key={side} className="rounded-3xl border-2 border-slate-600 bg-[#030405] p-4 shadow-[inset_0_0_30px_rgba(0,0,0,1)]">
             <h2 className="border-b border-amber-500/35 pb-3 text-center font-serif text-3xl font-black uppercase tracking-[.18em] text-white">The {side}</h2>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-2 2xl:grid-cols-3">
-              {teams.filter((team) => (team.side || "north") === side).sort((a, b) => num(b.color) - num(a.color)).map((team) => {
-                const count = counts.get(String(team.rosterId)) || 0;
-                const color = TERRITORY_COLORS[num(team.color) % TERRITORY_COLORS.length];
-                return (
-                  <div key={team.rosterId} className="rounded-2xl border-2 bg-[#0c0e12] p-3 shadow-[0_8px_20px_rgba(0,0,0,.7)]" style={{ borderColor: `${color}aa` }}>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0 truncate text-sm font-black text-white">{team.teamName || `@${team.username}`}</div>
-                      <div className="rounded-md bg-black px-2 py-1 text-xl font-black text-amber-200">{count}</div>
-                    </div>
-                    <TerritoryCluster
-                      homeTeam={team}
-                      cells={cells.filter((cell) => cell.homeRosterId === String(team.rosterId))}
-                      teamById={teamById}
-                    />
-                    <div className="mt-2 truncate text-xs text-slate-400">@{String(team.username || "").replace(/^@/, "")}</div>
-                  </div>
-                );
-              })}
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:hidden">
+              {sideTeams.map((team) => <StrongholdCard key={team.rosterId} team={team} count={counts.get(String(team.rosterId)) || 0} cells={cells} teamById={teamById} />)}
+            </div>
+            <div className="relative mx-auto mt-4 hidden aspect-[16/9] max-w-6xl overflow-hidden rounded-3xl border border-slate-700 bg-[radial-gradient(circle_at_center,rgba(180,83,9,.18),transparent_28%),linear-gradient(145deg,#15181e,#050608_60%,#11141a)] xl:block">
+              <div className="absolute left-1/2 top-1/2 z-0 flex h-40 w-64 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-[28px] border-2 border-amber-500/45 bg-[#080a0e] text-center shadow-[0_0_45px_rgba(0,0,0,1)]">
+                <span className="text-xs font-black uppercase tracking-[.35em] text-amber-300">Brass Balls</span>
+                <span className="mt-2 font-serif text-4xl font-black uppercase text-white">The {side}</span>
+                <span className="mt-1 text-xs uppercase tracking-widest text-slate-400">Territories</span>
+              </div>
+              {sideTeams.map((team, index) => (
+                <div key={team.rosterId} className="absolute z-10 w-[24%] max-w-[250px]" style={{ left: `${ringPositions[index]?.[0] ?? 38}%`, top: `${ringPositions[index]?.[1] ?? 38}%` }}>
+                  <StrongholdCard team={team} count={counts.get(String(team.rosterId)) || 0} cells={cells} teamById={teamById} compact />
+                </div>
+              ))}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
       </div>
     </section>
