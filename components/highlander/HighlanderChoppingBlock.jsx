@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { adminR2Url as r2Url } from "@/lib/r2Client";
+import OwnerModal from "@/components/leaderboards/OwnerModal";
 
 const ELIMINATION_WEEKS = 14;
 const WEEK_WORDS = [
@@ -115,6 +116,12 @@ export default function HighlanderChoppingBlock({ season }) {
   const [error, setError] = useState("");
   const [week, setWeek] = useState(0);
   const [league, setLeague] = useState("");
+  const [selectedOwner, setSelectedOwner] = useState(null);
+  const [selectedRoster, setSelectedRoster] = useState(null);
+  const [rosterLoadingKey, setRosterLoadingKey] = useState("");
+  const [rosterError, setRosterError] = useState("");
+  const rosterPartsCache = useRef(new Map());
+  const manifestCache = useRef(new Map());
 
   useEffect(() => {
     let cancelled = false;
@@ -183,6 +190,81 @@ export default function HighlanderChoppingBlock({ season }) {
   const titleLeague = league || "Highlander Game";
   const yearChoices = [currentSeason, currentSeason - 1, currentSeason - 2];
 
+  async function fetchRosterPart(partName) {
+    const cacheKey = `${year}:${partName}`;
+    if (rosterPartsCache.current.has(cacheKey)) {
+      return rosterPartsCache.current.get(cacheKey);
+    }
+    const request = fetch(
+      r2Url(`data/leaderboards/${partName}?v=${Date.now()}`),
+      { cache: "no-store" }
+    ).then((response) => {
+      if (!response.ok) throw new Error(`Roster data returned ${response.status}.`);
+      return response.json();
+    });
+    rosterPartsCache.current.set(cacheKey, request);
+    try {
+      return await request;
+    } catch (error) {
+      rosterPartsCache.current.delete(cacheKey);
+      throw error;
+    }
+  }
+
+  async function openLineup(owner) {
+    if (!league) return;
+    const loadingKey = `${entryKey(owner)}:${selectedWeek}`;
+    setRosterLoadingKey(loadingKey);
+    setRosterError("");
+
+    try {
+      let manifestRequest = manifestCache.current.get(year);
+      if (!manifestRequest) {
+        manifestRequest = fetch(
+          r2Url(`data/leaderboards/weekly_manifest_${year}.json?v=${Date.now()}`),
+          { cache: "no-store" }
+        ).then((response) => {
+          if (!response.ok) throw new Error(`Roster manifest returned ${response.status}.`);
+          return response.json();
+        });
+        manifestCache.current.set(year, manifestRequest);
+      }
+      const manifest = await manifestRequest;
+      const indexedPart = manifest?.leagueParts?.highlander?.[owner.leagueName];
+      const partNames = indexedPart
+        ? [indexedPart]
+        : Array.isArray(manifest?.parts)
+          ? manifest.parts
+          : [];
+
+      let match = null;
+      for (const partName of partNames) {
+        const chunk = await fetchRosterPart(partName);
+        const rows = chunk?.[year]?.highlander?.[owner.leagueName]?.[selectedWeek] ||
+          chunk?.[String(year)]?.highlander?.[owner.leagueName]?.[String(selectedWeek)] || [];
+        match = rows.find(
+          (row) =>
+            String(row?.ownerId || "") === String(owner?.ownerId || "") ||
+            row?.ownerName === owner?.ownerName
+        );
+        if (match) break;
+      }
+
+      if (!match) throw new Error(`No Week ${selectedWeek} lineup was found for ${ownerLabel(owner)}.`);
+      setSelectedOwner(owner);
+      setSelectedRoster({
+        week: selectedWeek,
+        starters: Array.isArray(match.starters) ? match.starters : [],
+        bench: Array.isArray(match.bench) ? match.bench : [],
+      });
+    } catch (error) {
+      manifestCache.current.delete(year);
+      setRosterError(error?.message || "This lineup could not be loaded.");
+    } finally {
+      setRosterLoadingKey("");
+    }
+  }
+
   return (
     <section id="chopping-block" className="section pt-0 scroll-mt-24">
       <div className="container-site">
@@ -226,6 +308,12 @@ export default function HighlanderChoppingBlock({ season }) {
               </button>
             ) : null}
 
+            {rosterError ? (
+              <div className="mt-3 rounded-lg border border-red-500/35 bg-red-950/35 px-3 py-2 text-sm text-red-200">
+                {rosterError}
+              </div>
+            ) : null}
+
             <div className="mt-5 overflow-hidden rounded-xl border border-slate-600/70 bg-black/65 shadow-2xl">
               {loading ? (
                 <div className="p-10 text-center text-sm text-slate-300">Loading the chopping block…</div>
@@ -256,12 +344,15 @@ export default function HighlanderChoppingBlock({ season }) {
                         return (
                           <tr
                             key={`${owner.leagueName}-${entryKey(owner)}-${selectedWeek}`}
-                            onClick={!league ? () => setLeague(owner.leagueName) : undefined}
+                            onClick={() => {
+                              if (league) openLineup(owner);
+                              else setLeague(owner.leagueName);
+                            }}
                             className={`border-b border-slate-700/80 transition last:border-0 ${
                               isChopped
                                 ? "bg-gradient-to-r from-red-950/80 via-red-900/35 to-black shadow-[inset_4px_0_0_#ef4444]"
                                 : "odd:bg-slate-950/75 even:bg-slate-900/65"
-                            } ${!league ? "cursor-pointer hover:bg-red-900/55" : ""}`}
+                            } cursor-pointer hover:bg-red-900/55`}
                           >
                             <td className="px-1.5 py-2 text-center text-base font-black text-amber-100 sm:px-3 sm:text-lg">{index + 1}</td>
                             <td className="min-w-0 px-1.5 py-2 sm:px-3">
@@ -273,6 +364,9 @@ export default function HighlanderChoppingBlock({ season }) {
                                     <span className="hidden sm:inline">{teamLabel(owner)}</span>
                                   </div>
                                   {!league ? <div className="truncate text-[10px] text-slate-400 md:hidden">{owner.leagueName}</div> : null}
+                                  {league && rosterLoadingKey === `${entryKey(owner)}:${selectedWeek}` ? (
+                                    <div className="text-[10px] font-semibold text-cyan-300">Loading lineup…</div>
+                                  ) : null}
                                 </div>
                               </div>
                             </td>
@@ -296,7 +390,7 @@ export default function HighlanderChoppingBlock({ season }) {
             </div>
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
-              <span>{league ? `Weekly rankings for everyone still alive in ${league}.` : "Select a chopped manager to see their full league rankings."}</span>
+              <span>{league ? `Select a manager to see their Week ${selectedWeek} best-ball lineup.` : "Select a chopped manager to see their full league rankings."}</span>
               {league && leagueMeta?.[league]?.leagueId ? (
                 <a
                   href={`https://sleeper.com/leagues/${leagueMeta[league].leagueId}`}
@@ -311,6 +405,17 @@ export default function HighlanderChoppingBlock({ season }) {
           </div>
         </div>
       </div>
+      {selectedOwner && selectedRoster ? (
+        <OwnerModal
+          owner={selectedOwner}
+          selectedRoster={selectedRoster}
+          onClose={() => {
+            setSelectedOwner(null);
+            setSelectedRoster(null);
+          }}
+          allOwners={owners}
+        />
+      ) : null}
     </section>
   );
 }

@@ -2005,22 +2005,31 @@ function makeYearChunkWriter(year) {
   let idx = 1;
   let current = {};
   let size = 0;
+  let currentRefs = [];
   const writtenParts = [];
+  const leagueParts = {};
 
   function writePart() {
     const file = perYearPart(year, idx);
     writeJSONMin(file, current);
-    writtenParts.push(path.basename(file));
+    const partName = path.basename(file);
+    writtenParts.push(partName);
+    currentRefs.forEach(({ category, leagueName }) => {
+      leagueParts[category] = leagueParts[category] || {};
+      leagueParts[category][leagueName] = partName;
+    });
     idx++;
     current = {};
     size = 0;
+    currentRefs = [];
   }
 
-  function addPayload(obj) {
+  function addPayload(obj, refs = []) {
     const bytes = sizeOf(obj);
     if (size > 0 && size + bytes > MAX_CHUNK_SIZE) writePart();
     current = mergeDeep(current, obj);
     size += bytes;
+    currentRefs.push(...refs);
     if (size >= MAX_CHUNK_SIZE) writePart();
   }
 
@@ -2029,7 +2038,11 @@ function makeYearChunkWriter(year) {
     // The client polls this file's ETag to know when it should refetch the
     // leaderboard payload. Include a changing value even when part names stay
     // identical between builds.
-    const manifest = { updatedAt: new Date().toISOString(), parts: writtenParts };
+    const manifest = {
+      updatedAt: new Date().toISOString(),
+      parts: writtenParts,
+      leagueParts,
+    };
     writeJSONMin(perYearManifest(year), manifest);
     return writtenParts;
   }
@@ -2386,16 +2399,21 @@ async function main() {
       const catBytes = sizeOf(catPayload);
 
       if (catBytes <= MAX_CHUNK_SIZE) {
-        chunker.addPayload(catPayload);
+        chunker.addPayload(
+          catPayload,
+          Object.keys(catData).map((leagueName) => ({ category, leagueName }))
+        );
       } else {
         let bucket = {};
         let bucketSize = 0;
+        let bucketRefs = [];
 
         const flush = () => {
           if (!Object.keys(bucket).length) return;
-          chunker.addPayload(bucket);
+          chunker.addPayload(bucket, bucketRefs);
           bucket = {};
           bucketSize = 0;
+          bucketRefs = [];
         };
 
         for (const [leagueName, leagueObj] of Object.entries(catData)) {
@@ -2406,12 +2424,13 @@ async function main() {
 
           if (lb > MAX_CHUNK_SIZE) {
             flush();
-            chunker.addPayload(leaguePayload);
+            chunker.addPayload(leaguePayload, [{ category, leagueName }]);
             continue;
           }
           if (bucketSize + lb > MAX_CHUNK_SIZE && bucketSize > 0) flush();
           bucket = mergeDeep(bucket, leaguePayload);
           bucketSize += lb;
+          bucketRefs.push({ category, leagueName });
         }
         flush();
       }
