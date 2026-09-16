@@ -99,6 +99,7 @@ export default function BrassBallsAdminClient() {
   const load = async () => {
     setBusy(true);
     setMessage("");
+    setTeams([]);
     try {
       const result = await api("GET", season);
       setDoc(result.data || { ...defaults, season });
@@ -166,6 +167,15 @@ export default function BrassBallsAdminClient() {
       setBusy(false);
     }
   };
+
+  // Saved matchup rows only contain roster IDs. Rehydrate their display names
+  // automatically whenever an existing season document supplies a league ID.
+  useEffect(() => {
+    if (!doc.leagueId || teams.length) return;
+    loadTeams();
+  }, [doc.leagueId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const selectableTeams = teams.length ? teams : (doc.teams || []);
 
   const updateWeek = (index, patch) =>
     setDoc((current) => ({
@@ -536,7 +546,7 @@ export default function BrassBallsAdminClient() {
                         className="rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-white focus:border-amber-300 focus:outline-none"
                       >
                         <option value="">Select attacker</option>
-                        {teams.map((team) => (
+                        {selectableTeams.map((team) => (
                           <option
                             key={team.rosterId}
                             value={team.rosterId}
@@ -555,7 +565,7 @@ export default function BrassBallsAdminClient() {
                         className="rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-white focus:border-amber-300 focus:outline-none"
                       >
                         <option value="">Select defender</option>
-                        {teams.map((team) => (
+                        {selectableTeams.map((team) => (
                           <option
                             key={team.rosterId}
                             value={team.rosterId}
