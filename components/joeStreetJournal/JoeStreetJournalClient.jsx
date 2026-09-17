@@ -5,6 +5,10 @@ import SectionManifestGate from "@/components/manifest/SectionManifestGate";
 import { r2Url } from "@/lib/r2Url";
 
 const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v));
+const RESULTS_SHEET_URL =
+  "https://docs.google.com/spreadsheets/d/1nVQrvQLUGNXNqndv6d7X3GNfeR69T9r3vcwW8EgZuiw/edit?gid=272110340";
+const RESULTS_SHEET_EMBED_URL =
+  "https://docs.google.com/spreadsheets/d/1nVQrvQLUGNXNqndv6d7X3GNfeR69T9r3vcwW8EgZuiw/edit?rm=minimal&widget=true&headers=false&gid=272110340";
 
 function linkMap(links) {
   return new Map((Array.isArray(links) ? links : []).map((link) => [str(link?.id), link]));
@@ -18,6 +22,29 @@ function Action({ link, primary = false }) {
       target={external ? "_blank" : undefined} rel={external ? "noreferrer" : undefined}>
       {link.label || "Open"} →
     </a>
+  );
+}
+
+function ResultsSheetEmbed() {
+  return (
+    <div className="bg-white p-1 sm:p-3">
+      <div
+        className="h-[72vh] min-h-[520px] max-h-[820px] overflow-auto rounded-xl border border-slate-300 md:h-[820px]"
+        style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}
+      >
+        <iframe
+          title="Joe Street Journal winners and results tracker"
+          src={RESULTS_SHEET_EMBED_URL}
+          width="100%"
+          height="100%"
+          style={{ border: 0, display: "block", touchAction: "pan-x pan-y" }}
+          loading="lazy"
+          tabIndex={-1}
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"
+          referrerPolicy="no-referrer-when-downgrade"
+        />
+      </div>
+    </div>
   );
 }
 
@@ -79,6 +106,22 @@ function JournalContent({ version }) {
           </aside>
         </div>
       </header>
+
+      <section className="overflow-hidden rounded-[2rem] border border-cyan-300/20 bg-card-surface shadow-xl">
+        <div className="flex flex-col gap-4 border-b border-subtle p-6 md:flex-row md:items-end md:justify-between md:p-8">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-accent">Live league tracker</p>
+            <h2 className="mt-2 text-3xl font-black text-primary">Winners & Results</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+              Joe&apos;s live spreadsheet for weekly winners, season results, and league tracking. Updates made in Google Sheets appear here automatically.
+            </p>
+          </div>
+          <a className="btn btn-outline shrink-0" href={RESULTS_SHEET_URL} target="_blank" rel="noreferrer">
+            Open full spreadsheet →
+          </a>
+        </div>
+        <ResultsSheetEmbed />
+      </section>
 
       <section className="grid gap-4 md:grid-cols-3">
         {(data.journey || []).map((step, index) => (
