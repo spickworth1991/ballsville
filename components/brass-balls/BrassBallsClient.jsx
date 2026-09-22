@@ -345,16 +345,15 @@ export default function BrassBallsClient({ season, scoringOnly = false }) {
       .then((data) => {
         setDoc(data);
         const weeks = Array.isArray(data?.weeks) ? data.weeks : [];
-        const currentWeek = num(data?.currentWeek);
-        const availableWeeks = weeks
-          .map((row) => num(row?.week))
+        const scheduledWeeks = weeks
+          .filter((row) => num(row?.week) > 0)
+          .sort((a, b) => num(a.week) - num(b.week));
+        const availableWeeks = scheduledWeeks
+          .map((row) => num(row.week))
           .filter((value) => value > 0)
           .sort((a, b) => a - b);
-        setWeek(
-          availableWeeks.includes(currentWeek)
-            ? currentWeek
-            : availableWeeks[0] || 1,
-        );
+        const currentWeek = scheduledWeeks.find((row) => !row.completed)?.week;
+        setWeek(num(currentWeek) || availableWeeks.at(-1) || 1);
       })
       .catch((err) => setError(err.message));
   }, [season]);

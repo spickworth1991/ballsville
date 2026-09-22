@@ -268,7 +268,21 @@ export default function BrassBallsAdminClient() {
           },
         };
       });
-      updateWeek(weekIndex, { completed: true, matchups: resolved });
+      setDoc((current) => {
+        const weeks = current.weeks.map((week, index) =>
+          index === weekIndex
+            ? { ...week, completed: true, matchups: resolved }
+            : week,
+        );
+        const nextWeek = weeks
+          .filter((week) => !week.completed && num(week.week) > num(target.week))
+          .sort((a, b) => num(a.week) - num(b.week))[0];
+        return {
+          ...current,
+          weeks,
+          currentWeek: nextWeek ? num(nextWeek.week) : num(target.week),
+        };
+      });
       setMessage(`Week ${target.week} scores resolved. Publish to save the territory results.`);
     } catch (error) {
       setMessage(error?.message || "Week scores could not be resolved.");
