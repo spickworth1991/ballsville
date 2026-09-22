@@ -28,14 +28,18 @@ function territoryState(doc, throughWeek = 18) {
   );
   const battles = [];
   const transfer = (winner, loser, amount) => {
-    // Return captured land first, then outside home cells, keeping the center
-    // stronghold as the final territory whenever possible.
+    // Capture the loser's original outside territory first so every successful
+    // attack remains visible on the map. Captured land and the center
+    // stronghold are only surrendered after the loser's home ring is gone.
     const available = cells
       .filter((cell) => cell.ownerRosterId === loser)
       .sort((a, b) => {
-        const aCaptured = a.homeRosterId !== loser ? 0 : 1;
-        const bCaptured = b.homeRosterId !== loser ? 0 : 1;
-        return aCaptured - bCaptured || a.index - b.index;
+        const priority = (cell) => {
+          if (cell.homeRosterId === loser && cell.index !== 6) return 0;
+          if (cell.homeRosterId !== loser) return 1;
+          return 2;
+        };
+        return priority(a) - priority(b) || a.index - b.index;
       });
     const selected = available.slice(0, amount);
     selected.forEach((cell) => { cell.ownerRosterId = winner; });
