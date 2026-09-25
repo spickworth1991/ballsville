@@ -139,7 +139,7 @@ function LineupComparison({ left, right, bench = false }) {
   );
 }
 
-export default function OwnerModal({ owner, onClose, allOwners = [], selectedRoster = null }) {
+export default function OwnerModal({ owner, onClose, onSelectOwner, allOwners = [], selectedRoster = null }) {
   const [visible, setVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -188,10 +188,10 @@ export default function OwnerModal({ owner, onClose, allOwners = [], selectedRos
   const weeklyValForChosen = chosenWeek != null ? toNum(weeklyMap[chosenWeek]) : 0;
   const displayWeekPoints = weeklyValForChosen > 0 ? weeklyValForChosen : startersTotalNum;
 
-  // Other leagues (same owner name)
+  // Other leagues for the manager currently being viewed.
   const otherLeagues = (allOwners || [])
-    .filter((o) => o.ownerName === owner.ownerName && o.leagueName !== owner.leagueName)
-    .map((o) => ({ name: o.leagueName, total: toNum(o.total) }))
+    .filter((o) => (String(o.ownerId) === String(owner.ownerId) || o.ownerName === owner.ownerName) && o.leagueName !== owner.leagueName)
+    .map((o) => ({ owner: o, name: o.leagueName, total: toNum(o.total), week: o.latestMatchup?.week || o.latestRoster?.week }))
     .sort((a, b) => b.total - a.total);
 
   const modalContent = (
@@ -217,35 +217,56 @@ export default function OwnerModal({ owner, onClose, allOwners = [], selectedRos
         <h2 className="mb-1 truncate text-center text-base font-bold text-foreground sm:text-2xl">
           {opponent ? `Week ${chosenWeek} Matchup` : owner.ownerName}
         </h2>
-        <p className="text-gray-400 mb-1 sm:mb-2 text-center text-xs sm:text-base">
-          League: <span className="text-indigo-400">{owner.leagueName}</span>
-        </p>
-        <p className="text-center mb-2 sm:mb-4 text-xs sm:text-sm">
-          Draft Slot: <span className="text-yellow-400 font-bold">#{owner.draftSlot || "-"}</span>
-          {"  "}|{" "}
-          {chosenWeek != null ? (
-            <>
-              Week {chosenWeek} Points:{" "}
-              <span className="text-blue-400 font-semibold">{displayWeekPoints.toFixed(2)}</span>{" "}
-              <span className="text-gray-400">(Season Total: {toNum(owner.total).toFixed(2)})</span>
-            </>
-          ) : (
-            <>
-              Season Total: <span className="text-blue-400 font-semibold">{toNum(owner.total).toFixed(2)}</span>
-            </>
-          )}
-        </p>
+        <div className="mx-auto mb-3 max-w-xl rounded-2xl border border-subtle bg-panel/20 p-3 sm:mb-4">
+          <div className="flex items-center justify-between gap-3 text-xs font-black uppercase tracking-[0.16em] text-muted">
+            <span>Manager summary</span>
+            <span className="normal-case tracking-normal text-accent">{owner.ownerName} · {owner.leagueName}</span>
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-xl bg-black/15 p-2">
+              <div className="text-[9px] font-bold uppercase tracking-wider text-muted">Draft slot</div>
+              <div className="mt-1 font-black text-yellow-300">#{owner.draftSlot || "—"}</div>
+            </div>
+            <div className="rounded-xl bg-black/15 p-2">
+              <div className="text-[9px] font-bold uppercase tracking-wider text-muted">Week {chosenWeek || "—"}</div>
+              <div className="mt-1 font-black tabular-nums text-accent">{displayWeekPoints.toFixed(2)}</div>
+            </div>
+            <div className="rounded-xl bg-black/15 p-2">
+              <div className="text-[9px] font-bold uppercase tracking-wider text-muted">Season</div>
+              <div className="mt-1 font-black tabular-nums text-foreground">{toNum(owner.total).toFixed(2)}</div>
+            </div>
+          </div>
+        </div>
 
         {/* Roster */}
         {chosenRoster && (
           <div className="mb-3 sm:mb-6">
             {opponent ? (
               <>
-                <div className="mb-3 grid grid-cols-[minmax(0,1fr)_46px_minmax(0,1fr)] items-end gap-2 sm:grid-cols-[minmax(0,1fr)_58px_minmax(0,1fr)]">
-                  <div className="flex min-w-0 items-center justify-end gap-2 text-right">
+                <div className="mb-3 grid grid-cols-[minmax(0,1fr)_34px_minmax(0,1fr)] items-end gap-2 sm:hidden">
+                  <div className="min-w-0 rounded-2xl border border-accent/40 bg-accent/10 p-2 text-right">
+                    <div className="truncate text-xs font-black text-foreground">{owner.ownerName}</div>
+                    <div className="mt-1 flex items-center justify-end gap-2">
+                      <ManagerAvatar avatar={owner.avatar} name={owner.ownerName} />
+                      <div className="text-xl font-black tabular-nums text-accent">{startersTotalNum.toFixed(2)}</div>
+                    </div>
+                    <div className="mt-1 text-[9px] font-black uppercase tracking-wider text-accent">Viewing</div>
+                  </div>
+                  <div className="pb-3 text-center text-[9px] font-black uppercase tracking-[0.16em] text-muted">VS</div>
+                  <div className="min-w-0">
+                    <div className="truncate text-xs font-black text-foreground">{opponent.ownerName}</div>
+                    <div className="mt-1 flex items-center gap-2">
+                      <ManagerAvatar avatar={opponent.avatar} name={opponent.ownerName} />
+                      <div className="text-xl font-black tabular-nums text-accent">{opponentTotalNum.toFixed(2)}</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="mb-3 hidden grid-cols-[minmax(0,1fr)_58px_minmax(0,1fr)] items-end gap-2 sm:grid">
+                  <div className="flex min-w-0 items-center justify-end gap-2 rounded-2xl border border-accent/40 bg-accent/10 p-2 text-right">
                     <div className="min-w-0">
                       <div className="truncate text-sm font-black text-foreground sm:text-lg">{owner.ownerName}</div>
                       <div className="text-xl font-black tabular-nums text-accent sm:text-3xl">{startersTotalNum.toFixed(2)}</div>
+                      <div className="text-[9px] font-black uppercase tracking-wider text-accent">Viewing</div>
                     </div>
                     <ManagerAvatar avatar={owner.avatar} name={owner.ownerName} />
                   </div>
@@ -327,19 +348,36 @@ export default function OwnerModal({ owner, onClose, allOwners = [], selectedRos
 
         {/* Other Leagues */}
         {otherLeagues.length > 0 && (
-          <div>
-            <h3 className="text-sm sm:text-lg font-semibold mb-1 sm:mb-2 text-center">Other Leagues</h3>
-            <div className="max-h-20 sm:max-h-32 overflow-y-auto border border-gray-700 rounded p-1 sm:p-2">
-              <ul className="list-disc list-inside text-gray-300 space-y-0.5 sm:space-y-1 text-xs sm:text-base">
+          <details className="group rounded-2xl border border-subtle bg-panel/20 p-3">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-black text-foreground">
+              <span>Other leagues for {owner.ownerName}</span>
+              <span className="rounded-lg bg-accent/10 px-2 py-1 text-[10px] text-accent group-open:hidden">{otherLeagues.length} · Show</span>
+              <span className="hidden rounded-lg bg-accent/10 px-2 py-1 text-[10px] text-accent group-open:inline">Hide</span>
+            </summary>
+            <p className="mt-1 text-[11px] text-muted">Open this manager’s latest matchup in another league.</p>
+            <div className="ballsville-scrollbar mt-3 max-h-44 overflow-y-auto">
+              <ul className="grid gap-2 text-xs sm:grid-cols-2">
                 {otherLeagues.map((lg, i) => (
-                  <li key={i} className="flex justify-between">
-                    <span className="truncate">{lg.name}</span>
-                    <span className="text-blue-400">{lg.total.toFixed(2)}</span>
+                  <li key={`${lg.name}-${i}`}>
+                    <button
+                      type="button"
+                      onClick={() => onSelectOwner?.(lg.owner)}
+                      className="flex w-full items-center justify-between gap-3 rounded-xl border border-subtle bg-card-surface/60 p-3 text-left transition hover:border-accent/40 hover:bg-panel/70"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate font-black text-foreground">{lg.name}</span>
+                        <span className="mt-0.5 block text-[10px] text-muted">Week {lg.week || "—"} matchup</span>
+                      </span>
+                      <span className="shrink-0 text-right">
+                        <span className="block font-black tabular-nums text-accent">{lg.total.toFixed(2)}</span>
+                        <span className="text-[9px] uppercase tracking-wider text-muted">season pts →</span>
+                      </span>
+                    </button>
                   </li>
                 ))}
               </ul>
             </div>
-          </div>
+          </details>
         )}
       </div>
     </div>

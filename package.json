@@ -11,11 +11,11 @@
     "lint": "next lint",
     "icons": "node scripts/make-icons.mjs public/logo-source.webp",
     "git": "git add . && git commit -m \"AuctionADP\" && git push origin preview",
-    "sync": "node ./script/git-sync.mjs",
     "leg3": "node script/buildgauntlet.mjs",
     "leaderboards": "node script/leaderboards/auto-gen.js",
     "leaderboards:auto": "node script/buildleaderboards.mjs",
-    "leaderboards:map": "node scripts/league-map-builder.mjs"
+    "leaderboards:map": "node scripts/league-map-builder.mjs",
+    "sync": "node ./script/git-sync.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.946.0",

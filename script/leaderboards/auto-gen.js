@@ -1746,6 +1746,9 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, catego
   });
   const rosterMap = {};
   rosters.forEach(r => (rosterMap[r.roster_id] = r.owner_id));
+  const rosterByOwner = new Map(
+    rosters.filter((r) => r?.owner_id).map((r) => [String(r.owner_id), r])
+  );
 
   const drafts = await fetchWithRetry(`${baseUrl}/drafts`);
   const draftDetailsList = await Promise.all(
@@ -1870,6 +1873,8 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, catego
         existing = {
           ownerId,
           ownerName,
+          rosterId: String(m.roster_id),
+          leagueId: String(leagueId),
           username: userDetails[ownerId]?.username || ownerName,
           teamName: userDetails[ownerId]?.teamName || ownerName,
           avatar: userDetails[ownerId]?.avatar || "",
@@ -1890,6 +1895,92 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, catego
     const weeklySum = Object.values(o.weekly || {}).reduce((a, b) => a + Number(b || 0), 0);
     o.total = Number(weeklySum.toFixed(2));
   });
+
+  // Keep official standings and a split median record in the compact leaderboard
+  // payload so season-style cards do not need another Sleeper request.
+  const usesMedian = Number(leagueInfo?.settings?.league_average_match || 0) === 1;
+  owners.forEach((owner) => {
+    const sleeperRoster = rosterByOwner.get(String(owner.ownerId));
+    const wins = Number(sleeperRoster?.settings?.wins || 0);
+    const losses = Number(sleeperRoster?.settings?.losses || 0);
+    const ties = Number(sleeperRoster?.settings?.ties || 0);
+    const completedWeeks = Math.floor((wins + losses + ties) / (usesMedian ? 2 : 1));
+    const split = { h2hWins: 0, h2hLosses: 0, h2hTies: 0, medianWins: 0, medianLosses: 0, medianTies: 0 };
+
+    for (let week = 1; week <= completedWeeks; week += 1) {
+      const rows = matchupsByWeek[week] || [];
+      const ownRow = rows.find((row) => String(row.roster_id) === String(owner.rosterId));
+      const opponentRow = ownRow?.matchup_id == null ? null : rows.find(
+        (row) => String(row.roster_id) !== String(owner.rosterId) && String(row.matchup_id) === String(ownRow.matchup_id)
+      );
+      const ownScore = Number(owner.weekly?.[week] || 0);
+      const opponentOwnerId = opponentRow ? rosterMap[opponentRow.roster_id] : null;
+      const opponentOwner = opponentOwnerId ? owners.find((item) => String(item.ownerId) === String(opponentOwnerId)) : null;
+      const opponentScore = Number(opponentOwner?.weekly?.[week] || 0);
+      if (opponentRow) {
+        if (ownScore > opponentScore) split.h2hWins += 1;
+        else if (ownScore < opponentScore) split.h2hLosses += 1;
+        else split.h2hTies += 1;
+      }
+
+      if (usesMedian) {
+        const scores = owners.map((item) => Number(item.weekly?.[week] || 0)).sort((a, b) => a - b);
+        const middle = Math.floor(scores.length / 2);
+        const median = scores.length % 2 ? scores[middle] : (scores[middle - 1] + scores[middle]) / 2;
+        if (ownScore > median) split.medianWins += 1;
+        else if (ownScore < median) split.medianLosses += 1;
+        else split.medianTies += 1;
+      }
+    }
+
+    owner.record = { wins, losses, ties, usesMedian, ...split };
+  });
+
+  [...owners]
+    .sort((a, b) =>
+      Number(b.record?.wins || 0) - Number(a.record?.wins || 0) ||
+      Number(b.record?.ties || 0) - Number(a.record?.ties || 0) ||
+      Number(b.total || 0) - Number(a.total || 0) ||
+      Number(a.record?.losses || 0) - Number(b.record?.losses || 0)
+    )
+    .forEach((owner, index) => {
+      owner.leaguePlace = index + 1;
+      owner.leagueSize = owners.length;
+    });
+
+  // Small, leaderboard-level matchup summaries power "My Ballsville" without
+  // downloading the much larger weekly roster-detail files.
+  const latestScoringWeek = Object.keys(matchupsByWeek)
+    .map(Number)
+    .filter((week) => owners.some((owner) => Number(owner.weekly?.[week] || 0) !== 0))
+    .sort((a, b) => b - a)[0] || null;
+  if (latestScoringWeek) {
+    const ownerById = new Map(owners.map((owner) => [String(owner.ownerId), owner]));
+    const rows = matchupsByWeek[latestScoringWeek] || [];
+    for (const matchup of rows) {
+      const ownerId = rosterMap[matchup.roster_id];
+      const owner = ownerById.get(String(ownerId));
+      if (!owner) continue;
+      const opponentMatchup = matchup.matchup_id == null
+        ? null
+        : rows.find(
+            (row) =>
+              String(row.roster_id) !== String(matchup.roster_id) &&
+              String(row.matchup_id) === String(matchup.matchup_id),
+          );
+      const opponentOwnerId = opponentMatchup ? rosterMap[opponentMatchup.roster_id] : null;
+      const opponent = opponentOwnerId ? ownerById.get(String(opponentOwnerId)) : null;
+      owner.latestMatchup = {
+        week: latestScoringWeek,
+        teamScore: Number(owner.weekly?.[latestScoringWeek] || 0),
+        opponentOwnerId: opponent ? String(opponent.ownerId) : "",
+        opponentRosterId: opponent ? String(opponent.rosterId) : "",
+        opponentName: opponent?.ownerName || "",
+        opponentAvatar: opponent?.avatar || "",
+        opponentScore: opponent ? Number(opponent.weekly?.[latestScoringWeek] || 0) : null,
+      };
+    }
+  }
 
   // latestRoster per owner (for modal) = latest *non-zero* week (fallback: latest with data)
   const latestWeekWithData = Object.keys(matchupsByWeek).map(Number).sort((a,b)=>b-a)[0] || null;

@@ -23,6 +23,419 @@ function LeaderboardOwnerAvatar({ owner }) {
   );
 }
 
+function matchupStatus(matchup) {
+  if (!matchup || matchup.opponentScore == null) return "Matchup details unavailable";
+  const margin = Number(matchup.teamScore || 0) - Number(matchup.opponentScore || 0);
+  if (margin === 0) return "Tied";
+  return `${margin > 0 ? "Leading" : "Trailing"} by ${Math.abs(margin).toFixed(2)}`;
+}
+
+function teamWeek(team) {
+  return Number(
+    team?.latestMatchup?.week ||
+      team?.latestRoster?.week ||
+      Object.keys(team?.weekly || {}).map(Number).filter(Number.isFinite).sort((a, b) => b - a)[0] ||
+      0,
+  );
+}
+
+function highlanderState(team, leagueOwners, throughWeek) {
+  const alive = new Set(leagueOwners.map((owner) => String(owner.ownerId)));
+  const chopped = new Map();
+  for (let week = 1; week <= Math.min(14, Math.max(0, throughWeek - 1)); week += 1) {
+    const scored = leagueOwners
+      .filter((owner) => alive.has(String(owner.ownerId)))
+      .map((owner) => ({ owner, score: Number(owner.weekly?.[week] || 0) }))
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score || String(a.owner.ownerName).localeCompare(String(b.owner.ownerName)));
+    if (scored.length < 2) continue;
+    const eliminated = scored[scored.length - 1].owner;
+    alive.delete(String(eliminated.ownerId));
+    chopped.set(String(eliminated.ownerId), week);
+  }
+  const choppedWeek = chopped.get(String(team.ownerId));
+  if (choppedWeek) return { primary: `Chopped in Week ${choppedWeek}`, tone: "danger", secondary: `${alive.size} teams remain` };
+  const ranked = leagueOwners
+    .filter((owner) => alive.has(String(owner.ownerId)) && Number(owner.weekly?.[throughWeek] || 0) > 0)
+    .sort((a, b) => Number(b.weekly?.[throughWeek] || 0) - Number(a.weekly?.[throughWeek] || 0));
+  const position = ranked.findIndex((owner) => String(owner.ownerId) === String(team.ownerId)) + 1;
+  const score = Number(team.weekly?.[throughWeek] || 0);
+  return {
+    primary: throughWeek > 14 ? "Advanced to the wager stage" : `Alive · ${alive.size} remain`,
+    tone: "success",
+    secondary: throughWeek > 14 ? "Weeks 15–17" : `${score.toFixed(2)} points this week`,
+    scale: position > 0 ? { position, total: ranked.length, score, label: `#${position} this week · lowest score is chopped`, cutFrom: ranked.length } : null,
+  };
+}
+
+function recordText(record) {
+  if (!record) return "Record updates after the next data refresh";
+  return `${record.wins}-${record.losses}${record.ties ? `-${record.ties}` : ""}`;
+}
+
+function seasonCardDetails(team, phase) {
+  const record = team.record;
+  const place = Number(team.leaguePlace || 0);
+  const size = Number(team.leagueSize || 0);
+  return {
+    phase,
+    primary: `${recordText(record)} record${place ? ` · #${place} of ${size}` : ""}`,
+    secondary: record?.usesMedian
+      ? `H2H ${record.h2hWins}-${record.h2hLosses}${record.h2hTies ? `-${record.h2hTies}` : ""} · Median ${record.medianWins}-${record.medianLosses}${record.medianTies ? `-${record.medianTies}` : ""}`
+      : "Current league standing",
+    tone: place === 1 ? "success" : "neutral",
+  };
+}
+
+function weeklyScale(team, leagueOwners, week, label, cutFrom) {
+  const ranked = leagueOwners
+    .filter((owner) => Number(owner.weekly?.[week] || 0) > 0)
+    .sort((a, b) => Number(b.weekly?.[week] || 0) - Number(a.weekly?.[week] || 0));
+  const position = ranked.findIndex((owner) => String(owner.ownerId) === String(team.ownerId)) + 1;
+  return position > 0
+    ? { position, total: ranked.length, score: Number(team.weekly?.[week] || 0), label, cutFrom: cutFrom === "last" ? ranked.length : cutFrom }
+    : null;
+}
+
+function valueScale(team, owners, valueFor, label, cutFrom) {
+  const ranked = [...owners].sort((a, b) => valueFor(b) - valueFor(a));
+  const position = ranked.findIndex((owner) => String(owner.ownerId) === String(team.ownerId)) + 1;
+  return position > 0
+    ? { position, total: ranked.length, score: valueFor(team), label, cutFrom }
+    : null;
+}
+
+function modeCardDetails(team, block, year) {
+  const week = teamWeek(team);
+  const leagueOwners = (block?.owners || []).filter((owner) => owner.leagueName === team.leagueName);
+  const raceAt = (cutoff) => {
+    const pointsThrough = (owner) => Object.entries(owner.weekly || {}).reduce(
+      (sum, [weekNumber, points]) => sum + (Number(weekNumber) <= cutoff ? Number(points || 0) : 0),
+      0,
+    );
+    const ranked = [...leagueOwners].sort((a, b) => pointsThrough(b) - pointsThrough(a));
+    const points = pointsThrough(team);
+    const leader = pointsThrough(ranked[0] || {});
+    const position = ranked.filter((owner) => pointsThrough(owner) > points).length + 1;
+    const tiedLeaders = ranked.filter((owner) => pointsThrough(owner) === leader).length;
+    const nextScore = ranked.find((owner) => pointsThrough(owner) < leader);
+    return {
+      position,
+      leader,
+      points,
+      size: ranked.length,
+      tiedLeaders,
+      leadBy: position === 1 && tiedLeaders === 1 && nextScore ? points - pointsThrough(nextScore) : 0,
+      behindBy: position > 1 ? leader - points : 0,
+    };
+  };
+  const raceStandingText = (race, final = false) => {
+    if (race.position === 1 && race.tiedLeaders > 1) return `${final ? "Finished tied" : "Tied"} for the league lead at ${race.points.toFixed(2)}`;
+    if (race.position === 1) return `${final ? "Won the league" : "Leading the league"} by ${race.leadBy.toFixed(2)} points`;
+    return `${final ? "Finished" : "Trailing the league leader"} by ${race.behindBy.toFixed(2)} points`;
+  };
+
+  if (team.modeKey === "highlander") {
+    if (week <= 14) return { phase: "Chopping block", ...highlanderState(team, leagueOwners, week) };
+    if (week === 15) return { phase: "Four-player wager round", primary: `${Number(team.weekly?.[week] || 0).toFixed(2)} survival points`, secondary: "Top 2 advance · highest wagering score wins the league pot", tone: "neutral", scale: weeklyScale(team, leagueOwners, week, "Week 15 survival", 3) };
+    if (week === 16) return { phase: "Highlander league final", primary: `${Number(team.weekly?.[week] || 0).toFixed(2)} final points`, secondary: "Two finalists · highest score becomes league winner", tone: "neutral", scale: weeklyScale(team, leagueOwners, week, "Week 16 head-to-head", 2) };
+    return { phase: "The Highlander Game", primary: `${Number(team.weekly?.[week] || 0).toFixed(2)} championship points`, secondary: "Ten league winners · a wager is required to compete", tone: "neutral" };
+  }
+  if (team.modeKey === "big_game") {
+    const race = raceAt(15);
+    if (week <= 15) return { phase: "League points race · through Week 15", primary: `#${race.position} of ${race.size} in league`, secondary: raceStandingText(race), note: "Margin includes the current week’s live scores and can change.", tone: race.position === 1 ? "success" : "neutral" };
+    const divisionOwners = (block?.owners || []).filter((owner) => owner.division === team.division && Number(owner.weekly?.[week] || 0) > 0);
+    if (week === 16) return { phase: "Division wager week", primary: `${Number(team.weekly?.[week] || 0).toFixed(2)} points · ${raceStandingText(race, true)}`, secondary: race.position === 1 ? "Eligible for the division pots" : `League race finished #${race.position} of ${race.size}`, tone: race.position === 1 ? "success" : "neutral", scale: weeklyScale(team, divisionOwners, week, "Division scoring field", null) };
+    return { phase: "Big Game championship", primary: `${Number(team.weekly?.[week] || 0).toFixed(2)} points · ${raceStandingText(race, true)}`, secondary: race.position === 1 ? "Championship eligibility follows wager choice" : `League race finished #${race.position} of ${race.size}`, tone: race.position === 1 ? "success" : "neutral" };
+  }
+  if (team.modeKey === "mini_game") {
+    const race = raceAt(14);
+    if (week <= 14) return { phase: "League points race · through Week 14", primary: `#${race.position} of ${race.size} in league`, secondary: raceStandingText(race), note: "Margin includes the current week’s live scores and can change.", tone: race.position === 1 ? "success" : "neutral" };
+    const divisionOwners = (block?.owners || []).filter((owner) => owner.division === team.division && Number(owner.weekly?.[week] || 0) > 0);
+    return { phase: week === 15 ? "Week 15 wager & bonus race" : "Mini League final results", primary: `${Number(team.weekly?.[week] || 0).toFixed(2)} points · ${raceStandingText(race, true)}`, secondary: race.position === 1 ? "Eligible for bonuses and optional wagering" : `League race finished #${race.position} of ${race.size}`, tone: race.position === 1 ? "success" : "neutral", scale: week === 15 ? weeklyScale(team, divisionOwners, week, "Division bonus field", null) : null };
+  }
+  if (team.modeKey === "gauntlet") {
+    if (Number(year) <= 2025) {
+      if (week <= 8) return seasonCardDetails(team, "Leg 1 · Redraft");
+      if (week <= 12) return { phase: "Leg 2 · Guillotine", primary: `${Number(team.total || 0).toFixed(2)} cumulative points`, secondary: "Lowest cumulative points are cut each week", tone: "neutral", scale: valueScale(team, leagueOwners, (owner) => Number(owner.total || 0), "Cumulative chopping block", leagueOwners.length) };
+      return { phase: "Leg 3 · Best Ball bracket", primary: matchupStatus(team.latestMatchup), secondary: `${Number(team.weekly?.[week] || 0).toFixed(2)} points this round`, tone: matchupStatus(team.latestMatchup).startsWith("Leading") ? "success" : "neutral" };
+    }
+    if (week <= 5) return seasonCardDetails(team, "Trial 1 · Redraft");
+    if (week <= 10) {
+      const margin = Number(team.latestMatchup?.teamScore || 0) - Number(team.latestMatchup?.opponentScore || 0);
+      return { ...seasonCardDetails(team, "Trial 2 · Pirate"), primary: margin >= 0 ? `Protecting the booty by ${Math.abs(margin).toFixed(2)}` : `Booty at risk by ${Math.abs(margin).toFixed(2)}`, tone: margin >= 0 ? "success" : "danger" };
+    }
+    if (week <= 14) return { phase: "Trial 3 · Guillotine", primary: `${Number(team.weekly?.[week] || 0).toFixed(2)} survival points`, secondary: "Lowest weekly score is chopped", tone: "neutral", scale: weeklyScale(team, leagueOwners, week, "Weekly chopping block", "last") };
+    if (week === 15) return { phase: "Trial 4 · Playoffs", primary: `${Number(team.weekly?.[week] || 0).toFixed(2)} best-ball points`, secondary: "Top 3 advance · bottom 3 eliminated", tone: "neutral", scale: weeklyScale(team, leagueOwners, week, "Six-team playoff field", 4) };
+    if (week === 16) return { phase: "Trial 4 · League final", primary: `${Number(team.weekly?.[week] || 0).toFixed(2)} best-ball points`, secondary: "#1 wins · bottom 2 eliminated", tone: "neutral", scale: weeklyScale(team, leagueOwners, week, "Three-team league final", 2) };
+    return { phase: "Trial 5 · Championship", primary: matchupStatus(team.latestMatchup), secondary: "League winners may bank or wager", tone: "neutral" };
+  }
+  if (team.modeKey === "dynasty") return seasonCardDetails(team, week < 16 ? "Dynasty season" : week === 16 ? "Dynasty league finals" : week === 17 ? "Wager & bonus round" : "Heroes vs Dragons");
+  if (team.modeKey === "auction") return seasonCardDetails(team, week < 15 ? "Auction season" : week <= 16 ? "Auction playoffs" : "Week 17 championship");
+  return seasonCardDetails(team, week < 15 ? "Redraft season" : week <= 16 ? "Six-team playoffs" : "Week 17 wager championship");
+}
+
+function MyBallsville({ yearBlock, year, onOpenTeam, autoCollapseTargetRef }) {
+  const storageKey = `ballsville:my-manager:${year}`;
+  const collapsedKey = "ballsville:my-ballsville-collapsed";
+  const [selectedId, setSelectedId] = useState("");
+  const [query, setQuery] = useState("");
+  const [choosing, setChoosing] = useState(false);
+  const [page, setPage] = useState(1);
+  const [collapsed, setCollapsed] = useState(false);
+  const autoCollapseArmed = useRef(true);
+
+  const modes = useMemo(
+    () => Object.entries(yearBlock || {}).filter(([key, block]) => !key.startsWith("__") && Array.isArray(block?.owners)),
+    [yearBlock],
+  );
+  const managers = useMemo(() => {
+    const unique = new Map();
+    modes.forEach(([, block]) => block.owners.forEach((owner) => {
+      const id = String(owner.ownerId || "");
+      if (id && !unique.has(id)) unique.set(id, owner);
+    }));
+    return [...unique.values()].sort((a, b) => String(a.ownerName).localeCompare(String(b.ownerName)));
+  }, [modes]);
+
+  useEffect(() => {
+    setSelectedId(window.localStorage.getItem(storageKey) || "");
+    setCollapsed(window.localStorage.getItem(collapsedKey) === "1");
+    setQuery("");
+    setChoosing(false);
+    setPage(1);
+  }, [storageKey]);
+
+  const toggleCollapsed = () => {
+    setCollapsed((value) => {
+      window.localStorage.setItem(collapsedKey, value ? "0" : "1");
+      return !value;
+    });
+  };
+
+  useEffect(() => {
+    const onScroll = () => {
+      const target = autoCollapseTargetRef?.current;
+      if (!target) return;
+      const targetTop = target.getBoundingClientRect().top;
+
+      // Re-arm only after the user has genuinely returned to the My Ballsville
+      // area, avoiding a collapse/expand loop at the boundary.
+      if (targetTop > Math.min(420, window.innerHeight * 0.5)) {
+        autoCollapseArmed.current = true;
+        return;
+      }
+      if (collapsed || !autoCollapseArmed.current || targetTop > 96) return;
+
+      const topBefore = targetTop;
+      autoCollapseArmed.current = false;
+      setCollapsed(true);
+
+      // Collapsing removes a large block above the standings. Re-anchor the
+      // standings after React lays out the smaller panel so the viewport does
+      // not jump to a different row.
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          const topAfter = target.getBoundingClientRect().top;
+          const correction = topAfter - topBefore;
+          if (Math.abs(correction) > 0.5) window.scrollBy({ top: correction, behavior: "auto" });
+        });
+      });
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [collapsed, autoCollapseTargetRef]);
+
+  const selectedManager = managers.find((owner) => String(owner.ownerId) === selectedId) || null;
+  const teams = useMemo(() => {
+    if (!selectedId) return [];
+    return modes.flatMap(([modeKey, block]) => {
+      const ranked = [...block.owners].sort(
+        (a, b) => Number(b.total || 0) - Number(a.total || 0) || String(a.ownerName).localeCompare(String(b.ownerName)),
+      );
+      const rankByTeam = new Map(ranked.map((owner, index) => [`${owner.ownerId}:${owner.leagueName}`, index + 1]));
+      return block.owners
+        .filter((owner) => String(owner.ownerId) === selectedId)
+        .map((owner) => ({
+          ...owner,
+          modeKey,
+          modeName: block.name || modeKey,
+          modeRank: rankByTeam.get(`${owner.ownerId}:${owner.leagueName}`),
+        }));
+    }).sort((a, b) => Number(a.modeRank || 999999) - Number(b.modeRank || 999999));
+  }, [modes, selectedId]);
+  const matches = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return managers.slice(0, 8);
+    return managers.filter((owner) =>
+      [owner.ownerName, owner.username, owner.teamName].some((value) => String(value || "").toLowerCase().includes(needle)),
+    ).slice(0, 8);
+  }, [managers, query]);
+  const totalPages = Math.max(1, Math.ceil(teams.length / 6));
+  const visibleTeams = teams.slice((page - 1) * 6, page * 6);
+
+  const choose = (owner) => {
+    const id = String(owner.ownerId);
+    window.localStorage.setItem(storageKey, id);
+    setSelectedId(id);
+    setQuery("");
+    setChoosing(false);
+    setPage(1);
+  };
+  const clear = () => {
+    window.localStorage.removeItem(storageKey);
+    setSelectedId("");
+    setQuery("");
+    setChoosing(false);
+  };
+
+  return (
+    <section className="relative z-20 rounded-3xl border border-accent/25 bg-card-surface shadow-md">
+      <div className={`${collapsed ? "" : "border-b border-subtle"} bg-[radial-gradient(circle_at_top_left,rgba(122,212,242,.14),transparent_48%)] p-4 sm:p-6`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-black uppercase tracking-[0.24em] text-accent">My Ballsville</div>
+            <h2 className="mt-1 text-xl font-black text-foreground sm:text-2xl">Every team. One scoreboard.</h2>
+            {collapsed && selectedManager ? <div className="mt-1 text-xs text-muted">{selectedManager.ownerName} · {teams.length} team{teams.length === 1 ? "" : "s"}</div> : null}
+          </div>
+          <div className="flex gap-2">
+            {selectedManager && !choosing && !collapsed ? (
+              <>
+              <button type="button" onClick={() => setChoosing(true)} className="rounded-xl border border-subtle bg-panel/50 px-3 py-2 text-xs font-bold text-foreground">Change</button>
+              <button type="button" onClick={clear} className="rounded-xl border border-subtle px-3 py-2 text-xs font-bold text-muted">Clear</button>
+              </>
+            ) : null}
+            <button type="button" onClick={toggleCollapsed} className="rounded-xl border border-accent/30 bg-accent/10 px-3 py-2 text-xs font-black text-accent">
+              {collapsed ? "Show teams ↓" : "Collapse ↑"}
+            </button>
+          </div>
+        </div>
+
+        {!collapsed && selectedManager && !choosing ? (
+          <div className="mt-4 flex items-center gap-3">
+            <LeaderboardOwnerAvatar owner={selectedManager} />
+            <div className="min-w-0">
+              <div className="truncate font-black text-foreground">{selectedManager.ownerName}</div>
+              <div className="text-xs text-muted">{teams.length} team{teams.length === 1 ? "" : "s"} in {year}</div>
+            </div>
+          </div>
+        ) : !collapsed ? (
+          <div className="mt-4 max-w-xl">
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Find my teams by manager name…"
+              className="w-full rounded-xl border border-subtle bg-panel/60 px-4 py-3 text-sm text-foreground outline-none placeholder:text-muted focus:border-accent/50"
+              autoFocus={choosing}
+            />
+            {query.trim() ? <div className="ballsville-scrollbar mt-2 max-h-72 overflow-y-auto rounded-2xl border border-subtle bg-card-surface p-1 shadow-xl">
+              {matches.length ? matches.map((owner) => (
+                <button key={owner.ownerId} type="button" onClick={() => choose(owner)} className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-panel/60">
+                  <LeaderboardOwnerAvatar owner={owner} />
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-bold text-foreground">{owner.ownerName}</span>
+                    <span className="block truncate text-xs text-muted">@{owner.username || owner.ownerName}</span>
+                  </span>
+                </button>
+              )) : <div className="p-4 text-center text-sm text-muted">No managers found.</div>}
+            </div> : <div className="mt-2 text-xs text-muted">Start typing a manager name to find every team.</div>}
+          </div>
+        ) : null}
+      </div>
+
+      {!collapsed && selectedManager && !choosing ? (
+        <div className="p-4 sm:p-6">
+          <div className="grid gap-3 lg:grid-cols-2">
+            {visibleTeams.map((team) => {
+              const details = modeCardDetails(team, yearBlock?.[team.modeKey], year);
+              const matchup = team.latestMatchup;
+              const fallbackWeek = team.latestRoster?.week || Object.keys(team.weekly || {}).map(Number).sort((a, b) => b - a)[0];
+              const displayWeek = matchup?.week || fallbackWeek;
+              const displayScore = matchup?.teamScore ?? team.weekly?.[displayWeek] ?? 0;
+              return (
+                <button
+                  key={`${team.modeKey}:${team.leagueName}:${team.rosterId || team.ownerId}`}
+                  type="button"
+                  onClick={() => onOpenTeam(team)}
+                  className="rounded-2xl border border-subtle bg-panel/30 p-4 text-left transition hover:-translate-y-0.5 hover:border-accent/40 hover:bg-panel/50"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-black text-foreground">{team.leagueName}</div>
+                      <div className="mt-0.5 text-xs text-muted">{team.modeName} · Rank #{team.modeRank}</div>
+                    </div>
+                    <div className="rounded-lg bg-black/25 px-2 py-1 text-xs font-black text-accent">W{displayWeek || "—"}</div>
+                  </div>
+                  <div className="mt-3 rounded-xl border border-subtle bg-black/15 px-3 py-2.5">
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-accent">{details.phase}</div>
+                    <div className={`mt-1 text-sm font-black ${details.tone === "danger" ? "text-red-300" : details.tone === "success" ? "text-emerald-300" : "text-foreground"}`}>{details.primary}</div>
+                    <div className="mt-0.5 text-[11px] text-muted">{details.secondary}</div>
+                    {details.note ? (
+                      <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-accent/10 px-2 py-1.5 text-[10px] leading-snug text-muted" title={details.note}>
+                        <span aria-hidden="true" className="font-black text-accent">ⓘ</span>
+                        <span>{details.note}</span>
+                      </div>
+                    ) : null}
+                    {details.scale ? (
+                      <div className="mt-3">
+                        <div className="mb-1.5 flex items-center justify-between gap-3 text-[9px] font-bold uppercase tracking-wider text-muted">
+                          <span>{details.scale.label}</span>
+                          <span>#{details.scale.position} of {details.scale.total}</span>
+                        </div>
+                        <div className="relative h-2 rounded-full bg-gradient-to-r from-emerald-400/70 via-amber-300/70 to-red-400/80">
+                          {details.scale.cutFrom && details.scale.total > 1 ? (
+                            <span
+                              className="absolute top-[-3px] h-3.5 w-px bg-white/70"
+                              style={{ left: `${Math.min(100, Math.max(0, ((details.scale.cutFrom - 1) / (details.scale.total - 1)) * 100))}%` }}
+                            />
+                          ) : null}
+                          <span
+                            className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-card-surface shadow-lg"
+                            style={{ left: `${details.scale.total <= 1 ? 50 : ((details.scale.position - 1) / (details.scale.total - 1)) * 100}%` }}
+                          />
+                        </div>
+                        <div className="mt-1 flex justify-between text-[9px] font-bold uppercase tracking-wider text-muted">
+                          <span>{details.scale.cutFrom ? "Safe" : "High"}</span>
+                          <span>{details.scale.cutFrom ? "Chop / cut line" : "Low"}</span>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-muted">You</div>
+                      <div className="text-2xl font-black tabular-nums text-foreground">{Number(displayScore).toFixed(2)}</div>
+                    </div>
+                    <span className="text-xs font-black text-muted">VS</span>
+                    <div className="flex min-w-0 items-center justify-end gap-2 text-right">
+                      <div className="min-w-0">
+                        <div className="truncate text-[10px] font-bold uppercase tracking-wider text-muted">{matchup?.opponentName || "Opponent"}</div>
+                        <div className="text-2xl font-black tabular-nums text-foreground">{matchup?.opponentScore == null ? "—" : Number(matchup.opponentScore).toFixed(2)}</div>
+                      </div>
+                      {matchup?.opponentName ? <LeaderboardOwnerAvatar owner={{ ownerName: matchup.opponentName, avatar: matchup.opponentAvatar }} /> : null}
+                    </div>
+                  </div>
+                  <div className={`mt-3 rounded-xl px-3 py-2 text-center text-xs font-black ${matchupStatus(matchup).startsWith("Leading") ? "bg-emerald-500/10 text-emerald-300" : matchupStatus(matchup).startsWith("Trailing") ? "bg-red-500/10 text-red-300" : "bg-accent/10 text-accent"}`}>
+                    {matchupStatus(matchup)}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          {totalPages > 1 ? (
+            <div className="mt-4 flex items-center justify-center gap-3 text-xs">
+              <button type="button" disabled={page === 1} onClick={() => setPage((value) => value - 1)} className="rounded-lg border border-subtle px-3 py-2 disabled:opacity-40">Previous</button>
+              <span className="text-muted">{page} / {totalPages}</span>
+              <button type="button" disabled={page === totalPages} onClick={() => setPage((value) => value + 1)} className="rounded-lg border border-subtle px-3 py-2 disabled:opacity-40">Next</button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 /**
  * Leaderboard view (controls + table)
  *
@@ -39,6 +452,8 @@ export default function Leaderboard({
   showWeeks,
   setShowWeeks,
 }) {
+  const [pendingOpen, setPendingOpen] = useState(null);
+  const standingsRef = useRef(null);
   if (!data || !current?.year) return null;
 
   // Prefer the explicit list from props; otherwise fall back to whatever is in data
@@ -87,24 +502,35 @@ export default function Leaderboard({
 
   return (
     <div className="space-y-4">
-      <LeaderboardControls
-        data={data}
-        years={years}
-        current={{ ...current, mode: activeMode }}
-        setCurrent={setCurrent}
-        showWeeks={showWeeks}
-        setShowWeeks={setShowWeeks}
-        lastUpdated={lastUpdated}
-        activeMode={activeMode}
-        activeBlock={activeBlock}
-        isGauntlet={isGauntlet}
-        isRedraft2025={isRedraft2025}
-        shortModeName={shortModeName}
+      <MyBallsville
+        yearBlock={data?.[current.year]}
+        year={current.year}
+        autoCollapseTargetRef={standingsRef}
+        onOpenTeam={(team) => {
+          setPendingOpen({ ownerId: team.ownerId, leagueName: team.leagueName, week: team.latestMatchup?.week || team.latestRoster?.week });
+          setCurrent((prev) => ({ ...prev, mode: team.modeKey, filterType: "all", filterValue: null }));
+        }}
       />
-
       {/* Table */}
       {activeBlock ? (
         <LeaderboardTable
+          containerRef={standingsRef}
+          controls={(
+            <LeaderboardControls
+              data={data}
+              years={years}
+              current={{ ...current, mode: activeMode }}
+              setCurrent={setCurrent}
+              showWeeks={showWeeks}
+              setShowWeeks={setShowWeeks}
+              lastUpdated={lastUpdated}
+              activeMode={activeMode}
+              activeBlock={activeBlock}
+              isGauntlet={isGauntlet}
+              isRedraft2025={isRedraft2025}
+              shortModeName={shortModeName}
+            />
+          )}
           data={activeBlock}
           year={Number(current.year)}
           category={activeMode}
@@ -113,6 +539,8 @@ export default function Leaderboard({
           setShowWeeks={setShowWeeks}
           filterType={current.filterType}
           filterValue={current.filterValue}
+          pendingOpen={pendingOpen}
+          clearPendingOpen={() => setPendingOpen(null)}
         />
       ) : (
         <div className="rounded-3xl border border-subtle bg-card-surface shadow-md p-6 text-sm text-muted">
@@ -181,7 +609,7 @@ function LeaderboardControls({
   }, [activeBlock, search]);
 
   return (
-    <section className="rounded-3xl border border-subtle bg-card-surface shadow-md p-4">
+    <section className="border-b border-subtle bg-[radial-gradient(circle_at_top_right,rgba(122,212,242,.10),transparent_42%)] p-4 sm:p-5">
       {/* Row 1 */}
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
@@ -198,40 +626,30 @@ function LeaderboardControls({
           )}
         </div>
 
-        <div className="flex flex-col gap-2 md:items-end">
-          {/* Years */}
-          <div className="flex flex-wrap gap-2 justify-start md:justify-end">
-            {years.map((year) => (
-              <Chip
-                key={year}
-                active={current.year === year}
-                onClick={() => handleSelect({ year, filterType: "all", filterValue: null })}
-              >
-                {year}
-              </Chip>
-            ))}
-          </div>
-
-          {/* Modes + Weekly */}
-          <div className="flex flex-wrap items-center gap-2 justify-start md:justify-end">
-            {Object.keys(data?.[current.year] || {}).filter((modeKey) => !String(modeKey).startsWith("__")).length > 0 &&
-              Object.keys(data[current.year] || {}).filter((modeKey) => !String(modeKey).startsWith("__")).map((modeKey) => {
-                const val = data?.[current.year]?.[modeKey];
-                const label = shortModeName(val, modeKey);
-                const order = { big_game: 1, mini_game: 2, redraft_2025: 3, redraft: 3, gauntlet: 4, dynasty: 5 };
-                return { modeKey, label, order: order[modeKey] ?? 99 };
-              })
-                .sort((a, b) => a.order - b.order || a.modeKey.localeCompare(b.modeKey))
-                .map(({ modeKey, label }) => (
-                  <Chip
-                    key={modeKey}
-                    active={activeMode === modeKey}
-                    onClick={() => handleSelect({ mode: modeKey, filterType: "all", filterValue: null })}
-                  >
-                    {label}
-                  </Chip>
-                ))}
-
+        <div className="grid w-full gap-2 sm:grid-cols-2 md:w-auto md:min-w-[430px]">
+          <label className="rounded-2xl border border-subtle bg-panel/45 px-3 py-2 transition focus-within:border-accent/45">
+            <span className="block text-[9px] font-black uppercase tracking-[0.2em] text-muted">Season</span>
+            <select
+              value={current.year}
+              onChange={(event) => handleSelect({ year: event.target.value, filterType: "all", filterValue: null })}
+              className="mt-0.5 w-full cursor-pointer bg-transparent text-sm font-black text-foreground outline-none"
+            >
+              {years.map((year) => <option key={year} value={year} className="bg-card-surface">{year}</option>)}
+            </select>
+          </label>
+          <label className="rounded-2xl border border-subtle bg-panel/45 px-3 py-2 transition focus-within:border-accent/45">
+            <span className="block text-[9px] font-black uppercase tracking-[0.2em] text-muted">Game mode</span>
+            <select
+              value={activeMode}
+              onChange={(event) => handleSelect({ mode: event.target.value, filterType: "all", filterValue: null })}
+              className="mt-0.5 w-full cursor-pointer bg-transparent text-sm font-black text-foreground outline-none"
+            >
+              {Object.keys(data?.[current.year] || {}).filter((modeKey) => !String(modeKey).startsWith("__")).map((modeKey) => (
+                <option key={modeKey} value={modeKey} className="bg-card-surface">{data?.[current.year]?.[modeKey]?.name || shortModeName(data?.[current.year]?.[modeKey], modeKey)}</option>
+              ))}
+            </select>
+          </label>
+          <div className="flex flex-wrap items-center gap-2 sm:col-span-2 sm:justify-end">
             <button
               onClick={() => setShowWeeks(!showWeeks)}
               className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
@@ -636,7 +1054,7 @@ function TopOwnersMiniBoard({ item, expanded, onToggle }) {
 
 /* ---------------- Table (existing leaderboard UI) ---------------- */
 
-function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWeeks, filterType, filterValue }) {
+function LeaderboardTable({ containerRef, controls, data, year, category, basePath, showWeeks, setShowWeeks, filterType, filterValue, pendingOpen, clearPendingOpen }) {
   const { statsByYear } = useLeaderboard();
   const yearSummary = statsByYear?.[year] || {};
   const {
@@ -780,7 +1198,9 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
   const [weeklyData, setWeeklyData] = useState(null);
   const [visibleWeeksStart, setVisibleWeeksStart] = useState(0);
   const weeklyCache = useRef({}); // cache per year
-  const weeklyRequests = useRef({}); // share in-flight loads per year
+  const weeklyManifestCache = useRef({});
+  const weeklyPartCache = useRef({});
+  const weeklyRequests = useRef({}); // share in-flight loads per year/part
 
   // Reset weeks pager & weekly sort when year/mode/toggle changes
   useEffect(() => {
@@ -798,7 +1218,7 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
 
   // When Weekly is turned on and weeklyData is ready, jump pager to latest non-zero week
   useEffect(() => {
-    if (!showWeeks || !weeklyData) return;
+    if (!showWeeks) return;
 
     const weeks = Array.isArray(data.weeks) ? [...data.weeks] : [];
     if (!weeks.length) return;
@@ -814,7 +1234,7 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
         if (val != null && val > 0) return true;
 
         // 2) Fallback to roster records in weeklyData
-        const leagueWeeks = weeklyData[year]?.[category]?.[o.leagueName] || {};
+        const leagueWeeks = weeklyData?.[year]?.[category]?.[o.leagueName] || {};
         const recArr = leagueWeeks[wk] || [];
         const rec = recArr.find((r) => r.ownerName === o.ownerName);
         if (rec) {
@@ -840,32 +1260,34 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
   }, [showWeeks, weeklyData, year, category, scopedOwners, data.weeks]);
 
   // Helper: load weekly data
-  const loadWeeklyDataForYear = async ({ updateState = true } = {}) => {
-    if (weeklyCache.current[year]) {
-      if (updateState) setWeeklyData(weeklyCache.current[year]);
-      return weeklyCache.current[year];
-    }
-
-    if (weeklyRequests.current[year]) {
-      const cachedRequest = await weeklyRequests.current[year];
-      if (updateState && cachedRequest) setWeeklyData(cachedRequest);
-      return cachedRequest;
-    }
-
-    const request = (async () => {
+  const loadWeeklyDataForYear = async ({ updateState = true, leagueName = "", mode = category } = {}) => {
+    try {
       const base = (basePath || "/r2/data/leaderboards").replace(/\/$/, "");
-      const manRes = await fetch(`${base}/weekly_manifest_${year}.json`, { cache: "no-store" });
-      if (!manRes.ok) return null;
-
-      const manifest = await manRes.json(); // { parts: [...] }
+      let manifest = weeklyManifestCache.current[year];
+      if (!manifest) {
+        const manRes = await fetch(`${base}/weekly_manifest_${year}.json`, { cache: "no-store" });
+        if (!manRes.ok) return null;
+        manifest = await manRes.json();
+        weeklyManifestCache.current[year] = manifest;
+      }
+      const mappedPart = leagueName ? manifest.leagueParts?.[mode]?.[leagueName] : null;
+      const parts = mappedPart ? [mappedPart] : (manifest.parts || []);
       const chunks = await Promise.all(
-        (manifest.parts || []).map(async (part) => {
-          const res = await fetch(`${base}/${part}`, { cache: "no-store" });
-          return res.ok ? res.json() : null;
+        parts.map(async (part) => {
+          const cacheKey = `${year}:${part}`;
+          if (weeklyPartCache.current[cacheKey]) return weeklyPartCache.current[cacheKey];
+          if (!weeklyRequests.current[cacheKey]) {
+            weeklyRequests.current[cacheKey] = fetch(`${base}/${part}`, { cache: "no-store" })
+              .then((res) => res.ok ? res.json() : null)
+              .finally(() => { delete weeklyRequests.current[cacheKey]; });
+          }
+          const chunk = await weeklyRequests.current[cacheKey];
+          if (chunk) weeklyPartCache.current[cacheKey] = chunk;
+          return chunk;
         }),
       );
 
-      const combined = {};
+      const combined = weeklyCache.current[year] || {};
       for (const chunk of chunks) {
         if (!chunk) continue;
         for (const y in chunk) {
@@ -877,52 +1299,16 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
         }
       }
       weeklyCache.current[year] = combined;
-      return combined;
-    })();
-
-    weeklyRequests.current[year] = request;
-    try {
-      const combined = await request;
-      if (updateState && combined) setWeeklyData(combined);
+      if (updateState && combined) setWeeklyData({ ...combined });
       return combined;
     } catch {
       return null;
-    } finally {
-      delete weeklyRequests.current[year];
     }
   };
 
-  // Warm the roster-detail cache after the main leaderboard has rendered.
-  useEffect(() => {
-    const preload = () => loadWeeklyDataForYear({ updateState: false });
-    if (typeof window.requestIdleCallback === "function") {
-      const id = window.requestIdleCallback(preload, { timeout: 1500 });
-      return () => window.cancelIdleCallback(id);
-    }
-    const id = window.setTimeout(preload, 500);
-    return () => window.clearTimeout(id);
-  }, [year, basePath]);
-
-  // Only auto-load when Weekly is ON; otherwise lazy-load on click
-  useEffect(() => {
-    let ignore = false;
-    const go = async () => {
-      if (!showWeeks) {
-        if (weeklyCache.current[year] && !ignore) setWeeklyData(weeklyCache.current[year]);
-        return;
-      }
-      const d = await loadWeeklyDataForYear();
-      if (!ignore && d) setWeeklyData(d);
-    };
-    go();
-    return () => {
-      ignore = true;
-    };
-  }, [showWeeks, year, category]);
-
-  const handleWeeklyClick = (owner, week) => {
-    if (!weeklyData) return;
-    const leagueData = weeklyData[year]?.[category]?.[owner.leagueName]?.[week];
+  const handleWeeklyClick = async (owner, week) => {
+    const wd = await loadWeeklyDataForYear({ leagueName: owner.leagueName });
+    const leagueData = wd?.[year]?.[category]?.[owner.leagueName]?.[week];
     if (!leagueData) return;
     const match = leagueData.find((r) => r.ownerName === owner.ownerName);
     if (match) {
@@ -950,12 +1336,52 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
     }
   };
 
+  useEffect(() => {
+    if (!pendingOpen || !clearPendingOpen) return;
+    let cancelled = false;
+    const open = async () => {
+      const owner = data.owners.find(
+        (row) =>
+          String(row.ownerId) === String(pendingOpen.ownerId) &&
+          row.leagueName === pendingOpen.leagueName,
+      );
+      if (!owner) return;
+      const wd = await loadWeeklyDataForYear({ leagueName: owner.leagueName });
+      if (cancelled || !wd) return;
+      const week = Number(pendingOpen.week || owner.latestRoster?.week || 0);
+      const leagueData = wd[year]?.[category]?.[owner.leagueName]?.[week];
+      const match = leagueData?.find(
+        (row) => String(row.ownerId) === String(owner.ownerId) || row.ownerName === owner.ownerName,
+      );
+      if (!match) return;
+      const opponent = match.matchupId == null
+        ? null
+        : leagueData.find(
+            (row) =>
+              String(row.ownerId) !== String(match.ownerId) &&
+              String(row.matchupId) === String(match.matchupId),
+          );
+      const opponentOwner = opponent
+        ? data.owners.find((row) => row.ownerName === opponent.ownerName && row.leagueName === owner.leagueName)
+        : null;
+      setSelectedOwner(owner);
+      setSelectedRoster({
+        week,
+        starters: match.starters,
+        bench: match.bench,
+        opponent: opponent
+          ? { ownerName: opponent.ownerName, avatar: opponentOwner?.avatar || "", starters: opponent.starters, bench: opponent.bench }
+          : null,
+      });
+      clearPendingOpen();
+    };
+    open();
+    return () => { cancelled = true; };
+  }, [pendingOpen, year, category]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleRowClickLatest = async (owner) => {
-    let wd = weeklyData;
-    if (!wd) {
-      wd = await loadWeeklyDataForYear();
-      if (!wd) return;
-    }
+    const wd = await loadWeeklyDataForYear({ leagueName: owner.leagueName });
+    if (!wd) return;
 
     const weeks = Array.isArray(data.weeks) ? [...data.weeks] : [];
     weeks.sort((a, b) => b - a);
@@ -971,7 +1397,11 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
       return total > 0;
     });
 
-    const week = mostRecentNonZero ?? weeks[0];
+    // Generated summaries identify the league's current published matchup week,
+    // including teams that are still on zero. Older data falls back to the most
+    // recent week with points.
+    const summaryWeek = Number(owner.latestMatchup?.week || 0);
+    const week = summaryWeek || mostRecentNonZero || weeks[0];
     if (!week) return;
 
     const leagueData = wd[year]?.[category]?.[owner.leagueName]?.[week];
@@ -1023,7 +1453,9 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
   }, [filterType]);
 
   return (
-    <div className="rounded-3xl border border-subtle bg-card-surface shadow-md p-4">
+    <div ref={containerRef} className="overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-md">
+      {controls}
+      <div className="p-4">
       {/* Stats */}
       <div className="mb-4 space-y-4">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
@@ -1301,12 +1733,18 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
             setSelectedOwner(null);
             setSelectedRoster(null);
           }}
+          onSelectOwner={(nextOwner) => {
+            setSelectedOwner(null);
+            setSelectedRoster(null);
+            handleRowClickLatest(nextOwner);
+          }}
           allOwners={data.owners}
           year={year}
           mode={category}
           basePath="/data"
         />
       )}
+      </div>
     </div>
   );
 }

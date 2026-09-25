@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 
-const message = process.argv.slice(2).join(" ").trim() || "Ballsville updates";
+const message = process.argv.slice(2).join(" ").trim() || "Ballsville leaderboards updates";
 
 function git(args, { allowFailure = false, quiet = false } = {}) {
   const result = spawnSync("git", args, {
