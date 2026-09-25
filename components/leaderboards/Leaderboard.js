@@ -175,7 +175,7 @@ function modeCardDetails(team, block, year) {
   return seasonCardDetails(team, week < 15 ? "Redraft season" : week <= 16 ? "Six-team playoffs" : "Week 17 wager championship");
 }
 
-function MyBallsville({ yearBlock, year, onOpenTeam, autoCollapseTargetRef }) {
+function MyBallsville({ yearBlock, year, onOpenTeam }) {
   const storageKey = `ballsville:my-manager:${year}`;
   const collapsedKey = "ballsville:my-ballsville-collapsed";
   const [selectedId, setSelectedId] = useState("");
@@ -183,7 +183,6 @@ function MyBallsville({ yearBlock, year, onOpenTeam, autoCollapseTargetRef }) {
   const [choosing, setChoosing] = useState(false);
   const [page, setPage] = useState(1);
   const [collapsed, setCollapsed] = useState(false);
-  const autoCollapseArmed = useRef(true);
 
   const modes = useMemo(
     () => Object.entries(yearBlock || {}).filter(([key, block]) => !key.startsWith("__") && Array.isArray(block?.owners)),
@@ -212,40 +211,6 @@ function MyBallsville({ yearBlock, year, onOpenTeam, autoCollapseTargetRef }) {
       return !value;
     });
   };
-
-  useEffect(() => {
-    const onScroll = () => {
-      const target = autoCollapseTargetRef?.current;
-      if (!target) return;
-      const targetTop = target.getBoundingClientRect().top;
-
-      // Re-arm only after the user has genuinely returned to the My Ballsville
-      // area, avoiding a collapse/expand loop at the boundary.
-      if (targetTop > Math.min(420, window.innerHeight * 0.5)) {
-        autoCollapseArmed.current = true;
-        return;
-      }
-      if (collapsed || !autoCollapseArmed.current || targetTop > 96) return;
-
-      const topBefore = targetTop;
-      autoCollapseArmed.current = false;
-      setCollapsed(true);
-
-      // Collapsing removes a large block above the standings. Re-anchor the
-      // standings after React lays out the smaller panel so the viewport does
-      // not jump to a different row.
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          const topAfter = target.getBoundingClientRect().top;
-          const correction = topAfter - topBefore;
-          if (Math.abs(correction) > 0.5) window.scrollBy({ top: correction, behavior: "auto" });
-        });
-      });
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    onScroll();
-    return () => window.removeEventListener("scroll", onScroll);
-  }, [collapsed, autoCollapseTargetRef]);
 
   const selectedManager = managers.find((owner) => String(owner.ownerId) === selectedId) || null;
   const teams = useMemo(() => {
@@ -453,7 +418,6 @@ export default function Leaderboard({
   setShowWeeks,
 }) {
   const [pendingOpen, setPendingOpen] = useState(null);
-  const standingsRef = useRef(null);
   if (!data || !current?.year) return null;
 
   // Prefer the explicit list from props; otherwise fall back to whatever is in data
@@ -505,7 +469,6 @@ export default function Leaderboard({
       <MyBallsville
         yearBlock={data?.[current.year]}
         year={current.year}
-        autoCollapseTargetRef={standingsRef}
         onOpenTeam={(team) => {
           setPendingOpen({ ownerId: team.ownerId, leagueName: team.leagueName, week: team.latestMatchup?.week || team.latestRoster?.week });
           setCurrent((prev) => ({ ...prev, mode: team.modeKey, filterType: "all", filterValue: null }));
@@ -514,7 +477,6 @@ export default function Leaderboard({
       {/* Table */}
       {activeBlock ? (
         <LeaderboardTable
-          containerRef={standingsRef}
           controls={(
             <LeaderboardControls
               data={data}
@@ -1054,7 +1016,7 @@ function TopOwnersMiniBoard({ item, expanded, onToggle }) {
 
 /* ---------------- Table (existing leaderboard UI) ---------------- */
 
-function LeaderboardTable({ containerRef, controls, data, year, category, basePath, showWeeks, setShowWeeks, filterType, filterValue, pendingOpen, clearPendingOpen }) {
+function LeaderboardTable({ controls, data, year, category, basePath, showWeeks, setShowWeeks, filterType, filterValue, pendingOpen, clearPendingOpen }) {
   const { statsByYear } = useLeaderboard();
   const yearSummary = statsByYear?.[year] || {};
   const {
@@ -1453,7 +1415,7 @@ function LeaderboardTable({ containerRef, controls, data, year, category, basePa
   }, [filterType]);
 
   return (
-    <div ref={containerRef} className="overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-md">
+    <div className="overflow-hidden rounded-3xl border border-subtle bg-card-surface shadow-md">
       {controls}
       <div className="p-4">
       {/* Stats */}
