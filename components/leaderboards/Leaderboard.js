@@ -7,6 +7,22 @@ import  OwnerModal from "./OwnerModal";
 
 const WEEKS_WINDOW = 3; // how many weeks to show at once
 
+function LeaderboardOwnerAvatar({ owner }) {
+  const name = String(owner?.ownerName || "?");
+  return owner?.avatar ? (
+    <img
+      src={`https://sleepercdn.com/avatars/thumbs/${encodeURIComponent(owner.avatar)}`}
+      alt=""
+      loading="lazy"
+      className="h-8 w-8 shrink-0 rounded-full border border-accent/35 bg-panel object-cover"
+    />
+  ) : (
+    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-accent/25 bg-accent/10 text-[10px] font-black text-accent">
+      {name.trim().charAt(0).toUpperCase()}
+    </span>
+  );
+}
+
 /**
  * Leaderboard view (controls + table)
  *
@@ -910,8 +926,27 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
     if (!leagueData) return;
     const match = leagueData.find((r) => r.ownerName === owner.ownerName);
     if (match) {
+      const opponent = match.matchupId == null
+        ? null
+        : leagueData.find(
+            (row) =>
+              String(row.ownerId) !== String(match.ownerId) &&
+              String(row.matchupId) === String(match.matchupId),
+          );
+      const opponentOwner = opponent
+        ? data.owners.find(
+            (row) => row.ownerName === opponent.ownerName && row.leagueName === owner.leagueName,
+          )
+        : null;
       setSelectedOwner(owner);
-      setSelectedRoster({ week, starters: match.starters, bench: match.bench });
+      setSelectedRoster({
+        week,
+        starters: match.starters,
+        bench: match.bench,
+        opponent: opponent
+          ? { ownerName: opponent.ownerName, avatar: opponentOwner?.avatar || "", starters: opponent.starters, bench: opponent.bench }
+          : null,
+      });
     }
   };
 
@@ -943,8 +978,28 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
     const match = leagueData?.find((r) => r.ownerName === owner.ownerName);
     if (!match) return;
 
+    const opponent = match.matchupId == null
+      ? null
+      : leagueData.find(
+          (row) =>
+            String(row.ownerId) !== String(match.ownerId) &&
+            String(row.matchupId) === String(match.matchupId),
+        );
+    const opponentOwner = opponent
+      ? data.owners.find(
+          (row) => row.ownerName === opponent.ownerName && row.leagueName === owner.leagueName,
+        )
+      : null;
+
     setSelectedOwner(owner);
-    setSelectedRoster({ week, starters: match.starters, bench: match.bench });
+    setSelectedRoster({
+      week,
+      starters: match.starters,
+      bench: match.bench,
+      opponent: opponent
+        ? { ownerName: opponent.ownerName, avatar: opponentOwner?.avatar || "", starters: opponent.starters, bench: opponent.bench }
+        : null,
+    });
   };
 
   // Visible weeks in window
@@ -1137,14 +1192,14 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
       )}
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-2xl border border-subtle">
+      <div className="ballsville-scrollbar overflow-x-auto rounded-2xl border border-subtle">
         <table className="w-full text-sm">
           <thead className="bg-panel/60 text-muted">
             <tr>
-              <th className="p-2 text-left">Rank</th>
-              <th className="p-2 text-left">Owner</th>
+              <th className="sticky left-0 z-20 w-12 min-w-12 bg-panel p-2 text-left md:static md:z-auto md:w-auto md:min-w-0 md:bg-transparent">Rank</th>
+              <th className="sticky left-12 z-20 min-w-[168px] bg-panel p-2 text-left md:static md:z-auto md:min-w-0 md:bg-transparent">Owner</th>
               <th className="p-2 text-left">Slot</th>
-              {showLeagueColumn && <th className="p-2 text-left">League</th>}
+              {showLeagueColumn && <th className="hidden p-2 text-left md:table-cell">League</th>}
               {showWeeks &&
                 currentWeeks.map((w) => (
                   <th key={w} className="p-2 text-center">
@@ -1173,16 +1228,26 @@ function LeaderboardTable({ data, year, category, basePath, showWeeks, setShowWe
             {currentOwners.map((o, idx) => (
               <tr
                 key={`${o.ownerName}-${idx}`}
-                className="border-t border-subtle hover:bg-panel/40 cursor-pointer"
+                className="group cursor-pointer border-t border-subtle hover:bg-panel/40"
                 onClick={() => {
                   if (showWeeks) return; // weekly cells have their own click handler
                   handleRowClickLatest(o);
                 }}
               >
-                <td className="p-2">{o.globalRank}</td>
-                <td className="p-2 font-semibold text-foreground">{o.ownerName}</td>
+                <td className="sticky left-0 z-10 w-12 min-w-12 bg-card-surface p-2 group-hover:bg-panel md:static md:z-auto md:w-auto md:min-w-0 md:bg-transparent">{o.globalRank}</td>
+                <td className="sticky left-12 z-10 bg-card-surface p-2 font-semibold text-foreground group-hover:bg-panel md:static md:z-auto md:bg-transparent">
+                  <div className="flex min-w-[150px] items-center gap-2">
+                    <LeaderboardOwnerAvatar owner={o} />
+                    <div className="min-w-0">
+                      <div className="truncate">{o.ownerName}</div>
+                      <div className="max-w-[118px] truncate text-[10px] font-medium text-muted md:hidden" title={o.leagueName}>
+                        {o.leagueName}
+                      </div>
+                    </div>
+                  </div>
+                </td>
                 <td className="p-2 text-muted">{o.draftSlot ? `(${o.draftSlot})` : "-"}</td>
-                {showLeagueColumn && <td className="p-2 text-muted">{o.leagueName}</td>}
+                {showLeagueColumn && <td className="hidden p-2 text-muted md:table-cell">{o.leagueName}</td>}
                 {showWeeks &&
                   currentWeeks.map((w) => (
                     <td

@@ -1161,6 +1161,7 @@ function computeBestBallLineup(players_points = {}, playersDB, rosterPositions =
       id,
       name: (playersDB[id]?.full_name) || id,
       pos,
+      team: playersDB[id]?.team || "FA",
       points: Number(pts ?? 0),
     };
   });
@@ -1191,14 +1192,14 @@ function computeBestBallLineup(players_points = {}, playersDB, rosterPositions =
   // Bench = everything not picked
   const bench = entries
     .filter(e => e.id && !picked.has(e.id))
-    .map(e => ({ id: e.id, name: e.name, points: e.points, pos: e.pos }));
+    .map(e => ({ id: e.id, name: e.name, points: e.points, pos: e.pos, team: e.team }));
 
   // Order starters nicely
   const slotOrder = new Map(lineupSlots.map(({ slot }, index) => [slot, index]));
   starters.sort((a,b) => (slotOrder.get(a.slot) ?? 999) - (slotOrder.get(b.slot) ?? 999) || (b.points-a.points));
 
   return {
-    starters: starters.map(e => ({ id:e.id, name:e.name, points:e.points, pos:e.pos, slot:e.slot })),
+    starters: starters.map(e => ({ id:e.id, name:e.name, points:e.points, pos:e.pos, team:e.team, slot:e.slot })),
     bench,
     total: Number(starters.reduce((s,e)=> s + Number(e.points||0), 0).toFixed(2)),
   };
@@ -1806,19 +1807,39 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, catego
             const id = normId(raw);
             if (!id) return null;
             const points = starterPts(m, i);
-            return { id, name: (playersDB[id]?.full_name) || id, points };
+            return {
+              id,
+              name: (playersDB[id]?.full_name) || id,
+              points,
+              pos: playersDB[id]?.position || playersDB[id]?.fantasy_positions?.[0] || "",
+              team: playersDB[id]?.team || "FA",
+              slot: rosterPositions?.[i] || playersDB[id]?.position || "",
+            };
           })
           .filter(Boolean);
 
         bench = Object.entries(m.players_points || {})
           .map(([pid, pts]) => [normId(pid), Number(pts ?? 0)])
           .filter(([pid]) => pid && !starterIds.has(pid))
-          .map(([pid, pts]) => ({ id: pid, name: (playersDB[pid]?.full_name) || pid, points: pts }));
+          .map(([pid, pts]) => ({
+            id: pid,
+            name: (playersDB[pid]?.full_name) || pid,
+            points: pts,
+            pos: playersDB[pid]?.position || playersDB[pid]?.fantasy_positions?.[0] || "",
+            team: playersDB[pid]?.team || "FA",
+          }));
 
         weekTotal = Number(starters.reduce((s,p)=> s + Number(p.points||0), 0).toFixed(2));
       }
 
-      weeklyRosters[week].push({ ownerId, ownerName, starters, bench });
+      weeklyRosters[week].push({
+        ownerId,
+        ownerName,
+        rosterId: String(m.roster_id),
+        matchupId: m.matchup_id ?? null,
+        starters,
+        bench,
+      });
 
       if (weekTotal > 0) {
         if (!lastNonZeroWeekByOwner[ownerId] || week > lastNonZeroWeekByOwner[ownerId]) {
