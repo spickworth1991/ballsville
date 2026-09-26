@@ -9,7 +9,6 @@ import Image from "next/image";
 import AdminGuard from "@/components/AdminGuard";
 import AdminNav from "@/components/admin/AdminNav";
 import { CURRENT_SEASON } from "@/lib/season";
-import { getAccessTokenWithRetry } from "@/lib/adminAuth";
 
 
 function cleanStr(v, max = 4000) {
@@ -43,9 +42,7 @@ function normalizeManager(m, idx) {
 }
 
 async function getToken() {
-  // Supabase auth can be briefly unavailable right after a cold load.
-  // Retry a few times to avoid "random" 401s.
-  return (await getAccessTokenWithRetry({ attempts: 5, baseDelayMs: 200 })) || "";
+  return "";
 }
 
 export default function AdminAboutManagersPage() {

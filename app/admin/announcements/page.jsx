@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import AdminGuard from "@/components/AdminGuard";
 import AdminNav from "@/components/admin/AdminNav";
-import { getSupabase } from "@/lib/supabaseClient";
 
 function uid() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
@@ -60,9 +59,7 @@ function AdminAnnouncementsInner() {
   );
 
   async function getToken() {
-    const supabase = getSupabase();
-    const { data } = await supabase.auth.getSession();
-    return data?.session?.access_token || "";
+    return "";
   }
 
   async function load() {

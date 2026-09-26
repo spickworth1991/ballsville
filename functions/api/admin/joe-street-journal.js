@@ -1,3 +1,5 @@
+import { requireAdminSession } from "../../_lib/adminAuth.js";
+
 const SECTION = "joe-street-journal";
 const CONTENT_KEY = "content/joe-street-journal/main.json";
 
@@ -15,23 +17,7 @@ function bucket(env) {
 }
 
 async function requireAdmin({ request, env }) {
-  const auth = request.headers.get("authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token) return { ok: false, status: 401, error: "Missing admin session." };
-  const url = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const admins = String(env.ADMIN_EMAILS || env.NEXT_PUBLIC_ADMIN_EMAILS || "")
-    .split(",").map((v) => v.trim().toLowerCase()).filter(Boolean);
-  if (!url || !anon || !admins.length) return { ok: false, status: 500, error: "Admin authentication is not configured." };
-  const res = await fetch(`${url.replace(/\/$/, "")}/auth/v1/user`, {
-    headers: { apikey: anon, authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) return { ok: false, status: 401, error: "Invalid admin session." };
-  const user = await res.json();
-  if (!admins.includes(String(user?.email || "").toLowerCase())) {
-    return { ok: false, status: 403, error: "Not an admin." };
-  }
-  return { ok: true };
+  return requireAdminSession(request, env);
 }
 
 const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v));

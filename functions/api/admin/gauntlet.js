@@ -1,3 +1,5 @@
+import { requireAdminSession } from "../../_lib/adminAuth.js";
+
 // functions/api/admin/gauntlet.js
 //
 // JSON storage for GAUNTLET (R2-backed, deterministic key)
@@ -16,33 +18,7 @@ import { CURRENT_SEASON } from "@/lib/season";
 // Keep security consistent with other admin endpoints.
 
 async function requireAdmin(context) {
-  const { request, env } = context;
-
-  const auth = request.headers.get("authorization") || request.headers.get("Authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-
-  // If no auth binding configured, fall back to allowing access (local dev / legacy).
-  // NOTE: In production this should be configured.
-  if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY) return { ok: true };
-
-  if (!token) return { ok: false, status: 401, error: "Missing bearer token" };
-
-  try {
-    const res = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-      },
-    });
-    if (!res.ok) return { ok: false, status: 401, error: "Unauthorized" };
-    const user = await res.json().catch(() => null);
-    const role = user?.app_metadata?.role || user?.user_metadata?.role;
-    if (role && String(role).toLowerCase() === "admin") return { ok: true };
-    // If role isn't present, allow (matches other endpoints' permissive fallback).
-    return { ok: true };
-  } catch {
-    return { ok: false, status: 401, error: "Unauthorized" };
-  }
+  return requireAdminSession(context.request, context.env);
 }
 
 function json(data, status = 200) {

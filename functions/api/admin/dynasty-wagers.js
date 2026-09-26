@@ -3,9 +3,8 @@
 // Back-compat endpoint for Dynasty wagering admin doc in R2.
 //
 // IMPORTANT:
-// - This endpoint intentionally does NOT require a Bearer token.
-// - Admin access is enforced at the page level via <AdminGuard />.
-//   Keep this endpoint working even if newer pages use `/api/admin/dynasty-wagers`.
+// - Authentication is enforced for every /api/admin route by _middleware.js.
+// - Keep this back-compat handler working for older Admin pages.
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {

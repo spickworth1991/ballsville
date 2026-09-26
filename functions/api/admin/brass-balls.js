@@ -1,4 +1,5 @@
 import { CURRENT_SEASON } from "@/lib/season";
+import { requireAdminSession } from "../../_lib/adminAuth.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data, null, 2), {
@@ -14,36 +15,7 @@ const number = (value, fallback = 0) =>
 const bucketFor = (env) => env.admin_bucket || env.ADMIN_BUCKET;
 
 async function requireAdmin(context) {
-  const auth = context.request.headers.get("authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token)
-    return {
-      ok: false,
-      status: 401,
-      error: "Missing Authorization Bearer token.",
-    };
-  const env = context.env,
-    url = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL,
-    key = env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const admins = text(env.ADMIN_EMAILS || env.NEXT_PUBLIC_ADMIN_EMAILS)
-    .split(",")
-    .map((v) => v.trim().toLowerCase())
-    .filter(Boolean);
-  if (!url || !key || !admins.length)
-    return {
-      ok: false,
-      status: 500,
-      error: "Admin authentication is not configured.",
-    };
-  const response = await fetch(`${url.replace(/\/$/, "")}/auth/v1/user`, {
-    headers: { apikey: key, authorization: `Bearer ${token}` },
-  });
-  if (!response.ok)
-    return { ok: false, status: 401, error: "Invalid session token." };
-  const user = await response.json();
-  if (!admins.includes(text(user.email).toLowerCase()))
-    return { ok: false, status: 403, error: "Not an admin." };
-  return { ok: true };
+  return requireAdminSession(context.request, context.env);
 }
 
 function clean(data, season) {

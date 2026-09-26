@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { getSupabase } from "@/lib/supabaseClient";
 import { safeStr } from "@/lib/safe";
 
 function toInt(v, fallback) {
@@ -30,9 +29,7 @@ function fmtDate(iso) {
 }
 
 async function getAuthToken() {
-  const supabase = getSupabase();
-  const { data } = await supabase.auth.getSession();
-  return data?.session?.access_token || "";
+  return "";
 }
 
 function normalizeClientSections(raw) {

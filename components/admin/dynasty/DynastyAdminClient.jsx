@@ -2,7 +2,6 @@
 
 import { safeStr } from "@/lib/safe";
 import { CURRENT_SEASON } from "@/lib/season";
-import { getSupabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -174,10 +173,7 @@ function groupByYearAndTheme(rows) {
 }
 
 async function getAccessToken() {
-  const supabase = getSupabase();
-  if (!supabase) return "";
-  const { data } = await supabase.auth.getSession();
-  return data?.session?.access_token || "";
+  return "";
 }
 
 export default function DynastyAdminClient() {

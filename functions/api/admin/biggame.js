@@ -2,8 +2,8 @@
 // BIG GAME admin API (Cloudflare Pages Functions)
 //
 // NOTE:
-// - This endpoint intentionally does NOT enforce auth.
-//   The /admin UI is already gated; this API just reads/writes R2 JSON.
+// - Authentication is enforced for every /api/admin route by _middleware.js.
+//   This handler only contains the R2 read/write behavior.
 // - We keep BOTH schemas in sync:
 //    1) NEW: data/biggame/divisions_<season>.json   (admin UI)
 //    2) LEGACY: data/biggame/leagues_<season>.json  (public page expects rows[])

@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import AdminGuard from "@/components/AdminGuard";
 import AdminNav from "@/components/admin/AdminNav";
-import { getSupabase } from "@/lib/supabaseClient";
 import { CURRENT_SEASON } from "@/lib/season";
 import { safeStr } from "@/lib/safe";
 
@@ -103,9 +102,7 @@ function AdminPostsInner() {
   const selected = useMemo(() => posts.find((post) => post.id === selectedId) || null, [posts, selectedId]);
 
   async function getToken() {
-    const supabase = getSupabase();
-    const { data } = await supabase.auth.getSession();
-    return data?.session?.access_token || "";
+    return "";
   }
 
   async function load() {

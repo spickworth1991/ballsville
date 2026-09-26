@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { getSupabase } from "@/lib/supabaseClient";
 
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
@@ -68,10 +67,7 @@ async function sleeperLeaguesForUserYear(userId, year) {
 }
 
 async function getAuthToken() {
-  const supabase = getSupabase();
-  if (!supabase) return null;
-  const { data } = await supabase.auth.getSession();
-  return data?.session?.access_token || null;
+  return "";
 }
 
 async function fetchAvatarFile(avatarId) {

@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { safeStr } from "@/lib/safe";
-import { getSupabase } from "@/lib/supabaseClient";
 
 const R2_KEY = "data/dynasty/leagues.json";
 // Stored status values should match the admin + public UIs.
@@ -55,10 +54,7 @@ function newId(prefix = "dyn") {
 }
 
 async function getAccessToken() {
-  const supabase = getSupabase();
-  if (!supabase) return "";
-  const { data } = await supabase.auth.getSession();
-  return data?.session?.access_token || "";
+  return "";
 }
 
 function statusFromSleeper(sleeperStatus) {

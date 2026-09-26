@@ -3,7 +3,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import { getSupabase } from "@/lib/supabaseClient";
 import { CURRENT_SEASON } from "@/lib/season";
 
 function uid() {
@@ -50,9 +49,7 @@ export default function HallOfFameAdmin() {
   const [ok, setOk] = useState("");
 
   async function adminToken() {
-    const supabase = getSupabase();
-    const { data } = await supabase.auth.getSession();
-    return data?.session?.access_token || "";
+    return "";
   }
 
   async function load() {
@@ -86,15 +83,10 @@ export default function HallOfFameAdmin() {
 
   async function seedFromSupabase() {
     try {
-      const supabase = getSupabase();
-      // Uses the logged-in admin session (no service role key, no server-side Supabase env usage)
-      const { data, error } = await supabase
-        .from("hall_of_fame")
-        .select("id, year, title, blurb, image_url, sort_order, is_active")
-        .eq("is_active", true)
-        .order("sort_order", { ascending: true });
-
-      if (error) throw error;
+      const response = await fetch("/api/admin/hall-of-fame?source=supabase", { cache: "no-store" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Could not read the legacy Hall of Fame data.");
+      const data = result.rows;
 
       const seeded = Array.isArray(data)
         ? data.map((r, idx) =>

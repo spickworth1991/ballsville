@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import AdminGuard from "@/components/AdminGuard";
 import AdminNav from "@/components/admin/AdminNav";
 import { DEFAULT_HOME_PROMOTION } from "@/components/HomePromotion";
-import { getSupabase } from "@/lib/supabaseClient";
 
 const toText = (items) => (items || []).join("\n");
 const toItems = (text) => text.split("\n").map((item) => item.trim()).filter(Boolean);
@@ -20,8 +19,7 @@ function Editor() {
   const update = (name, value) => setForm((current) => ({ ...current, [name]: value }));
 
   async function authToken() {
-    const { data } = await getSupabase().auth.getSession();
-    return data?.session?.access_token || "";
+    return "";
   }
 
   async function load() {

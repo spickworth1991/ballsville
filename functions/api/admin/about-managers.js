@@ -10,39 +10,12 @@
 // - data/manifests/about-managers_<season>.json (updated on every PUT)
 
 import { CURRENT_SEASON } from "@/lib/season";
+import { requireAdminSession } from "../../_lib/adminAuth.js";
 
 const DEFAULT_SEASON = CURRENT_SEASON;
 
 async function requireAdmin(request, env) {
-  const auth = request.headers.get("authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token) return { ok: false, status: 401, error: "Missing Authorization Bearer token." };
-
-  const supabaseUrl = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnon = env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnon) {
-    return { ok: false, status: 500, error: "Missing SUPABASE_URL or SUPABASE_ANON_KEY." };
-  }
-
-  const admins = String(env.ADMIN_EMAILS || env.NEXT_PUBLIC_ADMIN_EMAILS || "")
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-
-  if (!admins.length) return { ok: false, status: 403, error: "No ADMIN_EMAILS configured." };
-
-  const r = await fetch(`${supabaseUrl.replace(/\/$/, "")}/auth/v1/user`, {
-    headers: { apikey: supabaseAnon, authorization: `Bearer ${token}` },
-  });
-
-  if (!r.ok) return { ok: false, status: 401, error: "Invalid session token." };
-
-  const user = await r.json();
-  const email = String(user?.email || "").toLowerCase();
-  if (!admins.includes(email)) return { ok: false, status: 403, error: "Not an admin." };
-
-  return { ok: true, email };
+  return requireAdminSession(request, env);
 }
 
 

@@ -4,7 +4,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { r2Url } from "@/lib/r2Url";
-import { getSupabase } from "@/lib/supabaseClient";
 
 const DEFAULT_SEASON = new Date().getFullYear();
 
@@ -189,10 +188,7 @@ function normalizeDivisions(list) {
 }
 
 async function getAuthToken() {
-  const supabase = getSupabase();
-  if (!supabase) return null;
-  const { data } = await supabase.auth.getSession();
-  return data?.session?.access_token || null;
+  return "";
 }
 
 async function fetchSleeperLeagueMeta(leagueId) {

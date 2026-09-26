@@ -3,7 +3,6 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getSupabase } from "@/lib/supabaseClient";
 import { CURRENT_SEASON } from "@/lib/season";
 import { safeStr } from "@/lib/safe";
 import { r2Url } from "@/lib/r2Url";
@@ -84,10 +83,7 @@ function resolveImageSrc(pathOrKey) {
 }
 
 async function getAccessToken() {
-  const supabase = getSupabase();
-  if (!supabase) return "";
-  const { data } = await supabase.auth.getSession();
-  return data?.session?.access_token || "";
+  return "";
 }
 
 async function readApiError(res) {

@@ -1,3 +1,5 @@
+import { requireAdminSession } from "../../_lib/adminAuth.js";
+
 // functions/api/admin/hall-of-fame.js
 // Admin read/write for Hall of Fame data stored in R2.
 //
@@ -30,28 +32,8 @@ async function touchManifest(env, season) {
 
 
 async function requireAdmin(request, env) {
-  const auth = request.headers.get("authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token) return { ok: false, res: json({ error: "Missing auth token" }, 401) };
-
-  // Keep existing binding names (don’t rename). Support either convention.
-  const url = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = env.SUPABASE_ANON_KEY || env.SUPABASE_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_KEY;
-  if (!url || !key) return { ok: false, res: json({ error: "Supabase env not configured" }, 500) };
-
-  const me = await fetch(`${url}/auth/v1/user`, {
-    headers: { authorization: `Bearer ${token}`, apikey: key },
-  });
-  if (!me.ok) return { ok: false, res: json({ error: "Not authenticated" }, 401) };
-  const user = await me.json();
-
-  const allow = (env.ADMIN_EMAILS || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
-  const email = String(user?.email || "").toLowerCase();
-  if (!email || (allow.length && !allow.includes(email))) {
-    return { ok: false, res: json({ error: "Not authorized" }, 403) };
-  }
-
-  return { ok: true, token, user };
+  const auth = await requireAdminSession(request, env);
+  return auth.ok ? auth : { ok: false, res: json({ error: auth.error }, auth.status) };
 }
 
 const KEY = "data/hall-of-fame/hall_of_fame.json";
@@ -172,6 +154,24 @@ export async function onRequest(context) {
     const season = seasonParam ? Number(seasonParam) : new Date().getFullYear();
 
     if (request.method === "GET") {
+      if (url.searchParams.get("source") === "supabase") {
+        const supabaseUrl = String(env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/$/, "");
+        const supabaseKey = env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        if (!supabaseUrl || !supabaseKey) return json({ error: "Supabase content storage is not configured." }, 500);
+        const query = new URLSearchParams({
+          select: "id,year,title,blurb,image_url,sort_order,is_active",
+          is_active: "eq.true",
+          order: "sort_order.asc",
+        });
+        const legacy = await fetch(`${supabaseUrl}/rest/v1/hall_of_fame?${query}`, {
+          headers: { apikey: supabaseKey, authorization: `Bearer ${supabaseKey}` },
+        });
+        if (!legacy.ok) {
+          const detail = await legacy.json().catch(() => ({}));
+          return json({ error: detail?.message || "Could not read the legacy Hall of Fame data." }, 502);
+        }
+        return json({ rows: await legacy.json() });
+      }
       const obj = await r2.get(KEY);
       if (!obj) return json({ entries: [] });
       const txt = await obj.text();

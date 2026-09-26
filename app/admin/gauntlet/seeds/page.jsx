@@ -2,7 +2,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getSupabase } from "@/lib/supabaseClient";
 import { CURRENT_SEASON } from "@/lib/season2";
 import AdminGuard from "@/components/AdminGuard";
 
@@ -55,28 +54,10 @@ export default function GauntletSeedsPage() {
     setNewOwners({});
 
     try {
-      const supabase = getSupabase();
-      if (!supabase) {
-        setError("Supabase client not available. Open this in a browser.");
-        setLoading(false);
-        return [];
-      }
-
-      const { data, error } = await supabase
-        .from(TABLE_NAME)
-        .select("id, year, division, god_name, god, side, league_id, league_name, owner_id, owner_name, seed")
-        .eq("year", YEAR)
-        .order("division", { ascending: true })
-        .order("god_name", { ascending: true })
-        .order("side", { ascending: true })
-        .order("seed", { ascending: true });
-
-      if (error) {
-        console.error(error);
-        setError(error.message || "Failed to load seeds.");
-        setLoading(false);
-        return [];
-      }
+      const response = await fetch(`/api/admin/gauntlet-seeds?year=${YEAR}`, { cache: "no-store" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Failed to load seeds.");
+      const data = Array.isArray(result.rows) ? result.rows : [];
 
       const leaguesMap = new Map();
 
@@ -250,13 +231,6 @@ export default function GauntletSeedsPage() {
     setError("");
 
     try {
-      const supabase = getSupabase();
-      if (!supabase) {
-        setError("Supabase client not available.");
-        setSaving(false);
-        return;
-      }
-
       const updates = [];
       const inserts = [];
 
@@ -312,37 +286,13 @@ export default function GauntletSeedsPage() {
         });
       }
 
-      // Perform updates first
-      if (updates.length) {
-        const results = await Promise.all(
-          updates.map((u) =>
-            supabase
-              .from(TABLE_NAME)
-              .update(u.owner_name != null ? { seed: u.seed, owner_name: u.owner_name } : { seed: u.seed })
-              .eq("id", u.id)
-          )
-        );
-
-        const firstError = results.find((r) => r.error)?.error;
-        if (firstError) {
-          console.error("Supabase update error (save seeds):", firstError);
-          setError(firstError.message || "Failed to save seeds.");
-          setSaving(false);
-          return;
-        }
-      }
-
-      // Then inserts for manual owners
-      if (inserts.length) {
-        const { error: insertError } = await supabase.from(TABLE_NAME).insert(inserts);
-
-        if (insertError) {
-          console.error("Supabase insert error (manual owners):", insertError);
-          setError(insertError.message || "Failed to save manual owners.");
-          setSaving(false);
-          return;
-        }
-      }
+      const response = await fetch("/api/admin/gauntlet-seeds", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "save", year: YEAR, updates, inserts }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Failed to save seeds.");
 
       setDirtyLeagueId(null);
       // Clear manual slots for this league; they will reload from DB
@@ -381,13 +331,6 @@ export default function GauntletSeedsPage() {
     setError("");
 
     try {
-      const supabase = getSupabase();
-      if (!supabase) {
-        setError("Supabase client not available.");
-        setCreating(false);
-        return;
-      }
-
       const { division, godName, side, leagueId } = newLeagueForm;
       if (!division || !godName || !side || !leagueId) {
         setError("Please fill division, god name, side, and league ID.");
@@ -444,16 +387,13 @@ export default function GauntletSeedsPage() {
         throw new Error("No owned rosters returned from Sleeper (all owner_id were null); cannot sync owners.");
       }
 
-      const { error } = await supabase.from(TABLE_NAME).upsert(rows, {
-        onConflict: "year,league_id,owner_id",
+      const response = await fetch("/api/admin/gauntlet-seeds", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "upsert", year: YEAR, rows }),
       });
-
-      if (error) {
-        console.error("Supabase syncOwners error:", error);
-        setError(error.message || "Failed to sync owners.");
-        setCreating(false);
-        return;
-      }
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Failed to sync owners.");
 
       setShowNewModal(false);
       await loadData();
@@ -482,13 +422,6 @@ export default function GauntletSeedsPage() {
     setError("");
 
     try {
-      const supabase = getSupabase();
-      if (!supabase) {
-        setError("Supabase client not available.");
-        setCreating(false);
-        return;
-      }
-
       const { division, godName, side, leagueId } = league;
       const baseUrl = `https://api.sleeper.app/v1/league/${leagueId}`;
 
@@ -539,16 +472,13 @@ export default function GauntletSeedsPage() {
         throw new Error("No owned rosters returned from Sleeper (all owner_id were null); cannot sync owners.");
       }
 
-      const { error } = await supabase.from(TABLE_NAME).upsert(rows, {
-        onConflict: "year,league_id,owner_id",
+      const response = await fetch("/api/admin/gauntlet-seeds", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "upsert", year: YEAR, rows }),
       });
-
-      if (error) {
-        console.error(error);
-        setError(error.message || "Failed to sync owners.");
-        setCreating(false);
-        return;
-      }
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Failed to sync owners.");
 
       // IMPORTANT: use returned leagueList to avoid state timing flakiness
       const leagueList = await loadData();

@@ -2,15 +2,13 @@
 
 import { useEffect, useState } from "react";
 import AdminNav from "@/components/admin/AdminNav";
-import { getSupabase } from "@/lib/supabaseClient";
 
 const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v));
 const lines = (value) => (Array.isArray(value) ? value : []).join("\n");
 const fromLines = (value) => str(value).split("\n").map((v) => v.trim()).filter(Boolean);
 
 async function token() {
-  const { data } = await getSupabase().auth.getSession();
-  return data?.session?.access_token || "";
+  return "";
 }
 
 function Field({ label, value, onChange, area = false, hint = "" }) {

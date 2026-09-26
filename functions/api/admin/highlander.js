@@ -1,3 +1,5 @@
+import { requireAdminSession } from "../../_lib/adminAuth.js";
+
 // functions/api/admin/highlander.js
 //
 // GET  /api/admin/highlander?season=2026&type=page|leagues
@@ -53,40 +55,7 @@ async function touchManifest(env, season) {
 }
 
 async function requireAdmin(context) {
-  const { request, env } = context;
-
-  const auth = request.headers.get("authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token) return { ok: false, status: 401, error: "Missing Authorization Bearer token." };
-
-  const supabaseUrl = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnon = env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  const adminsRaw = (env.ADMIN_EMAILS || env.NEXT_PUBLIC_ADMIN_EMAILS || "").trim();
-  const admins = adminsRaw
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-
-  if (!supabaseUrl || !supabaseAnon) {
-    return { ok: false, status: 500, error: "Missing SUPABASE_URL / SUPABASE_ANON_KEY." };
-  }
-  if (!admins.length) return { ok: false, status: 500, error: "ADMIN_EMAILS is not set." };
-
-  const res = await fetch(`${supabaseUrl.replace(/\/$/, "")}/auth/v1/user`, {
-    headers: {
-      apikey: supabaseAnon,
-      authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!res.ok) return { ok: false, status: 401, error: "Invalid token." };
-
-  const user = await res.json();
-  const email = String(user?.email || "").toLowerCase();
-  if (!email || !admins.includes(email)) return { ok: false, status: 403, error: "Not an admin." };
-
-  return { ok: true, user };
+  return requireAdminSession(context.request, context.env);
 }
 
 function safeStr(v) {

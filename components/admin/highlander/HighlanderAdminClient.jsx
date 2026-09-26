@@ -4,7 +4,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { FiPlus, FiSave, FiRefreshCw, FiTrash2, FiArrowUp, FiArrowDown } from "react-icons/fi";
-import { getSupabase } from "@/lib/supabaseClient";
 import { CURRENT_SEASON } from "@/lib/season";
 import { adminR2UrlForKey as adminR2Url } from "@/lib/r2Client";
 
@@ -29,9 +28,7 @@ function uid() {
 }
 
 async function getAccessToken() {
-  const supabase = getSupabase();
-  const { data } = await supabase.auth.getSession();
-  return data?.session?.access_token || "";
+  return "";
 }
 
 async function readApiError(res) {

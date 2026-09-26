@@ -37,6 +37,7 @@ node_modules
 .env.local
 .dev.vars
 .dev.vars.*
+.wrangler/
 dist
 tmp
 .DS_Store

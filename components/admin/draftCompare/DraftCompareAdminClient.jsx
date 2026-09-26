@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CURRENT_SEASON } from "@/lib/season";
-import { getSupabase } from "@/lib/supabaseClient";
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
@@ -62,13 +61,7 @@ async function apiPost(url, body) {
 }
 
 async function getAccessToken() {
-  try {
-    const supabase = getSupabase();
-    const { data } = await supabase.auth.getSession();
-    return data?.session?.access_token || "";
-  } catch {
-    return "";
-  }
+  return "";
 }
 
 export default function DraftCompareAdminClient() {

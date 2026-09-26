@@ -17,6 +17,7 @@
     "leaderboards:map": "node scripts/league-map-builder.mjs",
     "stream:build": "node script/build-stream-data.mjs",
     "stream:password": "node script/hash-stream-password.mjs",
+    "admin:auth:test": "node script/test-admin-auth.mjs",
     "sync": "node ./script/git-sync.mjs"
   },
   "dependencies": {

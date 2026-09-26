@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import AdminNav from "@/components/admin/AdminNav";
-import { getSupabase } from "@/lib/supabaseClient";
 import { CURRENT_SEASON } from "@/lib/season";
 
 const num = (value) => Number(value || 0);
@@ -52,8 +51,7 @@ function bestBallTotal(matchup, players) {
 }
 
 async function token() {
-  const { data } = await getSupabase().auth.getSession();
-  return data?.session?.access_token || "";
+  return "";
 }
 async function api(method, season, body) {
   const response = await fetch(

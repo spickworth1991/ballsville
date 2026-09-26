@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { getSupabase } from "@/lib/supabaseClient";
 
 function safeStr(v) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
@@ -72,10 +71,7 @@ async function fetchAvatarFile(avatarId) {
 }
 
 async function getAccessToken() {
-  const supabase = getSupabase();
-  if (!supabase) return "";
-  const { data } = await supabase.auth.getSession();
-  return data?.session?.access_token || "";
+  return "";
 }
 
 

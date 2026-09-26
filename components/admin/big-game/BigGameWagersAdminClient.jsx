@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { getSupabase } from "@/lib/supabaseClient";
 import AdminStepTabs from "../AdminStepTabs";
 import { safeArray, safeStr } from "@/lib/safe";
 
@@ -251,13 +250,7 @@ export default function BigGameWagersAdminClient({ season }) {
   const [tab, setTab] = useState("auto");
 
   async function adminToken() {
-    try {
-      const supabase = getSupabase();
-      const { data } = await supabase.auth.getSession();
-      return data?.session?.access_token || "";
-    } catch {
-      return "";
-    }
+    return "";
   }
 
   useEffect(() => {

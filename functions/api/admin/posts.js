@@ -1,3 +1,5 @@
+import { requireAdminSession } from "../../_lib/adminAuth.js";
+
 // functions/api/admin/posts.js
 // Admin read/write for News + Mini-Games posts stored in R2.
 //
@@ -45,40 +47,8 @@ async function touchManifest(env, season) {
 }
 
 async function requireAdmin(request, env) {
-  const auth = request.headers.get("authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token) return { ok: false, res: json({ error: "Missing auth token" }, 401) };
-
-  const url = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
-  const key =
-    env.SUPABASE_ANON_KEY ||
-    env.SUPABASE_KEY ||
-    env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    env.NEXT_PUBLIC_SUPABASE_KEY;
-
-  if (!url || !key) return { ok: false, res: json({ error: "Supabase env not configured" }, 500) };
-
-  const me = await fetch(`${url}/auth/v1/user`, {
-    headers: {
-      authorization: `Bearer ${token}`,
-      apikey: key,
-    },
-  });
-
-  if (!me.ok) return { ok: false, res: json({ error: "Not authenticated" }, 401) };
-  const user = await me.json();
-
-  const allow = (env.ADMIN_EMAILS || "")
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-
-  const email = String(user?.email || "").toLowerCase();
-  if (!email || (allow.length && !allow.includes(email))) {
-    return { ok: false, res: json({ error: "Not authorized" }, 403) };
-  }
-
-  return { ok: true, token, user };
+  const auth = await requireAdminSession(request, env);
+  return auth.ok ? auth : { ok: false, res: json({ error: auth.error }, auth.status) };
 }
 
 const KEY = "data/posts/posts.json";

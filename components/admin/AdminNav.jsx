@@ -2,7 +2,6 @@
 "use client";
 
 import Link from "next/link";
-import { getSupabase } from "@/lib/supabaseClient";
 
 /**
  * Reusable admin header/nav for all admin pages.
@@ -27,8 +26,7 @@ export default function AdminNav({
 }) {
   async function signOut() {
     try {
-      const supabase = getSupabase();
-      if (supabase) await supabase.auth.signOut();
+      await fetch("/api/admin/auth/logout", { method: "POST", credentials: "same-origin" });
     } finally {
       location.href = "/admin/login";
     }
