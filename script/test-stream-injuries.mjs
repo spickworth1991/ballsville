@@ -23,11 +23,13 @@ globalThis.fetch = async (url) => {
   const value = String(url);
   calls.push(value);
   if (value.endsWith("/v1/players/nfl")) return Response.json({
-    "1": { full_name: "Test Player", team: "BUF", position: "WR", injury_status: "IR", injury_body_part: "Knee" },
+    "1": { full_name: "Test Player", team: "BUF", position: "WR", injury_status: "IR", injury_body_part: "Knee", injury_start_date: "2026-09-22" },
   });
   if (value.endsWith("/v1/state/nfl")) return Response.json({ season: "2026", week: 3 });
-  if (value.includes("/injuries?")) return Response.json({ injuries: [{ player_id: 99, name: "Test Player", team_id: "BUF", status: "Injured Reserve", injury_type: "Knee", comment: "Recovery update", injury_update_date: "2026-09-25", ir_weeks: [3, 4, 5, 6] }] });
+  if (value.includes("/injuries?")) return Response.json({ injuries: [{ player_id: 99, name: "Test Player", team_id: "BUF", status: "Injured Reserve", injury_type: "Undisclosed", comment: "Recovery update", injury_update_date: "2026-09-25", ir_weeks: [3, 4, 5, 6] }] });
   if (value.includes("/news?")) return Response.json({ items: [{ id: 7, player_id: 99, title: "Test Player recovery update", link: "/nfl/news/7/test-player.php", impact: "The player continues to recover.", created: "2026-09-25 12:00:00" }] });
+  if (value.includes("/trade_calculator?") && value.includes("rank_type=dynasty")) return Response.json([{ player_full_name: "Test Player", _position: "WR", sf_value: 9000 }]);
+  if (value.includes("/trade_calculator?") && value.includes("rank_type=redraft")) return Response.json([{ player_full_name: "Test Player", _position: "WR", sf_value: 5000 }]);
   throw new Error(`Unexpected request: ${value}`);
 };
 
@@ -36,7 +38,8 @@ try {
   if (response.status !== 200) throw new Error(`Refresh returned ${response.status}: ${await response.text()}`);
   const refreshed = await response.json();
   const player = refreshed.players?.[0];
-  if (player?.status !== "IR" || player?.irWeeks?.length !== 4 || player?.news?.length !== 1) throw new Error("FantasyPros injury/news did not merge into the saved player record.");
+  if (player?.status !== "IR" || player?.bodyPart !== "Knee" || player?.bodyPartSource !== "Sleeper" || player?.injuryStartDate !== "2026-09-22" || player?.news?.length !== 1 || player?.dynastyValue !== 9000 || player?.redraftValue !== 5000) throw new Error("FantasyPros, Sleeper, and player value data did not merge into the saved player record.");
+  if (Object.hasOwn(player, "irWeeks")) throw new Error("Irrelevant IR week data is still stored in the player record.");
   if (!records.has("data/stream/injuries.json")) throw new Error("The injury snapshot was not written to R2.");
   const refreshCallCount = calls.length;
   response = await onRequestGet({ request: new Request("http://localhost/api/stream/injuries", { headers: { cookie } }), env });

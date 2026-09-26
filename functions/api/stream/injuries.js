@@ -17,6 +17,15 @@ function cleanText(value) {
   return String(value ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function isSpecificInjuryDetail(value) {
+  return Boolean(value) && !/^(?:undisclosed|unknown|unspecified|not disclosed|n\/?a|none|other|-)$/i.test(value);
+}
+
+function selectInjuryDetail(candidates) {
+  const cleaned = candidates.map((candidate) => ({ ...candidate, value: cleanText(candidate.value) })).filter((candidate) => candidate.value);
+  return cleaned.find((candidate) => isSpecificInjuryDetail(candidate.value)) || cleaned[0] || { value: "", source: "" };
+}
+
 function normalizeName(value) {
   return cleanText(value)
     .toLowerCase()
@@ -63,6 +72,19 @@ function normalizedStatus(value) {
   if (/^injured reserve$/i.test(status)) return "IR";
   if (/physically unable/i.test(status)) return "PUP";
   return status;
+}
+
+function makePlayerValueIndex(payload) {
+  const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.players) ? payload.players : Array.isArray(payload?.data) ? payload.data : [];
+  const byName = new Map();
+  for (const row of rows) {
+    if (String(row?._position || row?.position || "").toUpperCase() === "PICK") continue;
+    const name = normalizeName(row?.player_full_name || row?.player_name || row?.name);
+    const value = Number(row?.sf_value ?? row?.player_value ?? row?.value);
+    if (!Number.isFinite(value) || value <= 0) continue;
+    if (name) byName.set(name, value);
+  }
+  return byName;
 }
 
 async function fetchJson(url, headers = {}) {
@@ -122,6 +144,17 @@ export async function onRequestPost({ request, env }) {
     fantasyProsError = "FANTASYPROS_API_KEY is not configured.";
   }
 
+  const playerValues = { dynasty: new Map(), redraft: new Map() };
+  const playerValueErrors = [];
+  await Promise.all(["dynasty", "redraft"].map(async (rankType) => {
+    try {
+      const payload = await fetchJson(`https://fantasy-navigator-latest.onrender.com/trade_calculator?platform=sf&rank_type=${rankType}`);
+      playerValues[rankType] = makePlayerValueIndex(payload);
+    } catch (error) {
+      playerValueErrors.push(`${rankType}: ${error?.message || "value refresh failed"}`);
+    }
+  }));
+
   const fantasyProsByName = new Map();
   for (const injury of fantasyProsInjuries) {
     const key = normalizeName(injury?.name || injury?.player_name);
@@ -151,11 +184,18 @@ export async function onRequestPost({ request, env }) {
       const matches = fantasyProsByName.get(normalizeName(name)) || [];
       const fantasyPros = matches.find((item) => normalizeTeam(item?.team_id || item?.team) === team) || matches[0] || null;
       const fantasyProsId = String(fantasyPros?.player_id || "");
-      const irWeeks = Array.isArray(fantasyPros?.ir_weeks)
-        ? [...new Set(fantasyPros.ir_weeks.map(Number).filter(Number.isFinite))].sort((a, b) => a - b)
-        : [];
+      const injuryDetail = selectInjuryDetail([
+        { value: fantasyPros?.practice_report_injury_type, source: "FantasyPros practice report" },
+        { value: fantasyPros?.injury_type, source: "FantasyPros" },
+        { value: player.injury_body_part, source: "Sleeper" },
+      ]);
+      const injuryNote = selectInjuryDetail([
+        { value: fantasyPros?.comment, source: "FantasyPros" },
+        { value: player.injury_notes, source: "Sleeper" },
+      ]);
       const directNews = newsByFantasyProsId.get(fantasyProsId) || [];
       const playerNews = directNews.length ? directNews : normalizedNews.filter((article) => articleMatchesPlayer(article, name));
+      const valueKey = normalizeName(name);
       return {
         id,
         name,
@@ -164,21 +204,29 @@ export async function onRequestPost({ request, env }) {
         status: normalizedStatus(fantasyPros?.status || player.injury_status || player.status),
         sleeperStatus: cleanText(player.injury_status || player.status),
         statusShort: cleanText(fantasyPros?.status_short),
-        bodyPart: cleanText(fantasyPros?.practice_report_injury_type || fantasyPros?.injury_type || player.injury_body_part),
-        notes: cleanText(fantasyPros?.comment || player.injury_notes),
+        bodyPart: injuryDetail.value,
+        bodyPartSource: injuryDetail.source || null,
+        injuryDetailsBySource: {
+          fantasyPros: cleanText(fantasyPros?.practice_report_injury_type || fantasyPros?.injury_type),
+          sleeper: cleanText(player.injury_body_part),
+        },
+        notes: injuryNote.value,
+        notesSource: injuryNote.source || null,
         practiceParticipation: cleanText(player.practice_participation),
         practiceDescription: cleanText(player.practice_description),
         practice: [fantasyPros?.practice_1, fantasyPros?.practice_2, fantasyPros?.practice_3].map(cleanText).filter(Boolean),
         probabilityOfPlaying: fantasyPros?.probability_of_playing == null || fantasyPros?.probability_of_playing === "" ? null : Number(fantasyPros.probability_of_playing),
         injuryUpdatedAt: cleanText(fantasyPros?.injury_update_date),
-        irWeeks,
+        injuryStartDate: cleanText(player.injury_start_date),
+        dynastyValue: playerValues.dynasty.get(valueKey) ?? null,
+        redraftValue: playerValues.redraft.get(valueKey) ?? null,
         fantasyProsId: fantasyProsId || null,
         news: playerNews.slice(0, 10),
         searchName: player.search_full_name || "",
       };
     })
-    .filter((player) => POSITIONS.has(player.position) && (player.status || player.notes || player.bodyPart || player.irWeeks.length))
-    .filter((player) => !["Active", "Inactive"].includes(player.status) || player.notes || player.bodyPart || player.irWeeks.length)
+    .filter((player) => POSITIONS.has(player.position) && (player.status || player.notes || player.bodyPart))
+    .filter((player) => !["Active", "Inactive"].includes(player.status) || player.notes || player.bodyPart)
     .sort((a, b) => (SEVERITY[String(a.status).toUpperCase()] ?? 20) - (SEVERITY[String(b.status).toUpperCase()] ?? 20) || a.team.localeCompare(b.team) || a.name.localeCompare(b.name));
 
   const payload = {
@@ -191,6 +239,10 @@ export async function onRequestPost({ request, env }) {
     fantasyProsError: fantasyProsError || null,
     fantasyProsInjuryCount: fantasyProsInjuries.length,
     fantasyProsNewsCount: fantasyProsNews.length,
+    playerValueSource: "Fantasy Navigator Superflex",
+    playerValueError: playerValueErrors.length ? playerValueErrors.join("; ") : null,
+    dynastyValueCount: playerValues.dynasty.size,
+    redraftValueCount: playerValues.redraft.size,
     players,
   };
   await bucket.put(KEY, JSON.stringify(payload), { httpMetadata: { contentType: "application/json; charset=utf-8" } });

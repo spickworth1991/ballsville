@@ -23,13 +23,13 @@ function TradeCard({ trade }) {
   return (
     <article className="overflow-hidden rounded-3xl border border-cyan-300/15 bg-[#07131c]/95 shadow-xl shadow-black/25">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 bg-white/[.025] px-4 py-3">
-        <div><div className="text-[9px] font-black uppercase tracking-[0.22em] text-cyan-300">{trade.modeName || trade.mode}</div><div className="mt-0.5 text-sm font-black text-white">{trade.leagueName}</div></div>
+        <div><div className="text-[9px] font-black uppercase tracking-[0.22em] text-cyan-300">{trade.modeName || trade.mode}</div><div className="mt-0.5 text-sm font-black text-white">{trade.leagueName}</div><div className="mt-1 text-[8px] font-bold uppercase tracking-wider text-cyan-100/40">{(trade.valueModel || (trade.mode === "dynasty" ? "dynasty" : "redraft")) === "dynasty" ? "Dynasty" : "Redraft"} {(trade.valueFormat || "superflex") === "superflex" ? "Superflex" : ""} values</div></div>
         <div className="text-right text-[10px] text-slate-500"><div>{trade.division}</div><div>{trade.date ? new Date(trade.date).toLocaleString() : `Week ${trade.week || "—"}`}</div></div>
       </header>
       <div className={`grid ${trade.sides?.length === 2 ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}>
         {(trade.sides || []).map((side, index) => (
           <section key={`${side.rosterId}-${index}`} className="border-t border-white/8 p-4 first:border-t-0 lg:border-l lg:border-t-0 lg:first:border-l-0">
-            <div className="mb-3 flex items-center gap-3"><ManagerAvatar side={side} /><div className="min-w-0"><div className="truncate font-black text-white">{side.manager}</div><div className="text-[10px] uppercase tracking-wider text-slate-500">Received {side.assets?.length || 0} asset{side.assets?.length === 1 ? "" : "s"}</div></div>{side.totalValue != null ? <div className="ml-auto text-right"><div className="text-lg font-black text-cyan-300">{Number(side.totalValue).toFixed(0)}</div><div className="text-[8px] uppercase tracking-wider text-slate-500">Value</div></div> : null}</div>
+            <div className="mb-3 flex items-center gap-3"><ManagerAvatar side={side} /><div className="min-w-0"><div className="truncate font-black text-white">{side.manager}</div><div className="text-[10px] uppercase tracking-wider text-slate-500">Received {side.assets?.length || 0} asset{side.assets?.length === 1 ? "" : "s"}</div></div>{side.totalValue != null ? <div className="ml-auto text-right"><div className="text-lg font-black text-cyan-300">{Number(side.totalValue).toFixed(0)}</div><div className="text-[8px] uppercase tracking-wider text-slate-500">{(trade.valueModel || (trade.mode === "dynasty" ? "dynasty" : "redraft")) === "dynasty" ? "Dynasty" : "Redraft"} value</div></div> : null}</div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">{(side.assets || []).map((asset, assetIndex) => <Asset key={`${asset.type}-${asset.id || asset.name}-${assetIndex}`} asset={asset} />)}</div>
           </section>
         ))}
@@ -102,4 +102,3 @@ export default function TradeTalksClient() {
     )}</StreamGuard>
   );
 }
-

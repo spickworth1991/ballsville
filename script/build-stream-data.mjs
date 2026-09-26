@@ -55,7 +55,9 @@ function makeValueIndex(rows) {
         const values = picks.get(key) || [];
         values.push(value); picks.set(key, values);
       }
-    } else players.set(normalizeName(row.player_full_name), value);
+    } else {
+      players.set(normalizeName(row.player_full_name), value);
+    }
   }
   return { players, picks: new Map([...picks].map(([key, values]) => [key, Math.round(values.reduce((sum, value) => sum + value, 0) / values.length)])) };
 }
@@ -86,7 +88,8 @@ const batches = await Promise.all(jobs);
 const seen = new Set();
 const trades = [];
 
-const indexForMode = (mode) => mode === "dynasty" ? valueIndexes.dynasty : valueIndexes.redraft;
+const valueModelForMode = (mode) => mode === "dynasty" ? "dynasty" : "redraft";
+const indexForMode = (mode) => valueIndexes[valueModelForMode(mode)];
 const playerAsset = (id, mode) => {
   const player = playerDb[id] || {};
   const name = player.full_name || [player.first_name, player.last_name].filter(Boolean).join(" ") || id;
@@ -118,7 +121,7 @@ for (const { league, week, rows } of batches) {
     trades.push({
       id: String(transaction.transaction_id), timestamp, date: timestamp ? new Date(timestamp).toISOString() : null,
       season, week, leagueId: league.leagueId, leagueName: league.leagueName, division: league.division,
-      mode: league.mode, modeName: league.modeName, sides,
+      mode: league.mode, modeName: league.modeName, valueModel: valueModelForMode(league.mode), valueFormat: "superflex", sides,
       assetCount: sides.reduce((sum, side) => sum + side.assets.length, 0), valueGap: valuedSides.length === sides.length && sides.length === 2 ? Math.abs(sides[0].totalValue - sides[1].totalValue) : null,
     });
   }
@@ -126,7 +129,7 @@ for (const { league, week, rows } of batches) {
 
 trades.sort((a, b) => b.timestamp - a.timestamp);
 const payload = {
-  updatedAt: new Date().toISOString(), season, source: "Sleeper",
+  updatedAt: new Date().toISOString(), season, source: "Sleeper + Fantasy Navigator", valuePolicy: "Dynasty modes use dynasty Superflex values; all seasonal modes use redraft Superflex values.",
   filters: { modes: [...new Set(trades.map((trade) => trade.mode))].sort(), leagues: [...new Set(trades.map((trade) => trade.leagueName))].sort() },
   trades,
 };
