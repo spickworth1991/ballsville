@@ -35,6 +35,8 @@ node_modules
 .next
 .env
 .env.local
+.dev.vars
+.dev.vars.*
 dist
 tmp
 .DS_Store

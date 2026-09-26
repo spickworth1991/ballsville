@@ -1,0 +1,32 @@
+name: Update Stream Data
+
+on:
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: Stream dataset to update
+        required: true
+        default: trades
+        type: choice
+        options:
+          - trades
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build and publish stream snapshot
+        if: inputs.kind == 'trades'
+        run: node script/build-stream-data.mjs
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          ADMIN_BUCKET: ${{ secrets.ADMIN_BUCKET }}
