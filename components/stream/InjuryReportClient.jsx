@@ -11,6 +11,7 @@ const TEAM_COLORS = {
   NYJ: "#34d399", PHI: "#2dd4bf", PIT: "#facc15", SEA: "#38bdf8", SF: "#ef4444", TB: "#f87171", TEN: "#60a5fa", WAS: "#f87171",
 };
 const ESPN_TEAM = { WAS: "wsh" };
+const STATUS_SEVERITY = { IR: 0, OUT: 1, PUP: 2, DOUBTFUL: 3, QUESTIONABLE: 4 };
 
 function teamLogoUrl(team) {
   const key = ESPN_TEAM[team] || String(team || "").toLowerCase();
@@ -45,6 +46,39 @@ function irSummary(player) {
   if (!weeks.length) return "";
   const span = weeks.length === 1 ? `Week ${weeks[0]}` : `Weeks ${weeks[0]}–${weeks.at(-1)}`;
   return `${span} · ${weeks.length} listed week${weeks.length === 1 ? "" : "s"}`;
+}
+
+function irWeekCount(player) {
+  return Array.isArray(player.irWeeks) ? player.irWeeks.length : 0;
+}
+
+function irDurationLabel(count) {
+  return count === 0 ? "No IR weeks listed" : `${count} listed week${count === 1 ? "" : "s"}`;
+}
+
+const INJURY_RECENCY_OPTIONS = ["Updated today", "Updated 1–2 days ago", "Updated 3–7 days ago", "Updated 8–14 days ago", "Updated 15–30 days ago", "Updated 31+ days ago", "Update date unavailable"];
+
+function injuryUpdateTimestamp(player) {
+  const value = String(player.injuryUpdatedAt || "").trim();
+  if (!value) return null;
+  const timestamp = Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00Z` : value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function injuryRecencyLabel(player, now = Date.now()) {
+  const timestamp = injuryUpdateTimestamp(player);
+  if (timestamp == null) return "Update date unavailable";
+  const today = new Date(now);
+  const currentDay = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  const updated = new Date(timestamp);
+  const updateDay = Date.UTC(updated.getUTCFullYear(), updated.getUTCMonth(), updated.getUTCDate());
+  const days = Math.max(0, Math.floor((currentDay - updateDay) / 86400000));
+  if (days === 0) return "Updated today";
+  if (days <= 2) return "Updated 1–2 days ago";
+  if (days <= 7) return "Updated 3–7 days ago";
+  if (days <= 14) return "Updated 8–14 days ago";
+  if (days <= 30) return "Updated 15–30 days ago";
+  return "Updated 31+ days ago";
 }
 
 function googleNewsUrl(player) {
@@ -114,7 +148,7 @@ function InjuryRow({ player, onOpen }) {
         <span className="min-w-0"><span className="block truncate text-sm font-black text-white group-hover:text-red-100">{player.name}</span>{irSummary(player) ? <span className="block truncate text-[9px] font-bold uppercase tracking-wide text-red-200/60">{irSummary(player)}</span> : null}</span>
       </div>
       <div className="flex flex-col items-center gap-1 px-1 py-2"><TeamLogo team={player.team} size="h-7 w-7" /><span className="text-[9px] font-black" style={{ color: TEAM_COLORS[player.team] || "#e5e7eb" }}>{player.team}</span></div>
-      <div className="px-3 py-2"><span className={`mb-1 inline-flex rounded-full border px-2 py-0.5 text-[8px] font-black uppercase tracking-wider ${statusTone(player.status)}`}>{player.status || "Update"}</span><div className="line-clamp-2 text-[11px] leading-tight text-slate-300">{detailsFor(player)}</div></div>
+      <div className="px-3 py-2"><div className="mb-1 flex flex-wrap items-center justify-between gap-1"><span className={`inline-flex rounded-full border px-2 py-0.5 text-[8px] font-black uppercase tracking-wider ${statusTone(player.status)}`}>{player.status || "Update"}</span>{player.injuryUpdatedAt ? <span className="text-[8px] font-bold uppercase tracking-wide text-red-100/45">Updated {newsDate(player.injuryUpdatedAt)}</span> : null}</div><div className="line-clamp-2 text-[11px] leading-tight text-slate-300">{detailsFor(player)}</div></div>
     </button>
   );
 }
@@ -156,7 +190,10 @@ export default function InjuryReportClient() {
   const [query, setQuery] = useState("");
   const [excludedTeams, setExcludedTeams] = useState(new Set());
   const [excludedStatuses, setExcludedStatuses] = useState(new Set());
+  const [excludedIrDurations, setExcludedIrDurations] = useState(new Set());
+  const [excludedRecencies, setExcludedRecencies] = useState(new Set());
   const [includeFreeAgents, setIncludeFreeAgents] = useState(true);
+  const [sortOrder, setSortOrder] = useState("report");
   const [selectedPlayer, setSelectedPlayer] = useState(null);
 
   const load = async () => {
@@ -181,17 +218,45 @@ export default function InjuryReportClient() {
 
   const teams = useMemo(() => [...new Set(doc.players.map((player) => player.team).filter((team) => team && team !== "FA"))].sort(), [doc.players]);
   const statuses = useMemo(() => [...new Set(doc.players.map((player) => player.status).filter(Boolean))].sort(), [doc.players]);
+  const irDurations = useMemo(() => [...new Set(doc.players.map(irWeekCount))].sort((a, b) => a - b).map(irDurationLabel), [doc.players]);
+  const injuryRecencies = useMemo(() => {
+    const available = new Set(doc.players.map((player) => injuryRecencyLabel(player)));
+    return INJURY_RECENCY_OPTIONS.filter((option) => available.has(option));
+  }, [doc.players]);
   const freeAgentCount = useMemo(() => doc.players.filter((player) => player.team === "FA").length, [doc.players]);
-  const filtered = useMemo(() => doc.players.filter((player) => {
-    const haystack = `${player.name} ${player.team} ${player.position} ${detailsFor(player)} ${irSummary(player)}`.toLowerCase();
-    return (!query || haystack.includes(query.toLowerCase())) && !excludedTeams.has(player.team) && !excludedStatuses.has(player.status) && (includeFreeAgents || player.team !== "FA");
-  }), [doc.players, query, excludedTeams, excludedStatuses, includeFreeAgents]);
+  const filtered = useMemo(() => {
+    const rows = doc.players.filter((player) => {
+      const haystack = `${player.name} ${player.team} ${player.position} ${detailsFor(player)} ${irSummary(player)}`.toLowerCase();
+      return (!query || haystack.includes(query.toLowerCase()))
+        && !excludedTeams.has(player.team)
+        && !excludedStatuses.has(player.status)
+        && !excludedIrDurations.has(irDurationLabel(irWeekCount(player)))
+        && !excludedRecencies.has(injuryRecencyLabel(player))
+        && (includeFreeAgents || player.team !== "FA");
+    });
+    if (sortOrder === "report") return rows;
+    return [...rows].sort((a, b) => {
+      const countDifference = irWeekCount(a) - irWeekCount(b);
+      if (sortOrder === "ir-desc" && countDifference) return -countDifference;
+      if (sortOrder === "ir-asc" && countDifference) return countDifference;
+      if (sortOrder === "update-desc" || sortOrder === "update-asc") {
+        const aTime = injuryUpdateTimestamp(a);
+        const bTime = injuryUpdateTimestamp(b);
+        if (aTime == null && bTime != null) return 1;
+        if (aTime != null && bTime == null) return -1;
+        if (aTime !== bTime) return sortOrder === "update-desc" ? bTime - aTime : aTime - bTime;
+      }
+      if (sortOrder === "name") return a.name.localeCompare(b.name);
+      if (sortOrder === "team") return a.team.localeCompare(b.team) || a.name.localeCompare(b.name);
+      return (STATUS_SEVERITY[String(a.status).toUpperCase()] ?? 20) - (STATUS_SEVERITY[String(b.status).toUpperCase()] ?? 20) || a.name.localeCompare(b.name);
+    });
+  }, [doc.players, query, excludedTeams, excludedStatuses, excludedIrDurations, excludedRecencies, includeFreeAgents, sortOrder]);
   const midpoint = Math.ceil(filtered.length / 2);
   const columns = [filtered.slice(0, midpoint), filtered.slice(midpoint)];
-  const activeFilters = excludedTeams.size + excludedStatuses.size + (includeFreeAgents ? 0 : 1);
+  const activeFilters = excludedTeams.size + excludedStatuses.size + excludedIrDurations.size + excludedRecencies.size + (includeFreeAgents ? 0 : 1);
 
   function resetFilters() {
-    setExcludedTeams(new Set()); setExcludedStatuses(new Set()); setIncludeFreeAgents(true); setQuery("");
+    setExcludedTeams(new Set()); setExcludedStatuses(new Set()); setExcludedIrDurations(new Set()); setExcludedRecencies(new Set()); setIncludeFreeAgents(true); setQuery(""); setSortOrder("report");
   }
 
   return (
@@ -200,13 +265,19 @@ export default function InjuryReportClient() {
         <StreamHeader eyebrow="Ballsville Stream Room" title="Injury Report" description="Saved Sleeper availability, FantasyPros injury context, and player news. Data changes only when Update Data is selected." updatedAt={doc.updatedAt} onRefresh={refresh} refreshing={refreshing} />
 
         <section className="relative z-30 mb-4 rounded-2xl border border-red-400/20 bg-[#100809]/95 p-3 shadow-[0_18px_45px_rgba(0,0,0,.28)]">
-          <div className="grid gap-2 lg:grid-cols-[minmax(220px,1fr)_minmax(190px,.75fr)_minmax(190px,.75fr)_auto]">
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search player, team, injury…" className="rounded-xl border border-red-400/20 bg-black/35 px-4 py-3 text-sm text-white outline-none transition focus:border-red-300/60 focus:ring-2 focus:ring-red-400/10" />
             <MultiSelect label="Teams" options={teams} excluded={excludedTeams} setExcluded={setExcludedTeams} renderIcon={(team) => <TeamLogo team={team} size="h-7 w-7" />} />
-            <MultiSelect label="Statuses" options={statuses} excluded={excludedStatuses} setExcluded={setExcludedStatuses} align="right" />
+            <MultiSelect label="Statuses" options={statuses} excluded={excludedStatuses} setExcluded={setExcludedStatuses} />
+            <MultiSelect label="IR listing" options={irDurations} excluded={excludedIrDurations} setExcluded={setExcludedIrDurations} />
+            <MultiSelect label="Injury recency" options={injuryRecencies} excluded={excludedRecencies} setExcluded={setExcludedRecencies} />
+            <label className="relative flex min-w-0 items-center rounded-xl border border-red-400/20 bg-black/30 px-3 py-2.5 transition focus-within:border-red-300/55 focus-within:bg-red-500/10">
+              <span className="min-w-0 flex-1"><span className="block text-[9px] font-black uppercase tracking-[0.2em] text-red-200/55">Sort report</span><select value={sortOrder} onChange={(event) => setSortOrder(event.target.value)} className="mt-0.5 w-full cursor-pointer appearance-none bg-transparent pr-6 text-sm font-bold text-white outline-none"><option value="report" className="bg-[#120809]">Injury severity</option><option value="update-desc" className="bg-[#120809]">Newest injury updates</option><option value="update-asc" className="bg-[#120809]">Oldest injury updates</option><option value="ir-desc" className="bg-[#120809]">Most IR weeks</option><option value="ir-asc" className="bg-[#120809]">Fewest IR weeks</option><option value="name" className="bg-[#120809]">Player name</option><option value="team" className="bg-[#120809]">NFL team</option></select></span>
+              <svg viewBox="0 0 20 20" aria-hidden="true" className="pointer-events-none h-4 w-4 shrink-0 fill-current text-red-200/60"><path d="m5.3 7.5 4.7 4.7 4.7-4.7 1.1 1.1-5.8 5.8-5.8-5.8 1.1-1.1Z" /></svg>
+            </label>
             <button type="button" onClick={() => setIncludeFreeAgents((value) => !value)} className={`flex min-w-[154px] items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left transition ${includeFreeAgents ? "border-red-300/25 bg-red-500/10" : "border-white/10 bg-black/25 opacity-70"}`}><span><span className="block text-[9px] font-black uppercase tracking-[0.2em] text-red-200/55">Free agents</span><span className="block text-sm font-bold text-white">{includeFreeAgents ? "Shown" : "Hidden"} · {freeAgentCount}</span></span><span className={`relative h-6 w-11 rounded-full transition ${includeFreeAgents ? "bg-red-500" : "bg-white/10"}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition ${includeFreeAgents ? "left-6" : "left-1"}`} /></span></button>
           </div>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-1"><p className="text-[10px] text-white/35">Selections combine: choose any number of teams and statuses. Team logos are cached image assets, not injury-data requests.</p>{activeFilters || query ? <button type="button" onClick={resetFilters} className="text-[10px] font-black uppercase tracking-wider text-red-200/65 hover:text-red-100">Reset filters</button> : null}</div>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-1"><p className="max-w-5xl text-[10px] text-white/35">Injury recency uses FantasyPros’ last injury update date because the source does not provide a dependable injury-start date. IR weeks are its listed NFL week numbers. Filters can be combined.</p>{activeFilters || query || sortOrder !== "report" ? <button type="button" onClick={resetFilters} className="text-[10px] font-black uppercase tracking-wider text-red-200/65 hover:text-red-100">Reset filters</button> : null}</div>
         </section>
         {message ? <div className="mb-4 rounded-xl border border-cyan-300/20 bg-cyan-300/10 p-3 text-xs text-cyan-100">{message}</div> : null}
 
