@@ -41,7 +41,7 @@ async function enforceRequestLimit(request, env) {
   return true;
 }
 
-export async function onRequestPost({ request, env }) {
+async function handleAccessRequest({ request, env }) {
   let body;
   try { body = await request.json(); } catch { return streamJson({ error: "Invalid request." }, 400); }
 
@@ -84,8 +84,23 @@ export async function onRequestPost({ request, env }) {
     return streamJson({ ok: true, message: "Request sent. Access will stay locked until it is approved.", ...(result.reviewUrl ? { devReviewUrl: result.reviewUrl } : {}) }, 201);
   } catch (error) {
     const bucket = env.ADMIN_BUCKET || env.admin_bucket;
-    await bucket?.delete?.(streamUserKey(username));
+    try { await bucket?.delete?.(streamUserKey(username)); } catch (cleanupError) {
+      console.error("Stream pending-account cleanup failed", cleanupError);
+    }
     console.error("Stream approval email failed", error);
     return streamJson({ error: "Your request could not be emailed. Please try again later." }, 503);
+  }
+}
+
+export async function onRequestPost(context) {
+  try {
+    return await handleAccessRequest(context);
+  } catch (error) {
+    console.error("Stream access request failed", error);
+    const message = String(error?.message || "");
+    if (message.includes("R2 binding")) {
+      return streamJson({ error: "Stream account storage is unavailable. Verify the ADMIN_BUCKET binding and redeploy.", code: "STREAM_R2_UNAVAILABLE" }, 503);
+    }
+    return streamJson({ error: "The access request could not be processed. Check the Ballsville Pages function logs.", code: "STREAM_ACCESS_REQUEST_FAILED" }, 500);
   }
 }
