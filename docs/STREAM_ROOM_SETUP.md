@@ -154,6 +154,8 @@ Save every entry. Variable names are case-sensitive; enter them exactly as shown
 
 `STREAM_USERS_JSON` is not required for newly requested accounts. Approved accounts are stored in R2. If an older `STREAM_USERS_JSON` already exists, it can remain in place for those manually configured accounts.
 
+If a manual `STREAM_USERS_JSON` password record was generated before September 26, 2026 and shows `"iterations": 210000`, regenerate that password record with the current `npm run stream:password -- "PASSWORD"` command. Cloudflare's production Web Crypto runtime accepts a maximum of 100,000 PBKDF2 iterations. Newly requested accounts already use the compatible value automatically.
+
 ## 7. Verify the existing R2 binding and deploy
 
 The application stores pending and approved accounts in the existing `admin` R2 bucket.
@@ -391,6 +393,7 @@ Also confirm the workflow file is present on the `main` branch.
 - Injury snapshot: `data/stream/injuries.json`
 - Trade snapshot: `data/stream/trades.json`
 - Passwords: PBKDF2-SHA-256 hashes only; plaintext passwords are never stored or emailed.
+- PBKDF2 iteration count: `100000`, which is Cloudflare's production runtime maximum.
 - Approval tokens: random, stored only as hashes, single-use, and expire after 48 hours.
 - Public request limit: three account requests per source IP per hour.
 - Session cookie: signed, HttpOnly, Secure in production, SameSite Strict, and valid for 12 hours.

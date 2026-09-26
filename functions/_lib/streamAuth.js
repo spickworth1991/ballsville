@@ -1,5 +1,6 @@
 const COOKIE_NAME = "ballsville_stream_session";
 const DEFAULT_TTL_SECONDS = 60 * 60 * 12;
+const PBKDF2_ITERATIONS = 100_000;
 
 const encoder = new TextEncoder();
 
@@ -64,7 +65,7 @@ export function streamUserKey(username) {
 }
 
 export async function hashStreamPassword(password, saltBytes = crypto.getRandomValues(new Uint8Array(16))) {
-  const iterations = 210_000;
+  const iterations = PBKDF2_ITERATIONS;
   const material = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
   const derived = new Uint8Array(await crypto.subtle.deriveBits(
     { name: "PBKDF2", hash: "SHA-256", salt: saltBytes, iterations },
@@ -96,7 +97,10 @@ export async function writeStreamUser(env, user) {
 
 async function verifyPasswordRecord(password, user) {
   if (!user?.salt || !user?.hash || !password) return false;
-  const iterations = Math.max(100_000, Number(user.iterations || 210_000));
+  const iterations = Number(user.iterations || PBKDF2_ITERATIONS);
+  // Cloudflare's production Web Crypto runtime rejects PBKDF2 counts above
+  // 100,000. Reject incompatible records without throwing a Worker exception.
+  if (!Number.isInteger(iterations) || iterations !== PBKDF2_ITERATIONS) return false;
   const material = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
   const derived = new Uint8Array(await crypto.subtle.deriveBits(
     { name: "PBKDF2", hash: "SHA-256", salt: base64UrlToBytes(user.salt), iterations },

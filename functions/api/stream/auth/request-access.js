@@ -29,7 +29,9 @@ async function enforceRequestLimit(request, env) {
   if (!bucket?.get || !bucket?.put) throw new Error("The Stream Room R2 binding is not configured.");
   const address = request.headers.get("cf-connecting-ip") || "local";
   const fingerprint = (await hashStreamToken(address)).slice(0, 24);
-  const key = `data/stream/auth/limits/access-${fingerprint}.json`;
+  // v2 starts clean after the original hash configuration caused legitimate
+  // failed submissions to consume request slots during initial setup.
+  const key = `data/stream/auth/limits/access-v2-${fingerprint}.json`;
   const now = Date.now();
   let record = null;
   try { record = await (await bucket.get(key))?.json(); } catch { record = null; }
