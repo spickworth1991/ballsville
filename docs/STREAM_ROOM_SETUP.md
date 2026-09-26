@@ -145,10 +145,13 @@ Important:
 | `CLOUDFLARE_ACCOUNT_ID` | Text / plaintext variable | Paste the Account ID copied in section 3 |
 | `STREAM_EMAIL_API_TOKEN` | **Encrypted secret** | Paste the API token created in section 4 |
 | `STREAM_AUTH_SECRET` | **Encrypted secret** | Paste the random output generated in section 5 |
+| `FANTASYPROS_API_KEY` | **Encrypted secret** | Use the same FantasyPros API key configured for The Fantasy Arsenal |
 | `STREAM_APPROVAL_FROM_EMAIL` | Text / plaintext variable | `stream@theballsvillegame.com` |
 | `STREAM_PUBLIC_ORIGIN` | Text / plaintext variable | `https://www.theballsvillegame.com` |
 
 Save every entry. Variable names are case-sensitive; enter them exactly as shown.
+
+The Injury Report calls FantasyPros only when an approved Stream Room user selects **Update Data**. That update makes one injuries request and one news request, merges the result with Sleeper, and saves the combined snapshot at `data/stream/injuries.json` in R2. Opening the page, filtering it, or opening a player popup reads the saved R2 snapshot and does not call FantasyPros again.
 
 > **Session warning:** After the first setup, leave `STREAM_AUTH_SECRET` unchanged. Replacing it and redeploying logs out every Stream Room user immediately. Approved accounts remain stored in R2 and can sign back in with their existing usernames and passwords.
 
