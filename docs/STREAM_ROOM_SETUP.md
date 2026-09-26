@@ -178,12 +178,12 @@ The application stores pending and approved accounts in the existing `admin` R2 
 
 1. Open `https://www.theballsvillegame.com/stream` in a private/incognito window.
 2. Select **Request access**.
-3. Enter a name, a username, and a password containing at least 12 characters. The requester's contact email is optional.
+3. Enter a username, an optional contact email, a password containing at least 12 characters, and the same password again in **Confirm password**. The username is also the account's display name.
 4. Submit the request.
 5. Confirm the page says the request was sent and is waiting for approval.
 6. Open `contact.stickypicky@gmail.com` and look for a message named **Stream Room access request: USERNAME**. Check Spam once if necessary.
 7. Open the review link in that message.
-8. Confirm the name, username, and optional contact email are correct.
+8. Confirm the username and optional contact email are correct.
 9. Select **Approve access**.
 10. Return to `/stream` and sign in with the requested username and password.
 

@@ -34,7 +34,7 @@ export default function StreamAccessReviewClient() {
         {state.request ? (
           <div className="mt-6">
             <dl className="divide-y divide-white/10 rounded-2xl border border-white/10 bg-black/20 px-5">
-              {[["Name", state.request.name], ["Username", state.request.username], ["Contact email", state.request.email || "Not provided"], ["Requested", new Date(state.request.createdAt).toLocaleString()]].map(([label, value]) => (
+              {[["Username", state.request.username], ["Contact email", state.request.email || "Not provided"], ["Requested", new Date(state.request.createdAt).toLocaleString()]].map(([label, value]) => (
                 <div key={label} className="flex items-center justify-between gap-6 py-4"><dt className="text-xs font-bold uppercase tracking-wider text-slate-500">{label}</dt><dd className="text-right font-bold text-white">{value}</dd></div>
               ))}
             </dl>

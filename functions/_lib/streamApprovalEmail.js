@@ -19,7 +19,6 @@ export async function sendStreamApprovalEmail(env, request, account, token) {
   const from = cleanHeader(env.STREAM_APPROVAL_FROM_EMAIL || "stream@theballsvillegame.com");
   const subject = `Stream Room access request: ${cleanHeader(account.username)}`;
   const details = [
-    `Display name: ${account.name}`,
     `Username: ${account.username}`,
     `Contact email: ${account.email || "Not provided"}`,
     "",

@@ -14,7 +14,7 @@ async function requestedAccount(request, env) {
 export async function onRequestGet({ request, env }) {
   const account = await requestedAccount(request, env);
   if (!account) return streamJson({ error: "This review link is invalid or has expired." }, 404);
-  return streamJson({ request: { username: account.username, name: account.name, email: account.email, createdAt: account.createdAt, expiresAt: account.expiresAt } });
+  return streamJson({ request: { username: account.username, email: account.email, createdAt: account.createdAt, expiresAt: account.expiresAt } });
 }
 
 export async function onRequestPost({ request, env }) {
@@ -26,7 +26,7 @@ export async function onRequestPost({ request, env }) {
 
   if (body.action === "approve") {
     await writeStreamUser(env, { ...account, status: "approved", approvalTokenHash: null, approvedAt: new Date().toISOString() });
-    return streamJson({ ok: true, status: "approved", message: `${account.name} can now sign in.` });
+    return streamJson({ ok: true, status: "approved", message: `${account.username} can now sign in.` });
   }
 
   await writeStreamUser(env, {

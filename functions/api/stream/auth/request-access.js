@@ -48,14 +48,14 @@ async function handleAccessRequest({ request, env }) {
   try { body = await request.json(); } catch { return streamJson({ error: "Invalid request." }, 400); }
 
   const username = normalizeStreamUsername(body?.username);
-  const name = String(body?.name || "").trim().slice(0, 60);
   const email = String(body?.email || "").trim().toLowerCase().slice(0, 254);
   const password = String(body?.password || "");
+  const confirmPassword = String(body?.confirmPassword || "");
   if (body?.website) return streamJson({ ok: true, message: "Request sent for approval." }, 201);
   if (!validStreamUsername(username)) return streamJson({ error: "Use 3–32 letters, numbers, dots, dashes, or underscores." }, 400);
-  if (name.length < 2) return streamJson({ error: "Enter your name." }, 400);
   if (!validEmail(email)) return streamJson({ error: "Enter a valid email address." }, 400);
   if (password.length < 12 || password.length > 128) return streamJson({ error: "Password must be between 12 and 128 characters." }, 400);
+  if (password !== confirmPassword) return streamJson({ error: "Passwords do not match." }, 400);
   if (!await enforceRequestLimit(request, env)) return streamJson({ error: "Too many requests. Try again in an hour." }, 429);
 
   const existing = await readStreamUser(env, username);
@@ -71,7 +71,7 @@ async function handleAccessRequest({ request, env }) {
   const account = {
     schema: 1,
     username,
-    name,
+    name: username,
     email,
     status: "pending",
     ...passwordRecord,

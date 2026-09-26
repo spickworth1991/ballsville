@@ -10,10 +10,44 @@ const TOOLS = [
 
 const inputClass = "w-full rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-white outline-none focus:border-cyan-300/50";
 
+function PasswordField({ value, onChange, placeholder, autoComplete = "current-password" }) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <div className="relative">
+      <input
+        required
+        autoComplete={autoComplete}
+        type={visible ? "text" : "password"}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        minLength={autoComplete === "new-password" ? 12 : undefined}
+        maxLength={128}
+        className={`${inputClass} pr-12`}
+      />
+      <button
+        type="button"
+        onClick={() => setVisible((old) => !old)}
+        aria-label={visible ? "Hide password" : "Show password"}
+        aria-pressed={visible}
+        title={visible ? "Hide password" : "Show password"}
+        className="absolute inset-y-0 right-0 grid w-12 place-items-center rounded-r-xl text-slate-500 transition hover:text-cyan-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-300/70"
+      >
+        {visible ? (
+          <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="1.8"><path d="m3 3 18 18M10.6 10.7a2 2 0 0 0 2.7 2.7M9.9 4.2A10.8 10.8 0 0 1 12 4c5.5 0 9 5.2 9 5.2a15.7 15.7 0 0 1-2.1 2.7M6.6 6.6A16.4 16.4 0 0 0 3 9.2s3.5 5.2 9 5.2c1 0 2-.2 2.9-.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        ) : (
+          <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="1.8"><path d="M3 12s3.5-5.2 9-5.2 9 5.2 9 5.2-3.5 5.2-9 5.2S3 12 3 12Z" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="12" r="2.4" /></svg>
+        )}
+      </button>
+    </div>
+  );
+}
+
 export default function StreamHomeClient() {
   const [session, setSession] = useState({ loading: true, user: null });
   const [form, setForm] = useState({ username: "", password: "" });
-  const [requestForm, setRequestForm] = useState({ name: "", email: "", username: "", password: "", website: "" });
+  const [requestForm, setRequestForm] = useState({ email: "", username: "", password: "", confirmPassword: "", website: "" });
   const [view, setView] = useState("login");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -52,7 +86,7 @@ export default function StreamHomeClient() {
     if (!response.ok) return setError(data.error || "Unable to send your request.");
     setNotice(data.message || "Request sent for approval.");
     setDevReviewUrl(data.devReviewUrl || "");
-    setRequestForm({ name: "", email: "", username: "", password: "", website: "" });
+    setRequestForm({ email: "", username: "", password: "", confirmPassword: "", website: "" });
   }
 
   async function logout() {
@@ -95,17 +129,17 @@ export default function StreamHomeClient() {
           {view === "login" ? (
             <form onSubmit={login} className="mt-5 space-y-3">
               <input required autoComplete="username" value={form.username} onChange={(event) => setForm((old) => ({ ...old, username: event.target.value }))} placeholder="Username" className={inputClass} />
-              <input required autoComplete="current-password" type="password" value={form.password} onChange={(event) => setForm((old) => ({ ...old, password: event.target.value }))} placeholder="Password" className={inputClass} />
+              <PasswordField value={form.password} onChange={(event) => setForm((old) => ({ ...old, password: event.target.value }))} placeholder="Password" />
               {error ? <div className="rounded-xl border border-red-400/20 bg-red-500/10 p-3 text-xs text-red-200">{error}</div> : null}
               <button disabled={busy} className="w-full rounded-xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200 disabled:opacity-50">{busy ? "Signing in…" : "Sign in"}</button>
             </form>
           ) : (
             <form onSubmit={requestAccess} className="mt-5 space-y-3">
               <input tabIndex={-1} autoComplete="off" name="website" aria-hidden="true" value={requestForm.website} onChange={(event) => setRequestForm((old) => ({ ...old, website: event.target.value }))} className="hidden" />
-              <input required autoComplete="name" value={requestForm.name} onChange={(event) => setRequestForm((old) => ({ ...old, name: event.target.value }))} placeholder="Your name" maxLength={60} className={inputClass} />
-              <input autoComplete="email" type="email" value={requestForm.email} onChange={(event) => setRequestForm((old) => ({ ...old, email: event.target.value }))} placeholder="Your email (optional)" className={inputClass} />
               <input required autoComplete="username" value={requestForm.username} onChange={(event) => setRequestForm((old) => ({ ...old, username: event.target.value }))} placeholder="Choose a username" minLength={3} maxLength={32} pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,31}" className={inputClass} />
-              <input required autoComplete="new-password" type="password" value={requestForm.password} onChange={(event) => setRequestForm((old) => ({ ...old, password: event.target.value }))} placeholder="Choose a password (12+ characters)" minLength={12} maxLength={128} className={inputClass} />
+              <input autoComplete="email" type="email" value={requestForm.email} onChange={(event) => setRequestForm((old) => ({ ...old, email: event.target.value }))} placeholder="Email (optional)" className={inputClass} />
+              <PasswordField autoComplete="new-password" value={requestForm.password} onChange={(event) => setRequestForm((old) => ({ ...old, password: event.target.value }))} placeholder="Choose a password (12+ characters)" />
+              <PasswordField autoComplete="new-password" value={requestForm.confirmPassword} onChange={(event) => setRequestForm((old) => ({ ...old, confirmPassword: event.target.value }))} placeholder="Confirm password" />
               {error ? <div className="rounded-xl border border-red-400/20 bg-red-500/10 p-3 text-xs text-red-200">{error}</div> : null}
               {notice ? <div className="rounded-xl border border-emerald-300/20 bg-emerald-300/10 p-3 text-xs text-emerald-100">{notice}</div> : null}
               {devReviewUrl ? <a href={devReviewUrl} className="block rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 text-xs font-bold text-amber-100">Open local approval link</a> : null}
