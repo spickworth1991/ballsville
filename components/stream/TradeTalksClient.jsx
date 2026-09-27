@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import StreamGuard from "./StreamGuard";
 import StreamHeader from "./StreamHeader";
 
+const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
 function ManagerAvatar({ side }) {
   return side.avatar ? <img src={`https://sleepercdn.com/avatars/thumbs/${encodeURIComponent(side.avatar)}`} alt="" className="h-10 w-10 rounded-full border border-cyan-300/30 bg-black object-cover" /> : <span className="grid h-10 w-10 place-items-center rounded-full border border-cyan-300/30 bg-cyan-300/10 text-xs font-black text-cyan-200">{side.manager?.charAt(0)?.toUpperCase() || "?"}</span>;
 }
@@ -51,16 +53,31 @@ export default function TradeTalksClient() {
     if (response.status === 401) return location.replace("/stream?next=/stream/tradetalks");
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "Could not load trades.");
-    setDoc({ updatedAt: data.updatedAt || null, trades: Array.isArray(data.trades) ? data.trades : [], filters: data.filters || {} });
+    setDoc({ updatedAt: data.updatedAt || null, trades: Array.isArray(data.trades) ? data.trades : [], filters: data.filters || {}, warnings: data.warnings || [] });
   };
   useEffect(() => { load().catch((error) => setMessage(error.message)).finally(() => setLoading(false)); }, []);
 
   async function refresh() {
     setRefreshing(true); setMessage("");
+    const previousUpdatedAt = doc.updatedAt;
     const response = await fetch("/api/stream/refresh", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "trades" }) });
     const data = await response.json().catch(() => ({}));
+    if (!response.ok) { setRefreshing(false); return setMessage(data.error || "Refresh failed."); }
+    setMessage("Trade update queued. Waiting for the new saved snapshot…");
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      await sleep(5000);
+      try {
+        const check = await fetch(`/api/stream/trades?v=${Date.now()}`, { cache: "no-store" });
+        const next = await check.json();
+        if (check.ok && next.updatedAt && next.updatedAt !== previousUpdatedAt) {
+          setDoc({ updatedAt: next.updatedAt, trades: Array.isArray(next.trades) ? next.trades : [], filters: next.filters || {}, warnings: next.warnings || [] });
+          setMessage(next.warnings?.length ? `Update complete with warnings: ${next.warnings.join(" · ")}` : `Update complete: ${next.trades?.length || 0} trades saved.`);
+          setRefreshing(false); return;
+        }
+      } catch {}
+    }
     setRefreshing(false);
-    setMessage(response.ok ? "Trade refresh queued. The R2 snapshot will update when the workflow finishes." : data.error || "Refresh failed.");
+    setMessage("The workflow is still running. The previous trade feed remains available; refresh again shortly to load the completed snapshot.");
   }
 
   const modes = doc.filters.modes || [...new Set(doc.trades.map((trade) => trade.mode).filter(Boolean))].sort();
@@ -97,6 +114,7 @@ export default function TradeTalksClient() {
           <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-400"><span>Minimum assets received:</span><label className="flex items-center gap-1">Side 1 <input type="number" min="0" value={filters.sideA} onChange={(event) => setFilters((old) => ({ ...old, sideA: event.target.value }))} className="w-14 rounded-lg border border-white/10 bg-black/25 px-2 py-1 text-white" /></label><label className="flex items-center gap-1">Side 2 <input type="number" min="0" value={filters.sideB} onChange={(event) => setFilters((old) => ({ ...old, sideB: event.target.value }))} className="w-14 rounded-lg border border-white/10 bg-black/25 px-2 py-1 text-white" /></label><span className="ml-auto font-black text-cyan-300">{visible.length} trade{visible.length === 1 ? "" : "s"}</span></div>
         </section>
         {message ? <div className="mb-4 rounded-xl border border-cyan-300/20 bg-cyan-300/10 p-3 text-xs text-cyan-100">{message}</div> : null}
+        {doc.warnings?.length ? <div className="mb-4 rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 text-xs text-amber-100"><strong>Saved source warning:</strong> {doc.warnings.join(" · ")}</div> : null}
         {loading ? <div className="p-20 text-center text-sm text-slate-400">Loading Ballsville trades…</div> : visible.length ? <div className="grid gap-4">{visible.map((trade) => <TradeCard key={trade.id} trade={trade} />)}</div> : <div className="rounded-3xl border border-white/10 bg-[#07131c]/90 p-16 text-center text-sm text-slate-400">No matching trades. Queue an update to publish the latest completed Sleeper transactions.</div>}
       </main>
     )}</StreamGuard>

@@ -6,13 +6,25 @@ on:
       kind:
         description: Stream dataset to update
         required: true
-        default: trades
+        default: scheduled
         type: choice
         options:
+          - scheduled
+          - injuries
           - trades
+      full_rebuild:
+        description: Rebuild all historical trade weeks instead of updating recent weeks
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: ballsville-stream-data-update
+  cancel-in-progress: false
 
 jobs:
-  update:
+  injuries:
+    if: inputs.kind == 'scheduled' || inputs.kind == 'injuries'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -22,11 +34,33 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Build and publish stream snapshot
-        if: inputs.kind == 'trades'
+      - name: Build and publish Injury Report
+        run: node script/build-stream-injuries.mjs
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          ADMIN_BUCKET: ${{ secrets.ADMIN_BUCKET }}
+          FANTASYPROS_API_KEY: ${{ secrets.FANTASYPROS_API_KEY }}
+          STREAM_REQUESTED_BY: ${{ inputs.kind }}
+
+  trades:
+    if: inputs.kind == 'scheduled' || inputs.kind == 'trades'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build and publish Trade Talks
         run: node script/build-stream-data.mjs
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           ADMIN_BUCKET: ${{ secrets.ADMIN_BUCKET }}
+          STREAM_FULL_REBUILD: ${{ inputs.full_rebuild }}
+          STREAM_REQUESTED_BY: ${{ inputs.kind }}

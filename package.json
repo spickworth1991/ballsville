@@ -18,6 +18,8 @@
     "stream:build": "node script/build-stream-data.mjs",
     "stream:password": "node script/hash-stream-password.mjs",
     "stream:injuries:test": "node script/test-stream-injuries.mjs",
+    "stream:scheduler:test": "node script/test-stream-rebuild.mjs",
+    "stream:trades:test": "node script/test-stream-trades.mjs",
     "admin:auth:test": "node script/test-admin-auth.mjs",
     "sync": "node ./script/git-sync.mjs"
   },

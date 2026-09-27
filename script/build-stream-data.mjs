@@ -2,7 +2,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import pLimit from "p-limit";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { mergeTradeSnapshots, transactionWeeks } from "../lib/stream/trade-data.js";
 
+const startedAt = Date.now();
 const now = new Date();
 const season = String(process.env.STREAM_SEASON || (now.getUTCMonth() < 2 ? now.getUTCFullYear() - 1 : now.getUTCFullYear()));
 const bucket = process.env.ADMIN_BUCKET || "admin";
@@ -16,10 +18,19 @@ const r2 = new S3Client({
 });
 const leaderboardKey = `data/leaderboards/leaderboards_${season}.json`;
 const outputKey = "data/stream/trades.json";
+const fullRebuild = String(process.env.STREAM_FULL_REBUILD || "false").toLowerCase() === "true";
 
 async function getJson(key) {
   const object = await r2.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
   return JSON.parse(await object.Body.transformToString());
+}
+
+async function getOptionalJson(key) {
+  try { return await getJson(key); }
+  catch (error) {
+    if (error?.name === "NoSuchKey" || error?.$metadata?.httpStatusCode === 404) return null;
+    throw error;
+  }
 }
 
 async function sleeper(pathname) {
@@ -28,15 +39,17 @@ async function sleeper(pathname) {
   return response.json();
 }
 
-const leaderboard = await getJson(leaderboardKey);
+const [leaderboard, previousSnapshot] = await Promise.all([getJson(leaderboardKey), getOptionalJson(outputKey)]);
 const playerDb = await sleeper("/players/nfl");
 const valueEndpoint = (rankType) => `https://fantasy-navigator-latest.onrender.com/trade_calculator?platform=sf&rank_type=${rankType}`;
+const valueWarnings = [];
 const [dynastyRankings, redraftRankings] = await Promise.all(
   ["dynasty", "redraft"].map(async (rankType) => {
     try {
       const response = await fetch(valueEndpoint(rankType));
-      return response.ok ? response.json() : [];
-    } catch { return []; }
+      if (!response.ok) throw new Error(`returned ${response.status}`);
+      return response.json();
+    } catch (error) { valueWarnings.push(`${rankType}: ${error?.message || "unavailable"}`); return []; }
   }),
 );
 const normalizeName = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -82,7 +95,7 @@ const limit = pLimit(12);
 const jobs = [];
 for (const league of leagues.values()) {
   const throughWeek = Math.min(18, Math.max(1, league.latestWeek + 1));
-  for (let week = 1; week <= throughWeek; week += 1) jobs.push(limit(async () => ({ league, week, rows: await sleeper(`/league/${league.leagueId}/transactions/${week}`) })));
+  for (const week of transactionWeeks(throughWeek, { fullRebuild, hasPrevious: Boolean(previousSnapshot?.trades?.length) })) jobs.push(limit(async () => ({ league, week, rows: await sleeper(`/league/${league.leagueId}/transactions/${week}`) })));
 }
 const batches = await Promise.all(jobs);
 const seen = new Set();
@@ -127,14 +140,18 @@ for (const { league, week, rows } of batches) {
   }
 }
 
-trades.sort((a, b) => b.timestamp - a.timestamp);
+const mergedTrades = mergeTradeSnapshots(previousSnapshot?.trades, trades, { fullRebuild, preserveExisting: Boolean(valueWarnings.length), season });
 const payload = {
-  updatedAt: new Date().toISOString(), season, source: "Sleeper + Fantasy Navigator", valuePolicy: "Dynasty modes use dynasty Superflex values; all seasonal modes use redraft Superflex values.",
-  filters: { modes: [...new Set(trades.map((trade) => trade.mode))].sort(), leagues: [...new Set(trades.map((trade) => trade.leagueName))].sort() },
-  trades,
+  schemaVersion: 2, updatedAt: new Date().toISOString(), updatedBy: process.env.STREAM_REQUESTED_BY || "manual", season,
+  source: valueWarnings.length ? "Sleeper + saved/partial Fantasy Navigator values" : "Sleeper + Fantasy Navigator",
+  sourceStatus: { sleeper: { fresh: true }, playerValues: { fresh: !valueWarnings.length, warning: valueWarnings.join("; ") || null } },
+  warnings: valueWarnings, updateMode: fullRebuild || !previousSnapshot?.trades?.length ? "full" : "incremental",
+  valuePolicy: "Dynasty modes use dynasty Superflex values; all seasonal modes use redraft Superflex values.",
+  filters: { modes: [...new Set(mergedTrades.map((trade) => trade.mode))].sort(), leagues: [...new Set(mergedTrades.map((trade) => trade.leagueName))].sort() },
+  trades: mergedTrades,
 };
 const body = JSON.stringify(payload);
 await fs.mkdir("auto", { recursive: true });
 await fs.writeFile(path.join("auto", `stream_trades_${season}.json`), body);
 await r2.send(new PutObjectCommand({ Bucket: bucket, Key: outputKey, Body: body, ContentType: "application/json", CacheControl: "no-store" }));
-console.log(`Published ${trades.length} trades from ${leagues.size} leagues to s3://${bucket}/${outputKey}`);
+console.log(JSON.stringify({ tool: "trades", ok: true, updateMode: payload.updateMode, fetchedTrades: trades.length, publishedTrades: mergedTrades.length, leagues: leagues.size, sleeperTransactionRequests: jobs.length, warnings: valueWarnings, r2: { reads: 2, writes: 1, bytes: Buffer.byteLength(body) }, durationMs: Date.now() - startedAt }));

@@ -12,6 +12,7 @@ export async function onRequestPost({ request, env }) {
   let body = {};
   try { body = await request.json(); } catch {}
   const kind = body?.kind === "injuries" ? "injuries" : "trades";
+  const fullRebuild = kind === "trades" && body?.fullRebuild === true;
   const response = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/${workflow}/dispatches`, {
     method: "POST",
     headers: {
@@ -21,7 +22,7 @@ export async function onRequestPost({ request, env }) {
       "content-type": "application/json",
       "user-agent": "BallsvilleStream/1.0",
     },
-    body: JSON.stringify({ ref, inputs: { kind } }),
+    body: JSON.stringify({ ref, inputs: { kind, full_rebuild: String(fullRebuild) } }),
   });
   if (!response.ok) return streamJson({ error: `Workflow dispatch failed (${response.status}): ${await response.text()}` }, 502);
   return streamJson({ ok: true, queued: true, kind, requestedBy: user.name });

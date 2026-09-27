@@ -11,7 +11,8 @@ const TEAM_COLORS = {
   NYJ: "#34d399", PHI: "#2dd4bf", PIT: "#facc15", SEA: "#38bdf8", SF: "#ef4444", TB: "#f87171", TEN: "#60a5fa", WAS: "#f87171",
 };
 const ESPN_TEAM = { WAS: "wsh" };
-const STATUS_SEVERITY = { IR: 0, OUT: 1, PUP: 2, DOUBTFUL: 3, QUESTIONABLE: 4 };
+const RISK_ORDER = { Unavailable: 0, "High risk": 1, "Elevated risk": 2, Monitoring: 3 };
+const PLAY_PROBABILITY_OPTIONS = ["0–24%", "25–49%", "50–74%", "75–99%", "100%", "No estimate"];
 
 function teamLogoUrl(team) {
   const key = ESPN_TEAM[team] || String(team || "").toLowerCase();
@@ -42,29 +43,31 @@ function detailsFor(player) {
   return [...new Set(parts.map((part) => String(part).trim()))].join(" · ") || "Availability status saved from the latest update";
 }
 
-const INJURY_RECENCY_OPTIONS = ["Updated today", "Updated 1–2 days ago", "Updated 3–7 days ago", "Updated 8–14 days ago", "Updated 15–30 days ago", "Updated 31+ days ago", "Update date unavailable"];
-
-function injuryUpdateTimestamp(player) {
-  const value = String(player.injuryUpdatedAt || "").trim();
-  if (!value) return null;
-  const timestamp = Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00Z` : value);
-  return Number.isFinite(timestamp) ? timestamp : null;
+function playingProbability(player) {
+  const number = Number(player?.probabilityOfPlaying);
+  if (player?.probabilityOfPlaying == null || player?.probabilityOfPlaying === "" || !Number.isFinite(number)) return null;
+  return Math.max(0, Math.min(100, number <= 1 ? number * 100 : number));
 }
 
-function injuryRecencyLabel(player, now = Date.now()) {
-  const timestamp = injuryUpdateTimestamp(player);
-  if (timestamp == null) return "Update date unavailable";
-  const today = new Date(now);
-  const currentDay = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-  const updated = new Date(timestamp);
-  const updateDay = Date.UTC(updated.getUTCFullYear(), updated.getUTCMonth(), updated.getUTCDate());
-  const days = Math.max(0, Math.floor((currentDay - updateDay) / 86400000));
-  if (days === 0) return "Updated today";
-  if (days <= 2) return "Updated 1–2 days ago";
-  if (days <= 7) return "Updated 3–7 days ago";
-  if (days <= 14) return "Updated 8–14 days ago";
-  if (days <= 30) return "Updated 15–30 days ago";
-  return "Updated 31+ days ago";
+function probabilityBucket(player) {
+  const probability = playingProbability(player);
+  if (probability == null) return "No estimate";
+  if (probability < 25) return "0–24%";
+  if (probability < 50) return "25–49%";
+  if (probability < 75) return "50–74%";
+  if (probability < 100) return "75–99%";
+  return "100%";
+}
+
+function availabilityRisk(player) {
+  const status = String(player?.status || "").toUpperCase();
+  if (["IR", "OUT", "PUP", "NFI", "SUSPENDED", "COV-IR"].includes(status)) return "Unavailable";
+  if (status === "DOUBTFUL") return "High risk";
+  if (status === "QUESTIONABLE") return "Elevated risk";
+  const latestPractice = [...(Array.isArray(player?.practice) ? player.practice : []), player?.practiceParticipation, player?.practiceDescription].filter(Boolean).at(-1);
+  if (/DNP|DID NOT PARTICIPATE/i.test(String(latestPractice || ""))) return "High risk";
+  if (/LIMIT/i.test(String(latestPractice || ""))) return "Elevated risk";
+  return "Monitoring";
 }
 
 function trackedDays(player) {
@@ -91,16 +94,76 @@ function newsDate(value) {
 }
 
 function playingChance(value) {
-  if (value == null || value === "") return "";
-  const number = Number(value);
-  if (!Number.isFinite(number)) return "";
-  return `${Math.round(number <= 1 ? number * 100 : number)}% chance of playing`;
+  const probability = playingProbability({ probabilityOfPlaying: value });
+  return probability == null ? "" : `${Math.round(probability)}% chance of playing`;
 }
 
-function MultiSelect({ label, options, excluded, setExcluded, renderIcon, align = "left" }) {
+function InfoTip({ text, label = "More information" }) {
+  return <span tabIndex={0} aria-label={label} className="group/tip relative ml-1 inline-grid h-4 w-4 cursor-help place-items-center rounded-full border border-white/15 bg-white/[0.04] text-[9px] font-black normal-case tracking-normal text-white/45 outline-none focus:border-red-200/40"><span aria-hidden="true">?</span><span role="tooltip" className="pointer-events-none absolute bottom-[calc(100%+.45rem)] left-1/2 z-[80] w-64 -translate-x-1/2 rounded-xl border border-red-200/20 bg-[#090607]/[.98] p-3 text-left text-[10px] font-medium normal-case leading-4 tracking-normal text-white/70 opacity-0 shadow-2xl transition group-hover/tip:opacity-100 group-focus/tip:opacity-100">{text}</span></span>;
+}
+
+const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+function changeText(player) {
+  const change = Array.isArray(player.changes) ? player.changes[0] : null;
+  if (!change) return player.reportState === "removed" ? "No longer listed by the saved sources" : detailsFor(player);
+  const format = (value) => change.field === "probability" && value != null ? `${Math.round(Number(value))}%` : value || "Not listed";
+  return `${change.label}: ${format(change.from)} → ${format(change.to)}`;
+}
+
+function BriefingCard({ player, valueLens, onOpen }) {
+  const value = player?.[`${valueLens}Value`];
+  return (
+    <button type="button" onClick={() => onOpen(player)} className="group flex min-w-0 items-center gap-3 rounded-2xl border border-red-300/15 bg-black/25 p-3 text-left transition hover:border-red-300/35 hover:bg-red-500/[0.08] focus:outline-none focus:ring-2 focus:ring-red-300/60">
+      <img src={`https://sleepercdn.com/content/nfl/players/thumb/${encodeURIComponent(player.id)}.jpg`} alt="" loading="lazy" className="h-11 w-11 shrink-0 rounded-full border border-red-200/20 bg-black object-cover object-top" onError={(event) => { event.currentTarget.style.display = "none"; }} />
+      <span className="min-w-0 flex-1"><span className="flex items-center gap-2"><strong className="truncate text-sm text-white group-hover:text-red-100">{player.name}</strong><span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[7px] font-black uppercase ${statusTone(player.reportState === "removed" ? "removed" : player.status)}`}>{player.reportState === "removed" ? "Removed" : player.status || "Update"}</span></span><span className="mt-1 block truncate text-[10px] text-white/45">{changeText(player)}</span><span className="mt-1 flex items-center gap-1.5 text-[8px] font-black uppercase tracking-wider text-red-200/45"><TeamLogo team={player.team} size="h-4 w-4" />{player.team} · {player.position} · {value == null ? `No ${valueLens} value` : `${valueLens} ${Number(value).toFixed(0)}`}</span></span>
+    </button>
+  );
+}
+
+function BriefingGroup({ title, description, players, valueLens, onOpen }) {
+  if (!players.length) return null;
+  return <section className="rounded-2xl border border-white/8 bg-white/[0.025] p-3"><div className="mb-2"><h3 className="text-xs font-black uppercase tracking-[0.16em] text-red-100">{title}</h3><p className="mt-0.5 text-[9px] text-white/35">{description}</p></div><div className="grid gap-2 sm:grid-cols-2">{players.slice(0, 6).map((player) => <BriefingCard key={`${title}-${player.id}`} player={player} valueLens={valueLens} onOpen={onOpen} />)}</div></section>;
+}
+
+function HistoryBreakdown({ summary }) {
+  const groups = [["Injury or body area", summary.byBodyPart], ["Position", summary.byPosition], ["Initial designation", summary.byInitialStatus]];
+  if (!summary.completedEpisodes) return null;
+  return <details className="relative mt-3 rounded-2xl border border-white/8 bg-black/20"><summary className="cursor-pointer list-none px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em] text-red-100/65">Historical breakdown <span className="ml-1 text-white/30">▾</span></summary><div className="grid gap-3 border-t border-white/8 p-3 lg:grid-cols-3">{groups.map(([label, values]) => <section key={label}><h4 className="mb-2 text-[9px] font-black uppercase tracking-wider text-white/35">{label}</h4><div className="space-y-1">{Object.entries(values || {}).sort((a, b) => Number(b[1].sampleSize) - Number(a[1].sampleSize)).slice(0, 8).map(([name, value]) => <div key={name} className="flex items-center justify-between gap-2 rounded-lg bg-white/[0.03] px-2.5 py-2 text-[10px]"><span className="truncate font-bold text-white/65">{name}</span><span className="shrink-0 tabular-nums text-white/35">median {value.medianObservedDays ?? "—"}d · n={value.sampleSize}</span></div>)}</div></section>)}{summary.calibration?.available ? <section className="lg:col-span-3"><h4 className="mb-2 text-[9px] font-black uppercase tracking-wider text-white/35">Chance-to-play calibration</h4><div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-5">{summary.calibration.bands.map((band) => <div key={band.label} className="rounded-lg bg-white/[0.03] px-2.5 py-2 text-[10px]"><strong className="text-white/65">{band.label}</strong><span className="mt-1 block text-white/35">Actual played {band.actualPlayedRate ?? "—"}% · n={band.sampleSize}</span></div>)}</div></section> : null}</div></details>;
+}
+
+function StreamBriefing({ doc, valueLens, setValueLens, onOpen }) {
+  const current = Array.isArray(doc.players) ? doc.players : [];
+  const removed = Array.isArray(doc.recentlyRemoved) ? doc.recentlyRemoved : [];
+  const all = new Map([...current, ...removed].map((player) => [String(player.id), player]));
+  const valueField = `${valueLens}Value`;
+  const byValue = (a, b) => Number(b?.[valueField] || 0) - Number(a?.[valueField] || 0);
+  const ids = (name, fallback) => (Array.isArray(doc.briefing?.[name]) ? doc.briefing[name].map((id) => all.get(String(id))).filter(Boolean) : fallback).sort(byValue);
+  const groups = [
+    ["New and changed", "The strongest talking points since the previous successful snapshot.", ids("newOrChanged", current.filter((player) => ["added", "reappeared"].includes(player.reportState) || player.changes?.length))],
+    ["Biggest names at risk", `Current availability concerns ranked with ${valueLens} value.`, ids("biggestRisk", current.filter((player) => availabilityRisk(player) !== "Monitoring"))],
+    ["Worsening outlooks", "Practice, status, or chance-to-play movement in the wrong direction.", ids("worsening", current.filter((player) => player.trend === "worsening"))],
+    ["Improving outlooks", "Players whose latest saved signal improved.", ids("improving", current.filter((player) => player.trend === "improving"))],
+    ["Recently removed", "No longer listed by the sources; this does not prove medical clearance.", ids("removed", removed)],
+    ["Longest tracked", "Longest Ballsville-observed report durations, not medical injury age.", ids("longest", [...current].sort((a, b) => Date.parse(a.trackedSince || 0) - Date.parse(b.trackedSince || 0)))],
+    ["Source conflicts", "Sleeper and FantasyPros currently describe the injury differently.", ids("conflicts", current.filter((player) => player.sourceConflict))],
+  ];
+  const summary = doc.injuryHistorySummary || {};
+  return (
+    <section className="relative mb-5 overflow-hidden rounded-[1.6rem] border border-red-300/20 bg-[#100809]/95 p-4 shadow-[0_20px_60px_rgba(0,0,0,.35)] sm:p-5">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(239,68,68,.15),transparent_42%)]" />
+      <div className="relative mb-4 flex flex-wrap items-end justify-between gap-3"><div><div className="flex items-center text-[9px] font-black uppercase tracking-[0.24em] text-red-200/50">On-air view <InfoTip text="Built only from the latest saved R2 snapshot. Opening this page does not call Sleeper or FantasyPros." label="About the stream briefing" /></div><h2 className="mt-1 text-2xl font-black text-white">Stream Briefing</h2><p className="mt-1 text-xs text-white/40">The clearest injury talking points, ready to open on stream.</p></div><div className="rounded-xl border border-white/10 bg-black/30 p-1"><div className="px-2 pb-1 text-[8px] font-black uppercase tracking-wider text-white/35">Player value lens</div><div className="grid grid-cols-2 gap-1">{["redraft", "dynasty"].map((lens) => <button key={lens} type="button" onClick={() => setValueLens(lens)} className={`rounded-lg px-3 py-1.5 text-[10px] font-black uppercase transition ${valueLens === lens ? "bg-red-500/25 text-red-50" : "text-white/35 hover:bg-white/[0.05]"}`}>{lens}</button>)}</div></div></div>
+      <div className="relative grid gap-3 xl:grid-cols-2">{groups.map(([title, description, players]) => <BriefingGroup key={title} title={title} description={description} players={players} valueLens={valueLens} onOpen={onOpen} />)}</div>
+      <div className="relative mt-3 grid gap-2 rounded-2xl border border-white/8 bg-black/25 p-3 sm:grid-cols-2 xl:grid-cols-4"><div><span className="flex text-[8px] font-black uppercase tracking-wider text-white/35">Completed episodes <InfoTip text="An episode ends when a successful snapshot no longer finds the player. Removal means no longer listed, not confirmed healthy." /></span><strong className="mt-1 block text-lg text-white">{summary.completedEpisodes || 0}</strong></div><div><span className="text-[8px] font-black uppercase tracking-wider text-white/35">Median observed duration</span><strong className="mt-1 block text-lg text-white">{summary.medianObservedDays == null ? "Not available" : `${summary.medianObservedDays} days`}</strong></div><div><span className="text-[8px] font-black uppercase tracking-wider text-white/35">Average observed duration</span><strong className="mt-1 block text-lg text-white">{summary.averageObservedDays == null ? "Not available" : `${summary.averageObservedDays} days`}</strong>{summary.earlySample ? <span className="text-[9px] font-bold text-amber-200/65">Early sample · fewer than 10 episodes</span> : null}</div><div><span className="flex text-[8px] font-black uppercase tracking-wider text-white/35">Probability calibration <InfoTip text="Ballsville compares saved FantasyPros estimates with later Sleeper game-participation data. The raw FantasyPros percentage is never changed. Calibration appears after 30 settled predictions." /></span><strong className="mt-1 block text-lg text-white">{summary.calibration?.available ? `Brier ${summary.calibration.brierScore}` : `${summary.calibration?.settledPredictions || 0} / 30 settled`}</strong><span className="text-[9px] text-white/30">Raw FantasyPros estimates remain visible</span></div></div>
+      <HistoryBreakdown summary={summary} />
+    </section>
+  );
+}
+
+function MultiSelect({ label, help, options, excluded, setExcluded, renderIcon, align = "left" }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
-  const selectedCount = options.length - excluded.size;
+  const selectedCount = options.filter((option) => !excluded.has(option)).length;
   useEffect(() => {
     if (!open) return undefined;
     const close = (event) => { if (!rootRef.current?.contains(event.target)) setOpen(false); };
@@ -121,7 +184,7 @@ function MultiSelect({ label, options, excluded, setExcluded, renderIcon, align 
   return (
     <div ref={rootRef} className="relative min-w-0">
       <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} className={`flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left transition ${open ? "border-red-300/55 bg-red-500/10 shadow-[0_0_18px_rgba(239,68,68,.12)]" : "border-red-400/20 bg-black/30 hover:border-red-300/35"}`}>
-        <span className="min-w-0"><span className="block text-[9px] font-black uppercase tracking-[0.2em] text-red-200/55">{label}</span><span className="block truncate text-sm font-bold text-white">{selectedCount === options.length ? `All ${label.toLowerCase()}` : `${selectedCount} of ${options.length} selected`}</span></span>
+        <span className="min-w-0"><span className="flex items-center text-[9px] font-black uppercase tracking-[0.2em] text-red-200/55">{label}{help ? <InfoTip text={help} label={`About ${label}`} /> : null}</span><span className="block truncate text-sm font-bold text-white">{selectedCount === options.length ? `All ${label.toLowerCase()}` : `${selectedCount} of ${options.length} selected`}</span></span>
         <svg viewBox="0 0 20 20" aria-hidden="true" className={`h-4 w-4 shrink-0 fill-current text-red-200/60 transition ${open ? "rotate-180" : ""}`}><path d="m5.3 7.5 4.7 4.7 4.7-4.7 1.1 1.1-5.8 5.8-5.8-5.8 1.1-1.1Z" /></svg>
       </button>
       {open ? (
@@ -148,7 +211,7 @@ function InjuryRow({ player, onOpen }) {
         <span className="min-w-0"><span className="block truncate text-sm font-black text-white group-hover:text-red-100">{player.name}</span><span className="block truncate text-[9px] font-bold uppercase tracking-wide text-red-200/45">{player.position} · {trackingSummary(player)}</span></span>
       </div>
       <div className="flex flex-col items-center gap-1 px-1 py-2"><TeamLogo team={player.team} size="h-7 w-7" /><span className="text-[9px] font-black" style={{ color: TEAM_COLORS[player.team] || "#e5e7eb" }}>{player.team}</span></div>
-      <div className="px-3 py-2"><div className="mb-1 flex flex-wrap items-center justify-between gap-1"><span className={`inline-flex rounded-full border px-2 py-0.5 text-[8px] font-black uppercase tracking-wider ${statusTone(removed ? "removed" : player.status)}`}>{removed ? "Removed" : player.status || "Update"}</span>{removed ? <span className="text-[8px] font-bold uppercase tracking-wide text-emerald-100/55">Removed {newsDate(player.removedAt)}</span> : player.injuryUpdatedAt ? <span className="text-[8px] font-bold uppercase tracking-wide text-red-100/45">Updated {newsDate(player.injuryUpdatedAt)}</span> : null}</div><div className="line-clamp-2 text-[11px] leading-tight text-slate-300">{detailsFor(player)}</div></div>
+      <div className="px-3 py-2"><div className="mb-1 flex flex-wrap items-center justify-between gap-1"><span className={`inline-flex rounded-full border px-2 py-0.5 text-[8px] font-black uppercase tracking-wider ${statusTone(removed ? "removed" : player.status)}`}>{removed ? "Removed" : player.status || "Update"}</span><span className="text-[8px] font-bold uppercase tracking-wide text-red-100/45">{removed ? `Removed ${newsDate(player.removedAt)}` : `${availabilityRisk(player)}${playingProbability(player) == null ? "" : ` · FP ${Math.round(playingProbability(player))}%`}`}</span></div><div className="line-clamp-2 text-[11px] leading-tight text-slate-300">{detailsFor(player)}</div></div>
     </button>
   );
 }
@@ -169,9 +232,9 @@ function PlayerNewsModal({ player, onClose }) {
         <div className="border-b border-red-400/20 bg-[radial-gradient(circle_at_top_right,rgba(239,68,68,.2),transparent_45%)] p-5 sm:p-6">
           <button type="button" onClick={onClose} aria-label="Close player news" className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-black/30 text-xl text-white/60 transition hover:border-red-300/40 hover:text-white">×</button>
           <div className="flex items-center gap-3 pr-10"><img src={`https://sleepercdn.com/content/nfl/players/thumb/${encodeURIComponent(player.id)}.jpg`} alt="" className="h-14 w-14 rounded-full border border-red-200/25 bg-black object-cover object-top" onError={(event) => { event.currentTarget.style.display = "none"; }} /><div className="min-w-0"><div className="text-[10px] font-black uppercase tracking-[0.22em] text-red-200/55">Player injury briefing</div><h2 className="truncate text-2xl font-black text-white sm:text-3xl">{player.name}</h2><div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/50"><TeamLogo team={player.team} size="h-5 w-5" /><span>{player.team} · {player.position}</span><span className={`rounded-full border px-2 py-0.5 text-[9px] font-black uppercase ${statusTone(player.reportState === "removed" ? "removed" : player.status)}`}>{player.reportState === "removed" ? "Removed from report" : player.status || "Unknown"}</span></div></div></div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4"><div className="rounded-xl border border-white/8 bg-black/20 p-3"><span className="text-[9px] font-black uppercase tracking-wider text-white/35">Injury</span><strong className="mt-1 block text-sm text-white/80">{player.bodyPart || "Not specified"}</strong><span className="mt-1 block text-[9px] font-bold uppercase tracking-wide text-white/30">{player.bodyPartSource || "Source unavailable"}</span></div><div className="rounded-xl border border-white/8 bg-black/20 p-3"><span className="text-[9px] font-black uppercase tracking-wider text-white/35">Ballsville tracking</span><strong className="mt-1 block text-sm text-white/80">{trackingSummary(player)}</strong><span className="mt-1 block text-[9px] text-white/30">First seen {newsDate(player.trackedSince) || "not recorded"}</span></div><div className="rounded-xl border border-white/8 bg-black/20 p-3"><span className="text-[9px] font-black uppercase tracking-wider text-white/35">Reported injury start</span><strong className="mt-1 block text-sm text-white/80">{player.injuryStartDate || "Not supplied"}</strong><span className="mt-1 block text-[9px] text-white/30">Sleeper field; never estimated</span></div><div className="rounded-xl border border-white/8 bg-black/20 p-3"><span className="text-[9px] font-black uppercase tracking-wider text-white/35">Last injury update</span><strong className="mt-1 block text-sm text-white/80">{player.injuryUpdatedAt || "Not provided"}</strong><span className="mt-1 block text-[9px] text-white/30">FantasyPros report update</span></div></div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5"><div className="rounded-xl border border-white/8 bg-black/20 p-3"><span className="text-[9px] font-black uppercase tracking-wider text-white/35">Injury</span><strong className="mt-1 block text-sm text-white/80">{player.bodyPart || "Not specified"}</strong><span className="mt-1 block text-[9px] font-bold uppercase tracking-wide text-white/30">{player.bodyPartSource || "Source unavailable"}</span></div><div className="rounded-xl border border-white/8 bg-black/20 p-3"><span className="text-[9px] font-black uppercase tracking-wider text-white/35">Ballsville tracking</span><strong className="mt-1 block text-sm text-white/80">{trackingSummary(player)}</strong><span className="mt-1 block text-[9px] text-white/30">First seen {newsDate(player.trackedSince) || "not recorded"}</span></div><div className="rounded-xl border border-white/8 bg-black/20 p-3"><span className="text-[9px] font-black uppercase tracking-wider text-white/35">Reported injury start</span><strong className="mt-1 block text-sm text-white/80">{player.injuryStartDate || "Not supplied"}</strong><span className="mt-1 block text-[9px] text-white/30">Sleeper field; never estimated</span></div><div className="rounded-xl border border-white/8 bg-black/20 p-3"><span className="text-[9px] font-black uppercase tracking-wider text-white/35">Availability risk</span><strong className="mt-1 block text-sm text-white/80">{availabilityRisk(player)}</strong><span className="mt-1 block text-[9px] text-white/30">Ballsville status/practice tier</span></div><div className="rounded-xl border border-white/8 bg-black/20 p-3"><span className="text-[9px] font-black uppercase tracking-wider text-white/35">Chance to play</span><strong className="mt-1 block text-sm text-white/80">{playingChance(player.probabilityOfPlaying) || "No estimate"}</strong><span className="mt-1 block text-[9px] text-white/30">FantasyPros machine-learning estimate</span></div></div>
           {player.notes ? <p className="mt-3 text-sm leading-6 text-slate-300">{player.notes}</p> : null}
-          {player.practice?.length || playingChance(player.probabilityOfPlaying) ? <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-wider text-white/45">{player.practice?.length ? <span className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5">Practice: {player.practice.join(" / ")}</span> : null}{playingChance(player.probabilityOfPlaying) ? <span className="rounded-lg border border-emerald-300/15 bg-emerald-400/[0.07] px-2.5 py-1.5 text-emerald-100/65">{playingChance(player.probabilityOfPlaying)}</span> : null}</div> : null}
+          {player.practice?.length ? <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-wider text-white/45"><span className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5">Practice: {player.practice.join(" / ")}</span></div> : null}
         </div>
         <div className="overflow-y-auto p-5 sm:p-6">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><div className="text-[10px] font-black uppercase tracking-[0.2em] text-red-200/55">Saved FantasyPros news</div><h3 className="mt-1 text-lg font-black text-white">Latest player updates</h3></div><a href={googleNewsUrl(player)} target="_blank" rel="noreferrer" className="rounded-xl border border-blue-300/20 bg-blue-400/10 px-3 py-2 text-xs font-bold text-blue-100 transition hover:bg-blue-400/15">Search Google News ↗</a></div>
@@ -190,9 +253,11 @@ export default function InjuryReportClient() {
   const [query, setQuery] = useState("");
   const [excludedTeams, setExcludedTeams] = useState(new Set());
   const [excludedStatuses, setExcludedStatuses] = useState(new Set());
-  const [excludedRecencies, setExcludedRecencies] = useState(new Set());
+  const [excludedProbabilities, setExcludedProbabilities] = useState(new Set());
+  const [excludedRisks, setExcludedRisks] = useState(new Set());
   const [includeFreeAgents, setIncludeFreeAgents] = useState(false);
-  const [sortOrder, setSortOrder] = useState("report");
+  const [valueLens, setValueLens] = useState("redraft");
+  const [sortOrder, setSortOrder] = useState("value");
   const [reportView, setReportView] = useState("current");
   const [selectedPlayer, setSelectedPlayer] = useState(null);
 
@@ -208,23 +273,35 @@ export default function InjuryReportClient() {
 
   async function refresh() {
     setRefreshing(true); setMessage("");
-    const response = await fetch("/api/stream/injuries", { method: "POST" });
+    const previousUpdatedAt = doc.updatedAt;
+    const response = await fetch("/api/stream/refresh", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "injuries" }) });
     const data = await response.json().catch(() => ({}));
+    if (!response.ok) { setRefreshing(false); return setMessage(data.error || "Refresh failed."); }
+    setMessage("Injury update queued. Waiting for the new saved snapshot…");
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      await sleep(5000);
+      try {
+        const check = await fetch(`/api/stream/injuries?v=${Date.now()}`, { cache: "no-store" });
+        const next = await check.json();
+        if (check.ok && next.updatedAt && next.updatedAt !== previousUpdatedAt) {
+          setDoc({ ...next, players: Array.isArray(next.players) ? next.players : [], recentlyRemoved: Array.isArray(next.recentlyRemoved) ? next.recentlyRemoved : [] });
+          setMessage(next.warnings?.length ? `Update complete with warnings: ${next.warnings.join(" · ")}` : `Update complete: ${next.players?.length || 0} current injuries saved.`);
+          setRefreshing(false); return;
+        }
+      } catch {}
+    }
     setRefreshing(false);
-    if (!response.ok) return setMessage(data.error || "Refresh failed.");
-    setDoc({ ...data, players: Array.isArray(data.players) ? data.players : [], recentlyRemoved: Array.isArray(data.recentlyRemoved) ? data.recentlyRemoved : [] });
-    const warnings = [data.fantasyProsError ? `FantasyPros: ${data.fantasyProsError}` : "", data.playerValueError ? `Player values: ${data.playerValueError}` : ""].filter(Boolean);
-    const activity = `${data.activity?.added || 0} new · ${data.activity?.removed || 0} removed`;
-    setMessage(warnings.length ? `Saved ${data.players?.length || 0} injury records (${activity}) with warnings: ${warnings.join(" · ")}` : `Saved ${data.players?.length || 0} injury records (${activity}), ${data.fantasyProsNewsCount || 0} news updates, and dynasty/redraft values to R2.`);
+    setMessage("The workflow is still running. The previous report remains available; refresh again shortly to load the completed snapshot.");
   }
 
   const allTrackedPlayers = useMemo(() => [...doc.players, ...doc.recentlyRemoved], [doc.players, doc.recentlyRemoved]);
   const teams = useMemo(() => [...new Set(allTrackedPlayers.map((player) => player.team).filter((team) => team && team !== "FA"))].sort(), [allTrackedPlayers]);
   const statuses = useMemo(() => [...new Set(allTrackedPlayers.map((player) => player.status).filter(Boolean))].sort(), [allTrackedPlayers]);
-  const injuryRecencies = useMemo(() => {
-    const available = new Set(allTrackedPlayers.map((player) => injuryRecencyLabel(player)));
-    return INJURY_RECENCY_OPTIONS.filter((option) => available.has(option));
+  const probabilityOptions = useMemo(() => {
+    const available = new Set(allTrackedPlayers.map(probabilityBucket));
+    return PLAY_PROBABILITY_OPTIONS.filter((option) => available.has(option));
   }, [allTrackedPlayers]);
+  const riskOptions = useMemo(() => Object.keys(RISK_ORDER).filter((option) => allTrackedPlayers.some((player) => availabilityRisk(player) === option)), [allTrackedPlayers]);
   const freeAgentCount = useMemo(() => allTrackedPlayers.filter((player) => player.team === "FA").length, [allTrackedPlayers]);
   const filtered = useMemo(() => {
     const sourceRows = reportView === "removed" ? doc.recentlyRemoved : reportView === "added" ? doc.players.filter((player) => player.reportState === "added") : doc.players;
@@ -233,20 +310,21 @@ export default function InjuryReportClient() {
       return (!query || haystack.includes(query.toLowerCase()))
         && !excludedTeams.has(player.team)
         && !excludedStatuses.has(player.status)
-        && !excludedRecencies.has(injuryRecencyLabel(player))
+        && !excludedProbabilities.has(probabilityBucket(player))
+        && !excludedRisks.has(availabilityRisk(player))
         && (includeFreeAgents || player.team !== "FA");
     });
     if (sortOrder === "report") return rows;
     return [...rows].sort((a, b) => {
-      if (sortOrder === "update-desc" || sortOrder === "update-asc") {
-        const aTime = injuryUpdateTimestamp(a);
-        const bTime = injuryUpdateTimestamp(b);
-        if (aTime == null && bTime != null) return 1;
-        if (aTime != null && bTime == null) return -1;
-        if (aTime !== bTime) return sortOrder === "update-desc" ? bTime - aTime : aTime - bTime;
+      if (sortOrder === "probability-desc" || sortOrder === "probability-asc") {
+        const aProbability = playingProbability(a);
+        const bProbability = playingProbability(b);
+        if (aProbability == null && bProbability != null) return 1;
+        if (aProbability != null && bProbability == null) return -1;
+        if (aProbability !== bProbability) return sortOrder === "probability-desc" ? bProbability - aProbability : aProbability - bProbability;
       }
-      if (sortOrder === "dynasty-value" || sortOrder === "redraft-value") {
-        const field = sortOrder === "dynasty-value" ? "dynastyValue" : "redraftValue";
+      if (sortOrder === "value") {
+        const field = `${valueLens}Value`;
         const aValue = Number(a[field]);
         const bValue = Number(b[field]);
         const aHasValue = a[field] != null && Number.isFinite(aValue);
@@ -264,40 +342,50 @@ export default function InjuryReportClient() {
       }
       if (sortOrder === "name") return a.name.localeCompare(b.name);
       if (sortOrder === "team") return a.team.localeCompare(b.team) || a.name.localeCompare(b.name);
-      return (STATUS_SEVERITY[String(a.status).toUpperCase()] ?? 20) - (STATUS_SEVERITY[String(b.status).toUpperCase()] ?? 20) || a.name.localeCompare(b.name);
+      const riskDifference = (RISK_ORDER[availabilityRisk(a)] ?? 20) - (RISK_ORDER[availabilityRisk(b)] ?? 20);
+      if (riskDifference) return riskDifference;
+      const aProbability = playingProbability(a);
+      const bProbability = playingProbability(b);
+      if (aProbability != null && bProbability != null && aProbability !== bProbability) return aProbability - bProbability;
+      return a.name.localeCompare(b.name);
     });
-  }, [doc.players, doc.recentlyRemoved, reportView, query, excludedTeams, excludedStatuses, excludedRecencies, includeFreeAgents, sortOrder]);
+  }, [doc.players, doc.recentlyRemoved, reportView, query, excludedTeams, excludedStatuses, excludedProbabilities, excludedRisks, includeFreeAgents, sortOrder, valueLens]);
   const midpoint = Math.ceil(filtered.length / 2);
   const columns = [filtered.slice(0, midpoint), filtered.slice(midpoint)];
   const addedCount = doc.players.filter((player) => player.reportState === "added").length;
   const selectedTotal = reportView === "removed" ? doc.recentlyRemoved.length : reportView === "added" ? addedCount : doc.players.length;
-  const activeFilters = excludedTeams.size + excludedStatuses.size + excludedRecencies.size + (includeFreeAgents ? 0 : 1) + (reportView === "current" ? 0 : 1);
+  const activeFilters = excludedTeams.size + excludedStatuses.size + excludedProbabilities.size + excludedRisks.size + (includeFreeAgents ? 0 : 1) + (reportView === "current" ? 0 : 1);
 
   function resetFilters() {
-    setExcludedTeams(new Set()); setExcludedStatuses(new Set()); setExcludedRecencies(new Set()); setIncludeFreeAgents(false); setQuery(""); setSortOrder("report"); setReportView("current");
+    setExcludedTeams(new Set()); setExcludedStatuses(new Set()); setExcludedProbabilities(new Set()); setExcludedRisks(new Set()); setIncludeFreeAgents(false); setQuery(""); setSortOrder("value"); setReportView("current"); setValueLens("redraft");
   }
 
   return (
     <StreamGuard>{() => (
       <main className="mx-auto min-h-screen max-w-[1500px] px-3 py-8 sm:px-6">
-        <StreamHeader eyebrow="Ballsville Stream Room" title="Injury Report" description="Saved Sleeper availability, FantasyPros injury context, and player news. Data changes only when Update Data is selected." updatedAt={doc.updatedAt} onRefresh={refresh} refreshing={refreshing} />
+        <StreamHeader eyebrow="Ballsville Stream Room" title="Injury Report" description="A saved on-air briefing from Sleeper, FantasyPros, and Ballsville tracking. Scheduled and manual updates publish to R2; viewing never calls an external data source." updatedAt={doc.updatedAt} onRefresh={refresh} refreshing={refreshing} />
+
+        {!loading ? <StreamBriefing doc={doc} valueLens={valueLens} setValueLens={(lens) => { setValueLens(lens); setSortOrder("value"); }} onOpen={setSelectedPlayer} /> : null}
+        {doc.warnings?.length ? <div className="mb-4 rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 text-xs text-amber-100"><strong>Saved source warning:</strong> {doc.warnings.join(" · ")} Previous successful enrichment is retained where available.</div> : null}
 
         <section className="relative z-30 mb-4 rounded-2xl border border-red-400/20 bg-[#100809]/95 p-3 shadow-[0_18px_45px_rgba(0,0,0,.28)]">
+          <div className="mb-1 flex items-center px-1 text-[9px] font-black uppercase tracking-[0.2em] text-red-200/45">Report history <InfoTip text="Current is everyone found in this snapshot. New means first seen during the latest manual update. Removed means present previously but absent after a later successful update." label="About report history" /></div>
           <div className="mb-3 grid grid-cols-3 gap-1 rounded-xl border border-white/8 bg-black/25 p-1">
             {[["current", "Current report", doc.players.length], ["added", "New this update", addedCount], ["removed", "Removed", doc.recentlyRemoved.length]].map(([value, label, count]) => <button key={value} type="button" onClick={() => setReportView(value)} className={`rounded-lg px-2 py-2 text-[10px] font-black uppercase tracking-wider transition sm:text-xs ${reportView === value ? "bg-red-500/20 text-red-50 shadow-[inset_0_0_0_1px_rgba(252,165,165,.25)]" : "text-white/35 hover:bg-white/[0.04] hover:text-white/60"}`}>{label} <span className="ml-1 tabular-nums opacity-60">{count}</span></button>)}
           </div>
           <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search player, team, injury…" className="rounded-xl border border-red-400/20 bg-black/35 px-4 py-3 text-sm text-white outline-none transition focus:border-red-300/60 focus:ring-2 focus:ring-red-400/10" />
             <MultiSelect label="Teams" options={teams} excluded={excludedTeams} setExcluded={setExcludedTeams} renderIcon={(team) => <TeamLogo team={team} size="h-7 w-7" />} />
-            <MultiSelect label="Statuses" options={statuses} excluded={excludedStatuses} setExcluded={setExcludedStatuses} />
-            <MultiSelect label="Injury recency" options={injuryRecencies} excluded={excludedRecencies} setExcluded={setExcludedRecencies} />
+            <MultiSelect label="Statuses" help="NFL availability designations supplied by FantasyPros or Sleeper. These describe game/roster availability, not medical severity." options={statuses} excluded={excludedStatuses} setExcluded={setExcludedStatuses} />
+            <MultiSelect label="Availability risk" help="Ballsville tier: IR, OUT, PUP and similar statuses are Unavailable; Doubtful is High risk; Questionable or limited practice is Elevated; other listings are Monitoring. It is not a medical diagnosis." options={riskOptions} excluded={excludedRisks} setExcluded={setExcludedRisks} />
+            <MultiSelect label="Chance to play" help="FantasyPros' machine-learning estimate of whether the player will suit up this week. It uses practice reports, injury type, position trends and historical availability; it is not a guarantee." options={probabilityOptions} excluded={excludedProbabilities} setExcluded={setExcludedProbabilities} />
             <label className="relative flex min-w-0 items-center rounded-xl border border-red-400/20 bg-black/30 px-3 py-2.5 transition focus-within:border-red-300/55 focus-within:bg-red-500/10">
-              <span className="min-w-0 flex-1"><span className="block text-[9px] font-black uppercase tracking-[0.2em] text-red-200/55">Sort report</span><select value={sortOrder} onChange={(event) => setSortOrder(event.target.value)} className="mt-0.5 w-full cursor-pointer appearance-none bg-transparent pr-6 text-sm font-bold text-white outline-none"><option value="report" className="bg-[#120809]">Injury severity</option><option value="tracked-longest" className="bg-[#120809]">Longest tracked</option><option value="tracked-newest" className="bg-[#120809]">Newest additions</option><option value="update-desc" className="bg-[#120809]">Newest injury updates</option><option value="update-asc" className="bg-[#120809]">Oldest injury updates</option><option value="dynasty-value" className="bg-[#120809]">Highest dynasty value</option><option value="redraft-value" className="bg-[#120809]">Highest redraft value</option><option value="name" className="bg-[#120809]">Player name</option><option value="team" className="bg-[#120809]">NFL team</option></select></span>
+              <span className="min-w-0 flex-1"><span className="flex items-center text-[9px] font-black uppercase tracking-[0.2em] text-red-200/55">Sort report <InfoTip text={`Availability risk is Ballsville's transparent status/practice tier. Player value follows the active ${valueLens} lens. Tracking sorts use Ballsville's first-seen timestamp.`} label="About report sorting" /></span><select value={sortOrder} onChange={(event) => setSortOrder(event.target.value)} className="mt-0.5 w-full cursor-pointer appearance-none bg-transparent pr-6 text-sm font-bold text-white outline-none"><option value="value" className="bg-[#120809]">Highest {valueLens} value</option><option value="report" className="bg-[#120809]">Availability risk</option><option value="probability-asc" className="bg-[#120809]">Lowest chance to play</option><option value="probability-desc" className="bg-[#120809]">Highest chance to play</option><option value="tracked-longest" className="bg-[#120809]">Longest tracked</option><option value="tracked-newest" className="bg-[#120809]">Newest additions</option><option value="name" className="bg-[#120809]">Player name</option><option value="team" className="bg-[#120809]">NFL team</option></select></span>
               <svg viewBox="0 0 20 20" aria-hidden="true" className="pointer-events-none h-4 w-4 shrink-0 fill-current text-red-200/60"><path d="m5.3 7.5 4.7 4.7 4.7-4.7 1.1 1.1-5.8 5.8-5.8-5.8 1.1-1.1Z" /></svg>
             </label>
-            <button type="button" onClick={() => setIncludeFreeAgents((value) => !value)} className={`flex min-w-[154px] items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left transition ${includeFreeAgents ? "border-red-300/25 bg-red-500/10" : "border-white/10 bg-black/25 opacity-70"}`}><span><span className="block text-[9px] font-black uppercase tracking-[0.2em] text-red-200/55">Free agents</span><span className="block text-sm font-bold text-white">{includeFreeAgents ? "Shown" : "Hidden"} · {freeAgentCount}</span></span><span className={`relative h-6 w-11 rounded-full transition ${includeFreeAgents ? "bg-red-500" : "bg-white/10"}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition ${includeFreeAgents ? "left-6" : "left-1"}`} /></span></button>
+            <button type="button" onClick={() => setIncludeFreeAgents((value) => !value)} className={`flex min-w-[154px] items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left transition ${includeFreeAgents ? "border-red-300/25 bg-red-500/10" : "border-white/10 bg-black/25 opacity-70"}`}><span><span className="flex items-center text-[9px] font-black uppercase tracking-[0.2em] text-red-200/55">Free agents <InfoTip text="Players whose NFL team is listed as FA. This does not mean they are unrostered in a Ballsville fantasy league." label="About free agents" /></span><span className="block text-sm font-bold text-white">{includeFreeAgents ? "Shown" : "Hidden"} · {freeAgentCount}</span></span><span className={`relative h-6 w-11 rounded-full transition ${includeFreeAgents ? "bg-red-500" : "bg-white/10"}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition ${includeFreeAgents ? "left-6" : "left-1"}`} /></span></button>
           </div>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-1"><p className="max-w-5xl text-[10px] text-white/35">Ballsville tracking begins when an update first sees a player and ends when a later successful update no longer finds them. It measures observed report time—not the medical injury date. Nothing is fetched while viewing.</p>{activeFilters || query || sortOrder !== "report" ? <button type="button" onClick={resetFilters} className="text-[10px] font-black uppercase tracking-wider text-red-200/65 hover:text-red-100">Reset filters</button> : null}</div>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-1"><p className="max-w-5xl text-[10px] text-white/35">Ballsville tracking begins when an update first sees a player and ends when a later successful update no longer finds them. It measures observed report time—not the medical injury date. Nothing is fetched while viewing.</p>{activeFilters || query || sortOrder !== "value" || valueLens !== "redraft" ? <button type="button" onClick={resetFilters} className="text-[10px] font-black uppercase tracking-wider text-red-200/65 hover:text-red-100">Reset filters</button> : null}</div>
         </section>
         {message ? <div className="mb-4 rounded-xl border border-cyan-300/20 bg-cyan-300/10 p-3 text-xs text-cyan-100">{message}</div> : null}
 

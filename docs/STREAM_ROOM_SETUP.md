@@ -145,13 +145,14 @@ Important:
 | `CLOUDFLARE_ACCOUNT_ID` | Text / plaintext variable | Paste the Account ID copied in section 3 |
 | `STREAM_EMAIL_API_TOKEN` | **Encrypted secret** | Paste the API token created in section 4 |
 | `STREAM_AUTH_SECRET` | **Encrypted secret** | Paste the random output generated in section 5 |
+| `STREAM_CRON_SECRET` | **Encrypted secret** | Generate a separate 48-byte value using the command in section 5; do not reuse `STREAM_AUTH_SECRET` |
 | `FANTASYPROS_API_KEY` | **Encrypted secret** | Use the same FantasyPros API key configured for The Fantasy Arsenal |
 | `STREAM_APPROVAL_FROM_EMAIL` | Text / plaintext variable | `stream@theballsvillegame.com` |
 | `STREAM_PUBLIC_ORIGIN` | Text / plaintext variable | `https://www.theballsvillegame.com` |
 
 Save every entry. Variable names are case-sensitive; enter them exactly as shown.
 
-The Injury Report calls FantasyPros only when an approved Stream Room user selects **Update Data**. That update makes one injuries request and one news request, merges the result with Sleeper, and saves the combined snapshot at `data/stream/injuries.json` in R2. Opening the page, filtering it, or opening a player popup reads the saved R2 snapshot and does not call FantasyPros again.
+The Injury Report calls FantasyPros only inside the protected GitHub update workflow. Scheduled and manual updates save the combined snapshot at `data/stream/injuries.json` in R2. Opening the page, filtering it, or opening a player popup reads the saved R2 snapshot and does not call FantasyPros.
 
 > **Session warning:** After the first setup, leave `STREAM_AUTH_SECRET` unchanged. Replacing it and redeploying logs out every Stream Room user immediately. Approved accounts remain stored in R2 and can sign back in with their existing usernames and passwords.
 
@@ -240,7 +241,7 @@ After the code is pushed:
 1. Open `https://github.com/spickworth1991/ballsville`.
 2. Select **Actions**.
 3. In the workflow list, confirm **Update Stream Data** appears.
-4. Select it and confirm **Run workflow** is available with branch `main` and dataset `trades`.
+4. Select it and confirm **Run workflow** is available with branch `main` and dataset choices `scheduled`, `injuries`, and `trades`.
 
 The workflow file in the repository is `.github/workflows/update-stream-data.yml`.
 
@@ -260,6 +261,7 @@ If the existing **Update Leaderboards** GitHub Action successfully uploads data,
    | `R2_ACCESS_KEY_ID` | Existing R2 S3 token Access Key ID |
    | `R2_SECRET_ACCESS_KEY` | Existing R2 S3 token Secret Access Key |
    | `ADMIN_BUCKET` | `admin` |
+   | `FANTASYPROS_API_KEY` | The same FantasyPros API key used by The Fantasy Arsenal and the Cloudflare Pages project |
 
 GitHub hides existing secret values. If all four names exist and the leaderboard workflow works, leave them alone.
 
@@ -283,14 +285,80 @@ GitHub hides existing secret values. If all four names exist and the leaderboard
 
 Do not put the R2 Access Key ID or Secret Access Key in Cloudflare Pages variables. Pages accesses R2 through the `ADMIN_BUCKET` binding instead.
 
-## 11. Test the two tools
+## 11. Configure the one Stream Center cron job
+
+This is the only cron-job.org job needed for the Stream Center. It pings Ballsville every day; Ballsville decides whether the GitHub workflow is due. August through February runs daily. March through July runs only on Monday. Future automatically updated Stream tools will be added to the same `scheduled` GitHub workflow without creating another cron job.
+
+### Generate the scheduler secret
+
+1. Open PowerShell in the project folder.
+2. Run exactly:
+
+   ```powershell
+   node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+   ```
+
+3. Copy the one generated line.
+4. In **Cloudflare > Workers & Pages > ballsville > Settings > Variables and Secrets**, add:
+
+   | Name | Type | Value |
+   | --- | --- | --- |
+   | `STREAM_CRON_SECRET` | **Encrypted secret** | Paste the generated line |
+
+5. Save it for Production and Preview only if Preview should accept the production scheduler.
+6. Redeploy the Pages project. A secret added after a deployment is not available to that old deployment.
+
+Do not reuse `STREAM_AUTH_SECRET`. Rotating `STREAM_CRON_SECRET` does not log users out, but cron requests will fail until the cron-job.org header is updated to the same new value.
+
+### Create the cron-job.org job
+
+1. Sign in at `https://console.cron-job.org/`.
+2. Select **Create cronjob**.
+3. Set **Title** to `Ballsville Stream Center daily scheduler`.
+4. Set **URL** exactly to:
+
+   ```text
+   https://www.theballsvillegame.com/api/stream/rebuild
+   ```
+
+5. Set **Request method** to `GET`.
+6. Set the schedule to **Every day at 8:00 PM**.
+7. Set **Timezone** to `America/New_York`. Do not use a fixed UTC offset because Eastern daylight-saving time changes.
+8. Open the advanced request settings and add this custom header:
+
+   | Header | Value |
+   | --- | --- |
+   | `Authorization` | `Bearer PASTE_STREAM_CRON_SECRET_HERE` |
+
+9. Replace only `PASTE_STREAM_CRON_SECRET_HERE` with the exact secret saved in Cloudflare. Keep `Bearer`, followed by one space.
+10. Leave the request body empty.
+11. Use a request timeout of **30 seconds**.
+12. Turn **Save responses** off so scheduler response details are not retained unnecessarily.
+13. Turn **Notify on failure** on and set it to notify after **1 failure**.
+14. Turn **Notify when successful after a failure** on.
+15. Enable and save the job.
+
+One Cloudflare request occurs each day. On non-Monday offseason days the endpoint returns HTTP 200 with `skipped: true`, `reason: offseason_updates_run_mondays`, and the next eligible date. A due request dispatches GitHub with `kind: scheduled`. Repeated pings on the same due date return `reason: already_dispatched` and do not start another workflow.
+
+### Test the scheduler safely
+
+1. After deployment, use cron-job.org's **Test run** control once.
+2. Inspect the returned JSON:
+   - `triggered: true` means the workflow was dispatched.
+   - `skipped: true` with `offseason_updates_run_mondays` is correct on a March–July day other than Monday.
+   - `skipped: true` with `already_dispatched` means today's scheduled workflow was already started.
+3. If triggered, open GitHub **Actions > Update Stream Data**.
+4. Confirm one run appears with both the **injuries** and **trades** jobs.
+5. Never add the secret to the URL as `?secret=...`; URLs are commonly retained in access logs.
+
+## 12. Test the two tools
 
 ### Injury Report
 
 1. Sign in at `/stream` with an approved account.
 2. Open **Injury Report**.
 3. Select its refresh control.
-4. It should fetch current Sleeper injury data and save `data/stream/injuries.json` in the existing `admin` bucket.
+4. The page should say the update was queued, wait for GitHub, and automatically load the new R2 snapshot when complete.
 
 ### Trade Talks
 
@@ -299,11 +367,11 @@ Do not put the R2 Access Key ID or Secret Access Key in Cloudflare Pages variabl
 3. Select its refresh control.
 4. The page should report that the update was queued.
 5. Open GitHub **Actions > Update Stream Data** and confirm a run starts.
-6. Wait for the workflow to finish successfully, then reload Trade Talks.
+6. Wait for the workflow to finish successfully. The page should automatically load the new snapshot without a manual reload.
 
 The workflow writes `data/stream/trades.json` in the same `admin` bucket.
 
-## 12. Exact local testing without sending real email
+## 13. Exact local testing without sending real email
 
 Local development uses a simulated local R2 bucket. It does not modify production R2 data.
 
@@ -394,7 +462,9 @@ Also confirm the workflow file is present on the `main` branch.
 
 - Account record: `data/stream/auth/users/USERNAME.json`
 - Injury snapshot: `data/stream/injuries.json`
+- Injury history by season: `data/stream/injury-history/YEAR.json`
 - Trade snapshot: `data/stream/trades.json`
+- Scheduled dispatch locks: `data/stream/scheduler/dispatches/YYYY-MM-DD.json`
 - Passwords: PBKDF2-SHA-256 hashes only; plaintext passwords are never stored or emailed.
 - PBKDF2 iteration count: `100000`, which is Cloudflare's production runtime maximum.
 - Approval tokens: random, stored only as hashes, single-use, and expire after 48 hours.
