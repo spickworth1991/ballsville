@@ -19,12 +19,13 @@ const session = await createStreamSession(env, { username: "stream_test", name: 
 const cookie = streamSessionCookie(session, undefined, false).split(";")[0];
 const originalFetch = globalThis.fetch;
 const calls = [];
+let includePlayer = true;
 globalThis.fetch = async (url) => {
   const value = String(url);
   calls.push(value);
-  if (value.endsWith("/v1/players/nfl")) return Response.json({
+  if (value.endsWith("/v1/players/nfl")) return Response.json(includePlayer ? {
     "1": { full_name: "Test Player", team: "BUF", position: "WR", injury_status: "IR", injury_body_part: "Knee", injury_start_date: "2026-09-22" },
-  });
+  } : {});
   if (value.endsWith("/v1/state/nfl")) return Response.json({ season: "2026", week: 3 });
   if (value.includes("/injuries?")) return Response.json({ injuries: [{ player_id: 99, name: "Test Player", team_id: "BUF", status: "Injured Reserve", injury_type: "Undisclosed", comment: "Recovery update", injury_update_date: "2026-09-25", ir_weeks: [3, 4, 5, 6] }] });
   if (value.includes("/news?")) return Response.json({ items: [{ id: 7, player_id: 99, title: "Test Player recovery update", link: "/nfl/news/7/test-player.php", impact: "The player continues to recover.", created: "2026-09-25 12:00:00" }] });
@@ -39,8 +40,18 @@ try {
   const refreshed = await response.json();
   const player = refreshed.players?.[0];
   if (player?.status !== "IR" || player?.bodyPart !== "Knee" || player?.bodyPartSource !== "Sleeper" || player?.injuryStartDate !== "2026-09-22" || player?.news?.length !== 1 || player?.dynastyValue !== 9000 || player?.redraftValue !== 5000) throw new Error("FantasyPros, Sleeper, and player value data did not merge into the saved player record.");
+  if (player?.reportState !== "added" || !player?.trackedSince || player?.trackedRefreshes !== 1) throw new Error("First-seen injury tracking was not initialized.");
   if (Object.hasOwn(player, "irWeeks")) throw new Error("Irrelevant IR week data is still stored in the player record.");
   if (!records.has("data/stream/injuries.json")) throw new Error("The injury snapshot was not written to R2.");
+
+  response = await onRequestPost({ request: new Request("http://localhost/api/stream/injuries", { method: "POST", headers: { cookie } }), env });
+  const continued = await response.json();
+  if (continued.players?.[0]?.reportState !== "existing" || continued.players?.[0]?.trackedSince !== player.trackedSince || continued.players?.[0]?.trackedRefreshes !== 2) throw new Error("Continuing injury tracking was not preserved across refreshes.");
+
+  includePlayer = false;
+  response = await onRequestPost({ request: new Request("http://localhost/api/stream/injuries", { method: "POST", headers: { cookie } }), env });
+  const removed = await response.json();
+  if (removed.players?.length !== 0 || removed.recentlyRemoved?.[0]?.id !== "1" || removed.recentlyRemoved?.[0]?.reportState !== "removed" || !removed.recentlyRemoved?.[0]?.removedAt) throw new Error("Removed injury tracking was not saved.");
   const refreshCallCount = calls.length;
   response = await onRequestGet({ request: new Request("http://localhost/api/stream/injuries", { headers: { cookie } }), env });
   if (response.status !== 200) throw new Error(`Saved read returned ${response.status}.`);

@@ -110,6 +110,14 @@ export async function onRequestPost({ request, env }) {
   const bucket = bucketFor(env);
   if (!bucket?.put) return streamJson({ error: "Existing R2 admin bucket binding is unavailable." }, 500);
 
+  let previous = null;
+  try {
+    const object = bucket.get ? await bucket.get(KEY) : null;
+    previous = object ? await object.json() : null;
+  } catch {
+    previous = null;
+  }
+
   let database;
   let nflState = {};
   try {
@@ -177,7 +185,7 @@ export async function onRequestPost({ request, env }) {
     newsByFantasyProsId.set(playerId, list);
   }
 
-  const players = Object.entries(database || {})
+  const currentPlayers = Object.entries(database || {})
     .map(([id, player]) => {
       const name = player.full_name || [player.first_name, player.last_name].filter(Boolean).join(" ") || id;
       const team = normalizeTeam(player.team || "FA") || "FA";
@@ -229,8 +237,36 @@ export async function onRequestPost({ request, env }) {
     .filter((player) => !["Active", "Inactive"].includes(player.status) || player.notes || player.bodyPart)
     .sort((a, b) => (SEVERITY[String(a.status).toUpperCase()] ?? 20) - (SEVERITY[String(b.status).toUpperCase()] ?? 20) || a.team.localeCompare(b.team) || a.name.localeCompare(b.name));
 
+  const updatedAt = new Date().toISOString();
+  const previousUpdatedAt = cleanText(previous?.updatedAt) || updatedAt;
+  const previousPlayers = new Map((Array.isArray(previous?.players) ? previous.players : []).map((player) => [String(player.id), player]));
+  const players = currentPlayers.map((player) => {
+    const prior = previousPlayers.get(String(player.id));
+    return {
+      ...player,
+      reportState: prior ? "existing" : "added",
+      trackedSince: cleanText(prior?.trackedSince) || (prior ? previousUpdatedAt : updatedAt),
+      lastSeenAt: updatedAt,
+      trackedRefreshes: Math.max(1, Number(prior?.trackedRefreshes || 0) + 1),
+    };
+  });
+
+  const currentIds = new Set(players.map((player) => String(player.id)));
+  const retainedRemoved = (Array.isArray(previous?.recentlyRemoved) ? previous.recentlyRemoved : []).filter((player) => {
+    if (currentIds.has(String(player.id))) return false;
+    const removedAt = Date.parse(player.removedAt || "");
+    return Number.isFinite(removedAt) && Date.now() - removedAt <= 45 * 86400000;
+  });
+  const newlyRemoved = fantasyProsError ? [] : [...previousPlayers.values()]
+    .filter((player) => !currentIds.has(String(player.id)))
+    .map((player) => ({ ...player, reportState: "removed", removedAt: updatedAt, lastSeenAt: cleanText(player.lastSeenAt) || previousUpdatedAt }));
+  const recentlyRemovedById = new Map(retainedRemoved.map((player) => [String(player.id), player]));
+  for (const player of newlyRemoved) recentlyRemovedById.set(String(player.id), player);
+  const recentlyRemoved = [...recentlyRemovedById.values()].sort((a, b) => Date.parse(b.removedAt || 0) - Date.parse(a.removedAt || 0));
+  const addedCount = players.filter((player) => player.reportState === "added").length;
+
   const payload = {
-    updatedAt: new Date().toISOString(),
+    updatedAt,
     updatedBy: user.name,
     source: fantasyProsError ? "Sleeper" : "Sleeper + FantasyPros",
     season,
@@ -243,7 +279,9 @@ export async function onRequestPost({ request, env }) {
     playerValueError: playerValueErrors.length ? playerValueErrors.join("; ") : null,
     dynastyValueCount: playerValues.dynasty.size,
     redraftValueCount: playerValues.redraft.size,
+    activity: { added: addedCount, removed: newlyRemoved.length, removalComparisonSkipped: Boolean(fantasyProsError) },
     players,
+    recentlyRemoved,
   };
   await bucket.put(KEY, JSON.stringify(payload), { httpMetadata: { contentType: "application/json; charset=utf-8" } });
   return streamJson({ ok: true, ...payload });
