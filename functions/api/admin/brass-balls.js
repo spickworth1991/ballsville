@@ -1,5 +1,6 @@
 import { CURRENT_SEASON } from "@/lib/season";
 import { requireAdminSession } from "../../_lib/adminAuth.js";
+import { validateBrassBallsWeek } from "../../../lib/brassBallsRules.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data, null, 2), {
@@ -42,6 +43,7 @@ function clean(data, season) {
             ? { rosterId: text(pair.teamB.rosterId) }
             : null,
           battleType: text(pair?.battleType).toLowerCase() === "war" ? "war" : "attack",
+          slotPlaceholder: Boolean(pair?.slotPlaceholder && !pair?.teamB?.rosterId),
           result: pair?.result
             ? {
                 winnerRosterId: text(pair.result.winnerRosterId),
@@ -86,6 +88,11 @@ export async function onRequest(context) {
   }
   if (context.request.method === "PUT") {
     const data = clean(await context.request.json(), season);
+    for (const week of data.weeks) {
+      if (week.completed) continue;
+      const validation = validateBrassBallsWeek(week, data.teams.map((team) => team.rosterId));
+      if (!validation.valid) return json({ error: validation.errors[0], errors: validation.errors }, 400);
+    }
     await bucket.put(key, JSON.stringify(data, null, 2), {
       httpMetadata: {
         contentType: "application/json; charset=utf-8",

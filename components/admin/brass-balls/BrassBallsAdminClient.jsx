@@ -3,14 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import AdminNav from "@/components/admin/AdminNav";
 import { CURRENT_SEASON } from "@/lib/season";
+import { brassBallsWeekRules, brassBallsWeekUsage, validateBrassBallsWeek } from "@/lib/brassBallsRules";
 
 const num = (value) => Number(value || 0);
-const emptyMatchup = () => ({
+const emptyMatchup = (attackerRosterId = "") => ({
   id: crypto.randomUUID(),
-  teamA: { rosterId: "" },
+  teamA: { rosterId: String(attackerRosterId || "") },
   teamB: null,
   battleType: "attack",
   result: null,
+  slotPlaceholder: Boolean(attackerRosterId),
 });
 const emptyWeek = (week) => ({ week, label: "", completed: false, matchups: [emptyMatchup()] });
 const defaults = {
@@ -101,6 +103,26 @@ function AdminDisclosure({ summary, initialOpen = false, children }) {
         <span className={`text-xl text-muted transition-transform ${open ? "rotate-180" : ""}`}>⌄</span>
       </button>
       {open ? <div className="border-t border-subtle p-5">{children}</div> : null}
+    </div>
+  );
+}
+
+function TeamAttackUsage({ team, counts, rules }) {
+  const remaining = Math.max(0, rules.attacksPerTeam - counts.attacks);
+  const over = counts.attacks > rules.attacksPerTeam || counts.incoming > rules.incomingPerTeam;
+  const breakdown = [counts.directAttacks ? `${counts.directAttacks} direct` : "", counts.wars ? `${counts.wars} war${counts.wars === 1 ? "" : "s"}` : ""].filter(Boolean).join(" + ") || "No attacks declared";
+  return <div className={`rounded-xl border px-3 py-2 ${over ? "border-red-400/50 bg-red-500/10" : "border-white/10 bg-black/20"}`}><div className="flex items-center justify-between gap-2"><div className="truncate text-xs font-bold text-white">{team.teamName || `@${team.username}`}</div>{counts.wars ? <span className="shrink-0 rounded-full border border-red-300/35 bg-red-500/15 px-2 py-0.5 text-[8px] font-black uppercase text-red-100">War ×{counts.wars}</span> : null}</div><div className="mt-1 flex justify-between gap-2 text-[10px] font-bold uppercase tracking-wide"><span className={counts.attacks > rules.attacksPerTeam ? "text-red-300" : "text-amber-100"}>{counts.attacks} used · {remaining} left</span><span className={counts.incoming > rules.incomingPerTeam ? "text-red-300" : "text-slate-400"}>Targeted {counts.incoming}/{rules.incomingPerTeam}</span></div><div className="mt-1 text-[9px] text-slate-500">{breakdown}</div></div>;
+}
+
+function WeekAttackUsage({ week, teams }) {
+  const rules = brassBallsWeekRules(week.week);
+  const usage = brassBallsWeekUsage(week.matchups, teams.map((team) => team.rosterId));
+  const declarations = Object.values(usage).reduce((sum, row) => sum + row.attacks, 0);
+  const capacity = teams.length * rules.attacksPerTeam;
+  return (
+    <div className="mt-4 rounded-2xl border border-amber-300/25 bg-amber-300/[0.07] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2"><div><div className="text-xs font-black uppercase tracking-[.18em] text-amber-200">{rules.phase}</div><p className="mt-1 text-sm text-slate-300">Week {rules.week}: each team may declare {rules.attacksPerTeam} attack{rules.attacksPerTeam === 1 ? "" : "s"} and may be attacked at most {rules.incomingPerTeam} time{rules.incomingPerTeam === 1 ? "" : "s"}. A War consumes one attack and one incoming slot for both teams.</p></div><span className="rounded-full border border-amber-300/25 bg-black/30 px-3 py-1.5 text-xs font-black text-amber-100">{declarations}{capacity ? ` / ${capacity}` : ""} declarations</span></div>
+      {teams.length ? <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{teams.map((team) => <TeamAttackUsage key={team.rosterId} team={team} counts={usage[String(team.rosterId)] || { attacks: 0, incoming: 0, directAttacks: 0, wars: 0 }} rules={rules} />)}</div> : null}
     </div>
   );
 }
@@ -218,6 +240,7 @@ export default function BrassBallsAdminClient() {
                         : side === "teamB"
                           ? null
                           : { rosterId: "" },
+                      slotPlaceholder: side === "teamB" && rosterId ? false : pair.slotPlaceholder,
                       result: null,
                     },
               ),
@@ -237,6 +260,23 @@ export default function BrassBallsAdminClient() {
     setDoc((current) => ({
       ...current,
       teams: (current.teams || []).map((team) => String(team.rosterId) === String(rosterId) ? { ...team, ...patch } : team),
+    }));
+  const addRemainingAttackSlots = (weekIndex) =>
+    setDoc((current) => ({
+      ...current,
+      weeks: current.weeks.map((week, index) => {
+        if (index !== weekIndex) return week;
+        const rules = brassBallsWeekRules(week.week);
+        const usage = brassBallsWeekUsage(week.matchups, (current.teams || []).map((team) => team.rosterId));
+        const additions = [];
+        for (const team of current.teams || []) {
+          const rosterId = String(team.rosterId);
+          const openSlots = (week.matchups || []).filter((pair) => String(pair.teamA?.rosterId || "") === rosterId && !pair.teamB?.rosterId).length;
+          const missing = Math.max(0, rules.attacksPerTeam - (usage[rosterId]?.attacks || 0) - openSlots);
+          for (let slot = 0; slot < missing; slot += 1) additions.push(emptyMatchup(rosterId));
+        }
+        return { ...week, completed: false, matchups: [...week.matchups, ...additions] };
+      }),
     }));
 
   const resolveWeek = async (weekIndex) => {
@@ -305,6 +345,11 @@ export default function BrassBallsAdminClient() {
           return setMessage(`${name} must use each of the six territory colors exactly once.`);
         }
       }
+    }
+    for (const week of doc.weeks || []) {
+      if (week.completed) continue;
+      const validation = validateBrassBallsWeek(week, (doc.teams || []).map((team) => team.rosterId));
+      if (!validation.valid) return setMessage(validation.errors[0]);
     }
     setBusy(true);
     setMessage("");
@@ -569,6 +614,7 @@ export default function BrassBallsAdminClient() {
                   </button>
                   {week.completed ? <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-xs font-bold text-emerald-200">Completed</span> : null}
                 </div>
+                <WeekAttackUsage week={week} teams={selectableTeams} />
                 <div className="mt-4 space-y-3">
                   {week.matchups.map((pair, mi) => (
                     <div
@@ -577,7 +623,9 @@ export default function BrassBallsAdminClient() {
                     >
                       <div className="sm:col-span-5 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
                         <div className="text-xs font-bold uppercase tracking-wider text-amber-200">
-                          {pair.battleType === "war" ? "War · both teams attack" : "Attack · left attacks right"}
+                          {pair.battleType === "war"
+                            ? `War · both teams use one of ${brassBallsWeekRules(week.week).attacksPerTeam} attacks`
+                            : `Attack · left uses one of ${brassBallsWeekRules(week.week).attacksPerTeam} attacks`}
                         </div>
                         <select value={pair.battleType || "attack"} onChange={(e) => patchMatchup(wi, mi, { battleType: e.target.value })} className="rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-xs text-white">
                           <option value="attack">Attack (1 territory)</option>
@@ -649,7 +697,10 @@ export default function BrassBallsAdminClient() {
                     }
                     className="btn btn-secondary"
                   >
-                    + Add matchup
+                    + Add attack
+                  </button>
+                  <button type="button" onClick={() => addRemainingAttackSlots(wi)} disabled={!selectableTeams.length} className="btn btn-secondary">
+                    + Add every team&apos;s remaining slots
                   </button>
                 </div>
               </AdminDisclosure>

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import LiteYouTube from "@/components/LiteYouTube";
 import Link from "next/link";
 import { adminR2Url } from "@/lib/r2Client";
+import { brassBallsAttackSlot, brassBallsWeekRules, brassBallsWeekUsage } from "@/lib/brassBallsRules";
 
 const num = (value) => Number(value || 0);
 const text = (value) => String(value || "").trim();
@@ -195,6 +196,25 @@ function teamIdentity(rosterId, rosters, users, fallback = "Team") {
     primary: namedTeam || (username ? `@${username.replace(/^@/, "")}` : fallback),
     secondary: namedTeam && username ? `@${username.replace(/^@/, "")}` : "",
   };
+}
+
+function PublicTeamUsage({ team, counts, rules }) {
+  const remaining = Math.max(0, rules.attacksPerTeam - counts.attacks);
+  const breakdown = [counts.directAttacks ? `${counts.directAttacks} direct` : "", counts.wars ? `${counts.wars} war${counts.wars === 1 ? "" : "s"}` : ""].filter(Boolean).join(" + ") || "No declarations";
+  return <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2"><div className="flex items-center justify-between gap-2"><div className="truncate text-xs font-bold text-white">{team.teamName || `@${team.username}`}</div>{counts.wars ? <span className="shrink-0 rounded-full border border-red-300/30 bg-red-500/15 px-1.5 py-0.5 text-[7px] font-black uppercase text-red-100">War ×{counts.wars}</span> : null}</div><div className="mt-1 flex justify-between text-[9px] font-bold uppercase tracking-wide"><span className="text-amber-100">{counts.attacks} used · {remaining} left</span><span className="text-slate-400">Targeted {counts.incoming}/{rules.incomingPerTeam}</span></div><div className="mt-1 text-[8px] text-slate-500">{breakdown}</div></div>;
+}
+
+function AttackAllowancePanel({ weekDoc, teams }) {
+  const rules = brassBallsWeekRules(weekDoc?.week);
+  const teamRows = Array.isArray(teams) ? teams : [];
+  const usage = brassBallsWeekUsage(weekDoc?.matchups, teamRows.map((team) => team.rosterId));
+  const declared = Object.values(usage).reduce((sum, row) => sum + row.attacks, 0);
+  return (
+    <div className="mt-5 rounded-3xl border border-amber-300/25 bg-gradient-to-br from-amber-300/[0.10] to-black/20 p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="text-[10px] font-black uppercase tracking-[.24em] text-amber-300">{rules.phase}</div><h3 className="mt-1 text-xl font-black text-white">Week {rules.week} attack allowance</h3><p className="mt-1 text-xs leading-5 text-slate-300">Every team has {rules.attacksPerTeam} attack{rules.attacksPerTeam === 1 ? "" : "s"}. A team may be targeted no more than {rules.incomingPerTeam} time{rules.incomingPerTeam === 1 ? "" : "s"}. A War uses one attack and one incoming slot for each team.</p></div><span className="rounded-full border border-amber-300/30 bg-black/40 px-4 py-2 text-xs font-black text-amber-100">{declared} declared attack{declared === 1 ? "" : "s"}</span></div>
+      {teamRows.length ? <details className="mt-3 rounded-2xl border border-white/10 bg-black/20"><summary className="cursor-pointer list-none px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white/55">Team attack usage ▾</summary><div className="grid gap-2 border-t border-white/10 p-3 sm:grid-cols-2 lg:grid-cols-3">{teamRows.map((team) => <PublicTeamUsage key={team.rosterId} team={team} counts={usage[String(team.rosterId)] || { attacks: 0, incoming: 0, directAttacks: 0, wars: 0 }} rules={rules} />)}</div></details> : null}
+    </div>
+  );
 }
 
 function computeBestBallLineup(matchup, players) {
@@ -555,6 +575,7 @@ export default function BrassBallsClient({ season, scoringOnly = false }) {
                 {error}
               </div>
             ) : null}
+            <AttackAllowancePanel weekDoc={weekDoc || { week, matchups: [] }} teams={doc?.teams || []} />
             <div className="mt-5 space-y-4">
               {(weekDoc?.matchups || []).map((pair, index) => {
                 const id = pair.id || `w${week}-${index}`;
@@ -581,7 +602,11 @@ export default function BrassBallsClient({ season, scoringOnly = false }) {
                         players={live.players}
                       />
                       <div className="mx-auto rounded-full border border-amber-300/35 bg-amber-300/10 px-4 py-2 text-center text-xs font-black uppercase tracking-widest text-amber-200">
-                        {pair.teamB?.rosterId ? (pair.battleType === "war" ? "WAR · 2" : "ATTACKS · 1") : "No opponent"}
+                        {pair.teamB?.rosterId
+                          ? pair.battleType === "war"
+                            ? `WAR · attack slots ${brassBallsAttackSlot(weekDoc?.matchups, index, pair.teamA?.rosterId)}/${brassBallsWeekRules(week).attacksPerTeam} & ${brassBallsAttackSlot(weekDoc?.matchups, index, pair.teamB?.rosterId)}/${brassBallsWeekRules(week).attacksPerTeam} · 2 territories`
+                            : `ATTACK ${brassBallsAttackSlot(weekDoc?.matchups, index, pair.teamA?.rosterId)}/${brassBallsWeekRules(week).attacksPerTeam} · 1 territory`
+                          : "No opponent"}
                       </div>
                       {pair.teamB?.rosterId ? (
                         <TeamScore

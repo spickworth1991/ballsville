@@ -1,4 +1,5 @@
 import { CURRENT_SEASON } from "../../../lib/season.js";
+import { validateBrassBallsWeek } from "../../../lib/brassBallsRules.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data, null, 2), {
@@ -84,6 +85,8 @@ async function handle({ request, env }) {
   if (!target) {
     return json({ ok: true, resolved: false, skipped: true, reason: "no_unresolved_week", currentLeg });
   }
+  const validation = validateBrassBallsWeek(target, (doc.teams || []).map((team) => team.rosterId));
+  if (!validation.valid) return json({ ok: false, resolved: false, error: validation.errors[0], errors: validation.errors }, 400);
 
   const leagueId = encodeURIComponent(doc.leagueId);
   const [matchups, players] = await Promise.all([
