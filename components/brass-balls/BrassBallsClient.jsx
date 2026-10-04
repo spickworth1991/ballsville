@@ -604,7 +604,7 @@ export default function BrassBallsClient({ season, scoringOnly = false }) {
                       <div className="mx-auto rounded-full border border-amber-300/35 bg-amber-300/10 px-4 py-2 text-center text-xs font-black uppercase tracking-widest text-amber-200">
                         {pair.teamB?.rosterId
                           ? pair.battleType === "war"
-                            ? `WAR · attack slots ${brassBallsAttackSlot(weekDoc?.matchups, index, pair.teamA?.rosterId)}/${brassBallsWeekRules(week).attacksPerTeam} & ${brassBallsAttackSlot(weekDoc?.matchups, index, pair.teamB?.rosterId)}/${brassBallsWeekRules(week).attacksPerTeam} · 2 territories`
+                            ? "WAR · mutual attack · 2 territories"
                             : `ATTACK ${brassBallsAttackSlot(weekDoc?.matchups, index, pair.teamA?.rosterId)}/${brassBallsWeekRules(week).attacksPerTeam} · 1 territory`
                           : "No opponent"}
                       </div>
