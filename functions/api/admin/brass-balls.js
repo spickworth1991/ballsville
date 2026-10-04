@@ -1,6 +1,6 @@
 import { CURRENT_SEASON } from "@/lib/season";
 import { requireAdminSession } from "../../_lib/adminAuth.js";
-import { validateBrassBallsWeek } from "../../../lib/brassBallsRules.js";
+import { combineReciprocalBrassBallsAttacks, validateBrassBallsWeek } from "../../../lib/brassBallsRules.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data, null, 2), {
@@ -31,11 +31,9 @@ function clean(data, season) {
     }))
     .filter((team) => team.rosterId);
   const weeks = (Array.isArray(data?.weeks) ? data.weeks : [])
-    .map((week) => ({
-      week: Math.max(1, Math.min(18, number(week?.week, 1))),
-      label: text(week?.label),
-      completed: Boolean(week?.completed),
-      matchups: (Array.isArray(week?.matchups) ? week.matchups : [])
+    .map((week) => {
+      const completed = Boolean(week?.completed);
+      const matchups = (Array.isArray(week?.matchups) ? week.matchups : [])
         .map((pair, index) => ({
           id: text(pair?.id) || `w${number(week?.week, 1)}-${index + 1}`,
           teamA: { rosterId: text(pair?.teamA?.rosterId) },
@@ -53,8 +51,16 @@ function clean(data, season) {
               }
             : null,
         }))
-        .filter((pair) => pair.teamA.rosterId),
-    }))
+        .filter((pair) => pair.teamA.rosterId);
+      return {
+        week: Math.max(1, Math.min(18, number(week?.week, 1))),
+        label: text(week?.label),
+        completed,
+        // Never rewrite completed history. Combining an already-resolved pair
+        // would clear its saved result and could move territories differently.
+        matchups: completed ? matchups : combineReciprocalBrassBallsAttacks(matchups),
+      };
+    })
     .sort((a, b) => a.week - b.week);
   return {
     season: number(season, CURRENT_SEASON),

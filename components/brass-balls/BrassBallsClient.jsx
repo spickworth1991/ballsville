@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import LiteYouTube from "@/components/LiteYouTube";
 import Link from "next/link";
 import { adminR2Url } from "@/lib/r2Client";
-import { brassBallsAttackSlot, brassBallsWeekRules, brassBallsWeekUsage } from "@/lib/brassBallsRules";
+import { brassBallsAttackSlot, brassBallsTerritoryAward, brassBallsWeekRules, brassBallsWeekUsage } from "@/lib/brassBallsRules";
 
 const num = (value) => Number(value || 0);
 const text = (value) => String(value || "").trim();
@@ -50,15 +50,8 @@ function territoryState(doc, throughWeek = 18) {
     .sort((a, b) => num(a.week) - num(b.week))
     .filter((week) => week.completed && num(week.week) <= num(throughWeek))
     .forEach((week) => (week.matchups || []).forEach((pair) => {
-      const attacker = String(pair.teamA?.rosterId || "");
-      const defender = String(pair.teamB?.rosterId || "");
-      const winner = String(pair.result?.winnerRosterId || "");
-      let moved = 0;
-      if (pair.battleType === "war" && winner && [attacker, defender].includes(winner)) {
-        moved = transfer(winner, winner === attacker ? defender : attacker, 2);
-      } else if (winner && winner === attacker) {
-        moved = transfer(attacker, defender, 1);
-      }
+      const award = brassBallsTerritoryAward(pair);
+      const moved = award ? transfer(award.winner, award.loser, award.amount) : 0;
       battles.push({ week: week.week, pair, moved });
     }));
   const counts = new Map(teams.map((team) => [String(team.rosterId), 0]));

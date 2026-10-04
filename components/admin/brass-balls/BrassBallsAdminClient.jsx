@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import AdminNav from "@/components/admin/AdminNav";
 import { CURRENT_SEASON } from "@/lib/season";
-import { brassBallsWeekRules, brassBallsWeekUsage, validateBrassBallsWeek } from "@/lib/brassBallsRules";
+import { brassBallsWeekRules, brassBallsWeekUsage, combineReciprocalBrassBallsAttacks, validateBrassBallsWeek } from "@/lib/brassBallsRules";
 
 const num = (value) => Number(value || 0);
 const emptyMatchup = (attackerRosterId = "") => ({
@@ -230,7 +230,8 @@ export default function BrassBallsAdminClient() {
           ? week
           : {
               ...week,
-              matchups: week.matchups.map((pair, mi) =>
+              completed: false,
+              matchups: combineReciprocalBrassBallsAttacks(week.matchups.map((pair, mi) =>
                 mi !== matchupIndex
                   ? pair
                   : {
@@ -243,7 +244,7 @@ export default function BrassBallsAdminClient() {
                       slotPlaceholder: side === "teamB" && rosterId ? false : pair.slotPlaceholder,
                       result: null,
                     },
-              ),
+              )),
             },
       ),
     }));
