@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import LiteYouTube from "@/components/LiteYouTube";
 import Link from "next/link";
 import { adminR2Url } from "@/lib/r2Client";
-import { brassBallsAttackSlot, brassBallsTerritoryAward, brassBallsWeekRules, brassBallsWeekUsage } from "@/lib/brassBallsRules";
+import { brassBallsAttackSlot, brassBallsWeekRules, brassBallsWeekUsage, buildBrassBallsTerritoryState } from "@/lib/brassBallsRules";
 
 const num = (value) => Number(value || 0);
 const text = (value) => String(value || "").trim();
@@ -16,48 +16,6 @@ const DEFAULT_MEDIA = {
   assignments: "/photos/brass-balls/actual-board-2026.png",
 };
 const TERRITORY_COLORS = ["#7c3aed", "#dc2626", "#ea580c", "#16a34a", "#eab308", "#2563eb"];
-
-function territoryState(doc, throughWeek = 18) {
-  const teams = Array.isArray(doc?.teams) ? doc.teams : [];
-  const cells = teams.flatMap((team) =>
-    Array.from({ length: 7 }, (_, index) => ({
-      id: `${team.rosterId}:${index}`,
-      homeRosterId: String(team.rosterId),
-      ownerRosterId: String(team.rosterId),
-      index,
-    })),
-  );
-  const battles = [];
-  const transfer = (winner, loser, amount) => {
-    // Capture the loser's original outside territory first so every successful
-    // attack remains visible on the map. Captured land and the center
-    // stronghold are only surrendered after the loser's home ring is gone.
-    const available = cells
-      .filter((cell) => cell.ownerRosterId === loser)
-      .sort((a, b) => {
-        const priority = (cell) => {
-          if (cell.homeRosterId === loser && cell.index !== 6) return 0;
-          if (cell.homeRosterId !== loser) return 1;
-          return 2;
-        };
-        return priority(a) - priority(b) || a.index - b.index;
-      });
-    const selected = available.slice(0, amount);
-    selected.forEach((cell) => { cell.ownerRosterId = winner; });
-    return selected.length;
-  };
-  [...(doc?.weeks || [])]
-    .sort((a, b) => num(a.week) - num(b.week))
-    .filter((week) => week.completed && num(week.week) <= num(throughWeek))
-    .forEach((week) => (week.matchups || []).forEach((pair) => {
-      const award = brassBallsTerritoryAward(pair);
-      const moved = award ? transfer(award.winner, award.loser, award.amount) : 0;
-      battles.push({ week: week.week, pair, moved });
-    }));
-  const counts = new Map(teams.map((team) => [String(team.rosterId), 0]));
-  cells.forEach((cell) => counts.set(cell.ownerRosterId, (counts.get(cell.ownerRosterId) || 0) + 1));
-  return { counts, cells, battles };
-}
 
 const HEX_POSITIONS = [
   [50, 5], [76, 20], [76, 53], [50, 68], [24, 53], [24, 20], [50, 36],
@@ -107,7 +65,7 @@ function StrongholdCard({ team, count, cells, teamById, compact = false }) {
 
 function TerritoryBoard({ doc, week, setWeek }) {
   const teams = Array.isArray(doc?.teams) ? doc.teams : [];
-  const { counts, cells } = territoryState(doc, week);
+  const { counts, cells } = buildBrassBallsTerritoryState(doc, week);
   const teamById = new Map(teams.map((team) => [String(team.rosterId), team]));
   if (!teams.length) return (
     <div className="mt-8 rounded-3xl border border-dashed border-amber-300/30 p-8 text-center text-muted">

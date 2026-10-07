@@ -1,4 +1,4 @@
-import { brassBallsAttackSlot, brassBallsTerritoryAward, brassBallsWeekRules, brassBallsWeekUsage, combineReciprocalBrassBallsAttacks, validateBrassBallsWeek } from "../lib/brassBallsRules.js";
+import { brassBallsAttackSlot, brassBallsTerritoryAward, brassBallsWeekRules, brassBallsWeekUsage, buildBrassBallsTerritoryState, combineReciprocalBrassBallsAttacks, validateBrassBallsWeek } from "../lib/brassBallsRules.js";
 
 for (const [week, expected] of [[1, 1], [5, 1], [6, 2], [10, 2], [11, 3], [17, 3]]) {
   if (brassBallsWeekRules(week).attacksPerTeam !== expected) throw new Error(`Week ${week} should allow ${expected} attacks.`);
@@ -31,4 +31,26 @@ if (!validateBrassBallsWeek({ week: 6, matchups }, ["A", "B", "C"]).valid) throw
 if (validateBrassBallsWeek({ week: 6, matchups: [{ teamA: { rosterId: "A" }, teamB: null, slotPlaceholder: true }] }, ["A"]).valid) throw new Error("An unfinished generated attack slot was accepted.");
 const invalid = validateBrassBallsWeek({ week: 6, matchups: [...matchups, { teamA: { rosterId: "A" }, teamB: { rosterId: "B" }, battleType: "attack" }] }, ["A", "B", "C"]);
 if (invalid.valid || !invalid.errors.some((error) => error.includes("3 attacks")) || !invalid.errors.some((error) => error.includes("attacked 3 times"))) throw new Error(`Week 6 limits were not enforced: ${JSON.stringify(invalid.errors)}`);
-console.log("Brass Balls Week 5/6/10/11 limits, wars, usage, and slot numbering passed.");
+
+const win = (attacker, defender) => ({ teamA: { rosterId: attacker }, teamB: { rosterId: defender }, battleType: "attack", result: { winnerRosterId: attacker } });
+const territoryDoc = {
+  teams: ["A", "B", "C", "D"].map((rosterId) => ({ rosterId })),
+  weeks: [
+    { week: 1, completed: true, matchups: [win("B", "C"), win("A", "B")] },
+    { week: 2, completed: true, matchups: [win("B", "D"), win("A", "B")] },
+    ...[3, 4, 5, 6].map((week) => ({ week, completed: true, matchups: [win("A", "B")] })),
+    { week: 7, completed: true, matchups: [win("A", "B"), win("A", "B")] },
+    { week: 8, completed: true, matchups: [win("A", "B"), win("C", "B")] },
+  ],
+};
+const throughSix = buildBrassBallsTerritoryState(territoryDoc, 6);
+const bAfterHomeRing = throughSix.cells.filter((cell) => cell.ownerRosterId === "B");
+if (bAfterHomeRing.some((cell) => cell.homeRosterId === "B" && cell.index !== 6) || !bAfterHomeRing.some((cell) => cell.homeRosterId === "C") || !bAfterHomeRing.some((cell) => cell.homeRosterId === "D")) throw new Error(`Captured-color setup is wrong: ${JSON.stringify(bAfterHomeRing)}`);
+const throughSeven = buildBrassBallsTerritoryState(territoryDoc, 7);
+const weekSevenMoves = throughSeven.battles.filter((battle) => Number(battle.week) === 7);
+if (weekSevenMoves.length !== 2 || weekSevenMoves.some((battle) => battle.moved !== 1) || weekSevenMoves[0].movedCellIds.join() !== "C:0" || weekSevenMoves[1].movedCellIds.join() !== "D:0") throw new Error(`Multiple attacks did not capture the defender's stolen colors in order: ${JSON.stringify(weekSevenMoves)}`);
+const throughEight = buildBrassBallsTerritoryState(territoryDoc, 8);
+const weekEightMoves = throughEight.battles.filter((battle) => Number(battle.week) === 8).map((battle) => battle.moved);
+if (throughEight.counts.get("B") !== 0 || weekEightMoves.join() !== "1,0") throw new Error(`Multiple attacks against an exhausted defender moved invalid territory: ${JSON.stringify({ count: throughEight.counts.get("B"), weekEightMoves })}`);
+
+console.log("Brass Balls limits, wars, usage, slot numbering, and captured-territory transfers passed.");
