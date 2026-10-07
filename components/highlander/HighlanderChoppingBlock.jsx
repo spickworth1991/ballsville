@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { adminR2Url as r2Url } from "@/lib/r2Client";
+import { buildHighlanderCompetition } from "@/lib/highlanderCompetition";
 import OwnerModal from "@/components/leaderboards/OwnerModal";
 
 const ELIMINATION_WEEKS = 14;
@@ -9,15 +10,6 @@ const WEEK_WORDS = [
   "ZERO", "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN",
   "EIGHT", "NINE", "TEN", "ELEVEN", "TWELVE", "THIRTEEN", "FOURTEEN",
 ];
-
-function points(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
-function weekScore(owner, week) {
-  return points(owner?.weekly?.[week] ?? owner?.weekly?.[String(week)]);
-}
 
 function entryKey(owner) {
   return String(owner?.ownerId || owner?.ownerName || "");
@@ -34,43 +26,6 @@ function teamLabel(owner) {
 function avatarUrl(owner) {
   const avatar = String(owner?.avatar || "").trim();
   return avatar ? `https://sleepercdn.com/avatars/${encodeURIComponent(avatar)}` : "";
-}
-
-function buildCompetition(owners) {
-  const byLeague = new Map();
-  for (const owner of owners) {
-    const leagueName = String(owner?.leagueName || "Unknown league");
-    if (!byLeague.has(leagueName)) byLeague.set(leagueName, []);
-    byLeague.get(leagueName).push(owner);
-  }
-
-  const eliminations = [];
-  const weeklyLeagueRows = new Map();
-
-  for (const [leagueName, leagueOwners] of byLeague) {
-    const alive = new Map(leagueOwners.map((owner) => [entryKey(owner), owner]));
-
-    for (let week = 1; week <= ELIMINATION_WEEKS; week += 1) {
-      const entrants = [...alive.values()];
-      const scored = entrants.filter((owner) => weekScore(owner, week) !== null);
-      const hasStarted = scored.some((owner) => Number(weekScore(owner, week)) !== 0);
-      if (!scored.length || !hasStarted) continue;
-
-      const ranked = scored
-        .map((owner) => ({ ...owner, weekScore: weekScore(owner, week) }))
-        .sort(
-          (a, b) =>
-            b.weekScore - a.weekScore ||
-            ownerLabel(a).localeCompare(ownerLabel(b))
-        );
-      const chopped = ranked[ranked.length - 1];
-      weeklyLeagueRows.set(`${leagueName}|||${week}`, ranked);
-      eliminations.push({ ...chopped, leagueName, week });
-      alive.delete(entryKey(chopped));
-    }
-  }
-
-  return { byLeague, eliminations, weeklyLeagueRows };
 }
 
 function PlayerAvatar({ owner }) {
@@ -162,7 +117,7 @@ export default function HighlanderChoppingBlock({ season }) {
     () => (Array.isArray(highlander?.owners) ? highlander.owners : []),
     [highlander]
   );
-  const competition = useMemo(() => buildCompetition(owners), [owners]);
+  const competition = useMemo(() => buildHighlanderCompetition(owners, ELIMINATION_WEEKS), [owners]);
   const leagueMeta = highlander?.leagueMeta || {};
   const leagueNames = useMemo(
     () => [...competition.byLeague.keys()].sort((a, b) => a.localeCompare(b)),
@@ -338,9 +293,7 @@ export default function HighlanderChoppingBlock({ season }) {
                     </thead>
                     <tbody>
                       {(league ? leagueRows : allChopped).map((owner, index) => {
-                        const isChopped = league
-                          ? index === leagueRows.length - 1
-                          : true;
+                        const isChopped = league ? Boolean(owner.isChopped) : true;
                         return (
                           <tr
                             key={`${owner.leagueName}-${entryKey(owner)}-${selectedWeek}`}

@@ -6,6 +6,7 @@ import axios from "axios";
 import pLimit from "p-limit";
 import prompts from "prompts";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { tradeValueFormatForRosterPositions } from "../../lib/stream/trade-data.js";
 
 // NFL season year helper:
 // Jan/Feb still count as previous season; March+ counts as the new season year.
@@ -1730,6 +1731,7 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, catego
   const leagueName = leagueInfo.name;
   const isBestBall = Number(leagueInfo?.settings?.best_ball || 0) === 1;
   const rosterPositions = Array.isArray(leagueInfo?.roster_positions) ? leagueInfo.roster_positions : [];
+  const valueFormat = tradeValueFormatForRosterPositions(rosterPositions);
   logProgress(totalLeagues, `Processing ${leagueName} (${division})`);
 
   const users   = await fetchWithRetry(`${baseUrl}/users`);
@@ -1880,6 +1882,7 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, catego
           avatar: userDetails[ownerId]?.avatar || "",
           leagueName,
           division,
+          valueFormat,
           draftSlot: draftSlotMap[ownerId] || null,
           weekly: {},
           total: 0,
@@ -2064,6 +2067,7 @@ async function processLeague(leagueId, division, playersDB, totalLeagues, catego
       leagueId,
       leagueName,
       division,
+      valueFormat,
       totalRosterSlots,
       filledTeams,
       draftedTeams,

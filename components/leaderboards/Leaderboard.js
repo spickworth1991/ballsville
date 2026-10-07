@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLeaderboard } from "../../app/leaderboards/context/LeaderboardContext";
 import  OwnerModal from "./OwnerModal";
+import { buildHighlanderCompetition } from "../../lib/highlanderCompetition";
 
 const WEEKS_WINDOW = 3; // how many weeks to show at once
 
@@ -40,18 +41,17 @@ function teamWeek(team) {
 }
 
 function highlanderState(team, leagueOwners, throughWeek) {
-  const alive = new Set(leagueOwners.map((owner) => String(owner.ownerId)));
+  const competition = buildHighlanderCompetition(leagueOwners, 14);
+  const completedEliminations = competition.eliminations.filter((owner) => owner.week < throughWeek);
+  const choppedOwnerIds = new Set(completedEliminations.map((owner) => String(owner.ownerId)));
+  const alive = new Set(
+    leagueOwners
+      .filter((owner) => !choppedOwnerIds.has(String(owner.ownerId)))
+      .map((owner) => String(owner.ownerId)),
+  );
   const chopped = new Map();
-  for (let week = 1; week <= Math.min(14, Math.max(0, throughWeek - 1)); week += 1) {
-    const scored = leagueOwners
-      .filter((owner) => alive.has(String(owner.ownerId)))
-      .map((owner) => ({ owner, score: Number(owner.weekly?.[week] || 0) }))
-      .filter((entry) => entry.score > 0)
-      .sort((a, b) => b.score - a.score || String(a.owner.ownerName).localeCompare(String(b.owner.ownerName)));
-    if (scored.length < 2) continue;
-    const eliminated = scored[scored.length - 1].owner;
-    alive.delete(String(eliminated.ownerId));
-    chopped.set(String(eliminated.ownerId), week);
+  for (const eliminated of completedEliminations) {
+    chopped.set(String(eliminated.ownerId), eliminated.week);
   }
   const choppedWeek = chopped.get(String(team.ownerId));
   if (choppedWeek) return { primary: `Chopped in Week ${choppedWeek}`, tone: "danger", secondary: `${alive.size} teams remain` };
