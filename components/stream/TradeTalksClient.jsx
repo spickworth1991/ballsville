@@ -41,7 +41,7 @@ function Asset({ asset }) {
     <div className="flex min-w-0 items-center gap-2 rounded-xl border border-white/8 bg-black/20 p-2">
       {player ? <img src={`https://sleepercdn.com/content/nfl/players/thumb/${encodeURIComponent(asset.id)}.jpg`} alt="" loading="lazy" className="h-9 w-9 shrink-0 rounded-lg bg-black object-cover object-top" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-amber-300/10 text-base">{asset.type === "pick" ? "◆" : "$"}</span>}
       <div className="min-w-0 flex-1"><div className="truncate text-xs font-black text-white">{asset.name}</div><div className="mt-0.5 truncate text-[9px] font-bold uppercase tracking-wider text-slate-500">{asset.meta || asset.type}</div></div>
-      <div className="shrink-0 text-right">{asset.value != null ? <div className="text-[11px] font-black tabular-nums text-cyan-300">{Number(asset.value).toFixed(0)}</div> : player ? <div className="text-[8px] font-bold uppercase text-slate-600">No value</div> : null}{player && asset.projection != null ? <div className="mt-0.5 text-[8px] font-bold tabular-nums text-emerald-300/75">Safe {Number(asset.projection).toFixed(1)}</div> : null}</div>
+      <div className="shrink-0 text-right">{asset.value != null ? <div className="text-[9px] font-black tabular-nums text-cyan-300"><span className="mr-1 text-[7px] uppercase tracking-wider text-cyan-200/45">Value</span>{Number(asset.value).toFixed(0)}</div> : player ? <div className="text-[8px] font-bold uppercase text-slate-600">No value</div> : null}{player && asset.projection != null ? <div className="mt-0.5 text-[8px] font-bold tabular-nums text-emerald-300/75">Proj. {Number(asset.projection).toFixed(1)}</div> : null}</div>
     </div>
   );
 }
@@ -50,13 +50,13 @@ function TradeCard({ trade }) {
   return (
     <article className="overflow-hidden rounded-3xl border border-cyan-300/15 bg-[#07131c]/95 shadow-xl shadow-black/25">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 bg-white/[.025] px-4 py-3">
-        <div><div className="text-[9px] font-black uppercase tracking-[0.22em] text-cyan-300">{trade.modeName || trade.mode}</div><div className="mt-0.5 text-sm font-black text-white">{trade.leagueName}</div><div className="mt-1 text-[8px] font-bold uppercase tracking-wider text-cyan-100/40">Arsenal {(trade.valueModel || (trade.mode === "dynasty" ? "dynasty" : "redraft")) === "dynasty" ? "Dynasty" : "Redraft"} {(trade.valueFormat || "1qb") === "superflex" ? "Superflex" : "1QB"} values · Safe projections</div></div>
+        <div><div className="text-[9px] font-black uppercase tracking-[0.22em] text-cyan-300">{trade.modeName || trade.mode}</div><div className="mt-0.5 text-sm font-black text-white">{trade.leagueName}</div><div className="mt-1 text-[8px] font-bold uppercase tracking-wider text-cyan-100/40">Arsenal {(trade.valueModel || (trade.mode === "dynasty" ? "dynasty" : "redraft")) === "dynasty" ? "Dynasty" : "Redraft"} {(trade.valueFormat || "1qb") === "superflex" ? "Superflex" : "1QB"} trade values · Player projections</div></div>
         <div className="text-right text-[10px] text-slate-500"><div>{trade.division}</div><div>{trade.date ? new Date(trade.date).toLocaleString() : `Week ${trade.week || "—"}`}</div></div>
       </header>
       <div className={`grid ${trade.sides?.length === 2 ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}>
         {(trade.sides || []).map((side, index) => (
           <section key={`${side.rosterId}-${index}`} className="border-t border-white/8 p-4 first:border-t-0 lg:border-l lg:border-t-0 lg:first:border-l-0">
-            <div className="mb-3 flex items-center gap-3"><ManagerAvatar side={side} /><div className="min-w-0"><div className="truncate font-black text-white">{side.manager}</div><div className="text-[10px] uppercase tracking-wider text-slate-500">Received {side.assets?.length || 0} asset{side.assets?.length === 1 ? "" : "s"}</div></div>{side.totalValue != null || side.totalProjection != null ? <div className="ml-auto text-right">{side.totalValue != null ? <><div className="text-lg font-black text-cyan-300">{Number(side.totalValue).toFixed(0)}</div><div className={`text-[8px] uppercase tracking-wider ${side.totalValueComplete === false ? "text-amber-300/70" : "text-slate-500"}`}>{side.totalValueComplete === false ? `Known value · ${side.valuedAssetCount || 0}/${side.assets?.length || 0}` : `${(trade.valueModel || (trade.mode === "dynasty" ? "dynasty" : "redraft")) === "dynasty" ? "Dynasty" : "Redraft"} value`}</div></> : <div className="text-[8px] font-bold uppercase text-slate-600">No Arsenal value</div>}{side.totalProjection != null ? <div className="mt-0.5 text-[8px] font-bold text-emerald-300/65">Safe Wk {trade.projectionWeek || "—"}: {Number(side.totalProjection).toFixed(1)}{side.totalProjectionComplete === false ? ` · ${side.projectedAssetCount || 0}/${side.projectableAssetCount || 0} players` : ""}</div> : null}</div> : null}</div>
+            <div className="mb-3 flex items-center gap-3"><ManagerAvatar side={side} /><div className="min-w-0"><div className="truncate font-black text-white">{side.manager}</div><div className="text-[10px] uppercase tracking-wider text-slate-500">Received {side.assets?.length || 0} asset{side.assets?.length === 1 ? "" : "s"}</div></div>{side.totalValue != null || side.totalProjection != null ? <div className="ml-auto text-right">{side.totalValue != null ? <><div className="text-lg font-black text-cyan-300">{Number(side.totalValue).toFixed(0)}</div><div className={`text-[8px] uppercase tracking-wider ${side.totalValueComplete === false ? "text-amber-300/70" : "text-slate-500"}`}>{side.totalValueComplete === false ? `Known trade value · ${side.valuedAssetCount || 0}/${side.assets?.length || 0}` : `${(trade.valueModel || (trade.mode === "dynasty" ? "dynasty" : "redraft")) === "dynasty" ? "Dynasty" : "Redraft"} trade value`}</div></> : <div className="text-[8px] font-bold uppercase text-slate-600">No Arsenal value</div>}{side.totalProjection != null ? <div className="mt-0.5 text-[8px] font-bold text-emerald-300/65">Wk {trade.projectionWeek || "—"} projection: {Number(side.totalProjection).toFixed(1)}{side.totalProjectionComplete === false ? ` · ${side.projectedAssetCount || 0}/${side.projectableAssetCount || 0} players` : ""}</div> : null}</div> : null}</div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">{(side.assets || []).map((asset, assetIndex) => <Asset key={`${asset.type}-${asset.id || asset.name}-${assetIndex}`} asset={asset} />)}</div>
           </section>
         ))}
@@ -85,25 +85,32 @@ export default function TradeTalksClient() {
 
   async function refresh() {
     setRefreshing(true); setMessage("");
-    const previousUpdatedAt = doc.updatedAt;
-    const response = await fetch("/api/stream/refresh", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "trades" }) });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) { setRefreshing(false); return setMessage(data.error || "Refresh failed."); }
-    setMessage("Trade update queued. Waiting for the new saved snapshot…");
-    for (let attempt = 0; attempt < 60; attempt += 1) {
-      await sleep(5000);
-      try {
-        const check = await fetch(`/api/stream/trades?v=${Date.now()}`, { cache: "no-store" });
-        const next = await check.json();
-        if (check.ok && next.updatedAt && next.updatedAt !== previousUpdatedAt) {
-          setDoc({ updatedAt: next.updatedAt, trades: Array.isArray(next.trades) ? next.trades : [], filters: next.filters || {}, warnings: next.warnings || [] });
-          setMessage(next.warnings?.length ? `Update complete with warnings: ${next.warnings.join(" · ")}` : `Update complete: ${next.trades?.length || 0} trades saved.`);
-          setRefreshing(false); return;
-        }
-      } catch {}
+    try {
+      const previousUpdatedAt = doc.updatedAt;
+      const response = await fetch("/api/stream/refresh", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "trades" }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) { setMessage(data.error || "Refresh failed."); return false; }
+      setMessage("Trade update queued. Waiting for the new saved snapshot…");
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        await sleep(5000);
+        try {
+          const check = await fetch(`/api/stream/trades?v=${Date.now()}`, { cache: "no-store" });
+          const next = await check.json();
+          if (check.ok && next.updatedAt && next.updatedAt !== previousUpdatedAt) {
+            setDoc({ updatedAt: next.updatedAt, trades: Array.isArray(next.trades) ? next.trades : [], filters: next.filters || {}, warnings: next.warnings || [] });
+            setMessage(next.warnings?.length ? `Update complete with warnings: ${next.warnings.join(" · ")}` : `Update complete: ${next.trades?.length || 0} trades saved.`);
+            return true;
+          }
+        } catch {}
+      }
+      setMessage("The workflow is still running. The previous trade feed remains available; refresh again shortly to load the completed snapshot.");
+      return false;
+    } catch (error) {
+      setMessage(error?.message || "The trade update could not be queued.");
+      return false;
+    } finally {
+      setRefreshing(false);
     }
-    setRefreshing(false);
-    setMessage("The workflow is still running. The previous trade feed remains available; refresh again shortly to load the completed snapshot.");
   }
 
   const modes = doc.filters.modes || [...new Set(doc.trades.map((trade) => trade.mode).filter(Boolean))].sort();

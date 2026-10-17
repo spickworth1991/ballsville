@@ -133,6 +133,7 @@ function HistoryBreakdown({ summary }) {
 }
 
 function StreamBriefing({ doc, valueLens, setValueLens, onOpen }) {
+  const [open, setOpen] = useState(false);
   const current = Array.isArray(doc.players) ? doc.players : [];
   const removed = Array.isArray(doc.recentlyRemoved) ? doc.recentlyRemoved : [];
   const all = new Map([...current, ...removed].map((player) => [String(player.id), player]));
@@ -152,10 +153,11 @@ function StreamBriefing({ doc, valueLens, setValueLens, onOpen }) {
   return (
     <section className="relative mb-5 overflow-hidden rounded-[1.6rem] border border-red-300/20 bg-[#100809]/95 p-4 shadow-[0_20px_60px_rgba(0,0,0,.35)] sm:p-5">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(239,68,68,.15),transparent_42%)]" />
-      <div className="relative mb-4 flex flex-wrap items-end justify-between gap-3"><div><div className="flex items-center text-[9px] font-black uppercase tracking-[0.24em] text-red-200/50">On-air view <InfoTip text="Built only from the latest saved R2 snapshot. Opening this page does not call Sleeper or FantasyPros." label="About the stream briefing" /></div><h2 className="mt-1 text-2xl font-black text-white">Stream Briefing</h2><p className="mt-1 text-xs text-white/40">The clearest injury talking points, ready to open on stream.</p></div><div className="rounded-xl border border-white/10 bg-black/30 p-1"><div className="px-2 pb-1 text-[8px] font-black uppercase tracking-wider text-white/35">Player value lens</div><div className="grid grid-cols-2 gap-1">{["redraft", "dynasty"].map((lens) => <button key={lens} type="button" onClick={() => setValueLens(lens)} className={`rounded-lg px-3 py-1.5 text-[10px] font-black uppercase transition ${valueLens === lens ? "bg-red-500/25 text-red-50" : "text-white/35 hover:bg-white/[0.05]"}`}>{lens}</button>)}</div></div></div>
+      <div className={`relative flex flex-wrap items-center justify-between gap-3 ${open ? "mb-4" : ""}`}><div><div className="flex items-center text-[9px] font-black uppercase tracking-[0.24em] text-red-200/50">On-air view <InfoTip text="Built only from the latest saved R2 snapshot. Opening this page does not call Sleeper or FantasyPros." label="About the stream briefing" /></div><h2 className="mt-1 text-2xl font-black text-white">Stream Briefing</h2><p className="mt-1 text-xs text-white/40">The clearest injury talking points, ready to open on stream.</p></div><button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)} className="flex items-center gap-2 rounded-xl border border-red-200/20 bg-red-500/10 px-4 py-2.5 text-xs font-black text-red-100 transition hover:border-red-200/35 hover:bg-red-500/15"><span>{open ? "Collapse view" : "Open on-air view"}</span><span aria-hidden="true" className={`transition ${open ? "rotate-180" : ""}`}>▾</span></button></div>
+      {open ? <><div className="relative mb-4 flex justify-end"><div className="rounded-xl border border-white/10 bg-black/30 p-1"><div className="px-2 pb-1 text-[8px] font-black uppercase tracking-wider text-white/35">Player value lens</div><div className="grid grid-cols-2 gap-1">{["redraft", "dynasty"].map((lens) => <button key={lens} type="button" onClick={() => setValueLens(lens)} className={`rounded-lg px-3 py-1.5 text-[10px] font-black uppercase transition ${valueLens === lens ? "bg-red-500/25 text-red-50" : "text-white/35 hover:bg-white/[0.05]"}`}>{lens}</button>)}</div></div></div>
       <div className="relative grid gap-3 xl:grid-cols-2">{groups.map(([title, description, players]) => <BriefingGroup key={title} title={title} description={description} players={players} valueLens={valueLens} onOpen={onOpen} />)}</div>
       <div className="relative mt-3 grid gap-2 rounded-2xl border border-white/8 bg-black/25 p-3 sm:grid-cols-2 xl:grid-cols-4"><div><span className="flex text-[8px] font-black uppercase tracking-wider text-white/35">Completed episodes <InfoTip text="An episode ends when a successful snapshot no longer finds the player. Removal means no longer listed, not confirmed healthy." /></span><strong className="mt-1 block text-lg text-white">{summary.completedEpisodes || 0}</strong></div><div><span className="text-[8px] font-black uppercase tracking-wider text-white/35">Median observed duration</span><strong className="mt-1 block text-lg text-white">{summary.medianObservedDays == null ? "Not available" : `${summary.medianObservedDays} days`}</strong></div><div><span className="text-[8px] font-black uppercase tracking-wider text-white/35">Average observed duration</span><strong className="mt-1 block text-lg text-white">{summary.averageObservedDays == null ? "Not available" : `${summary.averageObservedDays} days`}</strong>{summary.earlySample ? <span className="text-[9px] font-bold text-amber-200/65">Early sample · fewer than 10 episodes</span> : null}</div><div><span className="flex text-[8px] font-black uppercase tracking-wider text-white/35">Probability calibration <InfoTip text="Ballsville compares saved FantasyPros estimates with later Sleeper game-participation data. The raw FantasyPros percentage is never changed. Calibration appears after 30 settled predictions." /></span><strong className="mt-1 block text-lg text-white">{summary.calibration?.available ? `Brier ${summary.calibration.brierScore}` : `${summary.calibration?.settledPredictions || 0} / 30 settled`}</strong><span className="text-[9px] text-white/30">Raw FantasyPros estimates remain visible</span></div></div>
-      <HistoryBreakdown summary={summary} />
+      <HistoryBreakdown summary={summary} /></> : null}
     </section>
   );
 }
@@ -273,25 +275,32 @@ export default function InjuryReportClient() {
 
   async function refresh() {
     setRefreshing(true); setMessage("");
-    const previousUpdatedAt = doc.updatedAt;
-    const response = await fetch("/api/stream/refresh", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "injuries" }) });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) { setRefreshing(false); return setMessage(data.error || "Refresh failed."); }
-    setMessage("Injury update queued. Waiting for the new saved snapshot…");
-    for (let attempt = 0; attempt < 60; attempt += 1) {
-      await sleep(5000);
-      try {
-        const check = await fetch(`/api/stream/injuries?v=${Date.now()}`, { cache: "no-store" });
-        const next = await check.json();
-        if (check.ok && next.updatedAt && next.updatedAt !== previousUpdatedAt) {
-          setDoc({ ...next, players: Array.isArray(next.players) ? next.players : [], recentlyRemoved: Array.isArray(next.recentlyRemoved) ? next.recentlyRemoved : [] });
-          setMessage(next.warnings?.length ? `Update complete with warnings: ${next.warnings.join(" · ")}` : `Update complete: ${next.players?.length || 0} current injuries saved.`);
-          setRefreshing(false); return;
-        }
-      } catch {}
+    try {
+      const previousUpdatedAt = doc.updatedAt;
+      const response = await fetch("/api/stream/refresh", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "injuries" }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) { setMessage(data.error || "Refresh failed."); return false; }
+      setMessage("Injury update queued. Waiting for the new saved snapshot…");
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        await sleep(5000);
+        try {
+          const check = await fetch(`/api/stream/injuries?v=${Date.now()}`, { cache: "no-store" });
+          const next = await check.json();
+          if (check.ok && next.updatedAt && next.updatedAt !== previousUpdatedAt) {
+            setDoc({ ...next, players: Array.isArray(next.players) ? next.players : [], recentlyRemoved: Array.isArray(next.recentlyRemoved) ? next.recentlyRemoved : [] });
+            setMessage(next.warnings?.length ? `Update complete with warnings: ${next.warnings.join(" · ")}` : `Update complete: ${next.players?.length || 0} current injuries saved.`);
+            return true;
+          }
+        } catch {}
+      }
+      setMessage("The workflow is still running. The previous report remains available; refresh again shortly to load the completed snapshot.");
+      return false;
+    } catch (error) {
+      setMessage(error?.message || "The injury update could not be queued.");
+      return false;
+    } finally {
+      setRefreshing(false);
     }
-    setRefreshing(false);
-    setMessage("The workflow is still running. The previous report remains available; refresh again shortly to load the completed snapshot.");
   }
 
   const allTrackedPlayers = useMemo(() => [...doc.players, ...doc.recentlyRemoved], [doc.players, doc.recentlyRemoved]);
