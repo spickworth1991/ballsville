@@ -5,10 +5,11 @@ function cleanHeader(value) {
 }
 
 export async function sendStreamApprovalEmail(env, request, account, token) {
-  const origin = String(env.STREAM_PUBLIC_ORIGIN || new URL(request.url).origin).replace(/\/$/, "");
+  const isLocalApproval = String(env.STREAM_APPROVAL_DEV_MODE || "").toLowerCase() === "true";
+  const origin = String(isLocalApproval ? new URL(request.url).origin : (env.STREAM_PUBLIC_ORIGIN || new URL(request.url).origin)).replace(/\/$/, "");
   const reviewUrl = `${origin}/stream/access-review?token=${encodeURIComponent(token)}&username=${encodeURIComponent(account.username)}`;
 
-  if (String(env.STREAM_APPROVAL_DEV_MODE || "").toLowerCase() === "true") {
+  if (isLocalApproval) {
     return { reviewUrl };
   }
 

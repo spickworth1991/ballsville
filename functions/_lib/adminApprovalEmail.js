@@ -5,9 +5,10 @@ function cleanHeader(value) {
 }
 
 export async function sendAdminApprovalEmail(env, request, account, token) {
-  const origin = String(env.ADMIN_PUBLIC_ORIGIN || env.STREAM_PUBLIC_ORIGIN || new URL(request.url).origin).replace(/\/$/, "");
+  const isLocalApproval = String(env.ADMIN_APPROVAL_DEV_MODE || "").toLowerCase() === "true";
+  const origin = String(isLocalApproval ? new URL(request.url).origin : (env.ADMIN_PUBLIC_ORIGIN || env.STREAM_PUBLIC_ORIGIN || new URL(request.url).origin)).replace(/\/$/, "");
   const reviewUrl = `${origin}/admin/access-review?token=${encodeURIComponent(token)}&username=${encodeURIComponent(account.username)}`;
-  if (String(env.ADMIN_APPROVAL_DEV_MODE || "").toLowerCase() === "true") return { reviewUrl };
+  if (isLocalApproval) return { reviewUrl };
 
   const apiToken = env.ADMIN_EMAIL_API_TOKEN || env.STREAM_EMAIL_API_TOKEN;
   if (!env.CLOUDFLARE_ACCOUNT_ID || !apiToken) throw new Error("Cloudflare Email API credentials are not configured.");

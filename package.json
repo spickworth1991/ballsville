@@ -4,6 +4,8 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "next dev",
+    "dev:stream": "node script/dev-auth.mjs stream",
+    "dev:admin": "node script/dev-auth.mjs admin",
     "proxy": "npx wrangler pages dev --proxy 3000 --port 8788 --persist-to .wrangler/state",
     "seed": "npx wrangler r2 object put admin/data/gauntlet/leagues_2025.json --file r2/data/gauntlet/leagues_2025.json --local --persist-to .wrangler/state",
     "build": "next build",
