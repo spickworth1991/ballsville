@@ -1,7 +1,16 @@
 name: Update Leaderboards
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      ensure_update:
+        description: Retry once if this final/important refresh fails
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    # Daily in-season correction pass at about 6:00 a.m. Eastern standard time.
+    - cron: "0 11 * 1,2,9-12 *"
 
 concurrency:
   group: update-leaderboards-current-season
@@ -24,9 +33,24 @@ jobs:
         run: npm ci
 
       - name: Build + upload leaderboards to R2
-        run: npm run leaderboards:auto
+        shell: bash
         env:
+          ENSURE_UPDATE: ${{ github.event_name == 'schedule' || inputs.ensure_update == true }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           ADMIN_BUCKET: ${{ secrets.ADMIN_BUCKET }}
+        run: |
+          attempts=1
+          if [[ "$ENSURE_UPDATE" == "true" ]]; then attempts=2; fi
+
+          for ((attempt=1; attempt<=attempts; attempt++)); do
+            if npm run leaderboards:auto; then
+              exit 0
+            fi
+            if [[ "$attempt" -lt "$attempts" ]]; then
+              echo "Important leaderboard refresh failed; retrying once in 60 seconds."
+              sleep 60
+            fi
+          done
+          exit 1

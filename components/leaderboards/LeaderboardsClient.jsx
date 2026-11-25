@@ -60,10 +60,34 @@ function stripUpdatedAt(obj) {
 function formatDateTime(dt) {
   if (!dt) return "";
   try {
-    return new Date(dt).toLocaleString();
+    const parsed = new Date(dt);
+    if (Number.isNaN(parsed.getTime())) return String(dt);
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    }).format(parsed);
   } catch {
     return String(dt);
   }
+}
+
+function latestUpdatedAt(yearBlock) {
+  if (!yearBlock || typeof yearBlock !== "object") return null;
+  const candidates = [
+    yearBlock.updatedAt,
+    ...Object.values(yearBlock).map((mode) => mode?.updatedAt),
+  ]
+    .filter(Boolean)
+    .map((value) => ({ value, time: new Date(value).getTime() }))
+    .filter(({ time }) => Number.isFinite(time));
+
+  candidates.sort((a, b) => b.time - a.time);
+  return candidates[0]?.value || null;
 }
 
 export default function LeaderboardsClient() {
@@ -117,7 +141,7 @@ export default function LeaderboardsClient() {
 
   // Live leaderboards (poll). The hook will optionally poll a weekly manifest
   // to detect changes, but the main payload is leaderboards_<year>.json.
-  const { data: liveData, updatedAt, error: liveError, loading: liveLoading } = useR2Live(yearStr, {
+  const { data: liveData, error: liveError, loading: liveLoading } = useR2Live(yearStr, {
     enabled: Boolean(yearStr),
     pollMs: 60_000,
     basePath: DATA_BASE,
@@ -133,10 +157,11 @@ export default function LeaderboardsClient() {
 
   // Keep updatedAt separate so it doesn't show up as a selectable "mode".
   const lastUpdated = useMemo(() => {
-    // Prefer hook's updatedAt (from the payload) but fall back to rawYearBlock.updatedAt.
-    const dt = updatedAt || rawYearBlock?.updatedAt;
+    // Current payloads store updatedAt on each mode, while older payloads may
+    // store it on the year block itself.
+    const dt = latestUpdatedAt(rawYearBlock);
     return dt ? formatDateTime(dt) : "";
-  }, [updatedAt, rawYearBlock]);
+  }, [rawYearBlock]);
 
   const yearBlock = useMemo(() => stripUpdatedAt(rawYearBlock), [rawYearBlock]);
 

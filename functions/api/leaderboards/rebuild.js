@@ -38,14 +38,34 @@ function isGameWindow(now = new Date()) {
   if (weekday === "Mon" && time >= 19) return true;
   // Thu: 19:00+
   if (weekday === "Thu" && time >= 19) return true;
+  // Wed: 19:00+ (Thanksgiving Eve and any future Wednesday games)
+  if (weekday === "Wed" && time >= 19) return true;
 
   // Early spillover
-  if ((weekday === "Mon" || weekday === "Tue" || weekday === "Fri") && time < 2) return true;
+  if ((weekday === "Mon" || weekday === "Tue" || weekday === "Thu" || weekday === "Fri") && time < 2) return true;
 
   return false;
 }
 
-async function triggerGithubWorkflow(env) {
+// Mark only the final two 15-minute slots of an overnight game window. The
+// workflow uses this flag to retry once if that important final refresh fails;
+// ordinary live updates are left for the next scheduled ping.
+function shouldEnsureUpdate(now = new Date()) {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: GAME_TZ,
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(now);
+  const weekday = parts.find((p) => p.type === "weekday")?.value;
+  const hour = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
+  const minute = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
+  return ["Mon", "Tue", "Thu", "Fri"].includes(weekday) && hour === 1 && minute >= 30;
+}
+
+async function triggerGithubWorkflow(env, { ensureUpdate = false } = {}) {
   const repo = env.GITHUB_REPO;
   const workflowFile = env.LEADERBOARDS_WORKFLOW_FILE;
   const token = env.GH_WORKFLOW_TOKEN;
@@ -66,7 +86,7 @@ async function triggerGithubWorkflow(env) {
       "Content-Type": "application/json",
       "User-Agent": "ballsville-leaderboards-cf-function",
     },
-    body: JSON.stringify({ ref }),
+    body: JSON.stringify({ ref, inputs: { ensure_update: ensureUpdate ? "true" : "false" } }),
   });
 
   const text = await res.text();
@@ -74,7 +94,7 @@ async function triggerGithubWorkflow(env) {
     throw new Error(`GitHub workflow_dispatch failed: ${res.status} ${res.statusText} – ${text}`);
   }
 
-  return { repo, workflowFile, ref };
+  return { repo, workflowFile, ref, ensureUpdate };
 }
 
 async function handleTrigger(request, env) {
@@ -88,7 +108,7 @@ async function handleTrigger(request, env) {
     );
   }
 
-  const info = await triggerGithubWorkflow(env);
+  const info = await triggerGithubWorkflow(env, { ensureUpdate: shouldEnsureUpdate() });
   return new Response(
     JSON.stringify({ ok: true, triggered: true, skipped: false, workflow: info }),
     { status: 200, headers: { "Content-Type": "application/json" } }

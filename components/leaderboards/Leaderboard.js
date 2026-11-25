@@ -575,8 +575,13 @@ function LeaderboardControls({
       {/* Row 1 */}
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
-          <div className="text-xs font-semibold tracking-[0.16em] uppercase text-muted">
-            Leaderboards{lastUpdated ? ` • Updated ${lastUpdated}` : ""}
+          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold tracking-[0.16em] uppercase text-muted">
+            <span>Leaderboards</span>
+            {lastUpdated ? (
+              <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-[10px] tracking-normal normal-case text-emerald-300">
+                Last updated {lastUpdated}
+              </span>
+            ) : null}
           </div>
           <div className="mt-1 text-lg font-semibold text-foreground leading-tight truncate" title={activeBlock?.name}>
             {activeBlock?.name || "Leaderboard"}
